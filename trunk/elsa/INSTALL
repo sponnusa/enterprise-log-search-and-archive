@@ -1,0 +1,76 @@
+This is a complex system--installation and administration is not for the faint-of-heart!
+
+Required external programs:
+Sphinx (sphinxsearch.com) >= 0.9.9
+Syslog-NG >= 3.1
+MySQL >= 5.1
+Apache2/mod_perl2
+
+The following Perl modules should be installed
+App::cpanminus (optional but makes installing everything much easier/quicker with cpanm instead of cpan)
+
+On the syslog receiving node:
+YAML::Syck
+Moose
+IO::Socket
+Data::Serializer
+POE::Event::Message
+Config::JSON
+Exception::Class
+POE::Component::PreforkDispatch
+Date::Manip
+DBD::mysql
+Sphinx::Config
+Sphinx::Search
+Sys::Info
+Sys::MemInfo
+String::CRC32
+Search::QueryParser
+Search::QueryParser::SQL
+Net::Server::Daemonize
+Log::Log4perl
+
+On the web host:
+Config::JSON
+Net::LDAP::Express
+Net::LDAP::FilterBuilder
+Module::Pluggable
+URI::Escape
+Digest::HMAC_SHA1
+Mail::Internet
+File::Slurp
+MIME::Base64
+EV
+Time::HiRes
+YAML::Syck
+Moose
+Apache::Request
+Apache2::Const
+APR::Request::Param
+CGI
+CGI::Session::Driver::file
+CGI::Application::Plugin::Session
+CGI::Application::Plugin::Apache2::Request
+POE::Event::Message
+POE::Filter::Reference
+Data::Serializer
+
+The root directory of ELSA should be /usr/local/elsa.  Copy these files there if you haven't already.  
+
+Get logging up and running:
+You need to edit the syslog-ng config file to create a new destination for logs and to use the patterndb parser.  It should look something like this:
+
+parser p_db {
+       db-parser("/usr/local/elsa/node/conf/patterndb.xml");
+};
+template t_db_parsed {
+       template("$R_UNIXTIME\t$SOURCEIP\t$PROGRAM\t${.classifier.class}\t${.classifier.rule_id}\t$MSGONLY\t${i0}\t${i1}\t${i2}\t${i3}\t${i4}\t${i5}\t${s0}\t${s1}\t${s2}\t${s3}\t${s4}\t${s5}\n");
+};
+destination d_program {
+       program("/usr/local/elsa/node/indexer.pl" template(t_db_parsed));
+};
+log { source(src); parser(p_db); destination(d_program); };
+
+Edit the etc/elsa.conf file to point to the appropriate files.  By default, it assumes the base dir is /usr/local/elsa/node.  Edit the sphinx entries to correspond with wherever your sphinx config is.  Now when you start (or restart) syslog-ng, watch the log (/usr/local/elsa/node/tmp/node.log by default) to see that the one minute batch loads are succeeding.
+
+Once logs are getting recorded and indexed, it's time to get the web frontend going.  Edit the janus.conf (/usr/local/elsa/etc/janus.conf) and make sure all directory locations exist.  Copy the apache_site.conf to /etc/apache2/vhost.d/ (or equivalent) and edit appropriately.  This should get you to a point where the Javascript includes load and you get an error from ELSA when you visit the site.  Next, janus.pl must be run as a background process (use -D to fork as a daemon) which acts as the middleware between Apache and the log node(s).  Make sure this is up and running and log output is getting set to the logfile specified in your log4perl.conf.  Now queries should be possible.

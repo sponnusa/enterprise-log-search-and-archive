@@ -1,0 +1,245 @@
+<patterndb version='3' pub_date='2009-11-04'>
+	<ruleset name="FWSM" id='2'>
+		<pattern>%FWSM</pattern>
+		<rules>
+			<rule provider="DET" class='2' id='2'>
+				<patterns>
+					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
+				</patterns>
+			</rule>
+			<rule provider="DET" class='3' id='3'>
+				<patterns>
+					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
+				</patterns>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="ASA" id='2_ASA'>
+		<pattern>%ASA</pattern>
+		<rules>
+			<rule provider="DET" class='2' id='2'>
+				<patterns>
+					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
+				</patterns>
+			</rule>
+			<rule provider="DET" class='3' id='3'>
+				<patterns>
+					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
+				</patterns>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="PIX" id='2_PIX'>
+		<pattern>%PIX</pattern>
+		<rules>
+			<rule provider="DET" class='2' id='2'>
+				<patterns>
+					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
+				</patterns>
+			</rule>
+			<rule provider="DET" class='3' id='3'>
+				<patterns>
+					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%PIX-6-302014">Teardown TCP connection 2050472353 for outside:10.65.200.34/1252 to inside:159.158.137.15/135 duration 0:00:00 bytes 1476 TCP FINs</test_message>
+						<test_values>
+							<test_value name="i0">TCP</test_value>
+							<test_value name="s0">outside</test_value>
+							<test_value name="i1">10.65.200.34</test_value>
+							<test_value name="i2">1252</test_value>
+							<test_value name="s1">inside</test_value>
+							<test_value name="i3">159.158.137.15</test_value>
+							<test_value name="i4">135</test_value>
+							<test_value name="s2">0:00:00</test_value>
+							<test_value name="i5">1476</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="Windows_Snare" id='4'>
+		<pattern>MSWinEventLog</pattern>
+		<rules>
+			<rule provider="DET" class='4' id='4'>
+				<patterns>
+					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@	@ESTRING:i0:	@@ESTRING:s0:	@@ESTRING:s1:	@@ESTRING:s2:	@@ESTRING:s3:	@@ESTRING:s4:	@@ESTRING:s5:	@@ESTRING::	@@ESTRING::	@</pattern>
+					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@|@ESTRING:i0:|@@ESTRING:s0:|@@ESTRING::|@@ESTRING::|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@|Logon Failure:@ESTRING::	@Reason:		@ESTRING:s2:	@User Name:	@ESTRING:s1: @</pattern>
+					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@|@ESTRING:i0:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING::|@@ESTRING::|@</pattern>
+				</patterns>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="Windows_evtsys" id='4'>
+		<!-- no program pattern -->
+		<rules>
+			<rule provider="DET" class='4' id='4'>
+				<patterns>
+					<pattern>@NUMBER:i0:@: @ESTRING:s0::@</pattern>
+					<pattern>@NUMBER:i0:@: @ANYSTRING::@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="Service_Control_Manager">7035: NT AUTHORITYSYSTEM: The COH_Mon service was successfully sent a start control.</test_message>
+						<test_values>
+							<test_value name="i0">7035</test_value>
+							<test_value name="s0">NT AUTHORITYSYSTEM</test_value>
+						</test_values>
+					</example>
+					<example>
+						<test_message program="SceCli">1202: Security policies were propagated with warning. 0x4b8 : An extended error has occurred. For best results in resolving this event, log on with a non-administrative account and search http://support.microsoft.com for "Troubleshooting Event 1202's".</test_message>
+						<test_value name="i0">1202</test_value>
+						<test_value name="s0">Security policies were propagated with warning. 0x4b8 </test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="Windows_dhcp" id='4_dhcp'>
+		<pattern>GenericLog</pattern>
+		<rules>
+			<rule provider="DET" class='4' id='4'>
+				<patterns>
+					<pattern>@NUMBER::@,@ANYSTRING::@</pattern>
+					<values>
+						<value name="i0">0</value>
+						<value name="s0">dhcplog</value>
+						<value name="PROGRAM">dhcplog</value>
+					</values>
+					<!--<pattern>@NUMBER:i0:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:,@</pattern>
+					<pattern>@NUMBER:i0:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:,@@ESTRING:s5:,@</pattern>-->
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="GenericLog">30,11/16/10,12:25:04,DNS Update Request,x.x.x.x,hostname,,</test_message>
+						<test_value name="i0">0</test_value>
+						<test_value name="s0">dhcplog</test_value>
+						<test_value name="PROGRAM">dhcplog</test_value>
+					</example>
+					<example>
+						<test_message program="genericlog">11,11/16/10,12:25:04,Renew,x.x.x.x,hostname,macaddr,</test_message>
+						<test_value name="i0">0</test_value>
+						<test_value name="s0">dhcplog</test_value>
+						<test_value name="PROGRAM">dhcplog</test_value>
+					</example>
+				</examples>
+				<tags>
+					<tag>4</tag>
+				</tags>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="url" id='7'>
+		<pattern>url</pattern>
+		<rules>
+			<rule provider="DET" class='7' id='7'>
+				<patterns>
+					<!--<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s5:,@@ESTRING:s2:,@@ESTRING:s3:,@@STRING:s4: :/;,.-()@</pattern>-->
+					<!--<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@STRING:s5:,.-@</pattern>-->
+					<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@@NUMBER:i3:@|@NUMBER:i4:@</pattern>
+					<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@|@NUMBER:i4:@</pattern>
+					<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@</pattern>
+					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@@NUMBER:i3:@|@NUMBER:i4:@</pattern>
+					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@|@NUMBER:i4:@</pattern>
+					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="url">x.x.x.x,x.x.x.x,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200|46142|8583</test_message>
+						<test_values>
+							<test_value name="i0">x.x.x.x</test_value>
+							<test_value name="i1">x.x.x.x</test_value>
+							<test_value name="s0">GET</test_value>
+							<test_value name="s1">ajax.googleapis.com</test_value>
+							<test_value name="s2">/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js</test_value>
+							<test_value name="s3">http://slickdeals.net/</test_value>
+							<test_value name="s4">Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)</test_value>
+							<test_value name="s5">,com,googleapis.com,ajax.googleapis.com</test_value>
+							<test_value name="i2">200</test_value>
+							<test_value name="i3">46142</test_value>
+							<test_value name="i4">8583</test_value>
+						</test_values>
+					</example>
+					<example>
+						<test_message program="url">x.x.x.x,x.x.x.x,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200||8583</test_message>
+						<test_values>
+							<test_value name="i0">x.x.x.x</test_value>
+							<test_value name="i1">x.x.x.x</test_value>
+							<test_value name="s0">GET</test_value>
+							<test_value name="s1">ajax.googleapis.com</test_value>
+							<test_value name="s2">/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js</test_value>
+							<test_value name="s3">http://slickdeals.net/</test_value>
+							<test_value name="s4">Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)</test_value>
+							<test_value name="s5">,com,googleapis.com,ajax.googleapis.com</test_value>
+							<test_value name="i2">200</test_value>
+							<test_value name="i3"></test_value>
+							<test_value name="i4">8583</test_value>
+						</test_values>
+					</example>
+					<example>
+						<test_message program="url">x.x.x.x,x.x.x.x,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200||</test_message>
+						<test_values>
+							<test_value name="i0">x.x.x.x</test_value>
+							<test_value name="i1">x.x.x.x</test_value>
+							<test_value name="s0">GET</test_value>
+							<test_value name="s1">ajax.googleapis.com</test_value>
+							<test_value name="s2">/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js</test_value>
+							<test_value name="s3">http://slickdeals.net/</test_value>
+							<test_value name="s4">Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)</test_value>
+							<test_value name="s5">,com,googleapis.com,ajax.googleapis.com</test_value>
+							<test_value name="i2">200</test_value>
+							<test_value name="i3"></test_value>
+							<test_value name="i4"></test_value>
+						</test_values>
+					</example>
+					</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="snort" id='8'>
+		<pattern>snort</pattern>
+		<rules>
+			<rule provider="DET" class='8' id='8'>
+				<patterns>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:i1:{}@ @IPv4:i2:@ -> @IPv4:i4:@</pattern>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@]: @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@]: @QSTRING:i1:{}@ @IPv4:i2:@ -> @IPv4:i4:@</pattern>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1: {@@ESTRING:i1:}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>
+					<!--<pattern>@QSTRING:s0:[]@@QSTRING:s1: @[Classification:@QSTRING:s2: ]@ [Priority@QSTRING:i0: ]@: @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>-->
+				</patterns>
+				<example>
+					<test_message program="snort">[1:485:5] ICMP Destination Unreachable Communication Administratively Prohibited [Classification: Misc activity] [Priority: 3] {ICMP} x.x.x.x -> x.x.x.x</test_message>
+					<test_value name="s0">1:485:5</test_value>
+					<test_value name="s1">ICMP Destination Unreachable Communication Administratively Prohibited </test_value>
+					<test_value name="s2">Misc activity</test_value>
+					<test_value name="i0">3</test_value>
+					<test_value name="i1">ICMP</test_value>
+					<test_value name="i2">x.x.x.x</test_value>
+					<test_value name="i4">x.x.x.x</test_value>
+				</example>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset>
+		<rules>
+			<rule class="10" id="10" context-id="ironport-icid" context-timeout="10" context-scope="program">
+				<patterns>
+					<pattern>Info: New SMTP ICID @NUMBER:icid:@ interface @ESTRING:interface_name: @(@IPv4:interface_ip:@) address @IPv4:sender_ip:@ reverse dns host @ESTRING:sender_dns: @verified yes</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="ironport_mail_logs">Info: New SMTP ICID 696117306 interface InternalNet (x.x.x.x) address x.x.x.x reverse dns host hostname verified yes</test_message>
+						<test_value name="icid">696117306</test_value>
+						<test_value name="interface_name">InternalNet</test_value>
+						<test_value name="interface_ip">x.x.x.x</test_value>
+						<test_value name="sender_ip">x.x.x.x</test_value>
+						<test_value name="sender_dns">hostname</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+</patterndb>
