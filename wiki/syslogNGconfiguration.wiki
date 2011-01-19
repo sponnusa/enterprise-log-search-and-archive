@@ -1,0 +1,19 @@
+#summary Syslog-ng configuration snippet
+
+ELSA uses Syslog-ng to read in logs, parse some of them, and send them through the system.  Here's a snippet showing how to configure Syslog-ng >= 3.1 to use the pattern-db parser.
+
+{{{
+source src {
+  udp(ip(0.0.0.0) port(514));
+};
+parser p_db {
+       db-parser("/usr/local/elsa/node/conf/patterndb.xml");
+};
+template t_db_parsed {
+       template("$R_UNIXTIME\t$SOURCEIP\t$PROGRAM\t${.classifier.class}\t${.classifier.rule_id}\t$MSGONLY\t${i0}\t${i1}\t${i2}\t${i3}\t${i4}\t${i5}\t${s0}\t${s1}\t${s2}\t${s3}\t${s4}\t${s5}\n");
+};
+destination d_program {
+       program("/usr/local/elsa/node/indexer.pl" template(t_db_parsed));
+};
+log { source(src); parser(p_db); destination(d_program); };
+}}}
