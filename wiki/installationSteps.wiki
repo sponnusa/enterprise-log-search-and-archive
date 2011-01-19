@@ -1,0 +1,78 @@
+#summary Step-by-step overview of the installation
+
+= Prerequisites =
+You will need working versions of
+  * Linux
+  * Syslog-NG >= 3.1
+  * MySQL >= 5.1
+  * Sphinx >= 0.9.9
+
+You will also need the following Perl modules on each logging node:
+  * YAML::Syck
+  * Moose
+  * IO::Socket
+  * Data::Serializer
+  * POE::Event::Message
+  * Config::JSON
+  * Exception::Class
+  * POE::Component::PreforkDispatch
+  * Date::Manip
+  * DBD::mysql
+  * Sphinx::Config
+  * Sphinx::Search
+  * Sys::Info
+  * Sys::MemInfo
+  * String::CRC32
+  * Search::QueryParser
+  * Search::QueryParser::SQL
+  * Net::Server::Daemonize
+  * Log::Log4perl
+
+The web frontend will need Apache2 with mod_perl installed and these Perl modules:
+  * Config::JSON
+  * Net::LDAP::Express
+  * Net::LDAP::FilterBuilder
+  * Module::Pluggable
+  * URI::Escape
+  * Digest::HMAC_SHA1
+  * Mail::Internet
+  * File::Slurp
+  * MIME::Base64
+  * EV
+  * Time::HiRes
+  * YAML::Syck
+  * Moose
+  * Apache::Request
+  * Apache2::Const
+  * APR::Request::Param
+  * CGI
+  * CGI::Session::Driver::file
+  * CGI::Application::Plugin::Session
+  * CGI::Application::Plugin::Apache2::Request
+  * POE::Event::Message
+  * POE::Filter::Reference
+  * Data::Serializer
+
+
+= Installation Steps =
+
+After you've installed the above prerequisites, download ELSA and put it in /usr/local/elsa.  You can install it to a different directory, but you will need to adjust your environment from all of the documentation accordingly.
+
+==Logging Node(s)==
+
+  # Download the code using svn {{{svn co "http://code.google.com/p/enterprise-log-search-and-archive/elsa/" /usr/local/elsa }}}
+  # Edit /usr/local/elsa/conf/elsa.conf
+  # Create the Sphinx config file {{{/usr/local/elsa/create_sphinx_config.pl > /usr/local/etc/sphinx.conf}}}
+  # Start sphinx and make sure it is running {{{/usr/local/bin/searchd}}}
+  # Start the ELSA logging agent {{{perl /usr/local/elsa/node/agent.pl}}}
+  # Go inspect the log to make sure it has started up ok (/usr/local/elsa/log/node.log)
+  # Start syslog-ng {{{/usr/local/syslog-ng/sbin/syslog-ng}}}
+  # Go to the log tmp dir and make sure it is creating the tmp buffer logs in /usr/local/elsa/node/tmp
+
+==Web Server==
+
+  # Download the code using svn {{{svn co "http://code.google.com/p/enterprise-log-search-and-archive/elsa/" /usr/local/elsa }}}
+  # Create a new virtual host or site in your Apache2 config.  A template is provided in /usr/local/elsa/etc/apache_site.conf.
+  # Edit /usr/local/elsa/etc/janus.conf to fit your environment.
+  # Start Janus {{{perl /usr/local/elsa/web/janus.pl}}} and be sure that it runs with no errors.
+  # Visit the URL that your virtual site config points to and verify that you get a query page.
