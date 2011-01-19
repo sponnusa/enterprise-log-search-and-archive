@@ -60,7 +60,7 @@ After you've installed the above prerequisites, download ELSA and put it in /usr
 
 ==Logging Node(s)==
 
-  # Download the code using svn {{{svn co "http://code.google.com/p/enterprise-log-search-and-archive/elsa/" /usr/local/elsa }}}
+  # Download the code using svn {{{svn checkout "http://enterprise-log-search-and-archive.googlecode.com/svn/trunk/" /usr/local/elsa }}}
   # Edit /usr/local/elsa/conf/elsa.conf
   # Create the Sphinx config file {{{/usr/local/elsa/create_sphinx_config.pl > /usr/local/etc/sphinx.conf}}}
   # Start sphinx and make sure it is running {{{/usr/local/bin/searchd}}}
@@ -71,7 +71,7 @@ After you've installed the above prerequisites, download ELSA and put it in /usr
 
 ==Web Server==
 
-  # Download the code using svn {{{svn co "http://code.google.com/p/enterprise-log-search-and-archive/elsa/" /usr/local/elsa }}}
+  # Download the code using svn {{{svn checkout "http://enterprise-log-search-and-archive.googlecode.com/svn/trunk/" /usr/local/elsa }}}
   # Create a new virtual host or site in your Apache2 config.  A template is provided in /usr/local/elsa/etc/apache_site.conf.
   # Edit /usr/local/elsa/etc/janus.conf to fit your environment.
   # Start Janus {{{perl /usr/local/elsa/web/janus.pl}}} and be sure that it runs with no errors.
