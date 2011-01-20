@@ -7,7 +7,7 @@ You will need working versions of
   * MySQL >= 5.1
   * Sphinx >= 0.9.9
 
-You will also need the following Perl modules on each logging node:
+You will also need the following Perl modules on each logging node.  You can install these by running the contrib/elsa-logging-node-perl-modules-install.sh script.
   * YAML::Syck
   * Moose
   * IO::Socket
@@ -28,7 +28,7 @@ You will also need the following Perl modules on each logging node:
   * Net::Server::Daemonize
   * Log::Log4perl
 
-The web frontend will need Apache2 with mod_perl installed and these Perl modules:
+The web frontend will need Apache2 with mod_perl installed and these Perl modules.  You can install these by running the contrib/elsa-web-frontend-node-perl-modules-install.sh script.
   * Config::JSON
   * Net::LDAP::Express
   * Net::LDAP::FilterBuilder
