@@ -1,0 +1,25 @@
+#!/bin/sh
+cpan App::cpanminus
+cpanm YAML::Syck
+cpanm Moose
+cpanm Config::JSON
+cpanm Net::LDAP::Express
+cpanm Net::LDAP::FilterBuilder
+cpanm Module::Pluggable
+cpanm URI::Escape
+cpanm Data::Serializer
+cpanm POE::Event::Message
+cpanm POE::Filter::Reference
+cpanm Digest::HMAC_SHA1
+cpanm Mail::Internet
+cpanm File::Slurp
+cpanm MIME::Base64
+cpanm EV
+cpanm Time::HiRes
+cpanm Apache::Request
+cpanm Apache2::Const
+cpanm APR::Request::Param
+cpanm CGI
+cpanm CGI::Session::Driver::file
+cpanm CGI::Application::Plugin::Session
+cpanm CGI::Application::Plugin::Apache2::Request
