@@ -61,6 +61,8 @@ After you've installed the above prerequisites, download ELSA and put it in /usr
 ==Logging Node(s)==
 
   # Download the code using svn {{{svn checkout "http://enterprise-log-search-and-archive.googlecode.com/svn/trunk/" /usr/local }}}
+  # Create the MySQL databases syslog and syslog_data {{{mysqladmin create syslog && mysqladmin create syslog_data}}}
+  # Populate the syslog database {{{mysql syslog < /usr/local/elsa/node/conf/schema.mysql}}}
   # Edit /usr/local/elsa/conf/elsa.conf
   # Create the Sphinx config file {{{/usr/local/elsa/create_sphinx_config.pl > /usr/local/etc/sphinx.conf}}}
   # Start sphinx and make sure it is running {{{/usr/local/bin/searchd}}}
@@ -74,5 +76,7 @@ After you've installed the above prerequisites, download ELSA and put it in /usr
   # Download the code using svn {{{svn checkout "http://enterprise-log-search-and-archive.googlecode.com/svn/trunk/" /usr/local }}}
   # Create a new virtual host or site in your Apache2 config.  A template is provided in /usr/local/elsa/etc/apache_site.conf.
   # Edit /usr/local/elsa/etc/janus.conf to fit your environment.
+  # Create the MySQL database syslog_meta_db {{{mysqladmin create syslog_meta_db}}}
+  # Populate the syslog_meta_db database {{{mysql syslog_meta_db < /usr/local/elsa/web/conf/meta_db_schema.mysql}}}
   # Start Janus {{{perl /usr/local/elsa/web/janus.pl}}} and be sure that it runs with no errors.
   # Visit the URL that your virtual site config points to and verify that you get a query page.
