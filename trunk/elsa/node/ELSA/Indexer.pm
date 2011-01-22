@@ -18,6 +18,7 @@ use Sys::Info::Constants qw( :device_cpu );
 use Sys::MemInfo qw( freemem totalmem freeswap totalswap );
 use Parallel::ForkManager;
 use JSON;
+use Net::DNS::Resolver;
 
 use ELSA;
 require Exporter;
@@ -1488,6 +1489,11 @@ sub update_indexes {
 		$self->log->error('Invalid new_indexes: ' . Dumper($new_indexes));
 		return { ok => 1 };
 	}
+	
+	# Node must be able to INET_ATON(), so the label for the node in the config must be an IP address
+	unless ($node =~ /^\d+\.\d+\.\d+\.\d+$/){
+		throw_params param => 'node', value => $node; 
+	} 
 	
 	$self->log->debug('Updating indexes with node ' . $node . ' which has ' . (scalar keys %$new_indexes) . ' new indexes');
 	$self->{_CURRENT_INDEXES}->{$node} = $new_indexes;
