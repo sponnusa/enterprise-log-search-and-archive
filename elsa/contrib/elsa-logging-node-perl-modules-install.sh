@@ -19,3 +19,8 @@ cpanm Search::QueryParser
 cpanm Search::QueryParser::SQL
 cpanm Net::Server::Daemonize
 cpanm Log::Log4perl
+cpanm POE::API::Peek
+cpanm Parallel::ForkManager
+cpanm Sort::Key
+cpanm Sys::Hostname::FQDN
+cpanm Net::DNS
