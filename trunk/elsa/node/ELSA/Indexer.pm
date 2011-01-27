@@ -1201,8 +1201,8 @@ sub _sphinx_index {
 	my $index_name = shift;
 	
 	my $start_time = time();
-	my $cmd = sprintf("indexer --config %s --rotate %s 2>&1", 
-		$self->conf->get('sphinx/config_file'), $index_name);
+	my $cmd = sprintf("%s --config %s --rotate %s 2>&1", 
+		$self->conf->get('sphinx/indexer'), $self->conf->get('sphinx/config_file'), $index_name);
 	my @output = qx/$cmd/;
 	$self->log->debug('num of output lines: ' . scalar @output);
 	$self->log->debug('output: ' . join("\n", @output));
