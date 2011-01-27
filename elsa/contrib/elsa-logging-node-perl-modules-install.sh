@@ -24,3 +24,5 @@ cpanm Parallel::ForkManager
 cpanm Sort::Key
 cpanm Sys::Hostname::FQDN
 cpanm Net::DNS
+cpanm EV
+cpanm File::Slurp

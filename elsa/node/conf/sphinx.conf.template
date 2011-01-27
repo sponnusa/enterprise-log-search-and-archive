@@ -3,6 +3,7 @@ indexer {
         write_buffer = 100M
 }
 searchd {
+		listen_backlog = 1000
         client_timeout = 300000
         log = /data/sphinx/log/searchd.log
         max_children = 30
