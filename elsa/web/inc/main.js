@@ -805,7 +805,7 @@ YAHOO.ELSA.main = function () {
 						oButton.set('label', 'any.' + YAHOO.ELSA.currentQuery.metas.groupby);
 					}
 				}
-				else if (typeof YAHOO.ELSA.currentQuery.metas['class'] != 'undefined'  && YAHOO.ELSA.currentQuery.metas.local_groupby){
+				else if (YAHOO.ELSA.currentQuery.metas.local_groupby){
 					//TODO loop this instead of defaulting to 0 in array
 					if (typeof YAHOO.ELSA.currentQuery.metas['class'] != 'undefined'){
 						oButton.set('label', YAHOO.ELSA.currentQuery.metas['class'] + '.' + YAHOO.ELSA.currentQuery.metas.local_groupby[0]);
