@@ -160,7 +160,7 @@ CREATE TABLE tables (
 ) ENGINE=InnoDB;
 
 CREATE TABLE indexes (
-	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+	id TINYINT UNSIGNED NOT NULL,
 	first_id BIGINT UNSIGNED NOT NULL,
 	last_id BIGINT UNSIGNED NOT NULL,
 	start INT UNSIGNED NOT NULL,
@@ -168,6 +168,7 @@ CREATE TABLE indexes (
 	table_id SMALLINT UNSIGNED NOT NULL,
 	type ENUM("temporary", "permanent", "unavailable") NOT NULL DEFAULT "temporary",
 	locked_by SMALLINT UNSIGNED,
+	PRIMARY KEY (id, type),
 	UNIQUE KEY (first_id, last_id),
 	KEY(start),
 	KEY(end),
