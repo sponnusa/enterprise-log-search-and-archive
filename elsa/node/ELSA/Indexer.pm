@@ -493,9 +493,9 @@ sub _oversize_log_rotate {
 			last;
 		}
 		
-		$query = sprintf('UPDATE %s.indexes SET locked_by=? WHERE id=?', $ELSA::Meta_db_name);
+		$query = sprintf('UPDATE %s.indexes SET locked_by=? WHERE id=? AND type=?', $ELSA::Meta_db_name);
 		$sth = $self->db->prepare($query);
-		$sth->execute($$, $entry->{id});
+		$sth->execute($$, $entry->{id}, $entry->{type});
 		$self->release_lock('directory');
 		
 		$self->log->debug("Dropping index " . $entry->{id});
@@ -848,7 +848,7 @@ sub consolidate_indexes {
 		return 0;
 	}
 	
-	$query = sprintf('SELECT id, table_name, table_locked_by FROM %s.v_directory ' . "\n" .
+	$query = sprintf('SELECT table_name, table_locked_by FROM %s.v_directory ' . "\n" .
 			'WHERE table_type="index" AND min_id >= ? AND max_id <= ?', $ELSA::Meta_db_name);
 	$sth = $self->db->prepare($query);
 	$sth->execute($first_id, $last_id);
@@ -955,8 +955,6 @@ sub index_records {
 		}
 	}
 	
-	my $next_index_id = $self->_get_next_index_id();
-	
 	# Check to see if this will replace any smaller indexes (this happens during index consolidation)
 	$query = sprintf("SELECT id, first_id, last_id, start, end, type FROM %s.v_directory\n" .
 		"WHERE first_id >= ? and last_id <= ?",
@@ -969,8 +967,21 @@ sub index_records {
 			$replaced{ $row->{type} } = {};
 		}
 		$replaced{ $row->{type} }->{ $row->{id} } = 1;
-		$self->log->debug("Replacing " . $row->{type} . " index " . $row->{id} . " with " . $next_index_id);
+		$self->log->debug("Replacing " . $row->{type} . " index " . $row->{id});
 	}
+	
+	# Check to see if ram limitations dictate that these should be small permanent tables since they consume no ram
+	my $index_type = 'temporary';
+	if ($self->_over_mem_limit()){
+		$self->log->warn('Resources overlimit, using permanent index for this emergency');
+		$index_type = 'permanent';
+	}
+	elsif (scalar keys %replaced or ($args->{last_id} - $args->{first_id}) > $self->conf->get('sphinx/perm_index_size')){
+		$self->log->debug('Size dictates permanent index');
+		$index_type = 'permanent';
+	}
+	
+	my $next_index_id = $self->_get_next_index_id($index_type);
 	
 	# Lock these indexes to make sure a different process does not try to replace them
 	$query = sprintf("UPDATE %s.indexes SET locked_by=?\n" .
@@ -1031,7 +1042,7 @@ sub index_records {
 	}
 	
 	my ($count, $start, $end);
-	$count = ($args->{last_id} - $args->{first_id} + 1);
+	$count = ($args->{last_id} - $args->{first_id});
 	# This will be much faster than finding the timestamps above since timestamp is not indexed
 	$query = sprintf("SELECT timestamp FROM %s WHERE id=?", $table);
 	$sth = $self->db->prepare($query);
@@ -1043,8 +1054,7 @@ sub index_records {
 	$end = $row->{timestamp};
 	
 	$self->log->debug("Data table info: $count, $start, $end");
-	my $fudge_factor = 10;
-	unless ($count > 0 and abs($count - ($args->{last_id} - $args->{first_id})) < $fudge_factor){
+	unless ($count > 0){
 		$self->release_lock('directory');
 		
 		throw_e error => "Unable to find rows we're about to index, only got $count rows " .
@@ -1052,30 +1062,13 @@ sub index_records {
 			"with ids $args->{first_id} and $args->{last_id} a difference of " . ($args->{last_id} - $args->{first_id});
 	}
 	
-	# Check to see if ram limitations dictate that these should be small permanent tables since they consume no ram
-	my $index_type = 'temporary';
-	if ($self->_over_mem_limit()){
-		$self->log->warn('Resources overlimit, using permanent index for this emergency');
-		$index_type = 'permanent';
-	}
-	elsif (scalar keys %replaced or ($args->{last_id} - $args->{first_id}) > $self->conf->get('sphinx/perm_index_size')){
-		$self->log->debug('Size dictates permanent index');
-		$index_type = 'permanent';
-	}
-	
 	# Update the index table
-	
-	$query = sprintf('SELECT id FROM %s.indexes WHERE id=?', $ELSA::Meta_db_name);
-	$sth = $self->db->prepare($query);
-	$sth->execute($next_index_id);
-	
 	$query = sprintf("REPLACE INTO %1\$s.indexes (id, start, end, first_id, last_id, table_id, type, locked_by)\n" .
 		"VALUES(?, ?, ?, ?, ?, (SELECT id FROM %1\$s.tables WHERE table_name=?), ?, ?)", 
 		$ELSA::Meta_db_name);
 	$sth = $self->db->prepare($query);
 	$sth->execute($next_index_id, $start, $end, $args->{first_id}, $args->{last_id}, 
 		$table, $index_type, $$);
-	#$self->db->commit();
 	$self->release_lock('directory');
 	
 	$self->log->debug("Inserted into indexes: " . join(", ", $next_index_id, $start, $end, $args->{first_id}, $args->{last_id}, $table, $index_type, $$));
@@ -1084,14 +1077,6 @@ sub index_records {
 	my $start_time = time();
 	
 	my $index_name = $self->get_index_name($index_type, $next_index_id);
-	
-	my $tmp_args = {
-		first_id => $args->{first_id},
-		last_id => $args->{last_id},
-		type => $index_type,
-		table => $table,
-		index_name => $index_name,
-	};
 	
 	my $stats = $self->_sphinx_index($index_name);
 
@@ -1266,16 +1251,16 @@ sub drop_indexes {
 	foreach my $id (@$ids){
 		$self->log->debug("Deleting index $id from DB");
 		
-		$query = sprintf("SELECT first_id, last_id, table_name FROM %s.v_directory WHERE id=?", $ELSA::Meta_db_name);
+		$query = sprintf("SELECT first_id, last_id, table_name FROM %s.v_directory WHERE id=? AND type=?", $ELSA::Meta_db_name);
 		$sth = $self->db->prepare($query);
-		$sth->execute($id);
+		$sth->execute($id, $type);
 		#$self->log->trace('executed');
 		my $row = $sth->fetchrow_hashref;
 		if ($row){
 			my $full_table = $row->{table_name};
-			$query = sprintf("DELETE FROM %s.indexes WHERE id=? AND locked_by=?", $ELSA::Meta_db_name);
+			$query = sprintf("DELETE FROM %s.indexes WHERE id=? AND locked_by=? AND type=?", $ELSA::Meta_db_name);
 			$sth = $self->db->prepare($query);
-			$sth->execute($id, $$);
+			$sth->execute($id, $$, $type);
 			#$self->log->trace('executed id ' . $id);
 			unless ($sth->rows){
 				$self->log->warn('id ' . $id . ' was not found or locked by a different pid');
@@ -1443,25 +1428,16 @@ EOT
 	
 }
 
-sub _get_num_indexes {
-	my $self = shift;
-	my ($query, $sth);
-	$query = sprintf('SELECT COUNT(*) AS count FROM %s.indexes', $ELSA::Meta_db_name);
-	$sth = $self->db->prepare($query);
-	$sth->execute();
-	my $row = $sth->fetchrow_hashref or return 0;
-	return $row->{count};
-}
-
 sub _get_next_index_id {
 	my $self = shift;
+	my $type = shift;
 		
 	my ($query, $sth);
 	
 	# Try to find an unused id
-	$query = sprintf('SELECT id, type, start, locked_by FROM %s.indexes', $ELSA::Meta_db_name);
+	$query = sprintf('SELECT id, type, start, locked_by FROM %s.indexes WHERE type=?', $ELSA::Meta_db_name);
 	$sth = $self->db->prepare($query);
-	$sth->execute();
+	$sth->execute($type);
 	my $ids = $sth->fetchall_hashref('id') or return 1;
 	for (my $i = 1; $i <= $self->conf->get('num_indexes'); $i++){
 		unless ($ids->{$i}){
