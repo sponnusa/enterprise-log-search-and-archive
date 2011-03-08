@@ -10,6 +10,7 @@ use Search::QueryParser::SQL;
 use Storable qw(dclone);
 use Socket;
 use Sphinx::Search;
+use Sphinx::Config;
 use String::CRC32;
 use JSON;
 use POE;
@@ -37,6 +38,7 @@ our $Default_limit = 100;
 our $Max_limit = 1000;
 our $Search_method = 'serial';
 our $Implicit_plus = 0;
+our $Max_batch_queries = 64;
 
 sub new {
 	my $class = shift;
@@ -57,6 +59,17 @@ sub new {
 	$self->{_FIELD_CONVERSIONS} = $self->get_field_conversions();
 	$self->{_RESULTS} = [];
 	$self->{_WARNINGS} = [];
+	
+	# Find out what the max queries we can run in a single batch is
+	my $sphinx_config = new Sphinx::Config();
+	$sphinx_config->parse($self->conf->get('sphinx/config_file'));
+	if ($sphinx_config->get('searchd')->{max_batch_queries} and $sphinx_config->get('searchd')->{max_batch_queries} < $Max_batch_queries){
+ 		$Max_batch_queries = $sphinx_config->get('searchd')->{max_batch_queries};
+	}
+	else {
+		# Sphinx default
+		$Max_batch_queries = 32;
+	}
 	
 	return $self;
 }
@@ -575,7 +588,7 @@ sub query {
 		# this query will use every class
 		$num_distinct_classes = scalar keys %{ $self->{_CLASSES} };
 	}
-	if ((scalar keys %{ $self->{_INDEXES} }) * $num_distinct_classes > 32){
+	if ((scalar keys %{ $self->{_INDEXES} }) * $num_distinct_classes > $Max_batch_queries){
 		$self->log->warn('Too many indexes, returning meta');
 		$self->{_INDEXES} = { 'distributed_meta' => 1 };
 	}
