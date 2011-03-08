@@ -405,6 +405,12 @@ YAHOO.ELSA.Query = function(){
 		if (!p_Op){
 			p_Op = '=';
 		}
+		
+		// Quote if necessary
+		if (p_sValue.match(/[^a-zA-Z0-9\.\-\@\_]/)){
+			p_sValue = '"' + p_sValue + '"';
+		}
+		
 		logger.log('adding to current query field:' + this.queryBoolean + p_sField + ', val: ' + p_sValue);
 		var formField;
 		if (p_oEl){
@@ -430,7 +436,12 @@ YAHOO.ELSA.Query = function(){
 				}
 				else {
 					this.terms[p_sField] = p_sValue;
-					oQ.value = oQ.value += ' ' + this.queryBoolean + sClass + '.' + sField + p_Op + p_sValue;
+					if (sClass === 'any'){ //special case for 'any' class as it causes issues on the backend
+						oQ.value = oQ.value += ' ' + this.queryBoolean + sField + p_Op + p_sValue;
+					}
+					else {
+						oQ.value = oQ.value += ' ' + this.queryBoolean + sClass + '.' + sField + p_Op + p_sValue;
+					}
 				}
 				oEl.removeClass('invalid');
 				return true;
