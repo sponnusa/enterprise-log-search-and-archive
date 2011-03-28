@@ -2,11 +2,11 @@ package Request::Index;
 use strict;
 use warnings;
 use Data::Dumper;
-use base qw( CGI::Application::Dispatch CGI::Application Request);
+use base qw( Request );
 use JSON -convert_blessed_universally;
 use Apache2::Request;
 use CGI::Application::Plugin::Apache;
-use Apache2::Const qw(:http);
+use Apache2::Const qw(:http :common);
 use APR::Request::Param;
 
 use CGI::Application::Plugin::Session;
@@ -198,8 +198,7 @@ sub admin {
 	unless ($self->session->param('user_info') and $self->session->param('user_info')->{is_admin}){
 		my $errstr = 'Insufficient privileges';
 		$self->log->error($errstr);
-		$self->{_ERROR} = $errstr;
-		$self->query->header(-status => HTTP_UNAUTHORIZED);
+		$self->header_add(-status => HTTP_UNAUTHORIZED);
 		return 'Unauthorized';
 	}
 	
@@ -266,8 +265,7 @@ sub stats {
 	unless ($self->session->param('user_info') and $self->session->param('user_info')->{is_admin}){
 		my $errstr = 'Insufficient privileges';
 		$self->log->error($errstr);
-		$self->{_ERROR} = $errstr;
-		$self->query->header(-status => HTTP_UNAUTHORIZED);
+		$self->header_add(-status => HTTP_UNAUTHORIZED);
 		return 'Unauthorized';
 	}
 	

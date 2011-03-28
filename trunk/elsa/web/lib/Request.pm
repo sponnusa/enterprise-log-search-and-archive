@@ -9,9 +9,7 @@ use Apache2::Const qw(:http);
 use APR::Request::Param;
 use Apache2::Const -compile => qw(:satisfy);
 
-use Exporter;
-our @ISA = qw(Exporter);
-our @EXPORT = qw(init_request conf);
+use base qw( CGI::Application::Dispatch CGI::Application);
 
 use CGI::Application::Plugin::Session;
 use CGI::Application::Plugin::Apache2::Request;
@@ -31,12 +29,6 @@ BEGIN {
 
 use YUI;
 use Janus;
-
-sub new {
-	my $class = shift;
-	my $self = { _ERROR => '' };
-	return bless $self, $class;
-}
 
 sub conf {
 	my $self = shift;
@@ -58,8 +50,8 @@ sub init_request {
 	my $no_auth = shift;
 	my $r = Apache2::Request->new( $self->param('r') );
 	#TODO don't set this per-request
-	$self->{_CONF} ||= new Config::JSON( $r->dir_config('LOGZILLA_CONFIG_FILE') )
-		or die("Could not open config file " . $r->dir_config('LOGZILLA_CONFIG_FILE') );
+	$self->{_CONF} ||= new Config::JSON( $r->dir_config('ELSA_CONFIG_FILE') )
+		or die("Could not open config file " . $r->dir_config('ELSA_CONFIG_FILE') );
 	$YUI::Yui_version = $self->conf->get('yui/version');
 	$YUI::Yui_modifier = $self->conf->get('yui/modifier');
 	  	  
@@ -105,15 +97,14 @@ sub init_request {
 		unless ($self->session->param('user_info')){
 			my $ret = $self->_get_user_info($r);
 			unless ($ret){
-				$self->query->header(-status => HTTP_UNAUTHORIZED);
-				return 'Unauthorized';
+				$self->header_add(-status => HTTP_UNAUTHORIZED);
+				return 0;
 			}
 			$self->session->param('user_info', $ret);	
 		}
-		print $self->session->header();
 	}
 	
-	print header(-expires => 'now');
+	$self->header_add(-expires => 'now');
 	
 	return $r;
 }
