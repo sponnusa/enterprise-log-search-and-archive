@@ -4,8 +4,6 @@ use warnings;
 use Data::Dumper;
 use base qw( CGI::Application::Dispatch);
 
-use Request::Query;
-
 sub dispatch_args {
 	return {
 		debug => 1,
