@@ -97,7 +97,7 @@ YAHOO.ELSA.main = function () {
 							if (aTime){
 								sTime = aTime[0];
 							}
-							var sNewDateTime = formatDateTimeAsISO(aDate[0] + '-' + aDate[1] + '-' + aDate[2] + ' ' + sTime);
+							var sNewDateTime = formatDateTimeAsISO(aDate[1] + '/' + aDate[2] + '/' + aDate[0] + ' ' + sTime);
 							YAHOO.util.Dom.get(p_sId + '_time').value = sNewDateTime;
 							YAHOO.ELSA.currentQuery.addMeta(p_sId + '_time', sNewDateTime);
 						}
