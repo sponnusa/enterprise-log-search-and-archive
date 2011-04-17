@@ -908,7 +908,7 @@ sub release_lock {
 	my $ok;
 	my $lockfile = $self->conf->get('lockfile_dir') . '/' . $lock_name;
 	eval {
-		open($self->{_LOCKS}->{$lock_name}, $lockfile) or die('Unable to open ' . $lockfile);
+		open($self->{_LOCKS}->{$lock_name}, $lockfile) or die('Unable to open ' . $lockfile . ' :' . $!);
 		$ok = flock($self->{_LOCKS}->{$lock_name}, LOCK_UN);
 		close($self->{_LOCKS}->{$lock_name});
 	};

@@ -10,7 +10,7 @@ use Janus;
 my %opts;
 getopts('Ddc:', \%opts);
 
-my $config_file_name = 'janus.conf';
+my $config_file_name = '/usr/local/elsa/etc/elsa.conf';
 if ($opts{c}){
 	$config_file_name = $opts{c};
 }

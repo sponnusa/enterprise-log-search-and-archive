@@ -1,14 +1,15 @@
 #!/bin/sh
-cpan App::cpanminus
 cpanm YAML::Syck
 cpanm Moose
+cpanm IO::Socket
+cpanm Data::Serializer
+cpanm POE::Event::Message
 cpanm Config::JSON
 cpanm Net::LDAP::Express
 cpanm Net::LDAP::FilterBuilder
 cpanm Module::Pluggable
 cpanm URI::Escape
-cpanm Data::Serializer
-cpanm POE::Event::Message
+cpanm DBD::mysql
 cpanm POE::Filter::Reference
 cpanm Digest::HMAC_SHA1
 cpanm Mail::Internet
@@ -16,10 +17,16 @@ cpanm File::Slurp
 cpanm MIME::Base64
 cpanm EV
 cpanm Time::HiRes
-cpanm Apache::Request
-cpanm Apache2::Const
-cpanm APR::Request::Param
-cpanm CGI
-cpanm CGI::Session::Driver::file
-cpanm CGI::Application::Plugin::Session
-cpanm CGI::Application::Plugin::Apache2::Request
+cpanm Plack::Builder
+cpanm Plack::Session
+cpanm Plack::Middleware::CrossOrigin
+cpanm Plack::Middleware::ForwardedHeaders
+# For auth plugins (optional, but enabled by default)
+cpanm Authen::Simple::PAM
+cpanm Authen::Simple::LDAP
+# For plugins (optional, but enabled by default)
+cpanm Module::Install
+cpanm PDF::API2::Simple
+cpanm XML::Writer
+cpanm Spreadsheet::WriteExcel
+cpanm Parse::Snort

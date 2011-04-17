@@ -83,12 +83,6 @@ our @_Object_states = qw(
   set_default_permissions
   set_permissions_exception
   get_running_archive_query
-  pcap_query
-  pcap_query_results
-  get_pcap
-  get_packet
-  get_stream
-  get_raw_pcap
   get_stats
   get_log_info
   _start
@@ -117,19 +111,31 @@ our @_Object_states = qw(
   _batch_notify
   _get_stats
   _return_results
-  _get_streams
 );
 
 sub new {
 	my $class = shift;
-	my $config_file_name = ( shift or 'janus.conf' );
+	my $config_file_name = ( shift or 'elsa.conf' );
 
 	my $conf = new Config::JSON($config_file_name)
-	  or die("Could not open config file $config_file_name");
-	#my $log_file = $conf->get('log_file');
-	Log::Log4perl::init_once( $conf->get('log4perl.conf') )
-	  or die("Unable to init logger\n");
-	my $logger = Log::Log4perl::get_logger(__PACKAGE__)
+		or die("Could not open config file $config_file_name");
+	my $logdir = $conf->get('logdir');
+	my $log_conf = qq(
+		log4perl.category.Janus       = TRACE, File, Screen
+		log4perl.appender.File			 = Log::Log4perl::Appender::File
+		log4perl.appender.File.filename  = $logdir/web.log 
+		log4perl.appender.File.layout = Log::Log4perl::Layout::PatternLayout
+		log4perl.appender.File.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %x%n%m%n
+		log4perl.appender.Screen         = Log::Log4perl::Appender::Screen
+		log4perl.appender.Screen.stderr  = 1
+		log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
+		log4perl.appender.Screen.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %x%n%m%n
+		log4perl.appender.Syncer            = Log::Log4perl::Appender::Synchronized
+		log4perl.appender.Syncer.appender   = File
+	);
+	
+	Log::Log4perl::init( \$log_conf ) or die("Unable to init logger\n");
+	my $logger = Log::Log4perl::get_logger('Janus')
 	  or die("Unable to init logger\n");
 
 	my $self = {
@@ -1111,7 +1117,7 @@ sub _get_group_members {
 	my $group_search = $row->{groupname};
 	my @ret;
 	
-	if ( $self->conf->get('auth_method') eq 'LDAP' ) {
+	if ( $self->conf->get('auth/method') eq 'LDAP' ) {
 		$self->log->error('Not implemented');
 		return;
 		# this will be a per-org implementation
@@ -1141,7 +1147,7 @@ sub _get_group_members {
 #			return;
 #		}
 	}
-	elsif ($self->conf->get('auth_method') eq 'db'){
+	elsif ($self->conf->get('auth/method') eq 'db'){
 		$query = 'SELECT username FROM users t1 JOIN users_groups_map t2 ON (t1.uid=t2.uid) WHERE t2.gid=?';
 		$sth = $heap->{dbh}->prepare($query);
 		$sth->execute($gid);
@@ -1220,7 +1226,7 @@ sub _get_user_info {
 	}
 
 	# Get the groups this user is a part of
-	if ( $self->conf->get('auth_method') eq 'LDAP' ) {
+	if ( $self->conf->get('auth/method') eq 'LDAP' ) {
 		my $ldap = $self->_get_ldap();
 		unless ($ldap) {
 			$self->log->error('Unable to connect to LDAP server');
@@ -1272,7 +1278,31 @@ sub _get_user_info {
 			}
 		}
 	}
-	elsif ($self->conf->get('auth_method') eq 'db'){
+	elsif ($self->conf->get('auth/method') eq 'local'){
+		my %in;
+		while (my @arr = getgrent()){
+			my @members = split(/\s+/, $arr[3]);
+			if (grep { $username } @members){
+				$in{$arr[0]} = 1;
+			}
+		}
+		$self->log->debug('groups before: ' . Dumper($user_info->{groups}));
+		$user_info->{groups} = [ keys %in ];
+		$self->log->debug('groups after: ' . Dumper($user_info->{groups}));
+		# Is the group this user is a member of a designated admin group?
+		foreach my $group (@{ $user_info->{groups} }){
+			my @admin_groups = qw(root admin);
+			if ($self->conf->get('admin_groups')){
+				@admin_groups = @{ $self->conf->get('admin_groups') };
+			}
+			if ( grep { $user_info->{username} } @admin_groups ){
+				$self->log->debug( 'user ' . $user_info->{username} . ' is an admin');
+				$user_info->{is_admin} = 1;
+			}
+		}
+		$user_info->{email} = $username . '@localhost';
+	}
+	elsif ($self->conf->get('auth/method') eq 'db'){
 		die('No admin groups listed in admin_groups') unless $self->conf->get('admin_groups');
 		my ($query, $sth);
 		$query = 'SELECT groupname FROM groups t1 JOIN users_groups_map t2 ON (t1.uid=t2.uid) JOIN users t3 ON (t2.uid=t3.uid) WHERE t3.username=?';
@@ -1288,6 +1318,7 @@ sub _get_user_info {
 				$user_info->{is_admin} = 1;
 			}
 		}
+		$user_info->{email} = $username . '@localhost'; #TODO allow putting in an email somewhere for db auth
 	}
 	else {
 		$self->log->error('No auth_method');
@@ -1330,6 +1361,7 @@ sub _get_user_info {
 
 sub _get_permissions {
 	my ( $self, $kernel, $heap, $groups ) = @_[ OBJECT, KERNEL, HEAP, ARG0 ];
+	return {} unless $groups and ref($groups) eq 'ARRAY' and scalar @$groups;
 	my ($query, $sth);
 	
 	# Find group permissions
