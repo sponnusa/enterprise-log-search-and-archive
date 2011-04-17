@@ -12,7 +12,7 @@ use ELSA::Writer;
 
 $| = 1;
 my $pipes     = {};
-my $conf_file = '/etc/elsa.conf';
+my $conf_file = '/usr/local/elsa/etc/elsa.conf';
 my $writer   = new ELSA::Writer( $conf_file );
 open( FH, ">> " . $writer->conf->get('logdir') . "/log" );
 print FH "starting up\n";
