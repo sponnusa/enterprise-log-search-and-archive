@@ -2030,35 +2030,33 @@ YAHOO.ELSA.saveResults = function(p_sType, p_aArgs, p_iId){
 	logger.log('p_iId:', p_iId);
 	var iLocalResultId = YAHOO.ELSA.getLocalResultIdFromQueryId(p_iId);
 	logger.log('localResultId: ' + iLocalResultId);
-	if (!YAHOO.ELSA.saveResultsDialog){
-		var handleSubmit = function(p_sType, p_oDialog){
-			var sComments = YAHOO.util.Dom.get('save_results_input').value;
-			logger.log('saving comments: ' + sComments + ' for qid ' + p_iId);
-			YAHOO.ELSA.localResults[iLocalResultId].save(sComments);
-			this.hide();
-		};
-		var handleCancel = function(){
-			this.hide();
-		};
-		var dialogDiv = document.createElement('div');
-		dialogDiv.id = 'save_results';
-		document.body.appendChild(dialogDiv);
-		YAHOO.ELSA.saveResultsDialog = new YAHOO.widget.Dialog(dialogDiv, {
-			underlay: 'none',
-			//zIndex: 3,
-			visible:true,
-			fixedcenter:true,
-			draggable:true,
-			buttons : [ { text:"Submit", handler:{ fn:handleSubmit }, isDefault:true },
-				{ text:"Cancel", handler:handleCancel } ]
-		});
-		
-		YAHOO.ELSA.saveResultsDialog.validate = function(){
-			return true;
-		}
-		
-	}
 	
+	var handleSubmit = function(p_sType, p_oDialog){
+		var sComments = YAHOO.util.Dom.get('save_results_input').value;
+		logger.log('saving comments: ' + sComments + ' for qid ' + p_iId);
+		YAHOO.ELSA.localResults[iLocalResultId].save(sComments);
+		this.hide();
+	};
+	var handleCancel = function(){
+		this.hide();
+	};
+	var dialogDiv = document.createElement('div');
+	dialogDiv.id = 'save_results';
+	document.body.appendChild(dialogDiv);
+	YAHOO.ELSA.saveResultsDialog = new YAHOO.widget.Dialog(dialogDiv, {
+		underlay: 'none',
+		//zIndex: 3,
+		visible:true,
+		fixedcenter:true,
+		draggable:true,
+		buttons : [ { text:"Submit", handler:{ fn:handleSubmit }, isDefault:true },
+			{ text:"Cancel", handler:handleCancel } ]
+	});
+	
+	YAHOO.ELSA.saveResultsDialog.validate = function(){
+		return true;
+	}
+		
 	var oFormGridCfg = {
 		form_attrs:{
 			id: 'save_results_form'
