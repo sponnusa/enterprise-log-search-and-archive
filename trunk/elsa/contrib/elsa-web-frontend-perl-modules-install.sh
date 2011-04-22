@@ -20,7 +20,6 @@ cpanm Time::HiRes &&
 cpanm Plack::Builder &&
 cpanm Plack::Session &&
 cpanm Plack::Middleware::CrossOrigin &&
-cpanm Plack::Middleware::ForwardedHeaders &&
 # For auth plugins (optional, but enabled by default)
 cpanm -n Authen::Simple::PAM &&
 cpanm -n Authen::Simple::LDAP &&

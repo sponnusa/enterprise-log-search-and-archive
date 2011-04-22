@@ -80,7 +80,7 @@ else {
 
 builder {
 	$ENV{PATH_INFO} = $ENV{REQUEST_URI}; #mod_rewrite will mangle PATH_INFO, so we'll set this manually here in case it's being used
-	enable 'ForwardedHeaders';
+	#enable 'ForwardedHeaders';
 	enable 'Static', path => qr{^/?inc/}, root => $FindBin::Bin . '/../';
 	enable 'CrossOrigin', origins => '*', methods => '*', headers => '*';
 	enable 'Session', store => 'File';
