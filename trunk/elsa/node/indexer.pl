@@ -14,8 +14,6 @@ $| = 1;
 my $pipes     = {};
 my $conf_file = '/usr/local/elsa/etc/elsa.conf';
 my $writer   = new ELSA::Writer( $conf_file );
-open( FH, ">> " . $writer->conf->get('logdir') . "/log" );
-print FH "starting up\n";
 my $num_children = $writer->conf->get('num_indexers') or die("undefined config for num_indexers");
 my $continue     = 1;
 my $Run          = 1;
@@ -52,13 +50,12 @@ if ($writer->conf->get('patchlink')){
 for my $i ( 0 .. ( $num_children - 1 ) ) {
 	my $fh;
 	my $pid = open( $fh, "|-" );    # fork and send to child's STDIN
+	$fh->autoflush(1);
 	die("Couldn't fork: $!") unless defined $pid;
 	if ($pid) {
-		print FH "Forking kid $i with pid $pid\n";
 		$pipes->{$i} = { pid => $pid, fh => $fh, counter => 0 };
 		$SIG{TERM} = sub {
 			$Run = 0;
-			print FH "shutting down\n";
 			$writer->log->info("indexer.pl is shutting down");
 
 			# Shut down all children
@@ -85,7 +82,6 @@ for my $i ( 0 .. ( $num_children - 1 ) ) {
 			$continue = 0;
 		};
 
-		open( KIDFH, "> " . $writer->conf->get('logdir') . "/log$$" );
 		OUTER_LOOP: while ($continue) {
 			eval {
 				my $kid_writer = new ELSA::Writer( $conf_file, $i + 1 );
@@ -96,6 +92,7 @@ for my $i ( 0 .. ( $num_children - 1 ) ) {
 					$writer->log->debug("Starting process_batch");
 					my $num_processed = $kid_writer->process_batch();
 					$writer->log->debug("Processed $num_processed records");
+					sleep 1 unless $num_processed; # avoid batch-bombing if our parent handle closes
 					#last if $batch_id > 10; # uncomment for a quick test
 				}
 			};
@@ -105,12 +102,9 @@ for my $i ( 0 .. ( $num_children - 1 ) ) {
 				sleep 1;                                # to avoid errmsg flooding
 			}
 		}
-		print KIDFH "Child exiting\n";
-		close(KIDFH);
 		exit;
 	}
 }
-close(FH);
 
 my $status_check_limit = 10_000;
 
