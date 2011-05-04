@@ -95,6 +95,7 @@ sub process_batch {
 		$self->{_OFFLINE_PROCESSING_START} = time();
 		$self->{_OFFLINE_PROCESSING_END} = 0;
 	}
+	$fh->autoflush(1);
 	
 	throw_e error => "Non-existent buffer_dir: " . $self->conf->get('buffer_dir')
 		unless -d $self->conf->get('buffer_dir');
@@ -104,6 +105,7 @@ sub process_batch {
 	my $start_time = Time::HiRes::time();
 		
 	my $tempfile = File::Temp->new( DIR => $self->conf->get('buffer_dir'), UNLINK => 0 );
+	$tempfile->autoflush(1);
 	my $batch_counter = 0;
 	my $error_counter = 0;
 	
@@ -120,9 +122,8 @@ sub process_batch {
 	}
 	
 	while (<$fh>){	
-		last unless $self->{_RUN};
 		eval { 
-			print $tempfile join("\t", @{ $self->_parse_line($_) }) . "\n";
+			$tempfile->print(join("\t", @{ $self->_parse_line($_) }) . "\n");
 			$batch_counter++;
 		};
 		if ($@){
@@ -132,6 +133,7 @@ sub process_batch {
 				ELSA::log_error($e) 
 			}
 		}
+		last unless $self->{_RUN};
 	}
 		
 	# Update args to be results
