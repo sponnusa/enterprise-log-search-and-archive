@@ -491,7 +491,6 @@ sub _get_all_indexes {
 	$msg->addRemoteRouteTo('localhost', $self->conf->get('manager/listen_port'), 'asynch');
 	$msg->route();
 
-	# Reset the schedule alarm
 	$kernel->alarm_add($state, $self->conf->get('sphinx/index_interval') + ((time() - (time() % $self->conf->get('sphinx/index_interval')))));
 }
 
