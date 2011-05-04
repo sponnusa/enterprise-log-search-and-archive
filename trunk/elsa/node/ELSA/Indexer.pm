@@ -1054,7 +1054,8 @@ sub index_records {
 	$end = $row->{timestamp};
 	
 	$self->log->debug("Data table info: $count, $start, $end");
-	unless ($count > 0){
+	#unless ($count > 0){
+	unless ($args->{last_id} >= $args->{first_id}){
 		$self->release_lock('directory');
 		
 		throw_e error => "Unable to find rows we're about to index, only got $count rows " .
