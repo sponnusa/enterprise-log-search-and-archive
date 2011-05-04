@@ -16,8 +16,17 @@ sub call {
 	
 	my $method = $self->_extract_method($req->request_uri);
 	$self->log->debug('method: ' . $method);
-	my $body = $self->rpc($method, $req->query_parameters->as_hashref);
-	$res->body($self->json->encode($body));
+	my $ret = $self->rpc($method, $req->parameters->as_hashref);
+	if (ref($ret) and $ret->{mime_type}){
+		$res->content_type($ret->{mime_type});
+		$res->body($ret->{ret});
+		if ($ret->{filename}){
+			$res->header(-attachment => $ret->{filename});
+		}
+	}
+	else {
+		$res->body($self->json->encode($ret));
+	}
 	$res->finalize();
 }
 
