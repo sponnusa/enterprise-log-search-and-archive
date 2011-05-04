@@ -1712,6 +1712,7 @@ sub _parse_query_string {
 	$self->log->debug('ATTR_TERMS: ' . Dumper($self->{_ATTR_TERMS}));
 	
 	my $num_removed_terms = 0;
+	my $num_added_terms = 0;
 	
 	# Adjust hosts/programs based on permissions
 	foreach my $attr qw(host_id program_id){
@@ -1730,33 +1731,48 @@ sub _parse_query_string {
 			}
 			
 			# Remove items not explicitly whitelisted
-			foreach my $boolean qw(and or range_and){
+			foreach my $boolean qw(and or){
 				next unless $self->{_ATTR_TERMS}->{$boolean} 
 					and $self->{_ATTR_TERMS}->{$boolean}->{0} 
 					and $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr};
 				$self->log->debug('boolean: ' . Dumper($self->{_ATTR_TERMS}->{$boolean}));
-				for (my $i = 0; $i < scalar @{ $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} }; $i++){
-					my $id = $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr}->[$i];
-					unless ($self->{_META_PARAMS}->{permissions}->{$attr}->{$id}){
+				foreach my $id (keys %{ $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} }){
+					unless($self->_is_permitted($attr, $id)){
 						$self->log->warn("Excluding id $id from $attr based on permissions");
-						my $deleted = delete $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr}->[$i];
-						$self->log->debug('deleted: ' . $deleted);
-						#$self->{_ATTR_TERMS}->{not}->{0}->{$attr}->[$i] = $deleted;
+						my $deleted = delete $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr}->{$id};
+						$self->log->debug('deleted: ' . $id);
 						$num_removed_terms++;
 					}
 				}
 			}
-			# Add allowed items to filter
+			# Handle range_and
+			if ($self->{_ATTR_TERMS}->{range_and} 
+				and $self->{_ATTR_TERMS}->{range_and}->{0} 
+				and $self->{_ATTR_TERMS}->{range_and}->{$attr}){
+				$self->log->debug('boolean: ' . Dumper($self->{_ATTR_TERMS}->{range_and}));
+				foreach my $id (keys %{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }){
+					$id =~ /^(\d+)\-(\d+)$/;
+					my ($min, $max) = ($1, $2);
+					unless ($self->_is_permitted($attr, $min) and $self->_is_permitted($attr, $max)){
+						my $deleted = delete $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr}->{$id};
+						$self->log->debug('deleted: ' . $id);
+						$num_removed_terms++;
+					}
+				}
+			}
+			
+			# Add required items to filter
 			foreach my $id (keys %{ $self->{_META_PARAMS}->{permissions}->{$attr} }){
 				$self->log->debug("Adding id $id to $attr based on permissions");
 				# Deal with ranges
-				if ($self->{_META_PARAMS}->{permissions}->{$attr}->{$id}){
-					if ($self->{_META_PARAMS}->{permissions}->{$attr}->{$id} =~ /(\d+)\-(\d+)/){
-						$self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} ||= [];
-						push @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, { attr => $attr, min => $1, max => $2, exclude => 0 };
-					}
+				if ($id =~ /(\d+)\-(\d+)/){
+					$self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} ||= [];
+					push @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, { attr => $attr, min => $1, max => $2, exclude => 0 };
 				}
-				push @{ $self->{_ATTR_TERMS}->{and}->{0}->{$attr} }, $id;
+				else {
+					push @{ $self->{_ATTR_TERMS}->{and}->{0}->{$attr} }, $id;
+				}
+				$num_added_terms++;
 			}
 		}
 	}
@@ -1765,9 +1781,16 @@ sub _parse_query_string {
 	foreach my $boolean qw(and or not){
 		if ($self->{_FIELD_TERMS}->{$boolean}->{0} and $self->{_FIELD_TERMS}->{$boolean}->{0}->{host}){
 			foreach my $host_int (@{ $self->{_FIELD_TERMS}->{$boolean}->{0}->{host} }){
-				$self->log->debug('adding host_int ' . $host_int);
-				push @{ $self->{_ANY_FIELD_TERMS}->{$boolean} }, '(@host ' . $host_int . ')';
+				if ($self->_is_permitted('host_id', $host_int)){
+					$self->log->debug('adding host_int ' . $host_int);
+					push @{ $self->{_ANY_FIELD_TERMS}->{$boolean} }, '(@host ' . $host_int . ')';
+				}
+				else {
+					$self->log->warn('Denying host_int ' . $host_int);
+					$num_removed_terms++;
+				}
 			}
+			delete $self->{_FIELD_TERMS}->{$boolean}->{0}->{host};
 		}
 	}
 	
@@ -1811,15 +1834,18 @@ sub _parse_query_string {
 	# Verify that we're still going to actually have query terms after the filtering has taken place	
 	my $query_term_count = 0;
 	if (scalar keys %{ $self->{_DISTINCT_CLASSES} }){
-		foreach my $item qw(_FIELD_TERMS _ATTR_TERMS){
-			foreach my $boolean qw(and or not range_and range_not){
-				next unless $self->{$item}->{$boolean};
-				foreach my $class_id (keys %{ $self->{$item}->{$boolean} }){
-					$query_term_count += scalar keys %{ $self->{$item}->{$boolean}->{$class_id} };
+		foreach my $term_type qw(_FIELD_TERMS _ATTR_TERMS){
+			foreach my $boolean qw(and or range_and){
+				next unless $self->{$term_type}->{$boolean};
+				foreach my $class_id (keys %{ $self->{$term_type}->{$boolean} }){
+					foreach my $attr (keys %{ $self->{$term_type}->{$boolean}->{$class_id} }){
+						$query_term_count += scalar @{ $self->{$term_type}->{$boolean}->{$class_id}->{$attr} };
+					}
 				}
 			}
 		}
 	}
+	
 	foreach my $boolean qw(or and){
 		$query_term_count += scalar @{ $self->{_ANY_FIELD_TERMS}->{$boolean} }; 
 	}
@@ -1830,6 +1856,8 @@ sub _parse_query_string {
 			$query_term_count++;
 		}
 	}
+	
+	$self->log->debug('query_term_count: ' . $query_term_count . ', num_added_terms: ' . $num_added_terms);
 	
 	unless ($query_term_count){
 		my $e = 'All query terms were stripped based on permissions or they were too common';
@@ -2245,6 +2273,26 @@ sub _normalize_quoted_value {
 	# Strip punctuation
 	$value =~ s/[^a-zA-Z0-9\.\@\s\-]/\ /g;
 	return '"' . $value . '"';
+}
+
+sub _is_permitted {
+	my $self = shift;
+	my ($attr, $attr_id) = @_;
+	
+	if ($self->{_META_PARAMS}->{permissions}->{$attr}->{$attr_id}){
+		return 1;
+	}
+	else {
+		foreach my $id (keys %{ $self->{_META_PARAMS}->{permissions}->{$attr} }){
+			if ($id =~ /^(\d+)\-(\d+)$/){
+				my ($min, $max) = ($1, $2);
+				if ($min <= $attr_id and $attr_id <= $max){
+					return 1;
+				}
+			}
+		}
+		return 0;
+	}
 }
 
 1;
