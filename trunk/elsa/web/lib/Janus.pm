@@ -63,7 +63,6 @@ our @_Object_states = qw(
   query_results
   set_permissions
   get_user_info
-  get_group_info
   get_previous_queries
   get_query_auto_complete
   validate
@@ -80,7 +79,6 @@ our @_Object_states = qw(
   get_form_params
   get_permissions
   get_exceptions
-  set_default_permissions
   set_permissions_exception
   get_running_archive_query
   get_stats
@@ -88,7 +86,6 @@ our @_Object_states = qw(
   _start
   _default
   _error
-  _get_group_info
   _get_previous_queries
   _get_query_auto_complete
   _stop
@@ -967,72 +964,6 @@ sub get_exceptions {
 	$msg->route();
 }
 
-sub set_default_permissions {
-	my ( $self, $kernel, $heap ) = @_[ OBJECT, KERNEL, HEAP ];
-	my ($msg, $args) = _get_msg(@_);
-	
-	$self->log->debug('args: ' . Dumper($args));
-	
-	unless ($args and ref($args) eq 'HASH' and $args->{gid} and (defined $args->{class} or defined $args->{program} or defined $args->{host})){
-		$kernel->yield( '_error',
-			'Invalid permissions args: ' . Dumper($args), $msg );
-		return;
-	}
-	
-	my ($query, $sth);
-	$query = 'SELECT default_permissions_allow FROM groups WHERE gid=?';
-	$sth = $heap->{dbh}->prepare($query);
-	$sth->execute($args->{gid});
-	my $row = $sth->fetchrow_hashref;
-	unless ($row){
-		$kernel->yield( '_error',
-			'Invalid gid: ' . Dumper($args), $msg );
-		return;
-	}
-	my $current = $row->{default_permissions_allow};
-	my $cur_program = $current & DEFAULT_PROGRAMS_BIT;
-	my $cur_host = $current & DEFAULT_HOSTS_BIT;
-	my $cur_class = $current & DEFAULT_CLASSES_BIT;
-	
-	my $perm = 0;
-	my $attr;
-	if (defined $args->{program}){
-		$perm = ($args->{program} * DEFAULT_PROGRAMS_BIT) + $cur_host + $cur_class;
-		$attr = 'program_id';
-	}
-	elsif (defined $args->{host}){
-		$perm = ($args->{host} * DEFAULT_HOSTS_BIT) + $cur_program + $cur_class;
-		$attr = 'host_id';
-	}
-	elsif (defined $args->{class}){
-		$perm = ($args->{class} * DEFAULT_CLASSES_BIT) + $cur_program + $cur_host;
-		$attr = 'class_id';
-	}
-	$self->log->debug('new: ' . $perm . ', current: ' . $current);	
-	
-	$query = 'UPDATE groups SET default_permissions_allow=? WHERE gid=?';
-	$sth = $heap->{dbh}->prepare($query);
-	$sth->execute($perm, $args->{gid});
-	my $rows_updated = $sth->rows;
-	
-	# delete all of the exceptions associated with this group and attr since they no longer make sense
-	$query = 'DELETE FROM permissions WHERE gid=? AND attr=?';
-	$sth = $heap->{dbh}->prepare($query);
-	$sth->execute($args->{gid}, $attr);
-	my $groups_deleted = $sth->rows;
-	
-	$msg->body({success => $rows_updated, groups_deleted => $groups_deleted, default_permissions_allow => $perm, attr => $attr});
-	$msg->route();
-	
-	# Make sure all affected users revalidate
-	$query = 'SELECT uid FROM users_groups_map WHERE gid=?';
-	$sth = $heap->{dbh}->prepare($query);
-	$sth->execute($args->{gid});
-	while (my $row = $sth->fetchrow_hashref){
-		$heap->{must_revalidate}->{ $row->{uid} } = 1;
-	}
-}
-
 sub set_permissions {
 	my ( $self, $kernel, $heap ) = @_[ OBJECT, KERNEL, HEAP ];
 	my ($msg, $args) = _get_msg(@_);
@@ -1287,7 +1218,7 @@ sub _get_user_info {
 			}
 		}
 		$self->log->debug('groups before: ' . Dumper($user_info->{groups}));
-		$user_info->{groups} = [ keys %in ];
+		$user_info->{groups} = [ keys %in, $username ];
 		$self->log->debug('groups after: ' . Dumper($user_info->{groups}));
 		# Is the group this user is a member of a designated admin group?
 		foreach my $group (@{ $user_info->{groups} }){
@@ -1381,7 +1312,6 @@ sub _get_permissions {
 		$query .= join( ', ', @placeholders ) . ')';
 		$sth = $heap->{dbh}->prepare($query);
 		$sth->execute(@values);
-		$permissions{$attr} = [];
 		my @arr;
 		while (my $row = $sth->fetchrow_hashref){
 			# If at any point we get a zero, that means that all are allowed, no exceptions, so bug out to the next attr loop iter
@@ -1390,6 +1320,11 @@ sub _get_permissions {
 				next ATTR_LOOP;
 			}
 			push @arr, $row->{attr_id};
+		}
+		# Special case for program which defaults to allow
+		if (scalar @arr == 0 and $attr eq 'program_id'){
+			$permissions{$attr} = { 0 => 1 };
+			next ATTR_LOOP;
 		}
 		$permissions{$attr} = { map { $_ => 1 } @arr };
 	}
@@ -1417,106 +1352,6 @@ sub _get_permissions {
 	
 	return \%permissions;
 	
-}
-
-sub get_group_info {
-	my ( $self, $kernel, $heap ) = @_[ OBJECT, KERNEL, HEAP ];
-	my ($msg,$args) = _get_args(@_);
-
-	my $info = $kernel->call( $_[SESSION], '_get_group_info', $args->{group} );
-	$self->log->debug( "group info: " . Dumper($info) );
-
-	$msg->body( $info );
-	$msg->route();
-}
-
-sub _get_group_info {
-	my ( $self, $kernel, $heap, $group ) = @_[ OBJECT, KERNEL, HEAP, ARG0 ];
-
-	my ( $query, $sth );
-
-	# Find group permissions
-	$query = 'SELECT default_permissions_allow FROM groups WHERE groupname=?';
-	$sth   = $heap->{dbh}->prepare($query);
-	$sth->execute($group);
-
-	my $row                      = $sth->fetchrow_hashref;
-	my $default_permissions_bits = $row->{default_permissions_allow};
-	$self->log->debug(
-		"found default permissions bits $default_permissions_bits");
-
-	my $permissions = {
-		class_id => {
-			default_allow => DEFAULT_CLASSES_BIT & $default_permissions_bits,
-			exceptions    => {},
-		},
-		host_id => {
-			default_allow => DEFAULT_HOSTS_BIT & $default_permissions_bits,
-			exceptions    => {},
-		},
-		program_id => {
-			default_allow => DEFAULT_PROGRAMS_BIT & $default_permissions_bits,
-			exceptions    => {},
-		}
-	};
-
-	# Get filters using the values/placeholders found above
-	$query =
-	    'SELECT filter FROM filters ' . "\n"
-	  . 'JOIN groups ON (filters.gid=groups.gid) ' . "\n"
-	  . 'WHERE groupname=?';
-	$sth = $heap->{dbh}->prepare($query);
-	$sth->execute($group);
-	$permissions->{filter} = '';
-	$row = $sth->fetchrow_hashref;
-	$permissions->{filter} = $row->{filter};
-
-	$query =
-	    'SELECT attr, attr_id, allow ' . "\n"
-	  . 'FROM groups t1' . "\n"
-	  . 'LEFT JOIN permissions t2 ON (t1.gid=t2.gid)' . "\n"
-	  . 'WHERE groupname=?';
-	$sth = $heap->{dbh}->prepare($query);
-	$sth->execute($group);
-
-	while ( my $row = $sth->fetchrow_hashref ) {
-		$permissions->{ $row->{attr} }->{exceptions}->{ $row->{attr_id} } = $row->{allow};
-	}
-
-	return $permissions;
-}
-
-sub _get_user_group_info {
-	my ( $self, $kernel, $heap, $user_info ) = @_[ OBJECT, KERNEL, HEAP, ARG0 ];
-
-	my ( $query, $sth );
-
-	$query =
-	    'SELECT groupname, attr, attr_id, allow ' . "\n"
-	  . 'FROM groups t1' . "\n"
-	  . 'LEFT JOIN permissions t2 ON (t1.gid=t2.gid)' . "\n"
-	  . 'WHERE groupname IN (';
-	my @values;
-	my @placeholders;
-	foreach my $group ( @{ $user_info->{groups} } ) {
-		push @values,       '?';
-		push @placeholders, $group;
-	}
-	$query .= join( ', ', @values ) . ')';
-	$sth = $heap->{dbh}->prepare($query);
-	$sth->execute(@placeholders);
-
-	my $permissions = {};
-	while ( my $row = $sth->fetchrow_hashref ) {
-		$permissions->{ $row->{groupname} } = {}
-		  unless $permissions->{ $row->{groupname} };
-		$permissions->{ $row->{groupname} }->{ $row->{attr} } = {}
-		  unless $permissions->{ $row->{groupname} }->{ $row->{attr} };
-		$permissions->{ $row->{groupname} }->{ $row->{attr} }
-		  ->{ $row->{attr_id} } = $row->{allow};
-	}
-
-	return $permissions;
 }
 
 sub _create_user {
@@ -2964,13 +2799,12 @@ sub set_permissions_exception {
 	}
 	
 	if ($args->{action} eq 'add'){
-		$query = 'INSERT INTO permissions (gid, attr, attr_id, allow) VALUES(?,?,?,?)';
+		$query = 'INSERT INTO permissions (gid, attr, attr_id) VALUES(?,?,?)';
 		$sth = $heap->{dbh}->prepare($query);
 		$sth->execute(
 			$args->{exception}->{gid}, 
 			$args->{exception}->{attr}, 
-			$args->{exception}->{attr_id},
-			$args->{exception}->{allow});
+			$args->{exception}->{attr_id});
 	}
 	elsif ($args->{action} eq 'delete') {
 		$query = 'DELETE FROM permissions WHERE gid=? AND attr_id=?';

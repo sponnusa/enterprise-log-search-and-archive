@@ -140,84 +140,6 @@ YAHOO.ELSA.Admin.main = function(){
 	);
 }
 
-YAHOO.ELSA.Admin.updateDefaultPermissions = function(p_oEvent, p_oArgs){
-	logger.log('p_oArgs', p_oArgs);
-	var p_iGid = p_oArgs.gid;
-	var p_sType = p_oArgs['class'];
-	var p_iId = p_oArgs.id;
-	var oButton = YAHOO.widget.Button.getButton(p_iId);
-	
-	// the event has already fired, so the current state of the button is actually the new state, reverse this
-	var checked = true;
-	if (oButton.get('checked')){
-		checked = false;
-	}
-	
-	//update the permission
-	logger.log('first checked: ' + checked);
-	var iBit = 0;
-	if (!checked){ //wasn't already checked, as that's what we're about to mark it checked
-		iBit = 1;
-	}
-	logger.log('iBit: ' + iBit + ', checked: ' + checked);
-	
-	var request = YAHOO.util.Connect.asyncRequest('GET', 'Query/set_default_permissions?gid=' 
-		+ p_iGid + '&' + p_sType + '=' + iBit,
-		{ 
-			success:function(oResponse){
-				if (oResponse.responseText){
-					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
-					if (typeof oReturn === 'object' && oReturn['error']){
-						YAHOO.ELSA.Error(oReturn['error']);
-						return;
-					}
-					else if (oReturn){
-						logger.log('Successfully updated group ' + p_iGid);
-						// find the record in the datatable recordset and update it
-						for (var i in YAHOO.ELSA.Admin.main.dataTable.getRecordSet().getRecords()){
-							i = parseInt(i);
-							var oRecord = YAHOO.ELSA.Admin.main.dataTable.getRecord(i);
-							if (oRecord.getData().gid == p_iGid){
-								oRecord.setData('default_permissions_allow', oReturn.default_permissions_allow);
-								logger.log('updated record', oRecord);
-								break;
-							}
-						}
-						//clear the exceptions table if there is one
-						if (YAHOO.ELSA.Admin.main.permissionsDataTable){
-							// we have to iterate backwards through this so the records don't slide down and screw up the index as we delete them
-							for (var i = YAHOO.ELSA.Admin.main.permissionsDataTable.getRecordSet().getLength() - 1; i >= 0; i--){
-								if (YAHOO.ELSA.Admin.main.permissionsDataTable.getRecord(i).getData().attr == oReturn.attr){
-									YAHOO.ELSA.Admin.main.permissionsDataTable.deleteRow(i);
-								}
-							}
-						}
-						// finally check or uncheck the box
-						var oButton = YAHOO.widget.Button.getButton(oResponse.argument[0]);
-						var iShouldBeChecked = oResponse.argument[1];
-						logger.log('iShouldBeChecked: ' + iShouldBeChecked + ', ischecked: ' + oButton.get('checked'));
-						if (iShouldBeChecked && !oButton.get('checked')){
-							oButton.set('checked', true);
-						}
-						else if (!iShouldBeChecked && oButton.get('checked')){
-							oButton.set('checked', false);
-						}
-					}
-					else {
-						logger.log(oReturn);
-						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
-					}
-				}
-				else {
-					YAHOO.ELSA.Error('No response text');
-				}
-				
-			}, 
-			failure:function(oResponse){ YAHOO.ELSA.Error('Failed to update ' + p_iGid); },
-			argument:[p_iId,iBit]
-		});
-}
-
 YAHOO.ELSA.Admin.deleteExceptions = function(){
 	var aToDelete = [];
 	var oElements = YAHOO.util.Dom.getElementsByClassName('delete_permissions_checkbox');
@@ -492,10 +414,6 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 			sClassName = 'All';
 		}
 		//is this currently a blacklist?
-		var allow = 1;
-		if (p_oRecordData.default_permissions_allow & 1){ //default allow, making blacklist
-			allow = 0;
-		}
 		var oMenuItem = {
 			text: sClassName,
 			value: sClassName, 
@@ -505,7 +423,6 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 					gid: p_oRecordData.gid, 
 					attr: 'class_id', 
 					attr_id: i, 
-					allow: allow, 
 					text: sClassName
 				}
 			}
@@ -526,10 +443,6 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 	for (var i in YAHOO.ELSA.Admin.formParams.programs){
 		for (var j in YAHOO.ELSA.Admin.formParams.programs[i]){
 			//is this currently a blacklist?
-			var allow = 1;
-			if (p_oRecordData.default_permissions_allow & 4){ //default allow, making blacklist
-				allow = 0;
-			}
 			var oMenuItem = {
 				text: j,
 				value: YAHOO.ELSA.Admin.formParams.programs[i][j], 
@@ -539,7 +452,6 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 						gid: p_oRecordData.gid, 
 						attr: 'program_id', 
 						attr_id: YAHOO.ELSA.Admin.formParams.programs[i][j], 
-						allow: allow, 
 						text: j
 					}
 				}
@@ -622,20 +534,6 @@ YAHOO.ELSA.Admin.showExceptions = function(p_oData){
 		oEl.addClass('delete_permissions_checkbox');
 	}
 	
-	var formatterAllowed = function(elLiner, oRecord, oColumn, oData){
-		var oButton = new YAHOO.widget.Button({
-			container: elLiner,
-			type: 'button', 
-			label: 'Delete ' + oData, 
-			id: 'permissions_del_exception_' + oRecord.getData().gid + '_' + oRecord.getData().attr_id, 
-			value: 'Delete',
-			onclick: {
-				fn: function(){
-					YAHOO.ELSA.Admin.deleteException(oRecord.getData().gid, oRecord.getData().attr_id);
-				}
-			}
-		});
-	}
 	try {
 		logger.log('aData', aData);
 		var oDataSource = new YAHOO.util.DataSource(aData);
@@ -701,26 +599,12 @@ YAHOO.ELSA.Admin.old_getExceptions = function(p_iGid){
 	var showExceptions = function(p_oResults){
 		logger.log('p_oResults', p_oResults);
 		
-		var formatterAllowed = function(elLiner, oRecord, oColumn, oData){
-			var oButton = new YAHOO.widget.Button({
-				container: elLiner,
-				type: 'button', 
-				label: 'Delete', 
-				id: 'permissions_del_exception_' + oRecord.getData().gid + '_' + oRecord.getData().attr_id, 
-				value: 'Delete',
-				onclick: {
-					fn: function(){
-						YAHOO.ELSA.Admin.deleteException(oRecord.getData().gid, oRecord.getData().attr_id);
-					}
-				}
-			});
-		}
 		try {
 			var dataSource = new YAHOO.util.DataSource(p_oResults);
 			dataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
 			dataSource.responseSchema = {
 				resultsList: 'results',
-				fields: ["groupname", 'gid', 'attr', 'attr_id', 'allow', 'attr_value' ],
+				fields: ["groupname", 'gid', 'attr', 'attr_id', 'attr_value' ],
 				metaFields: {
 					totalRecords: 'totalRecords',
 					recordsReturned: 'recordsReturned'
@@ -729,8 +613,7 @@ YAHOO.ELSA.Admin.old_getExceptions = function(p_iGid){
 			var aColumnDefs = [
 				{ key:"groupname", label:"Group", sortable:true },
 				{ key:"attr", label:"Attribute Type", sortable:true },
-				{ key:'attr_value', label:'Attribute Value', sortable:true },
-				{ key:'allow', label:'Delete', formatter:formatterAllowed, sortable:true }
+				{ key:'attr_value', label:'Attribute Value', sortable:true }
 			];
 			var oPaginator = new YAHOO.widget.Paginator({
 			    pageLinks          : 10,
