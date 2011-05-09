@@ -668,33 +668,33 @@ YAHOO.ELSA.main = function () {
 		
 		var aItemData = [
 			{
-				text: 'Queries',
+				text: 'ELSA',
 				submenu: {
 					id: 'queries_menu',
 					itemdata: [
 						{
-							text: 'Previous',
+							text: 'Previous Queries',
 							helptext: 'Queries this user has previously run',
 							onclick: {
 								fn: YAHOO.ELSA.getPreviousQueries
 							}
 						},
 						{
-							text: 'Saved',
-							helptext: 'Queries this user has manually saved',
+							text: 'Saved Results',
+							helptext: 'Results this user has manually saved',
 							onclick: {
 								fn: YAHOO.ELSA.getSavedQueries
 							}
 						},
 						{
-							text: 'Scheduled',
+							text: 'Scheduled Queries',
 							helptext: 'Currently scheduled queries',
 							onclick: {
 								fn: YAHOO.ELSA.getQuerySchedule
 							}
 						},
 						{
-							text: 'Running',
+							text: 'Running Queries',
 							helptext: 'Currently running queries',
 							onclick: {
 								fn: YAHOO.ELSA.getRunningArchiveQuery
