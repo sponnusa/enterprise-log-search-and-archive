@@ -10,7 +10,6 @@
 
 .yui-skin-sam .close { 
 	background: url('https://ajax.googleapis.com/ajax/libs/yui/2.8.0r4/build/assets/skins/sam/sprite.png') no-repeat scroll 0 -300px transparent;
-	//background: url('http://yui.yahooapis.com/2.8.0r4/build/assets/skins/sam/sprite.png') no-repeat scroll 0 -300px transparent; 
 	cursor: pointer;
 	height: 15px;
 	position: relative;
