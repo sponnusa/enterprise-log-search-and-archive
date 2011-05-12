@@ -555,9 +555,23 @@ YAHOO.ELSA.Query = function(){
 	}
 };
 
-YAHOO.ELSA.addQueryTerm = function(p_sClass, p_sField, p_sValue){
+YAHOO.WISC.addTermFromOnClickNoSubmit = function(p_oEvent, p_aArgs){
+	YAHOO.WISC.addQueryTerm(p_aArgs[0], p_aArgs[1], p_aArgs[2]);
+}
+
+YAHOO.WISC.addQueryTerm = function(p_sClass, p_sField, p_sValue){
 	logger.log('adding to current query class' + p_sClass + ', field:' + p_sField + ', val: ' + p_sValue);
-	YAHOO.ELSA.currentQuery.addTerm(p_sClass + '.' + p_sField, p_sValue);
+	var tmp = YAHOO.WISC.currentQuery.queryBoolean;
+	try {
+		YAHOO.WISC.currentQuery.queryBoolean = '+';
+		YAHOO.WISC.currentQuery.addTerm(p_sClass + '.' + p_sField, p_sValue);
+		YAHOO.WISC.currentQuery.delMeta('groupby');
+		YAHOO.WISC.currentQuery.delMeta('groups_only');
+		YAHOO.WISC.currentQuery.delMeta('local_groupby');
+		YAHOO.WISC.currentQuery.delMeta('limit');
+	} catch(e) { YAHOO.WISC.Error(e); }
+	
+	YAHOO.WISC.currentQuery.queryBoolean = tmp;
 };
 
 YAHOO.ELSA.addTermFromChart = function(p_iChartId, p_iIndex){
@@ -780,22 +794,23 @@ YAHOO.ELSA.Results = function(){
 				//logger.log('fieldHash', fieldHash);
 				
 				// create chart link
-				var sGraphOnClick = 'YAHOO.ELSA.groupData(' + YAHOO.ELSA.getLocalResultId(oSelf.tab) + ', "' + fieldHash['class'] + '", "' + fieldHash['field'] + '")';
-				var oElGraphA = document.createElement('a');
-				oElGraphA.setAttribute('onclick', sGraphOnClick);
-				oElGraphA.innerHTML = fieldHash['field'];
-				oElGraphA.setAttribute('href', '#');
-				oElGraphA.setAttribute('class', 'key');
-				oDiv.appendChild(oElGraphA);
+				var oGraphA = document.createElement('a');
+				oGraphA.innerHTML = fieldHash['field'];
+				oGraphA.setAttribute('href', '#');
+				oGraphA.setAttribute('class', 'key');
+				oDiv.appendChild(oGraphA);
+				var oElGraphA = new YAHOO.util.Element(oGraphA);
+				oElGraphA.on('click', YAHOO.WISC.groupData, [ YAHOO.WISC.getLocalResultId(oSelf.tab), fieldHash['class'], fieldHash['field'] ], this);
 				
 				// create drill-down item link
 				var a = document.createElement('a');
+				a.id = oRecord.getData().id + '_' + fieldHash['field'];
+				
 				a.setAttribute('href', '#');//Will jump to the top of page. Could be annoying
 				a.setAttribute('class', 'value');
+				
 				for (var sHighlight in oSelf.highlights){
 					var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
-					//logger.log('re:', re);
-					//logger.log('fieldHash:', fieldHash);
 					if (fieldHash['value_with_markup']){
 						fieldHash['value_with_markup'] = fieldHash['value_with_markup'].replace(re, '<span class=\'highlight\'>$1</span>');
 					}
@@ -806,11 +821,11 @@ YAHOO.ELSA.Results = function(){
 					a.innerHTML = fieldHash['value_with_markup'];
 				}
 				
-				var sOnClick = 'YAHOO.ELSA.addQueryTerm("' + fieldHash['class'] + '", "' + fieldHash['field'] + '", "' + fieldHash['value'] + '")';
-				a.setAttribute('onclick', sOnClick);
-				//logger.log('oEl', oDiv);
 				oDiv.appendChild(document.createTextNode('='));
-				oDiv.appendChild(a); 
+				oDiv.appendChild(a);
+				
+				var oAEl = new YAHOO.util.Element(a);
+				oAEl.on('click', YAHOO.WISC.addTermFromOnClickNoSubmit, [fieldHash['class'], fieldHash['field'], fieldHash['value']]);
 				oDiv.appendChild(document.createTextNode(' '));
 			}
 			p_elCell.appendChild(oDiv);
@@ -859,26 +874,25 @@ YAHOO.ELSA.Results = function(){
 		}
 	};
 	
-	this.formatInfoButton = function(p_elCell, oRecord, oColumn, p_oData){
+	this.formatInfoButton = function(p_elCell, p_oRecord, p_oColumn, p_oData){
 		//logger.log('oRecord.getData()', oRecord.getData());
 		try {
 			var oA = document.createElement('a');
 			oA.href = '#';
-			oA.id = 'button_' + oSelf.id + '_' + oRecord.getData().id;
-			oA.name = 'button_' + oRecord.getData().id;
+			oA.id = 'button_' + oSelf.id + '_' + p_oRecord.getId();
+			oA.name = 'button_' + p_oRecord.getId();
 			oA.innerHTML = 'Info';
 			p_elCell.appendChild(oA);
-			var oAEl = new YAHOO.util.Element(oA.id);
+			var oAEl = new YAHOO.util.Element(oA);
 			oAEl.addClass('infoButton');
-			var sOnClick = 'YAHOO.ELSA.getInfo(' + oSelf.id + ', ' + oRecord.getData().id + ')';
-			oA.setAttribute('onclick', sOnClick);
+			oAEl.subscribe('click', YAHOO.WISC.getInfo, p_oRecord);
 		}
 		catch (e){
 			var str = '';
 			for (var i in e){
 				str += i + ' ' + e[i];
 			}
-			YAHOO.ELSA.Error('Error creating button: ' + str);
+			YAHOO.WISC.Error('Error creating button: ' + str);
 		}
 	}
 	
