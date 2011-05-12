@@ -555,23 +555,23 @@ YAHOO.ELSA.Query = function(){
 	}
 };
 
-YAHOO.WISC.addTermFromOnClickNoSubmit = function(p_oEvent, p_aArgs){
-	YAHOO.WISC.addQueryTerm(p_aArgs[0], p_aArgs[1], p_aArgs[2]);
+YAHOO.ELSA.addTermFromOnClickNoSubmit = function(p_oEvent, p_aArgs){
+	YAHOO.ELSA.addQueryTerm(p_aArgs[0], p_aArgs[1], p_aArgs[2]);
 }
 
-YAHOO.WISC.addQueryTerm = function(p_sClass, p_sField, p_sValue){
+YAHOO.ELSA.addQueryTerm = function(p_sClass, p_sField, p_sValue){
 	logger.log('adding to current query class' + p_sClass + ', field:' + p_sField + ', val: ' + p_sValue);
-	var tmp = YAHOO.WISC.currentQuery.queryBoolean;
+	var tmp = YAHOO.ELSA.currentQuery.queryBoolean;
 	try {
-		YAHOO.WISC.currentQuery.queryBoolean = '+';
-		YAHOO.WISC.currentQuery.addTerm(p_sClass + '.' + p_sField, p_sValue);
-		YAHOO.WISC.currentQuery.delMeta('groupby');
-		YAHOO.WISC.currentQuery.delMeta('groups_only');
-		YAHOO.WISC.currentQuery.delMeta('local_groupby');
-		YAHOO.WISC.currentQuery.delMeta('limit');
-	} catch(e) { YAHOO.WISC.Error(e); }
+		YAHOO.ELSA.currentQuery.queryBoolean = '+';
+		YAHOO.ELSA.currentQuery.addTerm(p_sClass + '.' + p_sField, p_sValue);
+		YAHOO.ELSA.currentQuery.delMeta('groupby');
+		YAHOO.ELSA.currentQuery.delMeta('groups_only');
+		YAHOO.ELSA.currentQuery.delMeta('local_groupby');
+		YAHOO.ELSA.currentQuery.delMeta('limit');
+	} catch(e) { YAHOO.ELSA.Error(e); }
 	
-	YAHOO.WISC.currentQuery.queryBoolean = tmp;
+	YAHOO.ELSA.currentQuery.queryBoolean = tmp;
 };
 
 YAHOO.ELSA.addTermFromChart = function(p_iChartId, p_iIndex){
@@ -800,7 +800,7 @@ YAHOO.ELSA.Results = function(){
 				oGraphA.setAttribute('class', 'key');
 				oDiv.appendChild(oGraphA);
 				var oElGraphA = new YAHOO.util.Element(oGraphA);
-				oElGraphA.on('click', YAHOO.WISC.groupData, [ YAHOO.WISC.getLocalResultId(oSelf.tab), fieldHash['class'], fieldHash['field'] ], this);
+				oElGraphA.on('click', YAHOO.ELSA.groupData, [ YAHOO.ELSA.getLocalResultId(oSelf.tab), fieldHash['class'], fieldHash['field'] ], this);
 				
 				// create drill-down item link
 				var a = document.createElement('a');
@@ -825,7 +825,7 @@ YAHOO.ELSA.Results = function(){
 				oDiv.appendChild(a);
 				
 				var oAEl = new YAHOO.util.Element(a);
-				oAEl.on('click', YAHOO.WISC.addTermFromOnClickNoSubmit, [fieldHash['class'], fieldHash['field'], fieldHash['value']]);
+				oAEl.on('click', YAHOO.ELSA.addTermFromOnClickNoSubmit, [fieldHash['class'], fieldHash['field'], fieldHash['value']]);
 				oDiv.appendChild(document.createTextNode(' '));
 			}
 			p_elCell.appendChild(oDiv);
@@ -885,14 +885,14 @@ YAHOO.ELSA.Results = function(){
 			p_elCell.appendChild(oA);
 			var oAEl = new YAHOO.util.Element(oA);
 			oAEl.addClass('infoButton');
-			oAEl.subscribe('click', YAHOO.WISC.getInfo, p_oRecord);
+			oAEl.subscribe('click', YAHOO.ELSA.getInfo, p_oRecord);
 		}
 		catch (e){
 			var str = '';
 			for (var i in e){
 				str += i + ' ' + e[i];
 			}
-			YAHOO.WISC.Error('Error creating button: ' + str);
+			YAHOO.ELSA.Error('Error creating button: ' + str);
 		}
 	}
 	
