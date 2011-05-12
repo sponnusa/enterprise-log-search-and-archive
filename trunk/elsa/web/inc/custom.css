@@ -12,19 +12,15 @@
 	background: url('https://ajax.googleapis.com/ajax/libs/yui/2.8.0r4/build/assets/skins/sam/sprite.png') no-repeat scroll 0 -300px transparent;
 	cursor: pointer;
 	height: 15px;
-	position: relative;
-	right: 6px;
-	top: 5px;
 	width: 25px;
+	position: relative;
 }
 
 .yui-skin-sam .loading {
 	background:url('wait.gif') no-repeat scroll 0 0 transparent;
 	height: 15px;
-	position: relative;
-	right: 6px;
-	top: 5px;
 	width: 25px;
+	position: relative;
 }
 
 /* logger default styles */
