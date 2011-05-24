@@ -7,6 +7,7 @@ sub new {
 	my $class = shift;
 	my $self = $class->SUPER::new(@_);
 	$self->{_MIME_TYPE} = 'text/plain';
+	$self->{_EXTENSION} = 'csv';
 	#$self->{_MIME_TYPE} = 'application/csv';
 	return bless($self, $class);
 }
