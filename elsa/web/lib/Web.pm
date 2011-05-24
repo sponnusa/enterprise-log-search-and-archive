@@ -370,7 +370,7 @@ sub admin {
 	my $HTML = $self->_get_headers('..');
 	
 	$HTML .= <<'EOHTML'
-<script type="text/javascript" src="../inc/admin.js" ></script>
+<script type="text/javascript" src="inc/admin.js" ></script>
 <script>YAHOO.util.Event.addListener(window, "load", YAHOO.ELSA.Admin.main)</script>
 </head>
 <body class=" yui-skin-sam">
@@ -403,7 +403,7 @@ sub stats {
 	my $HTML = $self->_get_headers('..');
 	
 	$HTML .= <<'EOHTML'
-<script type="text/javascript" src="../inc/stats.js" ></script>
+<script type="text/javascript" src="inc/stats.js" ></script>
 <script>YAHOO.util.Event.addListener(window, "load", YAHOO.ELSA.Stats.main)</script>
 </head>
 <body class=" yui-skin-sam">

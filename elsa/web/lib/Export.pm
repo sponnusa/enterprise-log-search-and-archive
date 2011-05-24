@@ -49,5 +49,10 @@ sub get_mime_type {
 	return $self->{_MIME_TYPE};
 }
 
+sub extension {
+	my $self = shift;
+	return $self->{_EXTENSION};
+}
+
 
 1;

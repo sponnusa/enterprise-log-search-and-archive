@@ -9,6 +9,7 @@ sub new {
 	my $class = shift;
 	my $self = $class->SUPER::new(@_);
 	$self->{_MIME_TYPE} = 'text/html';
+	$self->{_EXTENSION} = 'html';
 	return bless($self, $class);
 }
 

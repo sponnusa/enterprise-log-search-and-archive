@@ -9,6 +9,7 @@ sub new {
 	my $class = shift;
 	my $self = $class->SUPER::new(@_);
 	$self->{_MIME_TYPE} = 'application/excel';
+	$self->{_EXTENSION} = 'xls';
 	return bless($self, $class);
 }
 
