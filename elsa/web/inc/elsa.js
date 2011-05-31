@@ -1635,6 +1635,16 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		var oButton = new YAHOO.widget.Button(oMenuButtonCfg);
 		logger.log('rendering to ', this.tab.get('contentEl'));
 		
+		// If there were any errors, display them
+		if (this.results.errors.length > 0){
+			var elErrors = document.createElement('b');
+			elErrors.innerHTML = 'Errors: ' + this.results.errors.join(', ');
+			headerContainerDiv.appendChild(elErrors);
+			var oElErrorsDiv = new YAHOO.util.Element(elErrors);
+			oElErrorsDiv.addClass('warning');
+			headerContainerDiv.appendChild(document.createElement('br'));
+		}
+		
 		// If there were any warnings, display them
 		if (this.results.warnings.length > 0){
 			var elWarnings = document.createElement('b');
