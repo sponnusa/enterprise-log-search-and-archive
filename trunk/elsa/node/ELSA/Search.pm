@@ -624,7 +624,12 @@ sub limit {
 
 sub warnings {
 	my $self = shift;
-	return $self->{_WARNINGS};
+	return $self->{_RAW_RESULTS}->{warnings};
+}
+
+sub errors {
+	my $self = shift;
+	return $self->{_RAW_RESULTS}->{errors};
 }
 
 sub get_directory {
@@ -910,7 +915,6 @@ sub _set_sphinx_global_filters {
 	}
 	
 	# Loop through and see if we have "between" statements where min and max are supplied by two separate range ops
-	
 	foreach my $boolean qw(range_and range_not){
 		foreach my $attr (keys %{ $self->{_ATTR_TERMS}->{$boolean}->{0} }){
 			foreach my $filter_hash (@{ $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} }){
@@ -919,7 +923,6 @@ sub _set_sphinx_global_filters {
 			}
 		}
 	}
-
 	
 	return 1;
 }
@@ -947,6 +950,71 @@ sub _execute {
 	$sphinx->SetSortMode(SPH_SORT_ATTR_ASC, 'timestamp');
 	
 	$self->{_QUERIES} = []; # place to store our query with our result in a multi-query
+	
+	# Remove duplicate filters
+	foreach my $boolean qw(range_and range_not){
+		foreach my $attr (keys %{ $self->{_ATTR_TERMS}->{$boolean}->{0} }){
+			my %uniq;
+			my @deduped;
+			foreach my $filter_hash (@{ $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} }){
+				if (exists $uniq{ $filter_hash->{min} } and $uniq{ $filter_hash->{min} } eq $filter_hash->{max}){
+					next;
+				}
+				else {
+					$uniq{ $filter_hash->{min} } = $filter_hash->{max};
+					push @deduped, $filter_hash;
+				}
+			}
+			$self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} = [ @deduped ];
+		}
+	}
+	
+	# Loop through and see if we have "between" statements where min and max are supplied by two separate range ops
+	foreach my $attr (keys %{ $self->{_ATTR_TERMS}->{range_and}->{0} }){
+		if (scalar @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }){
+			# If there is more than one range given for AND, we have to do a workaround:
+			# A<=VALUE<=B OR C<=VALUE<=D
+			# becomes A<=VALUE<=D AND NOT (B+1<=VALUE<=C-1)
+			
+			# Find ranges in order
+			my @values;
+			
+			# Find any stray values from single attr_id's included in AND and OR booleans.  
+			#  These will have to count when finding the blanket min/max values for the umbrella include
+			foreach my $and_or_boolean qw(and or){
+				foreach my $val (@{ $self->{_ATTR_TERMS}->{$and_or_boolean}->{0}->{$attr} }){
+					push @values, $val;
+				}
+			}	
+							
+			foreach my $filter_hash (@{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }){
+				push @values, $filter_hash->{min};
+				push @values, $filter_hash->{max};
+			}
+			@values = sort { $a <=> $b } @values;
+			$self->log->debug('values: ' . join(',', @values));
+			# Set the wide include
+			push @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, { attr => $attr, min => $values[0], max => $values[-1], exclude => 0 };
+			$self->log->debug('including ' . $values[0] . '-' . $values[-1]);
+			
+			# Set the individual excludes
+			for (my $i = 1; $i < ((scalar @values) - 1); $i += 2){
+				my ($min, $max) = ($values[$i], $values[$i+1]);
+				if ($max - $min > 1){
+					$min++;
+					$max--;
+				}
+				$self->log->debug('excluding ' . $min . '-' . $max);
+				push @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, { attr => $attr, min => $min, max => $max, exclude => 1 };
+			}
+			
+			# Remove the unused individual attr_id's now that they're in the ranges
+			delete $self->{_ATTR_TERMS}->{and}->{0}->{$attr};
+			delete $self->{_ATTR_TERMS}->{or}->{0}->{$attr};
+		}
+	}
+	
+	$self->log->debug('ATTR_TERMS now stands as: ' . Dumper($self->{_ATTR_TERMS}));
 	
 	$self->_set_sphinx_global_filters($sphinx);
 	
@@ -1246,6 +1314,7 @@ sub _execute {
 	# Sort the rows by timestamp (they are initially sorted by class_id, then timestamp)
 	$self->{_RAW_RESULTS}->{rows} = [ sort { $a->{timestamp} <=> $b->{timestamp} } @{ $self->{_RAW_RESULTS}->{rows} } ];
 	
+	$self->{_RAW_RESULTS}->{errors} = \@errors;
 	$self->{_RAW_RESULTS}->{warnings} = \@warnings;
 	$self->{_RAW_RESULTS}->{total_found} = $total_found;
 	$self->{_RAW_RESULTS}->{total_returned} = scalar @{ $self->{_RAW_RESULTS}->{rows} };

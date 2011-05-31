@@ -18,35 +18,6 @@ my $num_children = $writer->conf->get('num_indexers') or die("undefined config f
 my $continue     = 1;
 my $Run          = 1;
 
-# See if we're configured to use Patchlink to assign default class id's
-my $Default_classes_by_host = 0;
-if ($writer->conf->get('patchlink')){
-	my ($dbh, $query, $sth);
-	$dbh = DBI->connect($writer->conf->get('patchlink/db/dsn'), 
-		$writer->conf->get('patchlink/db/user'), 
-		$writer->conf->get('patchlink/db/pass'), { RaiseError => 1 }) or die('Unable to connect to patchlink db');
-	$Default_classes_by_host = {};
-	foreach my $group_name (keys %{ $writer->conf->get('patchlink/groups') }){
-		$query = 'SELECT id FROM classes WHERE class=?';
-		$sth = $writer->db->prepare($query);
-		$sth->execute($writer->conf->get('patchlink/groups/' . $group_name));
-		my $row = $sth->fetchrow_hashref;
-		if ($row){
-			my $class_id = $row->{id};
-			$query = 'SELECT DISTINCT ContactAddress FROM UP_Agents t1' . "\n" .
-				'JOIN AgentGroup t2 ON (t1.AgentID_INT=t2.AgentID_INT)' . "\n" .
-				'JOIN Groups t3 ON (t2.GroupID=t3.Group_ID)' . "\n" .
-				'WHERE t3.Group_Name=?';
-			$sth = $dbh->prepare($query);
-			$sth->execute($group_name);
-			while (my $row = $sth->fetchrow_hashref){
-				$Default_classes_by_host->{ $row->{ContactAddress} } = $class_id;
-			}
-		}
-	} 
-	$writer->log->debug('Starting up with default classes by host: ' . Dumper($Default_classes_by_host));
-}
-
 for my $i ( 0 .. ( $num_children - 1 ) ) {
 	my $fh;
 	my $pid = open( $fh, "|-" );    # fork and send to child's STDIN
@@ -85,9 +56,6 @@ for my $i ( 0 .. ( $num_children - 1 ) ) {
 		OUTER_LOOP: while ($continue) {
 			eval {
 				my $kid_writer = new ELSA::Writer( $conf_file, $i + 1 );
-				if ($Default_classes_by_host){
-					$kid_writer->default_classes($Default_classes_by_host);
-				}
 				INNER_LOOP: while ($continue) {
 					$writer->log->debug("Starting process_batch");
 					my $num_processed = $kid_writer->process_batch();

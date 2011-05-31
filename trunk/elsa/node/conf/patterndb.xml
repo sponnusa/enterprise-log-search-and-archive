@@ -242,4 +242,29 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset>
+		<rules>
+			<rule class="11" id="11">
+				<patterns>
+					<!-- s0=usracct.authmethod, s1=usracct.username, s2=usracct.device, i0=port, s3=usracct.service -->
+					<pattern>Accepted @ESTRING:s0: @for @ESTRING:s1: @from @ESTRING:s2: @port @ESTRING:i0: @@ANYSTRING:s3@</pattern>
+				</patterns>
+			</rule>
+			<rule class="12" id="12">
+				<patterns>
+					<!-- s0=usracct.authmethod, s1=usracct.username, s2=usracct.device, i0=port, s3=usracct.service -->
+					<pattern>Failed @ESTRING:s0: @for @ESTRING:s1: @from @ESTRING:s2: @port @ESTRING:i0: @@ANYSTRING:s3@</pattern>
+					<pattern>Failed @ESTRING:s0: @for invalid user @ESTRING:s1: @from @ESTRING:s2: @port @ESTRING:i0: @@ANYSTRING:s3@</pattern>
+					<pattern>Failed @ESTRING:s0: @for illegal user @ESTRING:s1: @from @ESTRING:s2: @port @ESTRING:i0: @@ANYSTRING:s3@</pattern>
+				</patterns>
+			</rule>
+			<rule class="13" id="13>
+				<patterns>
+					<!-- s0=usracct.username -->
+					<pattern>pam_unix(sshd:session): session closed for user @ANYSTRING:s0:@</pattern>
+					<pattern>session closed for user @ANYSTRING:s0:@</pattern>
+				</patterns>
+			</rule>
+		</rules>
+	</ruleset>	
 </patterndb>

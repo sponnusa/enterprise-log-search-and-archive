@@ -648,9 +648,19 @@ sub query_results {
 						push @{ $heap->{sessions}->{$session}->{qids}->{$qid}->{groups}->{$group_name} }, @{ $ret->{groups}->{$group_name} };
 					}
 				}
-				foreach my $item qw(recordsReturned totalRecords startIndex warnings){
+				foreach my $item qw(recordsReturned totalRecords startIndex){
 					if ($ret->{$item}){
 						$heap->{sessions}->{$session}->{qids}->{$qid}->{$item} = $ret->{$item};
+					}
+				}
+				foreach my $item qw(errors warnings){
+					if ($ret->{$item}){
+						if ($heap->{sessions}->{$session}->{qids}->{$qid}->{$item}){
+							push @{ $heap->{sessions}->{$session}->{qids}->{$qid}->{$item} }, @{ $ret->{$item} };
+						}
+						else {
+							$heap->{sessions}->{$session}->{qids}->{$qid}->{$item} = $ret->{$item};
+						}
 					}
 				}
 				$heap->{sessions}->{$session}->{qids}->{$qid}->{stats} ||= { nodes => {} };

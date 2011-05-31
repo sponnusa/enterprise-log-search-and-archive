@@ -21,6 +21,9 @@ INSERT INTO classes (id, class, parent_id) VALUES(3, "FIREWALL_CONNECTION_END", 
 INSERT INTO classes (id, class, parent_id) VALUES(4, "WINDOWS", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(7, "URL", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(8, "SNORT", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(11, "SSH_LOGIN", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(12, "SSH_ACCESS_DENY", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(13, "SSH_LOGOUT", 0);
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -77,6 +80,10 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_msg", "string"
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_classification", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_priority", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("host", "int", "IPv4", "IPv4");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("authmethod", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("device", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("service", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("port", "int", "NUMBER");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -136,6 +143,21 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SNORT"), (SELECT id FROM fields WHERE field="srcport"), 9);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SNORT"), (SELECT id FROM fields WHERE field="dstip"), 10);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SNORT"), (SELECT id FROM fields WHERE field="dstport"), 11);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="authmethod"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="user"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="device"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="port"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="service"), 15);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="authmethod"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="user"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="device"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="port"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="service"), 15);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGOUT"), (SELECT id FROM fields WHERE field="user"), 12);
+
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,

@@ -393,6 +393,7 @@ sub query {
 		$query_info->{totalRecords} = $search->total_found();
 		$query_info->{recordsReturned} = $search->total_returned();
 		$query_info->{warnings} = $search->warnings();
+		$query_info->{errors} = $search->errors();
 		
 		$query_info->{groups} = $search->groups();
 		$query_info->{stats} = { 
