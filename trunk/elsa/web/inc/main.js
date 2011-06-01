@@ -392,7 +392,7 @@ YAHOO.ELSA.main = function () {
 					}
 				}
 				
-				var aUnclassedFields = ['Host', 'Class', 'Program'];
+				var aUnclassedFields = ['Host', 'Class', 'Program', 'Day', 'Hour', 'Minute', 'Timestamp'];
 				var aUnclassedItems = [];
 				for (var i in aUnclassedFields){
 					var sPrettyClass = aUnclassedFields[i];
