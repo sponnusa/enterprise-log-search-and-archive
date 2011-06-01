@@ -116,7 +116,6 @@ sub get_form_params {
 		end_int => $max,
 		classes => $elsa->get_classes(),
 		fields => $elsa->get_fields(),
-		programs => $elsa->get_programs()
 	};
 	$elsa->db->disconnect();
 	
@@ -136,16 +135,6 @@ sub get_form_params {
 				my $class_id = $field_hash->{class_id};
 				if ($args->{permissions}->{class_id}->{$class_id}){
 					push @{ $form_params->{fields} }, $field_hash;
-				}
-			}
-		}
-		
-		unless ($args->{permissions}->{program_id}->{0}){
-			foreach my $class_id (keys %{ $form_params->{programs} }){
-				foreach my $program_id (keys %{ $form_params->{programs}->{$class_id} }){
-					unless ($args->{permissions}->{class_id}->{$class_id} and $args->{permissions}->{program_id}->{$program_id}){
-						delete $form_params->{programs}->{$class_id}->{$program_id};
-					}	
 				}
 			}
 		}

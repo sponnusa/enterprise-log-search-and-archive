@@ -668,9 +668,9 @@ sub query_results {
 				# Record that these results arrived
 				$heap->{sessions}->{$session}->{qids}->{$qid}->{nodes_received}->{ $ret->{node} } = 1;
 				
-				# Set an alarm to return the results we've got if other nodes timeout
+				# Set an alarm to return the results we've got if other nodes timeout (using half the total timeout)
 				$heap->{sessions}->{$session}->{qids}->{$qid}->{alarm_id} = 
-					$kernel->delay_set('_return_results', $self->conf->get('Janus/timeout'), $session, $qid, $msg, $ret);
+					$kernel->delay_set('_return_results', ($self->conf->get('Janus/timeout')/2), $session, $qid, $msg, $ret);
 				
 				# Check to see if all results are in
 				if ( (scalar keys %{ $heap->{sessions}->{$session}->{qids}->{$qid}->{nodes_received} } ) >=
@@ -1582,35 +1582,6 @@ sub get_form_params {
 	
 	$ret->body()->{schedule_actions} = \@schedule_actions;
 	
-	if ($self->conf->get('inventory')){
-		my $dbh = DBI->connect($self->conf->get('inventory/dsn'), 
-			$self->conf->get('inventory/username'), 
-			$self->conf->get('inventory/password'));
-		unless ($dbh){
-			$kernel->yield('_error', 'Invalid inventory db', $msg);
-			return;
-		}
-		
-		# This is designed for HP Service Manager
-		$query = 'SELECT name FROM RMS_ASSIGNMENTM1 ORDER BY name ASC';
-		$sth = $dbh->prepare($query);
-		$sth->execute();
-		my @assignments = ( 'AUTO' );
-		while (my $row = $sth->fetchrow_hashref){
-			push @assignments, $row->{name};
-		}
-		
-		$ret->body()->{assignments} = \@assignments;
-		
-		#TODO find database location for these so they aren't hardcoded
-		$ret->body()->{priority_codes} = {
-			1 => '1-CRITICAL',
-			2 => '2-URGENT',
-			3 => '3-NORMAL',
-			4 => '4-HOLD',
-		};
-	}
-		
 	$msg->body($ret->body());
 	$msg->route();
 }

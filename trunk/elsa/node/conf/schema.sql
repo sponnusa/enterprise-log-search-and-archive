@@ -41,13 +41,16 @@ CREATE TABLE fields (
 	input_validation VARCHAR(255)
 ) ENGINE=InnoDB;
 
-INSERT INTO fields (field, field_type, pattern_type) VALUES ("ts", "int", "NONE");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("timestamp", "int", "NONE");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("minute", "int", "NONE");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("hour", "int", "NONE");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("day", "int", "NONE");
+
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("host_id", "int", "NONE");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("program_id", "int", "NONE");
-INSERT INTO fields (field, field_type, pattern_type) VALUES ("level", "int", "NONE");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("class_id", "int", "NONE");
-INSERT INTO fields (field, field_type, pattern_type) VALUES ("rule_id", "int", "NONE");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("msg", "string", "NONE");
+
 INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("ip", "int", "PCRE-IPv4", "IPv4");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("proto", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("o_int", "string", "QSTRING");
@@ -216,7 +219,6 @@ CREATE TABLE `syslogs_template` (
   `host_id` INT UNSIGNED NOT NULL DEFAULT '1',
   `program_id` INT UNSIGNED NOT NULL DEFAULT '1',
   `class_id` SMALLINT unsigned NOT NULL DEFAULT '1',
-  `rule_id` SMALLINT unsigned NOT NULL DEFAULT '1',
   msg TEXT,
   i0 INT UNSIGNED,
   i1 INT UNSIGNED,
@@ -232,29 +234,7 @@ CREATE TABLE `syslogs_template` (
   s5 VARCHAR(255)
 ) ENGINE=MyISAM;
 
-
-CREATE TABLE `init` (
-  `id` bigint unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
-  `timestamp` INT UNSIGNED NOT NULL DEFAULT 0,
-  `host_id` INT UNSIGNED NOT NULL DEFAULT '1',
-  `program_id` INT UNSIGNED NOT NULL DEFAULT '1',
-  `class_id` SMALLINT unsigned NOT NULL DEFAULT '1',
-  `rule_id` SMALLINT unsigned NOT NULL DEFAULT '1',
-  msg TEXT,
-  i0 INT UNSIGNED,
-  i1 INT UNSIGNED,
-  i2 INT UNSIGNED,
-  i3 INT UNSIGNED,
-  i4 INT UNSIGNED,
-  i5 INT UNSIGNED,
-  s0 VARCHAR(255),
-  s1 VARCHAR(255),
-  s2 VARCHAR(255),
-  s3 VARCHAR(255),
-  s4 VARCHAR(255),
-  s5 VARCHAR(255)
-) ENGINE=MyISAM;
-INSERT INTO init (id, msg) VALUES (0, "test");
+CREATE TABLE `init` LIKE `syslogs_template`;
 
 CREATE TABLE stats (
 	timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,

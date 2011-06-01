@@ -17,7 +17,7 @@ use POE;
 use POE::Event::Message;
 use IO::Socket;
 use Data::Serializer;
-use Sort::Key qw(rukeysort);
+use Sort::Key qw(rukeysort ukeysort);
 use Net::DNS;
 use Sys::Hostname::FQDN;
 
@@ -38,7 +38,7 @@ our $Default_limit = 100;
 our $Max_limit = 1000;
 our $Search_method = 'serial';
 our $Implicit_plus = 0;
-our $Max_batch_queries = 64;
+our $Max_batch_queries = 32; # Sphinx default
 
 sub new {
 	my $class = shift;
@@ -65,10 +65,6 @@ sub new {
 	$sphinx_config->parse($self->conf->get('sphinx/config_file'));
 	if ($sphinx_config->get('searchd')->{max_batch_queries} and $sphinx_config->get('searchd')->{max_batch_queries} < $Max_batch_queries){
  		$Max_batch_queries = $sphinx_config->get('searchd')->{max_batch_queries};
-	}
-	else {
-		# Sphinx default
-		$Max_batch_queries = 32;
 	}
 	
 	return $self;
@@ -804,6 +800,14 @@ sub _get_groups_content {
 		'class'=> 'classes',
 		'program'=>'programs',
 	};
+	
+	my $time_values = {
+		timestamp => 1,
+		minute => 60,
+		hour => 3600,
+		day => 86400,
+	};
+	
 	foreach my $field (keys %{ $self->{_RAW_RESULTS}->{groups} }){
 		# Resolve the field id in @groupby
 		$self->log->debug('Group field:'.$field);
@@ -833,6 +837,12 @@ sub _get_groups_content {
 				$self->log->debug("resolve_row db_field: $resolve_row->{$field}");				
 			}
 		}
+		elsif ($time_values->{$field}){
+			foreach my $row (@{ $self->{_RAW_RESULTS}->{groups}->{$field} }){
+				$row->{intval} = $row->{'@groupby'} * $time_values->{$field}; 
+				$row->{'@groupby'} = ELSA::epoch2iso($row->{'@groupby'} * $time_values->{$field});
+			}
+		}
 		else {
 			#TODO deal with groupby's that have different value resolve algorithms
 			foreach my $row (@{ $self->{_RAW_RESULTS}->{groups}->{$field} }){
@@ -849,9 +859,30 @@ sub _get_groups_content {
 				$row->{'@groupby'} = $self->resolve_value($row->{class_id}, $row->{'@groupby'}, $field_order);
 			}
 		}
-		# Sort these in descending value order
-		$self->{_GROUPS}->{$field} = [ rukeysort { $_->{'@count'} } @{ $self->{_RAW_RESULTS}->{groups}->{$field} } ];
-		$self->log->debug('_GROUPS: ' . Dumper($self->{_GROUPS}));
+		
+		if ($time_values->{$field}){
+			# Sort these in ascending label order
+			$self->{_RAW_RESULTS}->{groups}->{$field} = [ ukeysort { $_->{intval} } @{ $self->{_RAW_RESULTS}->{groups}->{$field} } ];
+			
+			# Fill in zeroes for missing data so the graph looks right
+			my @zero_filled;
+			my $field_arr = $self->{_RAW_RESULTS}->{groups}->{$field};
+			my $increment = $time_values->{$field};
+			OUTER: for (my $i = 0; $i < @$field_arr; $i++){
+				push @zero_filled, $field_arr->[$i];
+				if (exists $field_arr->[$i+1]){
+					for (my $j = $field_arr->[$i]->{intval} + $increment; $j < $field_arr->[$i+1]->{intval}; $j += $increment){
+						push @zero_filled, { '@groupby' => ELSA::epoch2iso($j), intval => $j, '@count' => 0 };
+						last OUTER if scalar @zero_filled > $self->limit;
+					}
+				}
+			}
+			$self->{_GROUPS}->{$field} = [ @zero_filled ];
+		}
+		else { 
+			# Sort these in descending value order
+			$self->{_GROUPS}->{$field} = [ rukeysort { $_->{'@count'} } @{ $self->{_RAW_RESULTS}->{groups}->{$field} } ];
+		}
 	}
 	
 	$self->log->debug('_GROUPS: ' . Dumper($self->{_GROUPS}));

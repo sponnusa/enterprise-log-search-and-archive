@@ -41,7 +41,7 @@ require Exporter;
 our @ISA = qw( Exporter );
 our @EXPORT_OK = qw( epoch2iso iso2epoch );
 our @EXPORT = qw( epoch2iso iso2epoch
-	FIELD_TS FIELD_HOST FIELD_PROGRAM FIELD_CLASS_ID FIELD_RULE_ID
+	FIELD_TS FIELD_HOST FIELD_PROGRAM FIELD_CLASS_ID
 	FIELD_MSG FIELD_I0 FIELD_I1 FIELD_I2 FIELD_I3 FIELD_I4 FIELD_I5
 	FIELD_S0 FIELD_S1 FIELD_S2 FIELD_S3 FIELD_S4 FIELD_S5
 	TUPLE_SEPARATOR
@@ -51,7 +51,7 @@ use constant FIELD_TS => 0;
 use constant FIELD_HOST => 1;
 use constant FIELD_PROGRAM => 2;
 use constant FIELD_CLASS_ID => 3;
-use constant FIELD_RULE_ID => 4;
+#use constant FIELD_RULE_ID => 4;
 use constant FIELD_MSG => 5;
 use constant FIELD_I0 => 6;
 use constant FIELD_I1 => 7;
@@ -73,10 +73,13 @@ use constant REVALIDATE => -2;
 
 our $Field_order_to_attr = {
 	0 => 'timestamp',
+	100 => 'minute',
+	101 => 'hour',
+	102 => 'day',
 	1 => 'host_id',
 	2 => 'program_id',
 	3 => 'class_id',
-	4 => 'rule_id',
+	#4 => 'rule_id',
 	
 	6 => 'attr_i0',
 	7 => 'attr_i1',
@@ -105,10 +108,13 @@ our $Field_order_to_field = {
 
 our $Field_to_order = {
 	'timestamp' => 0,
+	'minute' => 100,
+	'hour' => 101,
+	'day' => 102,
 	'host' => 1,
 	'program' => 2,
 	'class' => 3,
-	'rule' => 4,
+	#'rule' => 4,
 	'msg' => 5,
 	'i0' => 6,
 	'i1' => 7,
