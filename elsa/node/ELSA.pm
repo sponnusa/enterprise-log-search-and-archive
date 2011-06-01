@@ -393,7 +393,7 @@ sub get_classes_by_name {
 	
 	my %class_ids;
 	while (my $row = $sth->fetchrow_hashref){
-		$class_ids{ $row->{class} } = $row->{id};
+		$class_ids{ lc($row->{class}) } = $row->{id};
 	}
 	return \%class_ids;
 }

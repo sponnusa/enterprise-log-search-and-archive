@@ -166,7 +166,7 @@ sub _archive_query {
 	
 	# Check to see if the class was given in meta params
 	if ($self->{_META_PARAMS}->{class}){
-		$self->{_GIVEN_CLASSES}->{ sprintf("%d", $self->{_KNOWN_CLASSES}->{ $self->{_META_PARAMS}->{class} }) } = 1;
+		$self->{_GIVEN_CLASSES}->{ sprintf("%d", $self->{_KNOWN_CLASSES}->{ lc($self->{_META_PARAMS}->{class}) }) } = 1;
 	}
 	
 	# Check for meta limit
@@ -174,8 +174,6 @@ sub _archive_query {
 		$self->{_LIMIT} = sprintf("%d", $self->{_META_PARAMS}->{limit});
 		$self->log->debug("Set limit " . $self->{_LIMIT});
 	}
-	
-	my $classes = $self->get_classes_by_name();
 	
 	my %attrs;
 
@@ -246,7 +244,8 @@ sub _archive_query {
 			alias => 'class',
 			callback => sub {
 		        my ($col, $op, $val) = @_;
-		        return "$col $op " . $classes->{$val};
+		        throw_e error => 'Invalid class: ' . $val unless defined $self->{_KNOWN_CLASSES}->{ lc($val) };
+		        return "$col $op " . $self->{_KNOWN_CLASSES}->{ lc($val) };
 			},
 		},
 		'msg' => {
@@ -1546,7 +1545,7 @@ sub _parse_query_string {
 	
 	# Check to see if the class was given in meta params
 	if ($self->{_META_PARAMS}->{class}){
-		$self->{_GIVEN_CLASSES}->{ sprintf("%d", $self->{_KNOWN_CLASSES}->{ $self->{_META_PARAMS}->{class} }) } = 1;
+		$self->{_GIVEN_CLASSES}->{ sprintf("%d", $self->{_KNOWN_CLASSES}->{ lc($self->{_META_PARAMS}->{class}) }) } = 1;
 	}
 	
 	# If no class was given anywhere, see if we can divine it from a groupby or local_groupby
@@ -2063,13 +2062,7 @@ sub _parse_query_term {
 			elsif ($term_hash->{field} eq 'class'){
 				# special case for class
 				my $class;
-				if ($self->{_KNOWN_CLASSES}->{ $term_hash->{value} }){
-					$class = $self->{_KNOWN_CLASSES}->{ $term_hash->{value} };
-				}
-				elsif ($self->{_KNOWN_CLASSES}->{ uc($term_hash->{value}) }){
-					$class = $self->{_KNOWN_CLASSES}->{ uc($term_hash->{value}) };
-				}
-				elsif ($self->{_KNOWN_CLASSES}->{ lc($term_hash->{value}) }){
+				if ($self->{_KNOWN_CLASSES}->{ lc($term_hash->{value}) }){
 					$class = $self->{_KNOWN_CLASSES}->{ lc($term_hash->{value}) };
 				}
 				else {
