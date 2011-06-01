@@ -432,24 +432,39 @@ YAHOO.ELSA.Query = function(){
 				var sClass = aField[0];
 				var sField = aField[1];
 				if (!sField){
-					oQ.value = oQ.value += ' ' + this.queryBoolean + sClass + p_Op + p_sValue;
+					sField = sClass;
+					sClass = '';
+				}
+				
+				if (sClass == 'any' || sClass == ''){ //special case for 'any' class as it causes issues on the backend
+					var oTimeConversions = {
+						'timestamp': 1,
+						'minute': 60,
+						'hour': 3600,
+						'day': 86400
+					};
+					if (oTimeConversions[sField]){
+						var oStartDate = getDateFromISO(p_sValue);
+						var iMs = oStartDate.getTime();
+						logger.log('adding ' + (oTimeConversions[sField] * 1000) + ' to ' + iMs);
+						iMs += (oTimeConversions[sField] * 1000);
+						var oEndDate = new Date();
+						oEndDate.setTime(iMs);
+						YAHOO.util.Dom.get('start_time').value = getISODateTime(oStartDate);
+						YAHOO.util.Dom.get('end_time').value = getISODateTime(oEndDate);
+					}
+					else {
+						this.terms[p_sField] = p_sValue;
+						oQ.value += ' ' + this.queryBoolean + sField + p_Op + p_sValue;
+					}
 				}
 				else {
 					this.terms[p_sField] = p_sValue;
-					if (sClass === 'any'){ //special case for 'any' class as it causes issues on the backend
-						oQ.value = oQ.value += ' ' + this.queryBoolean + sField + p_Op + p_sValue;
-					}
-					else {
-						oQ.value = oQ.value += ' ' + this.queryBoolean + sClass + '.' + sField + p_Op + p_sValue;
-					}
+					oQ.value += ' ' + this.queryBoolean + sClass + '.' + sField + p_Op + p_sValue;
 				}
+				
 				oEl.removeClass('invalid');
 				return true;
-			}
-			else {
-				//YAHOO.ELSA.Error('invalid value ' + p_sValue + ' given for field ' + p_sField);
-				oEl.addClass('invalid');
-				return false;
 			}
 		}
 		else {
@@ -507,16 +522,30 @@ YAHOO.ELSA.Query = function(){
 	this.validateTerm = function(p_sFQDNField, p_sValue){
 		logger.log('validating ' + p_sFQDNField + ':' + p_sValue);
 		var oField;
-		if (p_sFQDNField === 'class' || p_sFQDNField === 'program'){
-			return this.validateMeta(p_sFQDNField, p_sValue);
+		var oMetas = {
+			'class': 1,
+			'any.class': 1,
+			'program': 1,
+			'any.program': 1,
+			'timestamp': 1,
+			'any.timestamp': 1,
+			'minute': 1,
+			'any.minute': 1,
+			'hour': 1,
+			'any.hour': 1,
+			'day': 1,
+			'any.day': 1
+		};
+		if (oMetas[p_sFQDNField]){
+			return this.validateMeta(p_sFQDNField, oMetas[p_sFQDNField]);
 		}
-		for (var i = 0; i < YAHOO.ELSA.formParams.fields.length; i++){
-			if (YAHOO.ELSA.formParams.fields[i].fqdn_field == p_sFQDNField){
-				oField = YAHOO.ELSA.formParams.fields[i];
+		for (var i = 0; i < YAHOO.WISC.formParams.fields.length; i++){
+			if (YAHOO.WISC.formParams.fields[i].fqdn_field == p_sFQDNField){
+				oField = YAHOO.WISC.formParams.fields[i];
 				break;
 			}
-			else if (YAHOO.ELSA.formParams.fields[i].value == p_sFQDNField){
-				oField = YAHOO.ELSA.formParams.fields[i];
+			else if (YAHOO.WISC.formParams.fields[i].value == p_sFQDNField){
+				oField = YAHOO.WISC.formParams.fields[i];
 				break;
 			}
 		}

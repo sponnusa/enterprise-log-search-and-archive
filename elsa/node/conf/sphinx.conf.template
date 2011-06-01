@@ -12,7 +12,8 @@ searchd {
         max_matches = 1000
         max_packet_size = 8M
         max_batch_queries = 1000
-        mva_updates_pool = 1M
+        subtree_docs_cache = 8M
+        subtree_hits_cache = 16M
         pid_file = /data/sphinx/log/searchd.pid
         preopen_indexes = 0
         query_log = /data/sphinx/log/query.log
@@ -24,10 +25,12 @@ searchd {
 }
 source permanent {
         sql_attr_timestamp = timestamp
+        sql_attr_uint = minute
+        sql_attr_uint = hour
+        sql_attr_uint = day
         sql_attr_uint = host_id
         sql_attr_uint = program_id
         sql_attr_uint = class_id
-        sql_attr_uint = rule_id
         sql_attr_uint = attr_i0
         sql_attr_uint = attr_i1
         sql_attr_uint = attr_i2
@@ -39,7 +42,7 @@ source permanent {
         sql_pass =
         sql_range_step = 10000
         sql_user = root
-        sql_query = SELECT id, timestamp, host_id, host_id AS host, program_id, class_id, rule_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
+        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
         type = mysql
 }
 index permanent {
@@ -55,10 +58,12 @@ index permanent {
 
 source temporary {
         sql_attr_timestamp = timestamp
+        sql_attr_uint = minute
+        sql_attr_uint = hour
+        sql_attr_uint = day
         sql_attr_uint = host_id
         sql_attr_uint = program_id
         sql_attr_uint = class_id
-        sql_attr_uint = rule_id
         sql_attr_uint = attr_i0
         sql_attr_uint = attr_i1
         sql_attr_uint = attr_i2
@@ -70,7 +75,7 @@ source temporary {
         sql_pass =
         sql_range_step = 100000
         sql_user = root
-        sql_query = SELECT id, timestamp, host_id, host_id AS host, program_id, class_id, rule_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
+        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
         type = mysql
 }
 index temporary {

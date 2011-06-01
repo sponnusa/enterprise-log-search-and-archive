@@ -270,30 +270,6 @@ YAHOO.ELSA.main = function () {
 					enterKeyListener.enable();
 				}
 				
-				// Get programs for class none
-				var aClassNoneProgramItemData = [];
-				// get id for program none
-				var iNoneClassId;
-				for (var i in YAHOO.ELSA.formParams.classes){
-					if ('none' === YAHOO.ELSA.formParams.classes[i]){
-						iNoneClassId = i;
-						break;
-					}
-				}
-				logger.log('iNoneClassId', iNoneClassId);
-				logger.log(YAHOO.ELSA.formParams.programs[iNoneClassId]);
-				for (var sNoneProgram in YAHOO.ELSA.formParams.programs[iNoneClassId]){
-					aClassNoneProgramItemData.push({
-						text: sNoneProgram,
-						value: YAHOO.ELSA.formParams.programs[iNoneClassId][sNoneProgram], 
-						onclick: { 
-							fn: onTermMetaSelectionClick,
-							obj: { className:'none', program:sNoneProgram }
-						} 
-					});
-				}
-				logger.log('aClassNoneProgramItemData', aClassNoneProgramItemData);
-				
 				// Build term selection menu
 				var oFields = {
 					'hosts': {
@@ -312,13 +288,6 @@ YAHOO.ELSA.main = function () {
 									fn: onTermMetaSelectionClick,
 									obj: { className:'none', id:'none' }
 								}
-							},
-							{
-								text: 'Program',
-								submenu: {
-									id: 'none_program',
-									itemdata: aClassNoneProgramItemData
-								}
 							}
 						] }
 					}
@@ -330,8 +299,6 @@ YAHOO.ELSA.main = function () {
 						continue;
 					}
 					if (!oFields[sClass]){
-						// build programs menu
-						var oProgramMenuSources = [];
 						// find class id
 						var iClassId;
 						for (var j in YAHOO.ELSA.formParams.classes){
@@ -339,16 +306,6 @@ YAHOO.ELSA.main = function () {
 								iClassId = j;
 								break;
 							}
-						}
-						for (var sProgram in YAHOO.ELSA.formParams.programs[iClassId]){
-							oProgramMenuSources.push({
-								text: sProgram, 
-								value: YAHOO.ELSA.formParams.programs[iClassId][sProgram], 
-								onclick: { 
-									fn: onTermMetaSelectionClick,
-									obj: { className:sClass, program:sProgram }
-								}
-							});
 						}
 						
 						oFields[sClass] = {
@@ -360,13 +317,6 @@ YAHOO.ELSA.main = function () {
 									onclick: { 
 										fn: onTermMetaSelectionClick,
 										obj: { className:sClass, id:sClass }
-									}
-								},
-								{
-									text: 'Program',
-									submenu: {
-										id: sClass + '_program',
-										itemdata: oProgramMenuSources
 									}
 								}
 							] }
