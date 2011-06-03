@@ -148,7 +148,7 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 		},
 		y_axis:{
 			max:this.ymax,
-			steps:5
+			steps:(this.ymax / 10)
 		}
 	}
 	this.cfg = chartCfg;
