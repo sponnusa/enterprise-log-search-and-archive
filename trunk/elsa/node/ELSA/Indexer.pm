@@ -32,12 +32,6 @@ our $Timeout = 30;
 our $Run = 1;
 our $Sphinx_agent_query_timeout = 300;
 our @Sphinx_extensions = qw( spp sph spi spl spm spa spk spd );
-our $Sphinx_index_sql_query_template = 'SELECT id, timestamp, host_id, host_id AS host, program_id, ' .
-	'class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5, ' .
-	'i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, ' .
-	'i4 AS attr_i4, i5 AS attr_i5 ' .
-	'FROM %s WHERE id >= $start AND id <= $end';
-our $Sphinx_index_sql_query_range_template = 'SELECT %lu, %lu FROM dual';
 our $Index_retry_limit = 3;
 our $Index_retry_time = 5;
 
@@ -888,7 +882,7 @@ sub get_lock {
 	my $ok;
 	my $lockfile = $self->conf->get('lockfile_dir') . '/' . $lock_name;
 	eval {
-		open($self->{_LOCKS}->{$lock_name}, $lockfile) or die('Unable to open ' . $lockfile);
+		open($self->{_LOCKS}->{$lock_name}, $lockfile) or die('Unable to open ' . $lockfile . ': ' . $!);
 		$ok = flock($self->{_LOCKS}->{$lock_name}, LOCK_EX);
 	};
 	if ($@){
@@ -908,7 +902,7 @@ sub release_lock {
 	my $ok;
 	my $lockfile = $self->conf->get('lockfile_dir') . '/' . $lock_name;
 	eval {
-		open($self->{_LOCKS}->{$lock_name}, $lockfile) or die('Unable to open ' . $lockfile . ' :' . $!);
+		open($self->{_LOCKS}->{$lock_name}, $lockfile) or die('Unable to open ' . $lockfile . ': ' . $!);
 		$ok = flock($self->{_LOCKS}->{$lock_name}, LOCK_UN);
 		close($self->{_LOCKS}->{$lock_name});
 	};
@@ -1322,7 +1316,7 @@ source perm_%1\$d : permanent {
         sql_query_pre = SELECT table_name INTO \@src_table FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"
         sql_query_pre = SELECT IF(NOT ISNULL(\@src_table), \@src_table, "$ELSA::Meta_db_name.init") INTO \@src_table FROM dual
         sql_query_pre = SELECT IF((SELECT first_id FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"), (SELECT first_id FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"), 1), IF((SELECT last_id FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"), (SELECT last_id FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"), 1) INTO \@first_id, \@last_id FROM dual
-        sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
+        sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
         sql_query_pre = PREPARE stmt FROM \@sql
         sql_query = EXECUTE stmt 
 }
@@ -1338,7 +1332,7 @@ source temp_%1\$d : temporary {
         sql_query_pre = SELECT table_name INTO \@src_table FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"
         sql_query_pre = SELECT IF(NOT ISNULL(\@src_table), \@src_table, "$ELSA::Meta_db_name.init") INTO \@src_table FROM dual
         sql_query_pre = SELECT IF((SELECT first_id FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"), (SELECT first_id FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"), 1), IF((SELECT last_id FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"), (SELECT last_id FROM $ELSA::Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"), 1) INTO \@first_id, \@last_id FROM dual
-        sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
+        sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
         sql_query_pre = PREPARE stmt FROM \@sql
         sql_query = EXECUTE stmt 
 }
