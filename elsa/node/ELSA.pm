@@ -47,24 +47,24 @@ our @EXPORT = qw( epoch2iso iso2epoch
 	TUPLE_SEPARATOR
 );
 
-use constant FIELD_TS => 0;
+use constant FIELD_TIMESTAMP => 0;
 use constant FIELD_HOST => 1;
 use constant FIELD_PROGRAM => 2;
 use constant FIELD_CLASS_ID => 3;
 #use constant FIELD_RULE_ID => 4;
-use constant FIELD_MSG => 5;
-use constant FIELD_I0 => 6;
-use constant FIELD_I1 => 7;
-use constant FIELD_I2 => 8;
-use constant FIELD_I3 => 9;
-use constant FIELD_I4 => 10;
-use constant FIELD_I5 => 11;
-use constant FIELD_S0 => 12;
-use constant FIELD_S1 => 13;
-use constant FIELD_S2 => 14;
-use constant FIELD_S3 => 15;
-use constant FIELD_S4 => 16;
-use constant FIELD_S5 => 17;
+use constant FIELD_MSG => 4;
+use constant FIELD_I0 => 5;
+use constant FIELD_I1 => 6;
+use constant FIELD_I2 => 7;
+use constant FIELD_I3 => 8;
+use constant FIELD_I4 => 9;
+use constant FIELD_I5 => 10;
+use constant FIELD_S0 => 11;
+use constant FIELD_S1 => 12;
+use constant FIELD_S2 => 13;
+use constant FIELD_S3 => 14;
+use constant FIELD_S4 => 15;
+use constant FIELD_S5 => 16;
 
 use constant TUPLE_SEPARATOR => ':';
 
@@ -81,29 +81,29 @@ our $Field_order_to_attr = {
 	3 => 'class_id',
 	#4 => 'rule_id',
 	
-	6 => 'attr_i0',
-	7 => 'attr_i1',
-	8 => 'attr_i2',
-	9 => 'attr_i3',
-	10 => 'attr_i4',
-	11 => 'attr_i5',
+	5 => 'attr_i0',
+	6 => 'attr_i1',
+	7 => 'attr_i2',
+	8 => 'attr_i3',
+	9 => 'attr_i4',
+	10 => 'attr_i5',
 };
 
 our $Field_order_to_field = {
 	1 => 'host',
 	5 => 'msg',
-	6 => 'i0',
-	7 => 'i1',
-	8 => 'i2',
-	9 => 'i3',
-	10 => 'i4',
-	11 => 'i5',
-	12 => 's0',
-	13 => 's1',
-	14 => 's2',
-	15 => 's3',
-	16 => 's4',
-	17 => 's5',
+	5 => 'i0',
+	6 => 'i1',
+	7 => 'i2',
+	8 => 'i3',
+	9 => 'i4',
+	10 => 'i5',
+	11 => 's0',
+	12 => 's1',
+	13 => 's2',
+	14 => 's3',
+	15 => 's4',
+	16 => 's5',
 };
 
 our $Field_to_order = {
@@ -115,19 +115,19 @@ our $Field_to_order = {
 	'program' => 2,
 	'class' => 3,
 	#'rule' => 4,
-	'msg' => 5,
-	'i0' => 6,
-	'i1' => 7,
-	'i2' => 8,
-	'i3' => 9,
-	'i4' => 10,
-	'i5' => 11,
-	's0' => 12,
-	's1' => 13,
-	's2' => 14,
-	's3' => 15,
-	's4' => 16,
-	's5' => 17,
+	'msg' => 4,
+	'i0' => 5,
+	'i1' => 6,
+	'i2' => 7,
+	'i3' => 8,
+	'i4' => 9,
+	'i5' => 10,
+	's0' => 11,
+	's1' => 12,
+	's2' => 13,
+	's3' => 14,
+	's4' => 15,
+	's5' => 16,
 };
 
 sub new {

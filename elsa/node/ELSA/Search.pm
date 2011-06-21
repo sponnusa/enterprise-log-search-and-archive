@@ -268,6 +268,20 @@ sub _archive_query {
 			callback => $callback,
 		};
 	}
+	
+	# Set host column
+	delete $columns->{host}; # this will be wrong from the above loop, we need to create an algorithm
+	$columns->{host_id} = {
+		name => 'host_id',
+		type => 'integer',
+		alias => 'host',
+		callback => sub {
+			my ($col, $op, $val) = @_;
+			my $intval = unpack('N*', inet_aton($val));
+	        throw_e error => 'Invalid host: ' . $val unless $intval;
+	        return "$col $op $intval";
+		}
+	};
 		
 	#$self->log->debug('columns: ' . Dumper($columns));
 	
@@ -422,7 +436,7 @@ sub _archive_query {
 			$query = sprintf("SELECT main.id,\n" .
 				"\"" . $self->conf->get('manager/server_name') . "\" AS node,\n" .
 				"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
-				"INET_NTOA(host_id) AS host, program, class_id, class, rule_id, msg,\n" .
+				"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
 				"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 				"FROM %s main\n" .
 				"JOIN syslog.programs ON main.program_id=programs.id\n" .
@@ -736,7 +750,7 @@ sub get_row_content {
 					$query = sprintf("SELECT main.id,\n" .
 						"\"" . $self->conf->get('manager/server_name') . "\" AS node,\n" .
 						"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
-						"INET_NTOA(host_id) AS host, program, class_id, class, rule_id, msg,\n" .
+						"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
 						"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 						"FROM %s main\n" .
 						"LEFT JOIN syslog.programs ON main.program_id=programs.id\n" .
@@ -912,6 +926,15 @@ sub _set_sphinx_global_filters {
 		$sphinx->SetFilterRange('timestamp', 0, $self->{_END_INT});
 	}
 	
+	foreach my $boolean qw(range_and range_not){
+		foreach my $attr (keys %{ $self->{_ATTR_TERMS}->{$boolean}->{0} }){
+			foreach my $filter_hash (@{ $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} }){
+				$self->log->trace('Setting global filter range: ' . join(', ', $boolean, $filter_hash->{attr}, $filter_hash->{min}, $filter_hash->{max}, $filter_hash->{exclude}));
+				$sphinx->SetFilterRange($filter_hash->{attr}, $filter_hash->{min}, $filter_hash->{max}, $filter_hash->{exclude});
+			}
+		}
+	}
+	
 	# Apply all-class filters (attributes with class_id 0)
 	# ANDs
 	if ($self->{_ATTR_TERMS}->{and}->{0}){
@@ -940,16 +963,6 @@ sub _set_sphinx_global_filters {
 				and scalar keys %{ $self->{_ATTR_TERMS}->{not}->{0}->{$attr} }){
 				$self->log->trace('Setting global filter NOT ' . $attr . ' ' . join(' ', keys %{ $self->{_ATTR_TERMS}->{not}->{0}->{$attr} }));
 				$sphinx->SetFilter($attr, [ keys %{ $self->{_ATTR_TERMS}->{not}->{0}->{$attr} } ], 1);
-			}
-		}
-	}
-	
-	# Loop through and see if we have "between" statements where min and max are supplied by two separate range ops
-	foreach my $boolean qw(range_and range_not){
-		foreach my $attr (keys %{ $self->{_ATTR_TERMS}->{$boolean}->{0} }){
-			foreach my $filter_hash (@{ $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} }){
-				$self->log->trace('Setting global filter range: ' . join(', ', $boolean, $filter_hash->{attr}, $filter_hash->{min}, $filter_hash->{max}, $filter_hash->{exclude}));
-				$sphinx->SetFilterRange($filter_hash->{attr}, $filter_hash->{min}, $filter_hash->{max}, $filter_hash->{exclude});
 			}
 		}
 	}
@@ -995,7 +1008,23 @@ sub _execute {
 					push @deduped, $filter_hash;
 				}
 			}
-			$self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} = [ @deduped ];
+			
+			# Remove any ranges eclipsed by larger ranges
+			my @final;
+			$self->log->debug('uniq: ' . Dumper(\%uniq));
+			$self->log->debug('deduped: ' . Dumper(\@deduped));
+			FILTER_LOOP: foreach my $filter_hash (@deduped){
+				$self->log->debug('eval for eclipse: ' . Dumper($filter_hash));
+				foreach my $min (keys %uniq){
+					if ($min < $filter_hash->{min} and $filter_hash->{max} < $uniq{$min}){
+						$self->log->debug('min ' . $min . ' eclipsed by ' . $filter_hash->{min} . ' and ' . $uniq{$min} . ' ' . $filter_hash->{max});
+						next FILTER_LOOP;
+					}
+				}
+				push @final, $filter_hash;
+			}
+			
+			$self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} = [ @final ];
 		}
 	}
 	
@@ -1012,10 +1041,17 @@ sub _execute {
 			# Find any stray values from single attr_id's included in AND and OR booleans.  
 			#  These will have to count when finding the blanket min/max values for the umbrella include
 			foreach my $and_or_boolean qw(and or){
-				foreach my $val (@{ $self->{_ATTR_TERMS}->{$and_or_boolean}->{0}->{$attr} }){
-					push @values, $val;
+				if (ref($self->{_ATTR_TERMS}->{$and_or_boolean}->{0}->{$attr}) eq 'HASH'){
+					foreach my $val (keys %{ $self->{_ATTR_TERMS}->{$and_or_boolean}->{0}->{$attr} }){
+						push @values, $val, $val;
+					}
 				}
-			}	
+				elsif (ref($self->{_ATTR_TERMS}->{$and_or_boolean}->{0}->{$attr}) eq 'ARRAY'){
+					foreach my $val (@{ $self->{_ATTR_TERMS}->{$and_or_boolean}->{0}->{$attr} }){
+						push @values, $val, $val;
+					}
+				}
+			}
 							
 			foreach my $filter_hash (@{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }){
 				push @values, $filter_hash->{min};
@@ -1023,6 +1059,9 @@ sub _execute {
 			}
 			@values = sort { $a <=> $b } @values;
 			$self->log->debug('values: ' . join(',', @values));
+			
+			delete $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr}; # clear what was there
+			
 			# Set the wide include
 			push @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, { attr => $attr, min => $values[0], max => $values[-1], exclude => 0 };
 			$self->log->debug('including ' . $values[0] . '-' . $values[-1]);
@@ -1030,10 +1069,11 @@ sub _execute {
 			# Set the individual excludes
 			for (my $i = 1; $i < ((scalar @values) - 1); $i += 2){
 				my ($min, $max) = ($values[$i], $values[$i+1]);
-				if ($max - $min > 1){
-					$min++;
-					$max--;
+				if ($max - $min <= 1){
+					next;
 				}
+				$min++;
+				$max--;
 				$self->log->debug('excluding ' . $min . '-' . $max);
 				push @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, { attr => $attr, min => $min, max => $max, exclude => 1 };
 			}
@@ -1837,41 +1877,55 @@ sub _parse_query_string {
 				$self->log->debug('boolean: ' . Dumper($self->{_ATTR_TERMS}->{$boolean}));
 				foreach my $id (keys %{ $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr} }){
 					unless($self->_is_permitted($attr, $id)){
-						$self->log->warn("Excluding id $id from $attr based on permissions");
+						$self->log->error("Excluding id $id from $attr based on permissions");
+						throw_e error => "Insufficient permissions to query $id from $attr";
 						my $deleted = delete $self->{_ATTR_TERMS}->{$boolean}->{0}->{$attr}->{$id};
-						$self->log->debug('deleted: ' . $id);
-						$num_removed_terms++;
-					}
-				}
-			}
-			# Handle range_and
-			if ($self->{_ATTR_TERMS}->{range_and} 
-				and $self->{_ATTR_TERMS}->{range_and}->{0} 
-				and $self->{_ATTR_TERMS}->{range_and}->{$attr}){
-				$self->log->debug('boolean: ' . Dumper($self->{_ATTR_TERMS}->{range_and}));
-				foreach my $id (keys %{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }){
-					$id =~ /^(\d+)\-(\d+)$/;
-					my ($min, $max) = ($1, $2);
-					unless ($self->_is_permitted($attr, $min) and $self->_is_permitted($attr, $max)){
-						my $deleted = delete $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr}->{$id};
-						$self->log->debug('deleted: ' . $id);
 						$num_removed_terms++;
 					}
 				}
 			}
 			
-			# Add required items to filter
-			foreach my $id (keys %{ $self->{_META_PARAMS}->{permissions}->{$attr} }){
-				$self->log->debug("Adding id $id to $attr based on permissions");
-				# Deal with ranges
-				if ($id =~ /(\d+)\-(\d+)/){
-					$self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} ||= [];
-					push @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, { attr => $attr, min => $1, max => $2, exclude => 0 };
+			# Handle range_and
+			if ($self->{_ATTR_TERMS}->{range_and} 
+				and $self->{_ATTR_TERMS}->{range_and}->{0} 
+				and $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr}){
+				$self->log->debug('boolean: ' . Dumper($self->{_ATTR_TERMS}->{range_and}));
+				for (my $i = 0; $i < scalar @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }; $i++){
+					my $hash = $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr}->[$i];
+					unless ($self->_is_permitted($attr, $hash->{min}) and $self->_is_permitted($attr, $hash->{max})){
+						$self->log->error('Excluding based on permissions: ' . Dumper($hash));
+						throw_e error => 'Insufficient permissions to query: ' . Dumper($hash);
+						splice(@{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, $i, 1);
+						$num_removed_terms++;
+					}
 				}
-				else {
-					push @{ $self->{_ATTR_TERMS}->{and}->{0}->{$attr} }, $id;
+			}
+			
+			# Add required items to filter if no filter exists
+			unless (($self->{_ATTR_TERMS}->{range_and} 
+				and $self->{_ATTR_TERMS}->{range_and}->{0} 
+				and $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr}
+				and scalar @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} })
+				or ($self->{_ATTR_TERMS}->{and} 
+				and $self->{_ATTR_TERMS}->{and}->{0} 
+				and $self->{_ATTR_TERMS}->{and}->{0}->{$attr}
+				and scalar keys %{ $self->{_ATTR_TERMS}->{and}->{0}->{$attr} })
+				or ($self->{_ATTR_TERMS}->{or} 
+				and $self->{_ATTR_TERMS}->{or}->{0} 
+				and $self->{_ATTR_TERMS}->{or}->{0}->{$attr}
+				and scalar keys %{ $self->{_ATTR_TERMS}->{or}->{0}->{$attr} })){
+				foreach my $id (keys %{ $self->{_META_PARAMS}->{permissions}->{$attr} }){
+					$self->log->debug("Adding id $id to $attr based on permissions");
+					# Deal with ranges
+					if ($id =~ /(\d+)\-(\d+)/){
+						$self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} ||= [];
+						push @{ $self->{_ATTR_TERMS}->{range_and}->{0}->{$attr} }, { attr => $attr, min => $1, max => $2, exclude => 0 };
+					}
+					else {
+						push @{ $self->{_ATTR_TERMS}->{and}->{0}->{$attr} }, $id;
+					}
+					$num_added_terms++;
 				}
-				$num_added_terms++;
 			}
 		}
 	}
@@ -1883,9 +1937,12 @@ sub _parse_query_string {
 				if ($self->_is_permitted('host_id', $host_int)){
 					$self->log->debug('adding host_int ' . $host_int);
 					push @{ $self->{_ANY_FIELD_TERMS}->{$boolean} }, '(@host ' . $host_int . ')';
+					# Also add as an attr
+					push @{ $self->{_ATTR_TERMS}->{$boolean}->{0}->{host_id} }, $host_int;
 				}
 				else {
-					$self->log->warn('Denying host_int ' . $host_int);
+					$self->log->error('Denying host_int ' . $host_int);
+					throw_e error => "Insufficient permissions to query host_int $host_int";
 					$num_removed_terms++;
 				}
 			}
@@ -1938,7 +1995,12 @@ sub _parse_query_string {
 				next unless $self->{$term_type}->{$boolean};
 				foreach my $class_id (keys %{ $self->{$term_type}->{$boolean} }){
 					foreach my $attr (keys %{ $self->{$term_type}->{$boolean}->{$class_id} }){
-						$query_term_count += scalar @{ $self->{$term_type}->{$boolean}->{$class_id}->{$attr} };
+						if (ref($self->{$term_type}->{$boolean}->{$class_id}->{$attr}) eq 'ARRAY'){
+							$query_term_count += scalar @{ $self->{$term_type}->{$boolean}->{$class_id}->{$attr} };
+						}
+						elsif (ref($self->{$term_type}->{$boolean}->{$class_id}->{$attr}) eq 'HASH'){
+							$query_term_count += scalar keys %{ $self->{$term_type}->{$boolean}->{$class_id}->{$attr} };
+						}
 					}
 				}
 			}
@@ -1958,7 +2020,7 @@ sub _parse_query_string {
 	
 	$self->log->debug('query_term_count: ' . $query_term_count . ', num_added_terms: ' . $num_added_terms);
 	
-	unless ($query_term_count){
+	unless ($query_term_count and $query_term_count > $num_added_terms){
 		my $e = 'All query terms were stripped based on permissions or they were too common';
 		$self->log->error($e);
 		throw_e error => $e;
@@ -2372,7 +2434,8 @@ sub _is_permitted {
 	my $self = shift;
 	my ($attr, $attr_id) = @_;
 	
-	if ($self->{_META_PARAMS}->{permissions}->{$attr}->{$attr_id}){
+	if ($self->{_META_PARAMS}->{permissions}->{$attr}->{0} # all are allowed
+		or $self->{_META_PARAMS}->{permissions}->{$attr}->{$attr_id}){
 		return 1;
 	}
 	else {
