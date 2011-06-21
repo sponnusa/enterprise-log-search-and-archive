@@ -194,7 +194,6 @@ sub _parse_line {
 	# Fix class_id for "unknown"
     if ($line[FIELD_CLASS_ID] eq 'unknown'){
     	$line[FIELD_CLASS_ID] = $self->_get_default_class(\@line);
-    	$line[FIELD_RULE_ID] = 1;
     }
 		        
 	# If we're configured to do so, we'll tolerate missing a missing field and make up a default
@@ -206,8 +205,8 @@ sub _parse_line {
 				parse_error => "Unable to parse log line: no host or msg.  Only parsed into:\n" . Dumper(\@line), 
 				text => $raw_line;
 		}
-		unless ($line[FIELD_TS]){
-			$line[FIELD_TS] = time();
+		unless ($line[FIELD_TIMESTAMP]){
+			$line[FIELD_TIMESTAMP] = time();
 			$self->log->error('Missing required field timestamp') if $self->conf->get('log_parse_errors');
 			$missing_fields++;
 		}
@@ -221,12 +220,7 @@ sub _parse_line {
 			$self->log->error('Missing required field class id') if $self->conf->get('log_parse_errors');
 			$missing_fields++;
 		}
-		unless ($line[FIELD_RULE_ID]){
-			$line[FIELD_RULE_ID] = '1';
-			$self->log->error('Missing required field rule id') if $self->conf->get('log_parse_errors');
-			$missing_fields++;
-		}
-			
+		
 		if ($missing_fields > $Missing_field_tolerance){
 			throw_parse 
 				parse_error => "Unable to parse log line: not enough fields.  Only parsed into:\n" . Dumper(\@line), 
@@ -235,7 +229,7 @@ sub _parse_line {
 	}
 	else {
 		# No tolerance for any missing fields
-		unless ($line[FIELD_TS] and $line[FIELD_CLASS_ID] and $line[FIELD_HOST] and
+		unless ($line[FIELD_TIMESTAMP] and $line[FIELD_CLASS_ID] and $line[FIELD_HOST] and
 			$line[FIELD_PROGRAM] and $line[FIELD_MSG]){
 			throw_parse 
 				parse_error => "Unable to parse log line: no tolerance for missing fields.  Only parsed into:\n" . Dumper(\@line), 
@@ -291,11 +285,11 @@ sub _parse_line {
 	
 	# Update start/end times if necessary
 	if ($self->{_OFFLINE_PROCESSING}){
-		if ($line[FIELD_TS] < $self->{_OFFLINE_PROCESSING_START}){
-			$self->{_OFFLINE_PROCESSING_START} = $line[FIELD_TS];
+		if ($line[FIELD_TIMESTAMP] < $self->{_OFFLINE_PROCESSING_START}){
+			$self->{_OFFLINE_PROCESSING_START} = $line[FIELD_TIMESTAMP];
 		}
-		if ($line[FIELD_TS] > $self->{_OFFLINE_PROCESSING_END}){
-			$self->{_OFFLINE_PROCESSING_END} = $line[FIELD_TS];
+		if ($line[FIELD_TIMESTAMP] > $self->{_OFFLINE_PROCESSING_END}){
+			$self->{_OFFLINE_PROCESSING_END} = $line[FIELD_TIMESTAMP];
 		}
 	}
 		
