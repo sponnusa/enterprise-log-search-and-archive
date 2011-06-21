@@ -33,7 +33,7 @@ use ELSA::Indexer;
 
 my %opts;
 getopt('Dc:', \%opts);
-my $config_file = '/usr/local/elsa/etc/elsa.conf';
+my $config_file = -f '/etc/elsa.conf' ? '/etc/elsa.conf' : '/usr/local/elsa/etc/elsa.conf';
 if ($opts{c}){
 	$config_file = $opts{c};
 }
