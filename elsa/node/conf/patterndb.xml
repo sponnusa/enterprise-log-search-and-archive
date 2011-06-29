@@ -258,7 +258,7 @@
 					<pattern>Failed @ESTRING:s0: @for illegal user @ESTRING:s1: @from @ESTRING:s2: @port @ESTRING:i0: @@ANYSTRING:s3@</pattern>
 				</patterns>
 			</rule>
-			<rule class="13" id="13>
+			<rule class="13" id="13">
 				<patterns>
 					<!-- s0=usracct.username -->
 					<pattern>pam_unix(sshd:session): session closed for user @ANYSTRING:s0:@</pattern>
