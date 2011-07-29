@@ -126,11 +126,11 @@ function getDateFromISO(sIsoDate){
 		aMatches[i] = str;
 	}
 	date.setFullYear(parseInt(aMatches[1]));
-	date.setMonth(parseInt(aMatches[2]) - 1);
 	date.setDate(parseInt(aMatches[3]));
 	date.setHours(parseInt(aMatches[4]));
 	date.setMinutes(parseInt(aMatches[5]));
 	date.setSeconds(parseInt(aMatches[6]));
+	date.setMonth(parseInt(aMatches[2]) - 1); //must go last in case the month we had doesn't have the day we've set
 	return date;
 }
 
