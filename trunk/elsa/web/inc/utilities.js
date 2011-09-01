@@ -130,7 +130,8 @@ function getDateFromISO(sIsoDate){
 	date.setHours(parseInt(aMatches[4]));
 	date.setMinutes(parseInt(aMatches[5]));
 	date.setSeconds(parseInt(aMatches[6]));
-	date.setMonth(parseInt(aMatches[2]) - 1); //must go last in case the month we had doesn't have the day we've set
+	date.setMonth(parseInt(aMatches[2]) - 1); //must do these last in case the month we had doesn't have the day we've set
+	date.setDate(parseInt(aMatches[3]));
 	return date;
 }
 
