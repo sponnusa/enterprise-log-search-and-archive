@@ -1,4 +1,5 @@
 #!/bin/sh
+cpan App::cpanminus &&
 cpanm YAML::Syck &&
 cpanm Moose &&
 cpanm IO::Socket &&

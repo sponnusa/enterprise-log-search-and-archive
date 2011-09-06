@@ -236,7 +236,7 @@ CREATE TABLE `syslogs_template` (
 ) ENGINE=MyISAM;
 
 CREATE TABLE `init` LIKE `syslogs_template`;
-INSERT INTO INIT (id, timestamp, host_id, program_id, class_id, msg) VALUES (1, 0, 1, 1, 1, "test");
+INSERT INTO init (id, timestamp, host_id, program_id, class_id, msg) VALUES (1, 0, 1, 1, 1, "test");
 
 CREATE TABLE stats (
 	timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
