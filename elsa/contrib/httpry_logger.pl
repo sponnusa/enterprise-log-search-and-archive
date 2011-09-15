@@ -3,7 +3,6 @@ use strict;
 use Data::Dumper;
 use Time::HiRes qw(time);
 use Net::Server::Daemonize qw(daemonize);
-use URI::Escape::XS qw(uri_unescape);
 use Getopt::Std;
 use Socket qw(inet_aton inet_ntoa);
 use Config::JSON;
@@ -123,10 +122,14 @@ do {
 		if ($Opts{r}){
 			$source = "-r $Opts{r}";	
 		}
-		open(FH, "-|", "httpry -q $source -f timestamp,source-ip,source-port,dest-ip,dest-port,method,host,request-uri,referer,user-agent,status-code,content-length,direction,cookie \"$Bpf\"");
+		open(FH, "-|", "httpry -q $source -f timestamp,source-ip,x-forwarded-for,source-port,dest-ip,dest-port,method,host,request-uri,referer,user-agent,status-code,content-length,direction,cookie \"$Bpf\"");
 		while (<FH>){
 			chomp;
-			my ($timestamp,$source_ip,$source_port,$dest_ip,$dest_port,$method,$host,$request_uri,$referer,$user_agent,$status_code,$content_length,$direction,$cookie) = split(/\t/, $_);
+			my ($timestamp,$source_ip,$xff,$source_port,$dest_ip,$dest_port,$method,$host,$request_uri,$referer,$user_agent,$status_code,$content_length,$direction,$cookie) = split(/\t/, $_);
+			# Use the X-Forwarded-For header if available
+			if ($xff ne '-'){
+				$source_ip = (split(/\s+/, $xff))[0];
+			}
 			my $tuple = "$source_ip:$source_port:$dest_ip:$dest_port";
 			if ($direction eq '>'){
 				my $domains = '';
@@ -145,7 +148,6 @@ do {
 					emit($state{$tuple}->{req}, $state{$tuple}->{resp} ? $state{$tuple}->{resp} : {} );
 				}
 				$state{$tuple} = {};
-				#$request_uri = uri_unescape($request_uri);
 				$request_uri =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
 				
 				$state{$tuple}->{req} = { 
