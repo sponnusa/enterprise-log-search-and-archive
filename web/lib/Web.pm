@@ -6,25 +6,16 @@ use Plack::Request;
 use Plack::Session;
 use JSON -convert_blessed_universally;
 use YUI;
-use IO::Socket;
+use Module::Pluggable require => 1, search_path => [ qw( Export Info ) ];
 
-use POE::Event::Message;
-use POE::Filter::Reference;
-use Data::Serializer;
-BEGIN {
-	$POE::Event::Message::Filter = new POE::Filter::Reference( 
-		Data::Serializer->new(
-			serializer => 'YAML::Syck',
-			portable => 1,
-		)
-	);
-}
+use API;
 
 has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
 has 'conf' => ( is => 'ro', isa => 'Config::JSON', required => 1 );
 has 'json' => (is => 'ro', isa => 'JSON', required => 1);
 has 'mode' => (is => 'rw', isa => 'Str', required => 1, default => sub { return 'index' });
 has 'session' => (is => 'rw', isa => 'Object', required => 0);
+has 'api' => (is => 'rw', isa => 'Object', required => 1);
 
 our %Modes = (
 	index => 1,
@@ -34,18 +25,16 @@ our %Modes = (
 	admin => 1,
 );
 
-sub BUILD {
-	my ($self, $params) = @_;
-	
-		
-	return $self;
-}
+#sub BUILD {
+#	my ($self, $params) = @_;
+#			
+#	return $self;
+#}
 
 sub call {
 	my ($self, $env) = @_;
     $self->session(Plack::Session->new($env));
 	my $req = Plack::Request->new($env);
-	#$self->{_USERNAME} = $req->user ? $req->user : undef;
 	my $res = $req->new_response(200); # new Plack::Response
 	$res->content_type('text/html');
 	$res->header('Access-Control-Allow-Origin' => '*');
@@ -55,11 +44,11 @@ sub call {
 	$method ||= 'index';
 	$self->log->debug('method: ' . $method);
 	if (exists $Modes{ $method }){
+		my $sub = $method;
 		if ($Modes{ $method } == 1){
-			my $user_info = $self->_get_user_info($req->user);
+			my $user_info = $self->api->get_user_info($req->user);
 			if ($user_info){
 				$self->session->set('user_info', $user_info);
-				my $sub = $method;
 				$body = $self->$sub($req);
 			}
 			else {
@@ -68,7 +57,6 @@ sub call {
 			}
 		}
 		elsif ($Modes{ $method } == 2){
-			my $sub = $method;
 			$body = $self->$sub($req);
 		}
 	}
@@ -86,117 +74,6 @@ sub _extract_method {
 	return $1;
 }
 
-sub rpc {
-	my $self = shift;
-	my $method = shift;
-	my $params = shift;
-	
-	$self->log->debug('method: ' . $method . ', params: ' . Dumper($params));
-	my $timeout = $self->conf->get('Janus/timeout');
-	if ($params and ref($params) eq 'HASH' and defined $params->{timeout}){
-		$timeout = sprintf('%d', $params->{timeout});
-		$self->log->debug('Set timeout ' . $timeout);
-	}
-	
-	my $msg = POE::Event::Message->package($params);
-	$msg->param('_user', $self->session ? $self->session->get('user_info') : undef);
-	$msg->addRouteTo('post',  $self->conf->get('Janus/session'), $method);
-	$msg->addRemoteRouteTo($self->conf->get('Janus/server'), $self->conf->get('Janus/port'), 'sync');
-	$msg->setMode('call');
-	$self->log->debug('routing: ' . Dumper($msg));
-	my $ret;
-	eval {
-		local $SIG{ALRM} = sub { die 'alarm'; };
-		alarm $timeout;
-		($ret) = $msg->route();
-		# Explicitly shut the socket down
-		#$msg->shutdownSocket();
-		alarm 0;
-	};
-	if ($@){
-		my $errmsg = 'Janus connection timed out after ' . $timeout . ' seconds, ' . $@;
-		$self->log->error($errmsg);
-		return { error => $errmsg };
-	}
-	
-	$self->log->debug( "got ServerInput: " . Dumper($ret) );
-	
-	if ($ret and ref($ret) eq 'POE::Event::Message' and $ret->can('status')){	
-		my ($status, $errmsg) = $ret->status();
-		if ($status == -1){
-			$self->log->error($errmsg);
-			return { error => $errmsg };
-		}
-		elsif ($status == -2){
-			# client needs to revalidate
-			
-			$self->log->warn('Revalidating user : ' . Dumper($self->session->get('username')));
-			my $info = $self->_get_user_info($self->session->get('username'));
-			unless ($info){
-				my $errmsg = 'Error during client revalidation';
-				$self->log->error($errmsg);
-				return { error => $errmsg };
-			}
-			$self->session->set('user_info', $info);
-			# retry
-			$ret = $self->rpc($method, $params);
-			unless ($ret){
-				my $errmsg = 'recursive failure during query, method: ' . $method . ', params: ' . Dumper($params) . ', ret: ' . Dumper($ret);
-				$self->log->error($errmsg);
-				return { error => $errmsg };
-			}
-		}
-		else {
-			$ret = $ret->body();
-		}
-		return $ret;
-	}
-	else {
-		my $errmsg = 'No value returned.';
-		$self->log->error($errmsg);
-		return { error => $errmsg };
-	}
-	
-}
-
-sub _get_user_info {
-	my $self = shift;
-	my $username = shift;
-	unless ($username){
-		if ($self->conf->get('auth/method') eq 'none'){
-			return {
-				username => 'user',
-				uid => 2,
-				is_admin => 1,
-				permissions => {
-					class_id => {
-						0 => 1,
-					},
-					host_id => {
-						0 => 1,
-					},
-					program_id => {
-						0 => 1,
-					},
-				},
-				filter => '',
-				email => $self->conf->get('user_email') ? $self->conf->get('user_email') : 'root@localhost',
-			};
-		}
-		else {
-			$self->log->error('Did not receive username');
-			return 0;
-		}
-	}
-	my $ret = $self->rpc('get_user_info', $username);
-	if ($ret and ref($ret) eq 'HASH' and $ret->{permissions}){
-		return $ret;
-	}
-	else {
-		$self->log->error('Unable to get user info, got: ' . Dumper($ret));
-		return 0;
-	}
-}
 
 sub index {
 	my $self = shift;
@@ -291,6 +168,7 @@ EOHTML
 
 }
 
+
 sub _get_index_body {
 	my $HTML = <<'EOHTML'
 <script>YAHOO.util.Event.addListener(window, "load", YAHOO.ELSA.main);</script>
@@ -326,18 +204,19 @@ sub get_results {
 		my $args = $req->query_parameters->as_hashref;
 		$args->{uid} = $self->session->get('user_info')->{uid};
 		
-		my $ret = $self->rpc('get_saved_result', $args);
+		#my $ret = $self->rpc('get_saved_result', $args);
+		my $ret = $self->api->get_saved_result($args);
 		if ($ret and ref($ret) eq 'HASH'){
 			 $HTML .= '<script>var oGivenResults = ' . $self->json->encode($ret) . '</script>';
 			 $HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
 		}
 		else {
-			$self->log->error('Unable to get results, got: ' . Dumper($ret));
+			$self->_error('Unable to get results, got: ' . Dumper($ret));
 			$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unable to get results"); });</script>';
 		}
 	}
 	else {
-		$self->log->error('Unauthorized');
+		$self->_error('Unauthorized');
 		$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unauthorized"); });</script>';
 	}
 	
@@ -425,4 +304,44 @@ EOHTML
 	
 	return $HTML;	
 }
+
+
+sub export {
+	my ($self, $args) = @_;
+	
+	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{plugin} ) {
+		my $decode;
+		eval {
+			$decode = $self->json->decode(uri_unescape($args->{data}));
+			$self->log->debug( "Decoded data as : " . Dumper($decode) );
+		};
+		if ($@){
+			$self->_error("invalid args, error: $@, args: " . Dumper($args));
+			return;
+		}
+		
+		my $results_obj;
+		my $plugin_fqdn = 'Export::' . $args->{plugin};
+		foreach my $plugin ($self->plugins()){
+			if ($plugin eq $plugin_fqdn){
+				$self->log->debug('loading plugin ' . $plugin);
+				my $results_obj = $plugin->new($decode);
+				$self->log->debug('results_obj:' . Dumper($results_obj));
+			}
+		}
+		if ($results_obj){
+			return { ret => $results_obj->results(), mime_type => $results_obj->get_mime_type() };
+		}
+		
+		$self->log->error('Unable to build results object from args');
+		$self->_error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
+			join(', ', $self->plugins()) . ' ' . Dumper($args));
+	}
+	else {
+		$self->_error('Invalid args: ' . Dumper($args));
+	}
+}
+
+
+
 1;
