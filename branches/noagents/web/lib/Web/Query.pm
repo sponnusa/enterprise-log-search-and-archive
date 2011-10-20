@@ -1,6 +1,6 @@
 package Web::Query;
 use Moose;
-use base 'Web';
+extends 'Web';
 use Data::Dumper;
 use Plack::Request;
 use Plack::Session;
@@ -16,7 +16,15 @@ sub call {
 	
 	my $method = $self->_extract_method($req->request_uri);
 	$self->log->debug('method: ' . $method);
-	my $ret = $self->rpc($method, $req->parameters->as_hashref);
+	#my $ret = $self->rpc($method, $req->parameters->as_hashref);
+	my $args = $req->parameters->as_hashref;
+	$args->{user_info} = $self->session->get('user_info');
+	unless ($self->api->can($method)){
+		$res->status(404);
+		$res->body('not found');
+		return $res->finalize();
+	}
+	my $ret = $self->api->$method($args);
 	if (ref($ret) and $ret->{mime_type}){
 		$res->content_type($ret->{mime_type});
 		$res->body($ret->{ret});
