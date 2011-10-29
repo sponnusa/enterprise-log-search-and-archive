@@ -4,6 +4,7 @@ extends 'Web';
 use Data::Dumper;
 use Plack::Request;
 use Plack::Session;
+use Encode;
 
 sub call {
 	my ($self, $env) = @_;
@@ -16,7 +17,6 @@ sub call {
 	
 	my $method = $self->_extract_method($req->request_uri);
 	$self->log->debug('method: ' . $method);
-	#my $ret = $self->rpc($method, $req->parameters->as_hashref);
 	my $args = $req->parameters->as_hashref;
 	$args->{user_info} = $self->session->get('user_info');
 	unless ($self->api->can($method)){
@@ -24,8 +24,16 @@ sub call {
 		$res->body('not found');
 		return $res->finalize();
 	}
-	my $ret = $self->api->$method($args);
-	if (ref($ret) and $ret->{mime_type}){
+	my $ret;
+	eval {
+		$ret = $self->api->$method($args);
+	};
+	if ($@){
+		my $e = $@;
+		$self->api->log->error($e);
+		$res->body([encode_utf8($self->json->encode({error => $e}))]);
+	}
+	elsif (ref($ret) and $ret->{mime_type}){
 		$res->content_type($ret->{mime_type});
 		$res->body($ret->{ret});
 		if ($ret->{filename}){
@@ -33,7 +41,7 @@ sub call {
 		}
 	}
 	else {
-		$res->body($self->json->encode($ret));
+		$res->body([encode_utf8($self->json->encode($ret))]);
 	}
 	$res->finalize();
 }

@@ -5,6 +5,7 @@ use Log::Log4perl;
 use Config::JSON;
 use JSON -convert_blessed_universally;
 use Plack::Builder;
+use Plack::App::File;
 use DBI;
 use FindBin;
 use lib $FindBin::Bin;
@@ -100,7 +101,7 @@ my $api = API->new(conf => $conf, log => $logger, json => $json, db => $dbh);
 builder {
 	$ENV{PATH_INFO} = $ENV{REQUEST_URI}; #mod_rewrite will mangle PATH_INFO, so we'll set this manually here in case it's being used
 	#enable 'ForwardedHeaders';
-	enable 'Static', path => qr{^/?inc/}, root => $FindBin::Bin . '/../';
+	#enable 'Static', path => qr{^/?inc/}, root => '/home/holstm/googlecode/elsa/web/'; #root => $FindBin::Bin . '/../';
 	enable 'CrossOrigin', origins => '*', methods => '*', headers => '*';
 	enable 'Session', store => 'File';
 	unless ($conf->get('auth/method') eq 'none'){
@@ -108,6 +109,7 @@ builder {
 	}
 	
 	mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
+	mount '/inc' => Plack::App::File->new(root => '../inc')->to_app;
 	mount '/Query' => Web::Query->new(conf => $conf, log => $logger, json => $json, api => $api)->to_app; 
 	mount '/' => Web->new(conf => $conf, log => $logger, json => $json, api => $api)->to_app;
 };

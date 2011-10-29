@@ -17,7 +17,7 @@ use lib $FindBin::Bin;
 use Indexer;
 
 my %Opts;
-getopts('oic:', \%Opts);
+getopts('onc:', \%Opts);
 
 $| = 1;
 my $pipes     = {};
@@ -49,10 +49,16 @@ my $l4pconf = qq(
 Log::Log4perl::init( \$l4pconf ) or die("Unable to init logger\n");
 my $Log = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n");
 
-my $Dbh = DBI->connect($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;', $Conf->{database}->{username}, 
-	$Conf->{database}->{password}, {InactiveDestroy => 1, RaiseError => 0, mysql_auto_reconnect => 1, HandleError => \&_sql_error_handler}) 
+my $Dbh = DBI->connect(($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'), 
+	$Conf->{database}->{username}, 
+	$Conf->{database}->{password}, 
+	{
+		InactiveDestroy => 1, 
+		PrintError => 0,
+		mysql_auto_reconnect => 1, 
+		HandleError => \&_sql_error_handler,
+	}) 
 	or die 'connection failed ' . $! . ' ' . $DBI::errstr;
-my $Meta_db_name = $Conf->{database}->{db} ? $Conf->{database}->{db} : 'syslog';
 
 my $num_children = $Conf->{num_indexers} or die("undefined config for num_indexers");
 my $continue     = 1;
@@ -95,11 +101,11 @@ unless (-f $Conf->{sphinx}->{config_file}){
 	_create_sphinx_conf();
 }
 
-#if ($Opts{i}){
+unless ($Opts{n}){
 	print "Validating directory...\n";
 	my $indexer = new Indexer(log => $Log, conf => Config::JSON->new( $conf_file ), class_info => $Class_info);
 	$indexer->initial_validate_directory();
-#}
+}
 
 if ($Opts{o}){
 	print "Running once\n";
@@ -107,6 +113,7 @@ if ($Opts{o}){
 }
 
 $SIG{TERM} = sub { $Run = 0; warn 'Shutting down' };
+$SIG{CHLD} = 'IGNORE'; # will do the wait() so we don't create zombies
 
 my $total_processed = 0;
 do {
@@ -132,8 +139,10 @@ sub _sql_error_handler {
 	my $errstr = shift;
 	my $dbh = shift;
 	my $query = $dbh->{Statement};
-	$Log->error('SQL_ERROR: ' . $errstr . ', query: ' . $query);
-	return 1; # Stops RaiseError
+	my $full_errstr = 'SQL_ERROR: ' . $errstr . ', query: ' . $query; 
+	$Log->error($full_errstr);
+	#return 1; # Stops RaiseError
+	die($full_errstr);
 }
 
 sub _create_sphinx_conf {
@@ -167,6 +176,10 @@ sub _process_batch {
 	my $start_time = Time::HiRes::time();
 		
 	my $tempfile = File::Temp->new( DIR => $Conf->{buffer_dir}, UNLINK => 0 );
+	unless ($tempfile){
+		$Log->error('Unable to create tempfile: ' . $!);
+		return 0;
+	}
 	$tempfile->autoflush(1);
 	my $batch_counter = 0;
 	my $error_counter = 0;
@@ -212,9 +225,9 @@ sub _process_batch {
 	my ($query, $sth);
 	if (scalar keys %{ $args->{cache_add} }){
 		$Log->trace('Adding programs: ' . Dumper($args->{cache_add}));
-		$query = sprintf('INSERT INTO %s.programs (id, program) VALUES(?,?) ON DUPLICATE KEY UPDATE id=?', $Meta_db_name);
+		$query = 'INSERT INTO programs (id, program) VALUES(?,?) ON DUPLICATE KEY UPDATE id=?';
 		$sth = $Dbh->prepare($query);
-		$query = sprintf('REPLACE INTO %s.class_program_map (class_id, program_id) VALUES(?,?)', $Meta_db_name);
+		$query = 'REPLACE INTO class_program_map (class_id, program_id) VALUES(?,?)';
 		my $sth_map = $Dbh->prepare($query);
 		foreach my $program (keys %{ $args->{cache_add} }){
 			$sth->execute($args->{cache_add}->{$program}->{id}, $program, $args->{cache_add}->{$program}->{id});
@@ -229,9 +242,10 @@ sub _process_batch {
 	}
 	
 	if ($batch_counter){
-		$query = sprintf('INSERT INTO %s.buffers (filename) VALUES (?)', $Meta_db_name);
+		$query = 'INSERT INTO buffers (filename) VALUES (?)';
 		$sth = $Dbh->prepare($query);
 		$sth->execute($args->{file});
+		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $batch_counter);
 	}
 		
 	# Reset the run marker
@@ -241,14 +255,18 @@ sub _process_batch {
 	return $batch_counter unless $batch_counter;
 	my $pid = fork();
 	if ($pid){
+		# Parent
 		return $batch_counter;
 	}
 	# Child
 	$Log->trace('Child started');
-	my $indexer = new Indexer(log => $Log, conf => Config::JSON->new( $conf_file ), class_info => $Class_info);
-	$indexer->index_records($indexer->load_records($args));
-	$indexer->archive_records($args);
-	$indexer->rotate_logs();
+	eval {
+		my $indexer = new Indexer(log => $Log, conf => Config::JSON->new( $conf_file ), class_info => $Class_info);
+		$indexer->load_buffers();
+	};
+	if ($@){
+		$Log->error('Child encountered error: ' . $@);
+	}
 	$Log->trace('Child finished');
 	exit; # done with child
 }
@@ -319,7 +337,7 @@ sub _parse_line {
 	$line[FIELD_PROGRAM] = lc($line[FIELD_PROGRAM]);
 	
 	# Normalize program name to swap any weird chars with underscores
-	$line[FIELD_PROGRAM] =~ s/[^a-zA-Z0-9\_\-]/\_/g;
+	#$line[FIELD_PROGRAM] =~ s/[^a-zA-Z0-9\_\-]/\_/g;
 	
 	# Host gets the int version of itself
 	$line[FIELD_HOST] = unpack('N*', inet_aton($line[FIELD_HOST]));
@@ -376,11 +394,11 @@ sub _get_class_info {
 	}
 		
 	# Get fields
-	$query = sprintf("SELECT DISTINCT field, class, field_type, input_validation, field_id, class_id, field_order,\n" .
+	$query = "SELECT DISTINCT field, class, field_type, input_validation, field_id, class_id, field_order,\n" .
 		"IF(class!=\"\", CONCAT(class, \".\", field), field) AS fqdn_field, pattern_type\n" .
-		"FROM %s.fields\n" .
-		"JOIN %1\$s.fields_classes_map t2 ON (fields.id=t2.field_id)\n" .
-		"JOIN %1\$s.classes t3 ON (t2.class_id=t3.id)\n");
+		"FROM fields\n" .
+		"JOIN fields_classes_map t2 ON (fields.id=t2.field_id)\n" .
+		"JOIN classes t3 ON (t2.class_id=t3.id)\n";
 	$sth = $Dbh->prepare($query);
 	$sth->execute;
 	while (my $row = $sth->fetchrow_hashref){
@@ -440,7 +458,7 @@ sub _get_class_info {
 
 sub _init_cache {
 	my ($query, $sth);
-	$query = sprintf('SELECT id, program FROM %s.programs', $Meta_db_name);
+	$query = 'SELECT id, program FROM programs';
 	$sth = $Dbh->prepare($query);
 	$sth->execute();
 	while (my $row = $sth->fetchrow_hashref){

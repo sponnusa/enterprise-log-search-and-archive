@@ -20,7 +20,6 @@ our $Sphinx_agent_query_timeout = 300;
 our @Sphinx_extensions = qw( spp sph spi spl spm spa spk spd );
 our $Index_retry_limit = 3;
 our $Index_retry_time = 5;
-our $Meta_db_name = 'syslog';
 our $Data_db_name = 'syslog_data';
 our $Peer_id_multiplier = 2**40;
 
@@ -36,13 +35,16 @@ has 'cpu_count' => (is => 'ro', isa => 'Int', required => 1, default => sub {
 
 sub BUILD {
 	my $self = shift;
-	$Meta_db_name = $self->conf->get('database/db') ? $self->conf->get('database/db') : 'syslog';
 	$Data_db_name = $self->conf->get('database/data_db') ? $self->conf->get('database/data_db') : 'syslog_data';
 	
-	$self->db(DBI->connect($self->conf->get('database/dsn') or 'dbi:mysql:database=syslog;', 
-		$self->conf->get('database/username'), $self->conf->get('database/password'), 
-		{RaiseError => 1, mysql_auto_reconnect => 1, InactiveDestroy => 1})) 
-		or die 'connection failed ' . $! . ' ' . $DBI::errstr;
+	$self->db(DBI->connect(($self->conf->get('database/dsn') or 'dbi:mysql:database=syslog;'), 
+		$self->conf->get('database/username'), 
+		$self->conf->get('database/password'), 
+		{
+			RaiseError => 1, 
+			mysql_auto_reconnect => 1
+		})
+	) or die 'connection failed ' . $! . ' ' . $DBI::errstr;
 	$self->log->debug('db id: ' . $self->dbh_id);		
 }
 
@@ -127,10 +129,10 @@ sub rotate_logs {
 	# Delete buffers that are finished
 	my ($query, $sth);
 	if ($self->conf->get('archive/percentage')){
-		$query = sprintf('SELECT filename FROM %s.buffers WHERE archive_complete=1 AND index_complete=1', $Meta_db_name);
+		$query = 'SELECT filename FROM buffers WHERE archive_complete=1 AND index_complete=1';
 	}
 	else {
-		$query = sprintf('SELECT filename FROM %s.buffers WHERE index_complete=1', $Meta_db_name);
+		$query = 'SELECT filename FROM buffers WHERE index_complete=1';
 	}
 	$sth = $self->db->prepare($query);
 	$sth->execute();
@@ -139,7 +141,7 @@ sub rotate_logs {
 	while (my $row = $sth->fetchrow_hashref){
 		push @files, $row->{filename};
 	}
-	$query = sprintf('DELETE FROM %s.buffers WHERE filename=?', $Meta_db_name);
+	$query = 'DELETE FROM buffers WHERE filename=?';
 	$sth = $self->db->prepare($query);
 	
 	foreach my $file (@files){
@@ -157,37 +159,35 @@ sub initial_validate_directory {
 	my ($query, $sth);
 	
 	# Delete any in-progress permanent indexes
-	$query = sprintf('DELETE FROM %s.indexes WHERE last_id-first_id > ? AND NOT ISNULL(locked_by)', $Meta_db_name);
+	$query = 'DELETE FROM indexes WHERE last_id-first_id > ? AND NOT ISNULL(locked_by)';
 	$sth = $self->db->prepare($query);
 	$sth->execute($self->conf->get('sphinx/perm_index_size'));
 	
 	# Remove any locks
-	$query = sprintf("UPDATE %s.indexes SET locked_by=NULL",
-		$Meta_db_name);
+	$query = 'UPDATE indexes SET locked_by=NULL';
 	$self->db->do($query);
 	
-	$query = sprintf("UPDATE %s.tables SET table_locked_by=NULL",
-		$Meta_db_name);
+	$query = 'UPDATE tables SET table_locked_by=NULL';
 	$self->db->do($query);
 	
 	# Delete finished buffers
 	if ($self->conf->get('archive/percentage') and $self->conf->get('sphinx/perm_index_size')){
-		$query = sprintf('DELETE FROM %s.buffers WHERE NOT ISNULL(pid) AND index_complete=1 AND archive_complete=1', $Meta_db_name);
+		$query = 'DELETE FROM buffers WHERE NOT ISNULL(pid) AND index_complete=1 AND archive_complete=1';
 		$self->db->do($query);
 	}
 	elsif ($self->conf->get('archive/percentage')){
-		$query = sprintf('DELETE FROM %s.buffers WHERE NOT ISNULL(pid) AND archive_complete=1', $Meta_db_name);
+		$query = 'DELETE FROM buffers WHERE NOT ISNULL(pid) AND archive_complete=1';
 		$self->db->do($query);
 	}
 	elsif ($self->conf->get('sphinx/perm_index_size')){
-		$query = sprintf('DELETE FROM %s.buffers WHERE NOT ISNULL(pid) AND index_complete=1', $Meta_db_name);
+		$query = 'DELETE FROM buffers WHERE NOT ISNULL(pid) AND index_complete=1';
 		$self->db->do($query);
 	}
 	else {
 		$self->log->warn('Not doing archiving or indexing for some reason!');
 	}
 		
-	$query = sprintf('UPDATE %s.buffers SET pid=NULL WHERE NOT ISNULL(pid)', $Meta_db_name);
+	$query = 'UPDATE buffers SET pid=NULL WHERE NOT ISNULL(pid)';
 	$self->db->do($query);
 	
 	# Find any buffer files that aren't in the directory
@@ -203,7 +203,7 @@ sub initial_validate_directory {
 	closedir(DIR);
 	
 	# Remove any references in the database to buffers that no longer exist
-	$query = sprintf('SELECT filename FROM %s.buffers', $Meta_db_name);
+	$query = 'SELECT filename FROM buffers';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my @to_delete;
@@ -213,15 +213,15 @@ sub initial_validate_directory {
 			push @to_delete, $row->{filename};
 		}
 	}
-	$query = sprintf('DELETE FROM %s.buffers WHERE filename=?', $Meta_db_name);
+	$query = 'DELETE FROM buffers WHERE filename=?';
 	$sth = $self->db->prepare($query);
 	foreach my $file (@to_delete){
 		$sth->execute($file);
 	}
 	
-	$query = sprintf('SELECT pid FROM %s.buffers WHERE filename=?', $Meta_db_name);
+	$query = 'SELECT pid FROM buffers WHERE filename=?';
 	$sth = $self->db->prepare($query);
-	$query = sprintf('INSERT INTO %s.buffers (filename, pid) VALUES (?,?)', $Meta_db_name);
+	$query = 'INSERT IGNORE INTO buffers (filename, pid) VALUES (?,?)';
 	my $ins_sth = $self->db->prepare($query);
 	$self->log->debug('files: ' . Dumper(\@files));
 	foreach my $file (@files){
@@ -250,6 +250,9 @@ sub initial_validate_directory {
 	
 	$self->_validate_directory();
 	
+	$self->log->info('Loading ' . (scalar @files) . ' existing buffers...');
+	$self->load_buffers();
+	
 	return 1;
 }
 
@@ -261,17 +264,15 @@ sub _validate_directory {
 	$self->_get_lock('directory');
 	
 	# Validate that all real tables are accounted for in the directory
-	$query = sprintf("INSERT INTO %s.tables (table_name, start, end, min_id, max_id, table_type_id) VALUES (?,?,?,?,?," .
-		"(SELECT id FROM table_types WHERE table_type=?))",
-		$Meta_db_name);
+	$query = 'INSERT INTO tables (table_name, start, end, min_id, max_id, table_type_id) VALUES (?,?,?,?,?,' .
+		'(SELECT id FROM table_types WHERE table_type=?))';
 	my $ins_tables_sth = $self->db->prepare($query);
 	
-	$query = sprintf("SELECT CONCAT(t1.table_schema, \".\", t1.table_name) AS real_table,\n" .
+	$query = "SELECT CONCAT(t1.table_schema, \".\", t1.table_name) AS real_table,\n" .
 		"t2.table_name AS recorded_table\n" .
 		"FROM INFORMATION_SCHEMA.TABLES t1\n" .
-		"LEFT JOIN %s.tables t2 ON (CONCAT(t1.table_schema, \".\", t1.table_name)=t2.table_name)\n" .
-		"WHERE t1.table_schema=\"%s\" HAVING ISNULL(recorded_table)",
-		$Meta_db_name, $Data_db_name);
+		"LEFT JOIN tables t2 ON (CONCAT(t1.table_schema, \".\", t1.table_name)=t2.table_name)\n" .
+		"WHERE t1.table_schema=\"$Data_db_name\" HAVING ISNULL(recorded_table)";
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	
@@ -318,18 +319,16 @@ sub _validate_directory {
 	}
 	$ins_tables_sth->finish();
 	
-	$query = sprintf("DELETE FROM %s.tables WHERE table_name=?", 
-		$Meta_db_name);
+	$query = 'DELETE FROM tables WHERE table_name=?';
 	my $del_sth = $self->db->prepare($query);
 
 	# Validate that all tables in the directory are real	
 	#TODO We could probably do this in one big DELETE ... SELECT statement
-	$query = sprintf("SELECT t1.table_name AS recorded_table,\n" .
+	$query = "SELECT t1.table_name AS recorded_table,\n" .
 		"CONCAT(t2.table_schema, \".\", t2.table_name) AS real_table\n" .
-		"FROM %s.tables t1\n" .
+		"FROM tables t1\n" .
 		"LEFT JOIN INFORMATION_SCHEMA.TABLES t2 ON (CONCAT(t2.table_schema, \".\", t2.table_name)=t1.table_name)\n" .
-		"HAVING ISNULL(real_table)",
-		$Meta_db_name);
+		"HAVING ISNULL(real_table)";
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	while (my $row = $sth->fetchrow_hashref){
@@ -339,12 +338,12 @@ sub _validate_directory {
 	}
 	
 	# Validate that no tables overlap
-	$query = sprintf('SELECT t1.id, t1.table_name, t1.min_id, t1.max_id, t2.min_id AS trim_to_max' . "\n" .
-		'FROM %1$s.tables t1, %1$s.tables t2' . "\n" .
-		'WHERE t1.table_type_id=(SELECT id FROM %1$s.table_types WHERE table_type="index")' . "\n" .
-		'AND t2.table_type_id=(SELECT id FROM %1$s.table_types WHERE table_type="index")' . "\n" .
+	$query = 'SELECT t1.id, t1.table_name, t1.min_id, t1.max_id, t2.min_id AS trim_to_max' . "\n" .
+		'FROM tables t1, tables t2' . "\n" .
+		'WHERE t1.table_type_id=(SELECT id FROM table_types WHERE table_type="index")' . "\n" .
+		'AND t2.table_type_id=(SELECT id FROM table_types WHERE table_type="index")' . "\n" .
 		'AND t1.table_name!=t2.table_name' . "\n" .
-		'AND t1.max_id BETWEEN t2.min_id AND t2.max_id', $Meta_db_name);
+		'AND t1.max_id BETWEEN t2.min_id AND t2.max_id';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	while (my $row = $sth->fetchrow_hashref){
@@ -357,15 +356,14 @@ sub _validate_directory {
 		$sth->finish();
 		
 		# Update the directory
-		$query = sprintf('UPDATE %s.tables SET max_id=? WHERE id=?', $Meta_db_name);
+		$query = 'UPDATE tables SET max_id=? WHERE id=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute(($row->{trim_to_max} - 1), $row->{id});
 		$sth->finish();
 	}
 	
 	# Validate that index tables still have an index pointing to them
-	$query = sprintf("SELECT table_name FROM %s.v_directory WHERE table_type=\"index\" AND ISNULL(id)",
-		$Meta_db_name);
+	$query = 'SELECT table_name FROM v_directory WHERE table_type="index" AND ISNULL(id)';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	
@@ -380,7 +378,7 @@ sub _validate_directory {
 	$del_sth->finish();
 	
 	# Explicitly index the dummy index entries for non-existent indexes
-	$query = sprintf("SELECT id, type FROM %s.indexes", $Meta_db_name);
+	$query = 'SELECT id, type FROM indexes';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my %existing;
@@ -401,13 +399,13 @@ sub _validate_directory {
 	$self->log->trace('Finished wiping indexes');
 
 	# Find tables which are not referred to by any index
-	$query = sprintf('SELECT t1.table_name AS full_table FROM %1$s.tables t1 ' .
-		'LEFT JOIN %1$s.v_directory t2 ON (t1.id=t2.table_id) ' .
-		'WHERE ISNULL(t2.table_id)', $Meta_db_name);
+	$query = 'SELECT t1.table_name AS full_table FROM tables t1 ' .
+		'LEFT JOIN v_directory t2 ON (t1.id=t2.table_id) ' .
+		'WHERE ISNULL(t2.table_id)';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
-	$self->log->trace('sth executed');
-	$query = sprintf('DELETE FROM %s.tables WHERE table_name=?', $Meta_db_name);
+
+	$query = 'DELETE FROM tables WHERE table_name=?';
 	$del_sth = $self->db->prepare($query);
 	while (my $row = $sth->fetchrow_hashref){
 		$self->log->info('Dropping unindexed table ' . $row->{full_table});
@@ -430,9 +428,9 @@ sub _oversize_log_rotate {
 		$self->_get_lock('directory');
 		
 		# Get our latest entry
-		$query = sprintf("SELECT id, first_id, last_id, type, table_type, table_name FROM %s.v_directory\n" .
+		$query = "SELECT id, first_id, last_id, type, table_type, table_name FROM v_directory\n" .
 			"WHERE table_type=\"archive\" AND ISNULL(locked_by)\n" .
-			"ORDER BY start ASC LIMIT 1", $Meta_db_name);
+			"ORDER BY start ASC LIMIT 1";
 		$sth = $self->db->prepare($query);
 		$sth->execute();
 		my $entry = $sth->fetchrow_hashref;
@@ -441,7 +439,7 @@ sub _oversize_log_rotate {
 		$self->log->info("Dropping table $full_table");
 		$query = sprintf("DROP TABLE %s", $full_table);
 		$self->db->do($query);
-		$query = sprintf("DELETE FROM %s.tables WHERE table_name=?", $Meta_db_name);
+		$query = 'DELETE FROM tables WHERE table_name=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($full_table);
 		$self->_release_lock('directory');
@@ -452,9 +450,9 @@ sub _oversize_log_rotate {
 		$self->_get_lock('directory');
 		
 		# Get our latest entry
-		$query = sprintf("SELECT id, first_id, last_id, type, table_type, table_name FROM %s.v_directory\n" .
+		$query = "SELECT id, first_id, last_id, type, table_type, table_name FROM v_directory\n" .
 			"WHERE table_type=\"index\" AND ISNULL(locked_by)\n" .
-			"ORDER BY start ASC LIMIT 1", $Meta_db_name);
+			"ORDER BY start ASC LIMIT 1";
 		$sth = $self->db->prepare($query);
 		$sth->execute();
 		my $entry = $sth->fetchrow_hashref;
@@ -468,7 +466,7 @@ sub _oversize_log_rotate {
 			last;
 		}
 		
-		$query = sprintf('UPDATE %s.indexes SET locked_by=? WHERE id=? AND type=?', $Meta_db_name);
+		$query = 'UPDATE indexes SET locked_by=? WHERE id=? AND type=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($$, $entry->{id}, $entry->{type});
 		$self->_release_lock('directory');
@@ -491,10 +489,9 @@ sub _check_consolidate {
 		$self->log->warn('Over the temp index limit, engaging emergency consolidation');
 		
 		# Find out how many temp indexes we've got
-		$query = sprintf("SELECT MIN(first_id) AS min_id, MAX(last_id) AS max_id,\n" .
+		$query = "SELECT MIN(first_id) AS min_id, MAX(last_id) AS max_id,\n" .
 			"MIN(start) AS start, MAX(end) AS end\n" .
-			"FROM %s.indexes WHERE ISNULL(locked_by) AND type=\"temporary\"\n",
-			$Meta_db_name);
+			"FROM indexes WHERE ISNULL(locked_by) AND type=\"temporary\"";
 		$sth = $self->db->prepare($query);
 		$sth->execute();
 		my $row = $sth->fetchrow_hashref;
@@ -512,21 +509,21 @@ sub _check_consolidate {
 	
 	# Check to see if we need to consolidate any tables
 	$self->db->begin_work;
-	$query = sprintf('SELECT table_name, SUM(locked_by) AS locked, COUNT(DISTINCT id) AS num_indexes, ' . "\n"
+	$query = 'SELECT table_name, SUM(locked_by) AS locked, COUNT(DISTINCT id) AS num_indexes, ' . "\n"
 		. 'min_id, max_id, max_id-min_id AS num_rows ' . "\n"
-		. 'FROM %s.v_directory' . "\n"
+		. 'FROM v_directory' . "\n"
 		. 'WHERE ISNULL(table_locked_by) AND table_type="index"' . "\n"
 		. 'GROUP BY table_name' . "\n"
-		. 'HAVING (ISNULL(locked) OR MOD(locked, ?)=0) AND num_rows > ? AND num_indexes > 1 FOR UPDATE', $Meta_db_name);
+		. 'HAVING ISNULL(locked) AND num_rows > ? AND num_indexes > 1 FOR UPDATE';
 	$sth = $self->db->prepare($query);
-	$sth->execute($$, $self->conf->get('sphinx/perm_index_size'));
+	$sth->execute($self->conf->get('sphinx/perm_index_size'));
 	
 	my @to_consolidate;
 	while (my $row = $sth->fetchrow_hashref){
 		# Lock the table
-		$query = sprintf('UPDATE %s.tables SET table_locked_by=? WHERE table_name=?', $Meta_db_name);
-		$sth = $self->db->prepare($query);
-		$sth->execute($$, $row->{table_name});
+		$query = 'UPDATE tables SET table_locked_by=? WHERE table_name=?';
+		my $upd_sth = $self->db->prepare($query);
+		$upd_sth->execute($$, $row->{table_name});
 		$self->log->debug('Locked table ' . $row->{table_name});
 		push @to_consolidate, { first_id => $row->{min_id}, last_id => $row->{max_id} };
 	}
@@ -538,6 +535,40 @@ sub _check_consolidate {
 	}
 }
 
+sub load_buffers {
+	my ($self) = @_;
+	
+	my ($query, $sth);
+		
+	$query = 'SELECT id, filename FROM buffers WHERE ISNULL(pid) ORDER BY id ASC';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	$query = 'UPDATE buffers SET pid=? WHERE id=?';
+	
+	my @rows;
+	while (my $row = $sth->fetchrow_hashref){
+		push @rows, $row;
+		my $sth = $self->db->prepare($query);
+		$sth->execute($$, $row->{id});
+		$sth->finish();
+	}
+	
+	foreach my $row (@rows){	
+		# Send to index load records
+		if ($self->conf->get('sphinx/perm_index_size')){
+			$self->index_records($self->load_records({ file => $row->{filename} }));
+		}
+		
+		# Send to archive
+		if ($self->conf->get('archive/percentage')){
+			$self->archive_records({ file => $row->{filename} })
+		}
+	}
+	$self->rotate_logs();
+	
+	return {};
+}
+
 sub load_records {
 	my $self = shift;
 	my $args = shift;
@@ -545,7 +576,7 @@ sub load_records {
 	die 'Invalid args: ' . Dumper($args)
 		unless $args and ref($args) eq 'HASH';
 	die 'Invalid args: ' . Dumper($args)
-		unless $args->{file} and $args->{file};
+		unless $args->{file} and -f $args->{file};
 	
 	my $load_only = 0;
 	if ($args->{load_only}){
@@ -561,18 +592,12 @@ sub load_records {
 	
 	my ($query, $sth);
 	
-	# Re-verify that this file still exists (some other process may have swiped it out from under us)
-	unless (-f $args->{file}){
-		$self->log->error('File ' . $args->{file} . ' does not exist, not loading.');
-		return 0;
-	}
-	
 	# Update the database to show that this child is working on it
-	$query = sprintf('UPDATE %s.buffers SET pid=? WHERE filename=?', $Meta_db_name);
+	$query = 'UPDATE buffers SET pid=? WHERE filename=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($$, $args->{file});
 	
-	$query = sprintf('UPDATE %s.tables SET table_locked_by=? WHERE table_name=?', $Meta_db_name);
+	$query = 'UPDATE tables SET table_locked_by=? WHERE table_name=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($$, $full_table);
 	
@@ -622,35 +647,35 @@ sub load_records {
 	$self->_get_lock('directory') or die 'Unable to obtain lock';
 	
 	# Update the directory with our new buffer start (if it is earlier than what's already there)
-	$query = sprintf('SELECT UNIX_TIMESTAMP(start) AS start, UNIX_TIMESTAMP(end) AS end FROM %s.tables WHERE table_name=?', $Meta_db_name);
+	$query = 'SELECT UNIX_TIMESTAMP(start) AS start, UNIX_TIMESTAMP(end) AS end FROM tables WHERE table_name=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($full_table);
 	$row = $sth->fetchrow_hashref;
 	if ($row->{start} > $start){
-		$query = sprintf('UPDATE %s.tables SET start=FROM_UNIXTIME(?) WHERE table_name=?', $Meta_db_name);
+		$query = 'UPDATE tables SET start=FROM_UNIXTIME(?) WHERE table_name=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($start, $full_table);
 		$self->log->debug('Updated table to have start ' . $start);
 	}
 	if ($row->{end} < $end){
-		$query = sprintf('UPDATE %s.tables SET end=FROM_UNIXTIME(?) WHERE table_name=?', $Meta_db_name);
+		$query = 'UPDATE tables SET end=FROM_UNIXTIME(?) WHERE table_name=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($end, $full_table);
 		$self->log->debug('Updated table to have end ' . $end)
 	}
-	$query = sprintf("UPDATE %s.tables SET max_id=?, table_locked_by=NULL WHERE table_name=?", $Meta_db_name);
+	$query = 'UPDATE tables SET max_id=?, table_locked_by=NULL WHERE table_name=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($last_id, $full_table);
 	
 	$self->log->debug('Updated table to have end ' . $end . ', max_id ' . $last_id . ' table_name ' . $full_table);
 	
 	# Mark load complete
-	$query = sprintf('UPDATE %s.buffers SET index_complete=1 WHERE filename=?', $Meta_db_name);
+	$query = 'UPDATE buffers SET index_complete=1 WHERE filename=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{file});
 	
 	# Record the load stats
-	$query = sprintf('INSERT INTO stats (type, bytes, count, time) VALUES("load", ?,?,?)', $Meta_db_name);
+	$query = 'REPLACE INTO stats (type, bytes, count, time) VALUES("load", ?,?,?)';
 	$sth = $self->db->prepare($query);
 	$sth->execute((-s $args->{file}), $records, $load_time);
 	
@@ -668,10 +693,6 @@ sub archive_records {
 	die 'Invalid args: ' . Dumper($args)
 		unless $args->{file} and $args->{file};
 		
-	my $override = 0;
-	if ($args->{override}){
-		$override = 1;
-	}
 	$args->{archive} = 1;
 	
 	$self->log->trace("args: " . Dumper($args));
@@ -720,19 +741,19 @@ sub archive_records {
 	my $end = CORE::time();
 	
 	# Update the directory with our new buffer start (if it is earlier than what's already there)
-	$query = sprintf("UPDATE %s.tables SET end=FROM_UNIXTIME(?), max_id=? WHERE table_name=?", $Meta_db_name);
+	$query = 'UPDATE tables SET end=FROM_UNIXTIME(?), max_id=? WHERE table_name=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($end, $last_id, $full_table);
 	
 	$self->log->debug('Updated table to have end ' . $end . ', max_id ' . $last_id . ' table_name ' . $full_table);
 	
 	# Mark archiving complete
-	$query = sprintf('UPDATE %s.buffers SET archive_complete=1 WHERE filename=?', $Meta_db_name);
+	$query = 'UPDATE buffers SET archive_complete=1 WHERE filename=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{file});
 	
 	# Record the load stats
-	$query = sprintf('INSERT INTO stats (type, bytes, count, time) VALUES("archive", ?,?,?)', $Meta_db_name);
+	$query = 'REPLACE INTO stats (type, bytes, count, time) VALUES("archive", ?,?,?)';
 	$sth = $self->db->prepare($query);
 	$sth->execute((-s $args->{file}), $records, $load_time);
 	
@@ -745,7 +766,7 @@ sub _get_max_id {
 	my ($query, $sth, $row);
 	
 	# Find db's current max id
-	$query = sprintf("SELECT MAX(max_id) AS max_id FROM %s.tables t1 JOIN table_types t2 on (t1.table_type_id=t2.id) WHERE table_type=?", $Meta_db_name);
+	$query = 'SELECT MAX(max_id) AS max_id FROM tables t1 JOIN table_types t2 on (t1.table_type_id=t2.id) WHERE table_type=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($type);
 	$row = $sth->fetchrow_hashref;
@@ -775,37 +796,28 @@ sub _get_table {
 	
 	my ($query, $sth, $row);
 	
-	$query = sprintf('SELECT table_name, min_id, max_id, table_locked_by, locked_by' . "\n" .
-		'FROM %1$s.tables' . "\n" .
-		'LEFT JOIN %1$s.indexes ON (tables.table_locked_by=indexes.locked_by)' . "\n" .
-		'WHERE table_type_id=(SELECT id FROM %1$s.table_types WHERE table_type=?)' . "\n" .
-		"ORDER BY tables.id DESC LIMIT 1", $Meta_db_name);
-	my $error = 0;
-	do {
-		eval {
-			$sth = $self->db->prepare($query);
-			$sth->execute($table_type) or die $self->db->errstr;
-			$row = $sth->fetchrow_hashref;
-		};
-		if ($@){
-			my $e = $@;
-			$self->log->error($e);
-			$error = 1;
-		}
-		else {
-			$error = 0;
-		}
-	} while ($error);
+	$query = 'SELECT table_name, min_id, max_id' . "\n" .
+		'FROM tables' . "\n" .
+		'WHERE table_type_id=(SELECT id FROM table_types WHERE table_type=?)' . "\n" .
+		"ORDER BY tables.id DESC LIMIT 1";
+#	$query = sprintf('SELECT table_name, min_id, max_id, table_locked_by, locked_by' . "\n" .
+#		'FROM %1$s.tables' . "\n" .
+#		'LEFT JOIN %1$s.indexes ON (tables.table_locked_by=indexes.locked_by)' . "\n" .
+#		'WHERE table_type_id=(SELECT id FROM %1$s.table_types WHERE table_type=?)' . "\n" .
+#		"ORDER BY tables.id DESC LIMIT 1", $Meta_db_name);
+	$sth = $self->db->prepare($query);
+	$sth->execute($table_type) or die $self->db->errstr;
+	$row = $sth->fetchrow_hashref;
 	if ($row){
 		# Is it time for a new index?
 		my $size = $self->conf->get('sphinx/perm_index_size');
 		if ($table_type eq 'archive'){
-			$size = $self->conf->get('archive/index_size');
+			$size = $self->conf->get('archive/table_size');
 		}
-		# See if the table is too big or is being consolidated
+		# See if the table is too big
 		if (($row->{max_id} - $row->{min_id}) >= $size){
 			my $new_id = $row->{max_id} + 1;
-			$self->log->debug("suggesting new table with id $new_id");
+			$self->log->debug("suggesting new table with id $new_id because row was: " . Dumper($row) . ' and size was ' . $size);
 			$args->{table_name} = sprintf("%s.syslogs_%s_%d", $Data_db_name, $table_type, $new_id);
 			return $args;
 		}
@@ -855,17 +867,15 @@ sub _create_table {
 	# Find the max id currently in the directory and use that to determine the autoinc value
 	my $current_max_id = $self->_get_max_id($args->{table_type});
 	eval {
-		$query = sprintf("INSERT INTO %s.tables (table_name, start, end, min_id, max_id, table_type_id)\n" .
-			"VALUES( ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), ?, ?, (SELECT id FROM %1\$s.table_types WHERE table_type=?) )",
-			$Meta_db_name);
+		$query = "INSERT INTO tables (table_name, start, end, min_id, max_id, table_type_id)\n" .
+			"VALUES( ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), ?, ?, (SELECT id FROM table_types WHERE table_type=?) )";
 		$sth = $self->db->prepare($query);
 		$sth->execute( $needed_table, $args->{start}, $args->{end}, $current_max_id + 1, $current_max_id + 1, $args->{table_type});
 		my $id = $self->db->{mysql_insertid};
 		$self->log->debug(sprintf("Created table id %d with start %s, end %s, first_id %lu, last_id %lu", 
 			$id, _epoch2iso($args->{start}), _epoch2iso($args->{end}), $args->{first_id}, $args->{last_id} ));	
 		
-		$query = sprintf("CREATE TABLE IF NOT EXISTS %s LIKE %s.syslogs_template",
-				$needed_table, $Meta_db_name);
+		$query = "CREATE TABLE IF NOT EXISTS $needed_table LIKE syslogs_template";
 		$self->log->debug("Creating table: $query");
 		$self->db->do($query);
 		
@@ -906,7 +916,7 @@ sub consolidate_indexes {
 	if ($args->{table}){
 		$table = $args->{table};
 		$self->log->debug('Consolidating table ' . $table);
-		$query = sprintf('SELECT min_id, max_id FROM %s.tables WHERE table_name=?', $Meta_db_name);
+		$query = 'SELECT min_id, max_id FROM tables WHERE table_name=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($table);
 		$row = $sth->fetchrow_hashref;
@@ -930,8 +940,8 @@ sub consolidate_indexes {
 		die 'Invalid args: ' . Dumper($args);
 	}
 	
-	$query = sprintf('SELECT COUNT(*) AS count FROM %s.v_directory ' . "\n" .
-			'WHERE table_type="index" AND min_id >= ? AND max_id <= ?', $Meta_db_name);
+	$query = 'SELECT COUNT(*) AS count FROM v_directory ' . "\n" .
+			'WHERE table_type="index" AND min_id >= ? AND max_id <= ?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($first_id, $last_id);
 	$row = $sth->fetchrow_hashref;
@@ -941,8 +951,9 @@ sub consolidate_indexes {
 		return 0;
 	}
 	
-	$query = sprintf('SELECT table_name, table_locked_by FROM %s.v_directory ' . "\n" .
-			'WHERE table_type="index" AND min_id >= ? AND max_id <= ?', $Meta_db_name);
+	$query = 'SELECT table_name, table_locked_by FROM v_directory ' . "\n" .
+			#'WHERE table_type="index" AND min_id >= ? AND max_id <= ?';
+			'WHERE table_type="index" AND (? BETWEEN min_id AND max_id OR ? BETWEEN min_id AND max_id)';
 	$sth = $self->db->prepare($query);
 	$sth->execute($first_id, $last_id);
 	$row = $sth->fetchrow_hashref;
@@ -958,15 +969,15 @@ sub consolidate_indexes {
 	# Do the indexing
 	my $replaced = $self->index_records({first_id => $first_id, last_id => $last_id});
 	
-	$self->_get_lock('directory') or die 'Unable to obtain lock';
-	
-	# Unlock the table we're consolidating
-	$query = sprintf('UPDATE %s.tables SET table_locked_by=NULL WHERE table_name=?', $Meta_db_name);
-	$sth = $self->db->prepare($query);
-	$sth->execute($table);
-	$self->log->debug('Unlocked table ' . $table);
-	
-	$self->_release_lock('directory');
+#	$self->_get_lock('directory') or die 'Unable to obtain lock';
+#	
+#	# Unlock the table we're consolidating
+#	$query = 'UPDATE tables SET table_locked_by=NULL WHERE table_name=?';
+#	$sth = $self->db->prepare($query);
+#	$sth->execute($table);
+#	$self->log->debug('Unlocked table ' . $table);
+#	
+#	$self->_release_lock('directory');
 		
 	# Validate our directory after this to be sure there's nothing left astray
 	$self->_validate_directory();
@@ -1032,13 +1043,12 @@ sub index_records {
 	$self->_get_lock('directory') or die 'Unable to obtain lock';
 	
 	# Verify these records are unlocked
-	$query = sprintf("SELECT locked_by\n" .
-		"FROM %s.v_directory\n" .
+	$query = "SELECT locked_by\n" .
+		"FROM v_directory\n" .
 		"WHERE table_type=\"index\" AND (? BETWEEN first_id AND last_id\n" .
 		"OR ? BETWEEN first_id AND last_id\n" .
 		"OR (first_id > ? AND last_id < ?))\n" .
-		"ORDER BY id ASC",
-		$Meta_db_name);
+		"ORDER BY id ASC";
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{first_id}, $args->{last_id}, $args->{first_id}, $args->{last_id});
 	while ($row = $sth->fetchrow_hashref){
@@ -1049,8 +1059,8 @@ sub index_records {
 	}
 	
 	# Check to see if this will replace any smaller indexes (this happens during index consolidation)
-	$query = sprintf("SELECT id, first_id, last_id, start, end, type FROM %s.v_directory\n" .
-		"WHERE first_id >= ? and last_id <= ?", $Meta_db_name);
+	$query = "SELECT id, first_id, last_id, start, end, type FROM v_directory\n" .
+		"WHERE first_id >= ? and last_id <= ?";
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{first_id}, $args->{last_id});
 	my %replaced;
@@ -1076,21 +1086,21 @@ sub index_records {
 	my $next_index_id = $self->_get_next_index_id($index_type);
 	
 	# Lock these indexes to make sure a different process does not try to replace them
-	$query = sprintf("UPDATE %s.indexes SET locked_by=?\n" .
-		"WHERE first_id >= ? and last_id <= ? AND ISNULL(locked_by)", $Meta_db_name);
+	$query = "UPDATE indexes SET locked_by=?\n" .
+		"WHERE first_id >= ? and last_id <= ? AND ISNULL(locked_by)";
 	$sth = $self->db->prepare($query);
 	$sth->execute($$, $args->{first_id}, $args->{last_id});
 	$self->log->trace('Locked indexes between ' . $args->{first_id} . ' and ' . $args->{last_id});
 	
 	# Find the table(s) we'll be indexing
 	my $table;
-	$query = sprintf("SELECT DISTINCT table_id AS id, table_name, IF(min_id < ?, ?, min_id) AS min_id,\n" .
+	$query = "SELECT DISTINCT table_id AS id, table_name, IF(min_id < ?, ?, min_id) AS min_id,\n" .
 		"IF(max_id > ?, ?, max_id) AS max_id\n" .
-		"FROM %s.v_directory\n" .
+		"FROM v_directory\n" .
 		"WHERE table_type=\"index\" AND (? BETWEEN min_id AND max_id\n" .
 		"OR ? BETWEEN min_id AND max_id\n" .
 		"OR (min_id > ? AND max_id < ?))\n" .
-		"ORDER BY id ASC", $Meta_db_name);
+		"ORDER BY id ASC";
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{first_id}, $args->{first_id},
 	 	$args->{last_id},$args->{last_id},
@@ -1117,11 +1127,11 @@ sub index_records {
 		$self->log->debug("Indexing rows from table $table");
 	}
 	else {
-		$query = sprintf("UPDATE %s.indexes SET locked_by=NULL WHERE locked_by=?", $Meta_db_name);
+		$query = 'UPDATE indexes SET locked_by=NULL WHERE locked_by=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($$);
 		
-		$query = sprintf("SELECT * FROM %s.tables", $Meta_db_name);
+		$query = 'SELECT * FROM tables';
 		$sth = $self->db->prepare($query);
 		$sth->execute();
 		my $tmp_hash = $sth->fetchall_hashref('id');
@@ -1153,8 +1163,8 @@ sub index_records {
 	}
 	
 	# Update the index table
-	$query = sprintf("REPLACE INTO %1\$s.indexes (id, start, end, first_id, last_id, table_id, type, locked_by)\n" .
-		"VALUES(?, ?, ?, ?, ?, (SELECT id FROM %1\$s.tables WHERE table_name=?), ?, ?)", $Meta_db_name);
+	$query = "REPLACE INTO indexes (id, start, end, first_id, last_id, table_id, type, locked_by)\n" .
+		"VALUES(?, ?, ?, ?, ?, (SELECT id FROM tables WHERE table_name=?), ?, ?)";
 	$sth = $self->db->prepare($query);
 	$sth->execute($next_index_id, $start, $end, $args->{first_id}, $args->{last_id}, 
 		$table, $index_type, $$);
@@ -1178,15 +1188,14 @@ sub index_records {
 	$self->_get_lock('directory') or die 'Unable to obtain lock';
 		
 	# Unlock the indexes we were working on
-	$query = sprintf("UPDATE %s.indexes SET locked_by=NULL WHERE locked_by=?",
-		$Meta_db_name);
+	$query = 'UPDATE indexes SET locked_by=NULL WHERE locked_by=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($$);
 	$self->log->trace('Unlocked indexes between ' . $args->{first_id} . ' and ' . $args->{last_id});
 	
 	# Update the stats table
 	if ($stats and ref($stats) and ref($stats) eq 'HASH'){
-		$query = sprintf('INSERT INTO %s.stats (type, bytes, count, time) VALUES ("index", ?,?,?)', $Meta_db_name);
+		$query = 'REPLACE INTO stats (type, bytes, count, time) VALUES ("index", ?,?,?)';
 		$sth = $self->db->prepare($query);
 		$sth->execute($stats->{bytes}, $stats->{docs}, (time() - $start_time));
 	}
@@ -1200,7 +1209,7 @@ sub _over_num_index_limit {
 	my $self = shift;
 	my ($query, $sth);
 	# Find the percentage of indexes that are temporary
-	$query = sprintf('SELECT COUNT(*) AS count FROM %s.indexes WHERE type="temporary" and ISNULL(locked_by)', $Meta_db_name);
+	$query = 'SELECT COUNT(*) AS count FROM indexes WHERE type="temporary" and ISNULL(locked_by)';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my $row = $sth->fetchrow_hashref;
@@ -1228,8 +1237,8 @@ sub _over_mem_limit {
 	my $total_free = freemem() + freeswap();
 	
 	my $index_sizes = $self->_get_sphinx_index_sizes();
-	$query = sprintf("SELECT id, type\n" .
-		"FROM %s.indexes WHERE ISNULL(locked_by) AND type=\"temporary\"\n", $Meta_db_name);
+	$query = "SELECT id, type\n" .
+		"FROM indexes WHERE ISNULL(locked_by) AND type=\"temporary\"\n";
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my $total_temp_size = 0;
@@ -1276,7 +1285,7 @@ sub _sphinx_index {
 	my $cmd = sprintf("%s --config %s --rotate %s 2>&1", 
 		$self->conf->get('sphinx/indexer'), $self->conf->get('sphinx/config_file'), $index_name);
 	my @output = qx/$cmd/;
-	$self->log->debug('output: ' . join("\n", @output));
+	$self->log->debug('output: ' . join('', @output));
 	my $collected = 0;
 	my $bytes = 0;
 	my $retries = 0;
@@ -1284,7 +1293,6 @@ sub _sphinx_index {
 	TRY_LOOP: while (!$collected){
 		LINE_LOOP: foreach (@output){
 			chomp;
-			$self->log->trace('output: ' . $_);
 			#if (/collected\s+(\d+)\s+docs/){ # in sphinx 0.9.9
 			if (/^total (\d+) docs, (\d+) bytes$/){
 				$collected = $1;
@@ -1335,14 +1343,14 @@ sub _drop_indexes {
 	foreach my $id (@$ids){
 		$self->log->debug("Deleting index $id from DB");
 		
-		$query = sprintf("SELECT first_id, last_id, table_name FROM %s.v_directory WHERE id=? AND type=?", $Meta_db_name);
+		$query = 'SELECT first_id, last_id, table_name FROM v_directory WHERE id=? AND type=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($id, $type);
 		#$self->log->trace('executed');
 		my $row = $sth->fetchrow_hashref;
 		if ($row){
 			my $full_table = $row->{table_name};
-			$query = sprintf("DELETE FROM %s.indexes WHERE id=? AND locked_by=? AND type=?", $Meta_db_name);
+			$query = 'DELETE FROM indexes WHERE id=? AND locked_by=? AND type=?';
 			$sth = $self->db->prepare($query);
 			$sth->execute($id, $$, $type);
 			#$self->log->trace('executed id ' . $id);
@@ -1353,7 +1361,7 @@ sub _drop_indexes {
 			
 			# Drop the table if necessary.  This query returns nothing if no indexes refer to a given table.
 			$self->log->debug("Checking if we need to drop $full_table");
-			$query = sprintf("SELECT * FROM %s.v_directory WHERE table_name=? AND NOT ISNULL(id)", $Meta_db_name);
+			$query = 'SELECT * FROM v_directory WHERE table_name=? AND NOT ISNULL(id)';
 			$sth = $self->db->prepare($query);
 			$sth->execute($full_table);
 			#$self->log->trace('executed full_table ' . $full_table);
@@ -1365,7 +1373,7 @@ sub _drop_indexes {
 				$self->log->info("Dropping table $full_table");
 				$query = sprintf("DROP TABLE %s", $full_table);
 				$self->db->do($query);
-				$query = sprintf("DELETE FROM %s.tables WHERE table_name=?", $Meta_db_name);
+				$query = 'DELETE FROM tables WHERE table_name=?';
 				$sth = $self->db->prepare($query);
 				$sth->execute($full_table);
 			}
@@ -1402,9 +1410,9 @@ sub get_sphinx_conf {
 	
 	my $perm_template = <<EOT
 source perm_%1\$d : permanent {
-        sql_query_pre = SELECT table_name INTO \@src_table FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"
-        sql_query_pre = SELECT IF(NOT ISNULL(\@src_table), \@src_table, "$Meta_db_name.init") INTO \@src_table FROM dual
-        sql_query_pre = SELECT IF((SELECT first_id FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"), (SELECT first_id FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"), 1), IF((SELECT last_id FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"), (SELECT last_id FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="permanent"), 1) INTO \@first_id, \@last_id FROM dual
+        sql_query_pre = SELECT table_name INTO \@src_table FROM v_directory WHERE id=%1\$d AND type="permanent"
+        sql_query_pre = SELECT IF(NOT ISNULL(\@src_table), \@src_table, "init") INTO \@src_table FROM dual
+        sql_query_pre = SELECT IF((SELECT first_id FROM v_directory WHERE id=%1\$d AND type="permanent"), (SELECT first_id FROM v_directory WHERE id=%1\$d AND type="permanent"), 1), IF((SELECT last_id FROM v_directory WHERE id=%1\$d AND type="permanent"), (SELECT last_id FROM v_directory WHERE id=%1\$d AND type="permanent"), 1) INTO \@first_id, \@last_id FROM dual
         sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5, CRC32(s0) AS attr_s0, CRC32(s1) AS attr_s1, CRC32(s2) AS attr_s2, CRC32(s3) AS attr_s3, CRC32(s4) AS attr_s4, CRC32(s5) AS attr_s5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
         sql_query_pre = PREPARE stmt FROM \@sql
         sql_query = EXECUTE stmt 
@@ -1418,9 +1426,9 @@ EOT
 
 	my $temp_template = <<EOT
 source temp_%1\$d : temporary {
-        sql_query_pre = SELECT table_name INTO \@src_table FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"
-        sql_query_pre = SELECT IF(NOT ISNULL(\@src_table), \@src_table, "$Meta_db_name.init") INTO \@src_table FROM dual
-        sql_query_pre = SELECT IF((SELECT first_id FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"), (SELECT first_id FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"), 1), IF((SELECT last_id FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"), (SELECT last_id FROM $Meta_db_name.v_directory WHERE id=%1\$d AND type="temporary"), 1) INTO \@first_id, \@last_id FROM dual
+        sql_query_pre = SELECT table_name INTO \@src_table FROM v_directory WHERE id=%1\$d AND type="temporary"
+        sql_query_pre = SELECT IF(NOT ISNULL(\@src_table), \@src_table, "init") INTO \@src_table FROM dual
+        sql_query_pre = SELECT IF((SELECT first_id FROM v_directory WHERE id=%1\$d AND type="temporary"), (SELECT first_id FROM v_directory WHERE id=%1\$d AND type="temporary"), 1), IF((SELECT last_id FROM v_directory WHERE id=%1\$d AND type="temporary"), (SELECT last_id FROM v_directory WHERE id=%1\$d AND type="temporary"), 1) INTO \@first_id, \@last_id FROM dual
         sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5, CRC32(s0) AS attr_s0, CRC32(s1) AS attr_s1, CRC32(s2) AS attr_s2, CRC32(s3) AS attr_s3, CRC32(s4) AS attr_s4, CRC32(s5) AS attr_s5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
         sql_query_pre = PREPARE stmt FROM \@sql
         sql_query = EXECUTE stmt 
@@ -1478,7 +1486,7 @@ sub _get_next_index_id {
 	my ($query, $sth);
 	
 	# Try to find an unused id
-	$query = sprintf('SELECT id, type, start, locked_by FROM %s.indexes WHERE type=?', $Meta_db_name);
+	$query = 'SELECT id, type, start, locked_by FROM indexes WHERE type=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($type);
 	my $ids = $sth->fetchall_hashref('id') or return 1;
