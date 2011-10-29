@@ -1040,7 +1040,8 @@ YAHOO.ELSA.Results = function(){
 			this.groupByDataTables = {};
 		}
 		logger.log('p_oGroupBy', p_oGroupBy);
-		var oGroupData = p_oGroupBy[p_sGroupBy];
+		//var oGroupData = p_oGroupBy[p_sGroupBy];
+		var oGroupData = p_oGroupBy;
 		logger.log('oGroupData', oGroupData);
 		
 		// create data formatted for chart
@@ -1578,11 +1579,12 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			YAHOO.ELSA.Error('Error loading response' + e);
 		}
 		
-		if (this.results.groups && keys(this.results.groups).length){
-			oLabelEl.innerHTML += ' [Grouped by ' + keys(this.results.groups).join(',') + ']';
+		//if (this.results.groups && keys(this.results.groups).length){
+		if (this.results.groupby && keys(this.results.groupby).length){
+			oLabelEl.innerHTML += ' [Grouped by ' + keys(this.results.groupby).join(',') + ']';
 			try {
-				for (var sGroupBy in this.results.groups){
-					this.createGroupByDataTable(this.results.groups, sGroupBy, this.tab.get('contentEl'));
+				for (var sGroupBy in this.results.groupby){
+					this.createGroupByDataTable(this.results.results, sGroupBy, this.tab.get('contentEl'));
 				}
 				for (var sGroupBy in this.groupByDataTables){
 					this.groupByDataTables[sGroupBy].render();

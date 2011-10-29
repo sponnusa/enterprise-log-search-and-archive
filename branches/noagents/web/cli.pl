@@ -5,6 +5,7 @@ use Log::Log4perl;
 use Config::JSON;
 use JSON -convert_blessed_universally;
 use DBI;
+use JSON;
 use Getopt::Std;
 use FindBin;
 use lib $FindBin::Bin . '/lib';
@@ -16,7 +17,7 @@ if ($ENV{ELSA_CONF}){
 }
 
 my %opts;
-getopts('q:c:', \%opts);
+getopts('f:q:c:', \%opts);
 if ($opts{c}){
 	$config_file = $opts{c};
 }
@@ -67,4 +68,8 @@ my $api = API->new(conf => $conf, log => $logger, json => $json, db => $dbh);
 my $user_info = $api->get_user_info('system');
 
 #print Dumper($api->query({query => {'srcip' => $opts{q}}, user_info => $user_info}));
-print Dumper($api->query({query_string => $opts{q}, user_info => $user_info}));
+
+my $result = $api->query({query_string => $opts{q}, user_info => $user_info});
+exit unless $result and ref($result) eq 'HASH' and $result->{results} and ref($result->{results}) eq 'ARRAY';
+$result->{format} = $opts{f} ? $opts{f} : 'tsv'; 
+print $api->format_results($result) . "\n";

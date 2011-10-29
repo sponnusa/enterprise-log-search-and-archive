@@ -140,6 +140,15 @@ EOHTML
 		}
 	}
 	
+	# Set form params
+	my $form_params = $self->api->get_form_params;
+	if($form_params){
+		$HTML .= 'var formParams = ' . encode_json($form_params) . ';';
+	}
+	else {
+		$HTML .= q/YAHOO.WISC.Error('Error contacting log server(s)');/;
+	}
+	
 	$HTML .= <<'EOHTML'
 YAHOO.util.Event.throwErrors = true; 
 	/*
