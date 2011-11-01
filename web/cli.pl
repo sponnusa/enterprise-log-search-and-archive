@@ -71,5 +71,10 @@ my $user_info = $api->get_user_info('system');
 
 my $result = $api->query({query_string => $opts{q}, user_info => $user_info});
 exit unless $result and ref($result) eq 'HASH' and $result->{results} and ref($result->{results}) eq 'ARRAY';
-$result->{format} = $opts{f} ? $opts{f} : 'tsv'; 
+$result->{format} = $opts{f} ? $opts{f} : 'tsv';
+if ($result->{errors}){
+	foreach (@{ $result->{errors} }){
+		print "$_\n";
+	}
+}
 print $api->format_results($result) . "\n";

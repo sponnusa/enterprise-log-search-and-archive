@@ -16,6 +16,8 @@ use Sys::Hostname::FQDN;
 use String::CRC32;
 use CHI;
 use Time::HiRes qw(time);
+use Module::Pluggable require => 1, search_path => [ qw( Export Info ) ];
+use URI::Escape qw(uri_unescape);
 
 use AnyEvent::DBI;
 
@@ -1024,6 +1026,7 @@ sub _get_sphinx_nodes {
 				$err .= ': ' . $filename . ' ' . $line;
 				$self->log->error($err);
 				$nodes{$node}->{error} = $err;
+				$self->last_error($err);
 			},
 			on_connect => sub {
 				my ($dbh, $success) = @_;
@@ -1066,6 +1069,7 @@ sub _get_sphinx_nodes {
 				$err .= ': ' . $filename . ' ' . $line;
 				$self->log->error($err);
 				$nodes{$node}->{error} = $err;
+				$self->last_error($err);
 			},
 			on_connect => sub {
 				my ($dbh, $success) = @_;
@@ -1329,6 +1333,14 @@ sub _get_node_info {
 	foreach my $field_hash (@{ $ret->{fields} }){
 		$ret->{fields_by_name}->{ $field_hash->{value} } ||= [];
 		push @{ $ret->{fields_by_name}->{ $field_hash->{value} } }, $field_hash;
+	}
+	
+	# Find fields by type
+	$ret->{fields_by_type} = {};
+	foreach my $field_hash (@{ $ret->{fields} }){
+		$ret->{fields_by_type}->{ $field_hash->{field_type} } ||= {};
+		$ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } ||= [];
+		push @{ $ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } }, $field_hash;
 	}
 	
 	return $ret;
@@ -2387,6 +2399,13 @@ sub _sphinx_query {
 				my ($dbh, $result, $rv) = @_;
 				my $rows = $result->{rows};
 				$self->log->trace('node ' . $node . ' got sphinx result: ' . Dumper($result));
+				if (not $rv){
+					my $e = 'node ' . $node . ' got error ' . $@;
+					$self->log->error($e);
+					push @{ $args->{errors} }, $e;
+					$cv->end;
+					next;
+				}
 				$ret->{$node}->{sphinx_rows} = $rows;
 				$ret->{$node}->{meta} = $result->{meta};
 				
@@ -2430,6 +2449,12 @@ sub _sphinx_query {
 					$nodes->{$node}->{dbh}->get($table_query, @{ $tables{$table} }, 
 						sub { 
 							my ($dbh, $rows, $rv) = @_;
+							if ($ret->{$node}->{error}){
+								$self->log->error('node ' . $node . ' got error ' . $ret->{$node}->{error});
+								push @{ $args->{errors} }, $ret->{$node}->{error};
+								$cv->end;
+								next;
+							}
 							$self->log->trace('node '. $node . ' got db rows: ' . (scalar @$rows));
 							foreach my $row (@$rows){
 								$ret->{$node}->{results} ||= {};
@@ -2451,6 +2476,7 @@ sub _sphinx_query {
 	$cv->recv; # block until all of the above completes
 	
 	$args->{results} = [];
+	$args->{total_records} = 0;
 	if (exists $args->{groupby}){
 		foreach my $groupby (@{ $args->{groupby} }){
 			my %agg;
@@ -2524,11 +2550,15 @@ sub _sphinx_query {
 				}
 				$args->{results} = [ @tmp ];
 			}
+			
+			# Total these
+			foreach my $key (keys %agg){
+				$args->{total_records} += $agg{$key};
+			}
 		}
 	}
 	else {
 		foreach my $node (keys %$ret){
-			$args->{total_records} ||= 0;
 			$args->{total_records} += $ret->{$node}->{meta}->{total_found};
 			foreach my $id (sort { $a <=> $b } keys %{ $ret->{$node}->{results} }){
 				my $row = $ret->{$node}->{results}->{$id};
@@ -2586,7 +2616,7 @@ sub _get_field {
 	$field = $raw_field;
 	$class = 0;
 	my %fields;
-	
+		
 	# Could also be a meta-field/attribute
 	if (defined $Field_to_order->{$field}){
 		$fields{$class} = { 
@@ -2702,10 +2732,10 @@ sub _parse_query_string {
 	$self->log->debug('field_terms: ' . Dumper($args->{field_terms}));
 	my $host_is_filter = 0;
 	foreach my $boolean qw(and or){
-#		foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
-#			next unless $class_id;
-#			$host_is_filter++;
-#		}
+		foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
+			next unless $class_id;
+			$host_is_filter++;
+		}
 		foreach my $term (@{ $args->{any_field_terms}->{$boolean} }){
 			$host_is_filter++;
 		}
@@ -2798,7 +2828,7 @@ sub _parse_query_string {
 	$self->log->trace('distinct_classes after adjustments: ' . Dumper($args->{distinct_classes}));
 	
 	# Find all field names in the AND
-	my %required_fields;
+#	my %required_fields;
 #	$self->log->trace('field_terms and: ' . Dumper($args->{field_terms}->{and}));
 #	foreach my $class_id (keys %{ $args->{field_terms}->{and} }){
 #		foreach my $raw_field (keys %{ $args->{field_terms}->{and}->{$class_id} }){
@@ -2836,49 +2866,49 @@ sub _parse_query_string {
 #		}
 #	}
 	
-	foreach my $boolean qw(and range_and range_or range_not){
-		$self->log->debug('attr_terms ' . $boolean . ': ' . Dumper($args->{attr_terms}->{$boolean}));
-		foreach my $raw_field (keys %{ $args->{attr_terms}->{$boolean} }){
-			foreach my $class_id (keys %{ $args->{attr_terms}->{$boolean}->{$raw_field} }){
-#				$raw_field =~ s/^attr\_//g; #strip off the attr_ to get the actual field name
-#				$self->log->trace('raw_field: ' . $raw_field);
-#				my $field_order = $Field_to_order->{ $raw_field };
-#				my $field = $args->{node_info}->{fields_by_order}->{$class_id}->{$field_order}->{value};
-#				$self->log->trace('attr_terms boolean:' . $boolean . ', class_id: ' . $class_id . ' raw_field:' . $raw_field . ', field: ' . $field);
-#				next unless $field;
-#				$required_fields{ $field } = 1;
-				foreach my $field (keys %{ $args->{attr_terms}->{$boolean}->{$raw_field}->{$class_id} }){
-					$self->log->trace('attr_terms boolean:' . $boolean . ', class_id: ' . $class_id . ' raw_field:' . $raw_field . ', field: ' . $field);
-					next unless $field;
-					$required_fields{ $field } = 1;
-				}
-			}
-		}
-	}
-	$self->log->debug('required_fields: ' . Dumper(\%required_fields));
-	# Remove any classes that won't provide the field needed from the query	
-	foreach my $candidate_class_id (keys %{ $args->{distinct_classes} }){
-		foreach my $required_field (keys %required_fields){
-			$self->log->trace('checking for required field: ' . $required_field);
-			my $found = 0;
-			foreach my $row (@{ $args->{node_info}->{fields_by_name}->{$required_field} }){
-				if ($row->{class_id} eq $candidate_class_id){
-					$self->log->trace('found required_field ' . $required_field . ' in class_id ' . $candidate_class_id . ' at row: ' . Dumper($row));
-					$found = 1;
-					last;
-				}
-				elsif ($row->{class_id} == 0){
-					$self->log->trace('required_field ' . $required_field . ' is a meta attr and exists in all classes');
-					$found = 1;
-					last;
-				}
-			}
-			unless ($found){
-				$self->log->trace('removing class_id ' . $candidate_class_id);
-				delete $args->{distinct_classes}->{$candidate_class_id};
-			}
-		}
-	}		
+#	foreach my $boolean qw(or and range_and range_or range_not){
+#		$self->log->debug('attr_terms ' . $boolean . ': ' . Dumper($args->{attr_terms}->{$boolean}));
+#		foreach my $raw_field (keys %{ $args->{attr_terms}->{$boolean} }){
+#			foreach my $class_id (keys %{ $args->{attr_terms}->{$boolean}->{$raw_field} }){
+##				$raw_field =~ s/^attr\_//g; #strip off the attr_ to get the actual field name
+##				$self->log->trace('raw_field: ' . $raw_field);
+##				my $field_order = $Field_to_order->{ $raw_field };
+##				my $field = $args->{node_info}->{fields_by_order}->{$class_id}->{$field_order}->{value};
+##				$self->log->trace('attr_terms boolean:' . $boolean . ', class_id: ' . $class_id . ' raw_field:' . $raw_field . ', field: ' . $field);
+##				next unless $field;
+##				$required_fields{ $field } = 1;
+#				foreach my $attr (keys %{ $args->{attr_terms}->{$boolean}->{$raw_field}->{$class_id} }){
+#					$self->log->trace('attr_terms boolean:' . $boolean . ', class_id: ' . $class_id . ' raw_field:' . $raw_field . ', attr: ' . $attr);
+#					next unless $attr;
+#					$required_fields{ $attr } = 1;
+#				}
+#			}
+#		}
+#	}
+#	$self->log->debug('required_fields: ' . Dumper(\%required_fields));
+#	# Remove any classes that won't provide the field needed from the query	
+#	foreach my $candidate_class_id (keys %{ $args->{distinct_classes} }){
+#		foreach my $required_field (keys %required_fields){
+#			$self->log->trace('checking for required field: ' . $required_field . ' in ' . Dumper($args->{node_info}->{fields_by_name}->{$required_field}));
+#			my $found = 0;
+#			foreach my $row (@{ $args->{node_info}->{fields_by_name}->{$required_field} }){
+#				if ($row->{class_id} eq $candidate_class_id){
+#					$self->log->trace('found required_field ' . $required_field . ' in class_id ' . $candidate_class_id . ' at row: ' . Dumper($row));
+#					$found = 1;
+#					last;
+#				}
+#				elsif ($row->{class_id} == 0){
+#					$self->log->trace('required_field ' . $required_field . ' is a meta attr and exists in all classes');
+#					$found = 1;
+#					last;
+#				}
+#			}
+#			unless ($found){
+#				$self->log->trace('removing class_id ' . $candidate_class_id);
+#				delete $args->{distinct_classes}->{$candidate_class_id};
+#			}
+#		}
+#	}		
 	
 	if (scalar keys %{ $args->{excluded_classes} }){
 		foreach my $class_id (keys %{ $args->{excluded_classes} }){
@@ -3128,6 +3158,15 @@ sub _parse_query_string {
 #		}
 #	}
 	
+	foreach my $boolean qw(and or range_and){
+		next unless $args->{field_terms}->{$boolean};
+		foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
+			foreach my $attr (keys %{ $args->{field_terms}->{$boolean}->{$class_id} }){
+				$query_term_count++;
+			}
+		}
+	}
+	
 	foreach my $boolean qw(or and){
 		$query_term_count += scalar @{ $args->{any_field_terms}->{$boolean} }; 
 	}
@@ -3325,18 +3364,19 @@ sub _parse_query_term {
 								
 				if ($operator eq '-'){
 					if ($term_hash->{op} eq '='){
-#						foreach my $class_id (keys %{ $values->{fields} }){
-#							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
-#								$args->{field_terms}->{not}->{$class_id}->{$real_field} ||= [];
-#								push @{ $args->{field_terms}->{not}->{$class_id}->{$real_field} }, 
-#									@{ $values->{fields}->{$class_id}->{$real_field} };
-#							}	
-#						}
+						foreach my $class_id (keys %{ $values->{fields} }){
+							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
+								$args->{field_terms}->{not}->{$class_id}->{$real_field} ||= [];
+								push @{ $args->{field_terms}->{not}->{$class_id}->{$real_field} }, 
+									$values->{fields}->{$class_id}->{$real_field};
+							}	
+						}
 						foreach my $class_id (keys %{ $values->{attrs} }){
+							push @{ $args->{any_field_terms}->{not} }, $term_hash->{value};
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								$args->{attr_terms}->{not}->{$class_id}->{$real_field} ||= [];
 								push @{ $args->{attr_terms}->{not}->{$class_id}->{$real_field} },
-									@{ $values->{attrs}->{$class_id}->{$real_field} };
+									$values->{attrs}->{$class_id}->{$real_field};
 							}
 						}
 					}
@@ -3344,7 +3384,7 @@ sub _parse_query_term {
 						foreach my $class_id (keys %{ $values->{attrs} }){
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								$args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
-								push @{ $args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field}->[0];
+								push @{ $args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
 #								unless ($args->{attr_terms}->{range_not}->{$class_id}->{$real_field}){
 #									$args->{attr_terms}->{range_not}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
 #								}
@@ -3365,23 +3405,24 @@ sub _parse_query_term {
 #					}
 					else {
 						# Only thing left is '!=' which in this context is a double-negative
-#						foreach my $class_id (keys %{ $values->{fields} }){
-#							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
-#								if ($args->{field_terms}->{and}->{$class_id}->{$real_field}){
-#									 push @{ $args->{field_terms}->{and}->{$class_id}->{$real_field} }, @{ $values->{fields}->{$class_id}->{$real_field} };
-#								}
-#								else {
-#									$args->{field_terms}->{and}->{$class_id}->{$real_field} = [ @{ $values->{fields}->{$class_id}->{$real_field} } ];
-#								}
-#							}	
-#						}
-						foreach my $class_id (keys %{ $values->{attrs} }){
-							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-								if ($args->{attr_terms}->{and}->{$class_id}->{$real_field}){
-									 push @{ $args->{attr_terms}->{and}->{$class_id}->{$real_field} }, @{ $values->{attrs}->{$class_id}->{$real_field} };
+						foreach my $class_id (keys %{ $values->{fields} }){
+							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
+								if ($args->{field_terms}->{and}->{$class_id}->{$real_field}){
+									 push @{ $args->{field_terms}->{and}->{$class_id}->{$real_field} }, $values->{fields}->{$class_id}->{$real_field};
 								}
 								else {
-									$args->{attr_terms}->{and}->{$class_id}->{$real_field} = [ @{ $values->{attrs}->{$class_id}->{$real_field} } ];
+									$args->{field_terms}->{and}->{$class_id}->{$real_field} = [ $values->{fields}->{$class_id}->{$real_field} ];
+								}
+							}	
+						}
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							push @{ $args->{any_field_terms}->{and} }, $term_hash->{value};
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								if ($args->{attr_terms}->{and}->{$class_id}->{$real_field}){
+									 push @{ $args->{attr_terms}->{and}->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
+								}
+								else {
+									$args->{attr_terms}->{and}->{$class_id}->{$real_field} = [ $values->{attrs}->{$class_id}->{$real_field} ];
 								}
 							}
 						}
@@ -3389,26 +3430,26 @@ sub _parse_query_term {
 				}
 				elsif ($operator eq '+') {
 					if ($term_hash->{op} eq '='){
-#						foreach my $class_id (keys %{ $values->{fields} }){
-#							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
-#								if ($args->{field_terms}->{and}->{$class_id}->{$real_field}){
-#									 push @{ $args->{field_terms}->{and}->{$class_id}->{$real_field} }, @{ $values->{fields}->{$class_id}->{$real_field} };
-#								}
-#								else {
-#									$args->{field_terms}->{and}->{$class_id}->{$real_field} = [ @{ $values->{fields}->{$class_id}->{$real_field} } ];
-#								}
-#							}	
-#						}
-						foreach my $class_id (keys %{ $values->{attrs} }){
-							$args->{attr_terms}->{and}->{ $term_hash->{field} } ||= {};
-							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-								push @{ $args->{any_field_terms}->{and} }, $term_hash->{value};
-								#$args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field} = $values->{attrs}->{$class_id}->{$real_field}->[0];
-								if ($args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field}){
-									 push @{ $args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, @{ $values->{attrs}->{$class_id}->{$real_field} };
+						foreach my $class_id (keys %{ $values->{fields} }){
+							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
+								if ($args->{field_terms}->{and}->{$class_id}->{$real_field}){
+									 push @{ $args->{field_terms}->{and}->{$class_id}->{$real_field} }, $values->{fields}->{$class_id}->{$real_field};
 								}
 								else {
-									$args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field} = [ @{ $values->{attrs}->{$class_id}->{$real_field} } ];
+									$args->{field_terms}->{and}->{$class_id}->{$real_field} = [ $values->{fields}->{$class_id}->{$real_field} ];
+								}
+							}	
+						}
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							push @{ $args->{any_field_terms}->{and} }, $term_hash->{value};
+							$args->{attr_terms}->{and}->{ $term_hash->{field} } ||= {};
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								#$args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field} = $values->{attrs}->{$class_id}->{$real_field}->[0];
+								if ($args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field}){
+									 push @{ $args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
+								}
+								else {
+									$args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field} = [ $values->{attrs}->{$class_id}->{$real_field} ];
 								}
 							}
 						}
@@ -3417,7 +3458,7 @@ sub _parse_query_term {
 						foreach my $class_id (keys %{ $values->{attrs} }){
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								$args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
-								push @{ $args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field}->[0];
+								push @{ $args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
 #								unless ($args->{attr_terms}->{range_and}->{$class_id}->{$real_field}){
 #									$args->{attr_terms}->{range_and}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
 #								}
@@ -3441,23 +3482,24 @@ sub _parse_query_term {
 #					}
 					else {
 						# Only thing left is '!='
-#						foreach my $class_id (keys %{ $values->{fields} }){
-#							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
-#								if ($args->{field_terms}->{not}->{$class_id}->{$real_field}){
-#									 push @{ $args->{field_terms}->{not}->{$class_id}->{$real_field} }, @{ $values->{fields}->{$class_id}->{$real_field} };
-#								}
-#								else {
-#									$args->{field_terms}->{not}->{$class_id}->{$real_field} = [ @{ $values->{fields}->{$class_id}->{$real_field} } ];
-#								}
-#							}	
-#						}
-						foreach my $class_id (keys %{ $values->{attrs} }){
-							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-								if ($args->{attr_terms}->{not}->{$class_id}->{$real_field}){
-									 push @{ $args->{attr_terms}->{not}->{$class_id}->{$real_field} }, @{ $values->{attrs}->{$class_id}->{$real_field} };
+						foreach my $class_id (keys %{ $values->{fields} }){
+							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
+								if ($args->{field_terms}->{not}->{$class_id}->{$real_field}){
+									 push @{ $args->{field_terms}->{not}->{$class_id}->{$real_field} }, $values->{fields}->{$class_id}->{$real_field};
 								}
 								else {
-									$args->{attr_terms}->{not}->{$class_id}->{$real_field} = [ @{ $values->{attrs}->{$class_id}->{$real_field} } ];
+									$args->{field_terms}->{not}->{$class_id}->{$real_field} = [ $values->{fields}->{$class_id}->{$real_field} ];
+								}
+							}
+						}
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							push @{ $args->{any_field_terms}->{not} }, $term_hash->{value};
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								if ($args->{attr_terms}->{not}->{$class_id}->{$real_field}){
+									 push @{ $args->{attr_terms}->{not}->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
+								}
+								else {
+									$args->{attr_terms}->{not}->{$class_id}->{$real_field} = [ $values->{attrs}->{$class_id}->{$real_field} ];
 								}
 							}
 						}
@@ -3465,32 +3507,32 @@ sub _parse_query_term {
 				}
 				else { #OR
 					if ($term_hash->{op} eq '='){
-#						foreach my $class_id (keys %{ $values->{fields} }){
-#							push @{ $args->{any_field_terms}->{or} }, $term_hash->{value};
-#							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
-#								if ($args->{field_terms}->{or}->{$class_id}->{$real_field}){
-#									 push @{ $args->{field_terms}->{or}->{$class_id}->{$real_field} }, @{ $values->{fields}->{$class_id}->{$real_field} };
-#								}
-#								else {
-#									$args->{field_terms}->{or}->{$class_id}->{$real_field} = [ @{ $values->{fields}->{$class_id}->{$real_field} } ];
-#								}
-#							}	
-#						}
-						foreach my $class_id (keys %{ $values->{attrs} }){
-							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-								push @{ $args->{any_field_terms}->{or} }, $term_hash->{value};
-								if ($args->{attr_terms}->{or}->{$class_id}->{$real_field}){
-									 push @{ $args->{attr_terms}->{or}->{$class_id}->{$real_field} }, @{ $values->{attrs}->{$class_id}->{$real_field} };
+						foreach my $class_id (keys %{ $values->{fields} }){
+							#push @{ $args->{any_field_terms}->{or} }, $term_hash->{value};
+							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
+								if ($args->{field_terms}->{or}->{$class_id}->{$real_field}){
+									 push @{ $args->{field_terms}->{or}->{$class_id}->{$real_field} }, $values->{fields}->{$class_id}->{$real_field};
 								}
 								else {
-									$args->{attr_terms}->{or}->{$class_id}->{$real_field} = [ @{ $values->{attrs}->{$class_id}->{$real_field} } ];
+									$args->{field_terms}->{or}->{$class_id}->{$real_field} = [ $values->{fields}->{$class_id}->{$real_field} ];
+								}
+							}	
+						}
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							push @{ $args->{any_field_terms}->{or} }, $term_hash->{value};
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								if ($args->{attr_terms}->{or}->{$class_id}->{$real_field}){
+									 push @{ $args->{attr_terms}->{or}->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
+								}
+								else {
+									$args->{attr_terms}->{or}->{$class_id}->{$real_field} = [ $values->{attrs}->{$class_id}->{$real_field} ];
 								}
 #								$self->log->warn("OR on attr $real_field is impossible, converting to AND");
 #								if ($args->{attr_terms}->{or}->{$class_id}->{$real_field}){
-#									 push @{ $args->{attr_terms}->{and}->{$class_id}->{$real_field} }, @{ $values->{attrs}->{$class_id}->{$real_field} };
+#									 push @{ $args->{attr_terms}->{and}->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
 #								}
 #								else {
-#									$args->{attr_terms}->{or}->{$class_id}->{$real_field} = [ @{ $values->{attrs}->{$class_id}->{$real_field} } ];
+#									$args->{attr_terms}->{or}->{$class_id}->{$real_field} = [ $values->{attrs}->{$class_id}->{$real_field} ];
 #								}
 							}
 						}
@@ -3499,7 +3541,7 @@ sub _parse_query_term {
 						foreach my $class_id (keys %{ $values->{attrs} }){
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								$args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
-								push @{ $args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field}->[0];
+								push @{ $args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
 #								unless ($args->{attr_terms}->{range_or}->{$class_id}->{$real_field}){
 #									$args->{attr_terms}->{range_or}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
 #								}
@@ -3520,23 +3562,23 @@ sub _parse_query_term {
 #					}
 					else {
 						# Only thing left is '!='
-#						foreach my $class_id (keys %{ $values->{fields} }){
-#							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
-#								if ($args->{field_terms}->{not}->{$class_id}->{$real_field}){
-#									 push @{ $args->{field_terms}->{not}->{$class_id}->{$real_field} }, @{ $values->{fields}->{$class_id}->{$real_field} };
-#								}
-#								else {
-#									$args->{field_terms}->{not}->{$class_id}->{$real_field} = [ @{ $values->{fields}->{$class_id}->{$real_field} } ];
-#								}
-#							}	
-#						}
+						foreach my $class_id (keys %{ $values->{fields} }){
+							foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
+								if ($args->{field_terms}->{not}->{$class_id}->{$real_field}){
+									 push @{ $args->{field_terms}->{not}->{$class_id}->{$real_field} }, $values->{fields}->{$class_id}->{$real_field};
+								}
+								else {
+									$args->{field_terms}->{not}->{$class_id}->{$real_field} = [ $values->{fields}->{$class_id}->{$real_field} ];
+								}
+							}	
+						}
 						foreach my $class_id (keys %{ $values->{attrs} }){
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								if ($args->{attr_terms}->{not}->{$class_id}->{$real_field}){
-									 push @{ $args->{attr_terms}->{not}->{$class_id}->{$real_field} }, @{ $values->{attrs}->{$class_id}->{$real_field} };
+									 push @{ $args->{attr_terms}->{not}->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
 								}
 								else {
-									$args->{attr_terms}->{not}->{$class_id}->{$real_field} = [ @{ $values->{attrs}->{$class_id}->{$real_field} } ];
+									$args->{attr_terms}->{not}->{$class_id}->{$real_field} = [ $values->{attrs}->{$class_id}->{$real_field} ];
 								}
 							}
 						}
@@ -3588,7 +3630,7 @@ sub _resolve {
 	};
 
 	my $field_infos = $self->_get_field($args, $raw_field);
-	#$self->log->trace('field_infos: ' . Dumper($field_infos));
+	$self->log->trace('field_infos: ' . Dumper($field_infos));
 	foreach my $class_id (keys %{$field_infos}){
 		if (scalar keys %{ $args->{given_classes} } and not $args->{given_classes}->{0}){
 			unless ($args->{given_classes}->{$class_id} or $class_id == 0){
@@ -3602,20 +3644,24 @@ sub _resolve {
 		}
 		
 		my $field_order = $field_infos->{$class_id}->{field_order};
-#		if (#$Field_order_to_field->{ $field_order } and 
-#			($operator eq '=' or $operator eq '-' or $operator eq '')){
-#			#push @{ $args->{any_field_terms}->{ $operator_xlate->{$operator} } }, $raw_value;
-#			$values{fields}->{$class_id}->{ $Field_order_to_field->{ $field_order } } =
-#					[ $raw_value ]; #[ $self->_normalize_value($args, $class_id, $raw_value, $field_order) ];
-#		}
-		if ($Field_order_to_attr->{ $field_order }){
-			$values{attrs}->{$class_id}->{ $Field_order_to_attr->{ $field_order } } =
-				[ $self->_normalize_value($args, $class_id, $raw_value, $field_order) ];			
+		# Check for string match and make that a term
+		if (exists $args->{node_info}->{fields_by_type}->{string}->{ $raw_field } and
+			($operator eq '=' or $operator eq '-' or $operator eq '')){
+			$values{fields}->{$class_id}->{ $Field_order_to_field->{ $field_order } } = $raw_value;
+					#[ $raw_value ]; #[ $self->_normalize_value($args, $class_id, $raw_value, $field_order) ];
 		}
-		#else {
-		#	$self->log->warn("Unknown field: $raw_field");
-		#}
+		elsif (exists $args->{node_info}->{fields_by_type}->{string}->{ $raw_field }){
+			die('Invalid operator for string field');
+		}
+		elsif ($Field_order_to_attr->{ $field_order }){
+			$values{attrs}->{$class_id}->{ $Field_order_to_attr->{ $field_order } } =
+				$self->_normalize_value($args, $class_id, $raw_value, $field_order);			
+		}
+		else {
+			$self->log->warn("Unknown field: $raw_field");
+		}
 	}
+	$self->log->trace('values: ' . Dumper(\%values));
 	return \%values;
 }
 
@@ -3799,21 +3845,21 @@ sub _build_sphinx_match_str {
 		# First, the ANDs
 		foreach my $field (sort keys %{ $args->{field_terms}->{and}->{$class_id} }){
 			foreach my $value (@{ $args->{field_terms}->{and}->{$class_id}->{$field} }){
-				$and{$value} = 1;
+				$and{'(@' . $field . ' ' . $value . ')'} = 1;
 			}
 		}
 				
 		# Then, the NOTs
 		foreach my $field (sort keys %{ $args->{field_terms}->{not}->{$class_id} }){
 			foreach my $value (@{ $args->{field_terms}->{not}->{$class_id}->{$field} }){
-				$not{$value} = 1;
+				$not{'(@' . $field . ' ' . $value . ')'} = 1;
 			}
 		}
 		
 		# Then, the ORs
 		foreach my $field (sort keys %{ $args->{field_terms}->{or}->{$class_id} }){
 			foreach my $value (@{ $args->{field_terms}->{or}->{$class_id}->{$field} }){
-				$or{$value} = 1;
+				$or{'(@' . $field . ' ' . $value . ')'} = 1;
 			}
 		}
 	}
@@ -3909,8 +3955,6 @@ sub _build_sphinx_query {
 	$args->{queries} = []; # place to store our query with our result in a multi-query
 	my @or_clause;
 	my @or_vals;
-	my @and_clauses;
-	my @and_vals;
 	
 	foreach my $class_id (sort keys %{ $args->{attr_terms}->{or} }){
 		foreach my $field (sort keys %{ $args->{attr_terms}->{or}->{$class_id} }){
@@ -3925,12 +3969,15 @@ sub _build_sphinx_query {
 				}
 				else {
 					#push @or_clause, $Field_order_to_attr->{ $field_hash->{field_order } } . '=?';
-					push @or_clause, 'attr_' . $field . '=?';
+					push @or_clause, $field . '=?';
 					push @or_vals, $value;
 				}
 			}
 		} 
 	}
+	
+	my @and_clauses;
+	my @and_vals;
 	
 	foreach my $field_name (sort keys %{ $args->{attr_terms}->{and} }){
 		my @clause;
@@ -4013,23 +4060,20 @@ sub _build_sphinx_query {
 			}
 		}
 	}
-		
-#	my @not_or_clause;
-#	my @not_or_vals;
 	
-	foreach my $type qw(attr_terms field_terms){
-		foreach my $class_id (sort keys %{ $args->{$type}->{not} }){
-			foreach my $field (sort keys %{ $args->{$type}->{not}->{$class_id} }){
-				my $field_hash = $self->_get_field($args, $field)->{$class_id};
-				foreach my $value (@{ $args->{$type}->{not}->{$class_id}->{$field} }){
-					if ($class_id){
-						push @not_clause, '(class_id=? AND ' . $Field_order_to_attr->{ $field_hash->{field_order} } . '=?)';
-						push @not_vals, $class_id, $value;
-					}
-					else {
-						push @not_clause, $Field_order_to_attr->{ $field_hash->{field_order} } . '=?';
-						push @not_vals, $value;
-					}
+	foreach my $field_name (sort keys %{ $args->{attr_terms}->{not} }){
+		foreach my $class_id (sort keys %{ $args->{attr_terms}->{not}->{$field_name} }){
+			foreach my $attr (sort keys %{ $args->{attr_terms}->{not}->{$field_name}->{$class_id} }){
+				#my $field_hash = $self->_get_field($args, $field)->{$class_id};
+				#foreach my $value (@{ $args->{$type}->{not}->{$class_id}->{$field} }){
+				my $value = $args->{attr_terms}->{not}->{$field_name}->{$class_id}->{$attr};
+				if ($class_id){
+					push @not_clause, '(class_id=? AND ' . $attr . '=?)';
+					push @not_vals, $class_id, $value;
+				}
+				else {
+					push @not_clause, $attr . '=?';
+					push @not_vals, $value;
 				}
 			}
 		}
@@ -4073,7 +4117,8 @@ sub _build_sphinx_query {
 	my @values = (@and_vals, @or_vals, @not_vals);
 	
 	# Check for no-class super-user query
-	unless (($args->{user_info}->{permissions}->{class_id}->{0} and not (scalar keys %{ $args->{given_classes} }))
+	unless (($args->{user_info}->{permissions}->{class_id}->{0} and $args->{given_classes}->{0})
+		#not (scalar keys %{ $args->{given_classes} }))
 		or $args->{groupby}){
 		$where .= ' AND class_id IN (' . join(',', map { '?' } keys %{ $args->{distinct_classes} }) . ')';
 		push @values, sort keys %{ $args->{distinct_classes} };
@@ -4117,18 +4162,25 @@ sub format_results {
 	
 	my $ret = '';
 	if ($args->{format} eq 'tsv'){
-		my @default_columns = qw(timestamp class host program msg);
-		$ret .= join("\t", @default_columns, 'fields') . "\n";
-		foreach my $row (@{ $args->{results} }){
-			my @tmp;
-			foreach my $key (@default_columns){
-				push @tmp, $row->{$key};
+		if ($args->{groupby}){
+			foreach my $row (@{ $args->{results} }){
+				print join("\t", $row->{'@groupby'}, $row->{'@count'}) . "\n";
 			}
-			my @fields;
-			foreach my $field (@{ $row->{_fields} }){
-				push @fields, $field->{field} . '=' . $field->{value};
+		}
+		else {
+			my @default_columns = qw(timestamp class host program msg);
+			$ret .= join("\t", @default_columns, 'fields') . "\n";
+			foreach my $row (@{ $args->{results} }){
+				my @tmp;
+				foreach my $key (@default_columns){
+					push @tmp, $row->{$key};
+				}
+				my @fields;
+				foreach my $field (@{ $row->{_fields} }){
+					push @fields, $field->{field} . '=' . $field->{value};
+				}
+				$ret .= join("\t", @tmp, join(' ', @fields)) . "\n";
 			}
-			$ret .= join("\t", @tmp, join(' ', @fields)) . "\n";
 		}
 	}
 	else {
@@ -4137,4 +4189,42 @@ sub format_results {
 	}
 	return $ret;
 }
+
+sub export {
+	my ($self, $args) = @_;
+	
+	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{plugin} ) {
+		my $decode;
+		eval {
+			$decode = $self->json->decode(uri_unescape($args->{data}));
+			$self->log->debug( "Decoded data as : " . Dumper($decode) );
+		};
+		if ($@){
+			$self->log->error("invalid args, error: $@, args: " . Dumper($args));
+			return 'Unable to build results object from args';
+		}
+		
+		my $results_obj;
+		my $plugin_fqdn = 'Export::' . $args->{plugin};
+		foreach my $plugin ($self->plugins()){
+			if ($plugin eq $plugin_fqdn){
+				$self->log->debug('loading plugin ' . $plugin);
+				$results_obj = $plugin->new(results => $decode);
+				$self->log->debug('results_obj:' . Dumper($results_obj));
+			}
+		}
+		if ($results_obj){
+			return { ret => $results_obj->results(), mime_type => $results_obj->mime_type() };
+		}
+		
+		$self->log->error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
+			join(', ', $self->plugins()) . ' ' . Dumper($args));
+		return 'Unable to build results object from args';
+	}
+	else {
+		$self->log->error('Invalid args: ' . Dumper($args));
+		return 'Unable to build results object from args';
+	}
+}
+
 1;

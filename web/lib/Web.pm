@@ -6,7 +6,6 @@ use Plack::Request;
 use Plack::Session;
 use JSON -convert_blessed_universally;
 use YUI;
-use Module::Pluggable require => 1, search_path => [ qw( Export Info ) ];
 
 use API;
 
@@ -314,42 +313,6 @@ EOHTML
 	return $HTML;	
 }
 
-
-sub export {
-	my ($self, $args) = @_;
-	
-	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{plugin} ) {
-		my $decode;
-		eval {
-			$decode = $self->json->decode(uri_unescape($args->{data}));
-			$self->log->debug( "Decoded data as : " . Dumper($decode) );
-		};
-		if ($@){
-			$self->_error("invalid args, error: $@, args: " . Dumper($args));
-			return;
-		}
-		
-		my $results_obj;
-		my $plugin_fqdn = 'Export::' . $args->{plugin};
-		foreach my $plugin ($self->plugins()){
-			if ($plugin eq $plugin_fqdn){
-				$self->log->debug('loading plugin ' . $plugin);
-				my $results_obj = $plugin->new($decode);
-				$self->log->debug('results_obj:' . Dumper($results_obj));
-			}
-		}
-		if ($results_obj){
-			return { ret => $results_obj->results(), mime_type => $results_obj->get_mime_type() };
-		}
-		
-		$self->log->error('Unable to build results object from args');
-		$self->_error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
-			join(', ', $self->plugins()) . ' ' . Dumper($args));
-	}
-	else {
-		$self->_error('Invalid args: ' . Dumper($args));
-	}
-}
 
 
 

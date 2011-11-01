@@ -346,7 +346,7 @@ YAHOO.ELSA.main = function () {
 			// reset old values
 			YAHOO.ELSA.currentQuery.delMeta('groupby');
 			YAHOO.ELSA.currentQuery.delMeta('groups_only');
-			YAHOO.ELSA.currentQuery.delMeta('local_groupby');
+			//YAHOO.ELSA.currentQuery.delMeta('local_groupby');
 			YAHOO.ELSA.currentQuery.delMeta('class');
 			YAHOO.ELSA.currentQuery.delMeta('limit');
 			
@@ -368,15 +368,15 @@ YAHOO.ELSA.main = function () {
 				
 				YAHOO.ELSA.currentQuery.addMeta('class', aClassVal[0]);
 				// Only int field types can be grouped remotely in Sphinx
-				if (sFieldType === 'int'){
+				//if (sFieldType === 'int'){
 					YAHOO.ELSA.currentQuery.addMeta('groupby', [aClassVal[1]]);
 					YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
-				}
+				/*}
 				else {
 					YAHOO.ELSA.currentQuery.addMeta('local_groupby', [aClassVal[1]]);
 					//make sure we've got as many results to process as possible
 					YAHOO.ELSA.currentQuery.addMeta('limit', YAHOO.ELSA.localGroupByQueryLimit);
-				}
+				}*/
 			}
 		}
 		
@@ -917,7 +917,7 @@ YAHOO.ELSA.main = function () {
 					// reset old values
 					YAHOO.ELSA.currentQuery.delMeta('groupby');
 					YAHOO.ELSA.currentQuery.delMeta('groups_only');
-					YAHOO.ELSA.currentQuery.delMeta('local_groupby');
+					//YAHOO.ELSA.currentQuery.delMeta('local_groupby');
 					YAHOO.ELSA.currentQuery.delMeta('class');
 					YAHOO.ELSA.currentQuery.delMeta('limit');
 					
@@ -939,15 +939,15 @@ YAHOO.ELSA.main = function () {
 						
 						YAHOO.ELSA.currentQuery.addMeta('class', aClassVal[0]);
 						// Only int field types can be grouped remotely in Sphinx
-						if (sFieldType === 'int'){
+						//if (sFieldType === 'int'){
 							YAHOO.ELSA.currentQuery.addMeta('groupby', [aClassVal[1]]);
 							YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
-						}
+						/*}
 						else {
 							YAHOO.ELSA.currentQuery.addMeta('local_groupby', [aClassVal[1]]);
 							//make sure we've got as many results to process as possible
 							YAHOO.ELSA.currentQuery.addMeta('limit', YAHOO.ELSA.localGroupByQueryLimit);
-						}
+						}*/
 					}
 				}
 				
@@ -1286,10 +1286,12 @@ YAHOO.ELSA.main = function () {
 		
 		// find the result that has this tabid
 		var iLocalResultId = YAHOO.ELSA.getLocalResultId(p_oTab);
+		var oQuery;
 		if (iLocalResultId){
 			try {
 				logger.log('parsing ' + YAHOO.ELSA.localResults[iLocalResultId].sentQuery);
 				var oQuery = YAHOO.lang.JSON.parse(YAHOO.ELSA.localResults[iLocalResultId].sentQuery);
+				//oQuery = YAHOO.ELSA.localResults[iLocalResultId].results;
 			}
 			catch (e){
 				logger.log('error getting query for results:', e);
@@ -1304,6 +1306,12 @@ YAHOO.ELSA.main = function () {
 			var oButton = YAHOO.widget.Button.getButton('groupby_menu_select_button');
 			if (oQuery.query_meta_params){
 				YAHOO.ELSA.currentQuery.metas = oQuery.query_meta_params;
+				if (typeof(YAHOO.ELSA.currentQuery.metas.groupby) == 'undefined'){
+					// groupby could've been set in query text instead of data struct
+					if (typeof(YAHOO.ELSA.localResults[iLocalResultId].results.groupby) != 'undefined'){
+						YAHOO.ELSA.currentQuery.metas.groupby = YAHOO.ELSA.localResults[iLocalResultId].results.groupby[0];
+					}
+				}
 				logger.log('current query: ' + YAHOO.lang.JSON.stringify(YAHOO.ELSA.currentQuery));
 				logger.log('type of class: ' + typeof YAHOO.ELSA.currentQuery.metas['class']);
 				logger.log('current groupby:', YAHOO.ELSA.currentQuery.metas.groupby);
@@ -1315,7 +1323,7 @@ YAHOO.ELSA.main = function () {
 						oButton.set('label', 'any.' + YAHOO.ELSA.currentQuery.metas.groupby);
 					}
 				}
-				else if (YAHOO.ELSA.currentQuery.metas.local_groupby){
+				/*else if (YAHOO.ELSA.currentQuery.metas.local_groupby){
 					//TODO loop this instead of defaulting to 0 in array
 					if (typeof YAHOO.ELSA.currentQuery.metas['class'] != 'undefined'){
 						oButton.set('label', YAHOO.ELSA.currentQuery.metas['class'] + '.' + YAHOO.ELSA.currentQuery.metas.local_groupby[0]);
@@ -1323,7 +1331,7 @@ YAHOO.ELSA.main = function () {
 					else {
 						oButton.set('label', 'any.' + YAHOO.ELSA.currentQuery.metas.local_groupby[0]);
 					}
-				}
+				}*/
 				else {
 					oButton.set('label', YAHOO.ELSA.Labels.noGroupBy);
 				}

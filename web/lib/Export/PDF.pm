@@ -1,19 +1,14 @@
 package Export::PDF;
-use strict;
+use Moose;
 use Data::Dumper;
-use base qw( Export );
+extends 'Export';
 use PDF::API2::Simple;
 use IO::String;
 
-sub new {
-	my $class = shift;
-	my $self = $class->SUPER::new(@_);
-	$self->{_MIME_TYPE} = 'application/pdf';
-	$self->{_EXTENSION} = 'pdf';
-	return bless($self, $class);
-}
+has 'mime_type' => (is => 'rw', isa => 'Str', required => 1, default => 'application/pdf');
+has 'extension' => (is => 'rw', isa => 'Str', required => 1, default => '.pdf');
 
-sub results {
+sub BUILD {
 	my $self = shift;
 	
 	# Create an in-memory filehandle for our result
@@ -27,23 +22,19 @@ sub results {
 	# Add a page
 	$pdf->add_page();
 	
-	my @cols = @{ $self->{_COLUMNS} };
-	
 	# Write column headers
-	my $text = join("\t", @cols);
+	my $text = join("\t", @{ $self->columns });
 	$pdf->text($text, autoflow => 'on');
 
 	# Write data rows
-	foreach my $row (@{ $self->{_GRID} }){
+	foreach my $row (@{ $self->grid }){
 		$text = '';
-		for (my $i = 0; $i <=$#cols; $i++){
-			$text .= $row->{ $cols[$i] } . "\t";
+		for (my $i = 0; $i < (scalar @{ $self->columns } ); $i++){
+			$text .= $row->{ $self->columns->[$i] } . "\t";
 		}
 		$pdf->text($text, autoflow => 'on');	
 	}
-		
-	$self->{_RESULTS} = $pdf->as_string();
-	return $self->{_RESULTS};
+	$self->results($pdf->as_string);
 }
 
 1;

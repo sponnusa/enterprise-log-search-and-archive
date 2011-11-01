@@ -5,7 +5,22 @@
 			<rule provider="DET" class='2' id='2'>
 				<patterns>
 					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
+					<pattern>Deny @ESTRING:: @@ESTRING:i0: @src @ESTRING:s0::@@IPv4:i1:@/@NUMBER:i2:@ dst @ESTRING:s1::@@IPv4:i3:@/@NUMBER:i4:@</pattern>
 				</patterns>
+				<examples>
+					<example>
+						<test_message program="%FWSM-3-106010">Deny inbound tcp src OUTSIDE:2.116.180.66/3116 dst INSIDE:10.0.0.0/445</test_message>
+						<test_values>
+							<test_value name="i0">tcp</test_value>
+							<test_value name="s0">OUTSIDE</test_value>
+							<test_value name="i1">2.116.180.66</test_value>
+							<test_value name="i2">3116</test_value>
+							<test_value name="s1">INSIDE</test_value>
+							<test_value name="i3">10.0.0.0</test_value>
+							<test_value name="i4">445</test_value>
+						</test_values>
+					</example>
+				</examples>
 			</rule>
 			<rule provider="DET" class='3' id='3'>
 				<patterns>
@@ -43,14 +58,14 @@
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="%PIX-6-302014">Teardown TCP connection 2050472353 for outside:10.65.200.34/1252 to inside:159.158.137.15/135 duration 0:00:00 bytes 1476 TCP FINs</test_message>
+						<test_message program="%PIX-6-302014">Teardown TCP connection 2050472353 for outside:10.65.200.34/1252 to inside:10.0.0.0/135 duration 0:00:00 bytes 1476 TCP FINs</test_message>
 						<test_values>
 							<test_value name="i0">TCP</test_value>
 							<test_value name="s0">outside</test_value>
 							<test_value name="i1">10.65.200.34</test_value>
 							<test_value name="i2">1252</test_value>
 							<test_value name="s1">inside</test_value>
-							<test_value name="i3">159.158.137.15</test_value>
+							<test_value name="i3">10.0.0.0</test_value>
 							<test_value name="i4">135</test_value>
 							<test_value name="s2">0:00:00</test_value>
 							<test_value name="i5">1476</test_value>
@@ -266,5 +281,49 @@
 				</patterns>
 			</rule>
 		</rules>
-	</ruleset>	
+	</ruleset>
+	<ruleset>
+		<pattern>bro_dns</pattern>
+		<rules>
+			<rule class="14" id="14">
+				<patterns>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING:s0:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:s1:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ANYSTRING:s2@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="bro_dns">1318443095.831281|0L5Ro2iPit1|10.0.0.0|23657|69.22.154.225|53|udp|31608|e2932.c.akamaiedge.net|1|C_INTERNET|1|A|0|NOERROR|F|T|F|F|F|1|20.000000|23.0.124.9</test_message>
+						<test_value name="i0">10.0.0.0</test_value>
+						<test_value name="i1">23657</test_value>
+						<test_value name="i2">69.22.154.225</test_value>
+						<test_value name="i3">53</test_value>
+						<test_value name="i4">udp</test_value>
+						<test_value name="s0">e2932.c.akamaiedge.net</test_value>
+						<test_value name="s1">NOERROR</test_value>
+						<test_value name="s2">23.0.124.9</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset>
+		<pattern>bro_notify</pattern>
+		<rules>
+			<rule class="15" id="15">
+				<patterns>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ANYSTRING:s1@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="bro_notify">1318443067.534801|tZOKnx1pO1j|10.0.0.0|44780|198.87.182.145|80|HTTP::MD5|10.0.0.0 5074d0c1988df72c1be354f8b842021a http://msft.digitalrivercontent.net/01/108767003-10238044--NOA//office2010/X17-75238.exe|5074d0c1988df72c1be354f8b842021a|165.189.145.250|198.87.182.145|80|-|worker-2|Notice::ACTION_LOG|6|3600.000000|-|-|-|-|-|-|-|-|-</test_message>
+						<test_value name="i0">10.0.0.0</test_value>
+						<test_value name="i1">44780</test_value>
+						<test_value name="i2">198.87.182.145</test_value>
+						<test_value name="i3">80</test_value>
+						<test_value name="s0">HTTP::MD5</test_value>
+						<test_value name="s1">10.0.0.0 5074d0c1988df72c1be354f8b842021a http://msft.digitalrivercontent.net/01/108767003-10238044--NOA//office2010/X17-75238.exe|5074d0c1988df72c1be354f8b842021a|165.189.145.250|198.87.182.145|80|-|worker-2|Notice::ACTION_LOG|6|3600.000000|-|-|-|-|-|-|-|-|-</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>

@@ -1,36 +1,26 @@
 package Export::CSV;
-use strict;
+use Moose;
 use Data::Dumper;
-use base qw( Export );
+extends 'Export';
 
-sub new {
-	my $class = shift;
-	my $self = $class->SUPER::new(@_);
-	$self->{_MIME_TYPE} = 'text/plain';
-	$self->{_EXTENSION} = 'csv';
-	#$self->{_MIME_TYPE} = 'application/csv';
-	return bless($self, $class);
-}
+has 'extension' => (is => 'rw', isa => 'Str', required => 1, default => '.csv');
 
-sub results {
+sub BUILD {
 	my $self = shift;
 	
-	my @cols = @{ $self->{_COLUMNS} };
-	
 	# Write column headers
-	my $text = join(",", @cols) . "\n";
+	my $text = join(",", @{ $self->columns }) . "\n";
 	
 	# Write data rows
-	foreach my $row (@{ $self->{_GRID} }){
+	foreach my $row (@{ $self->grid }){
 		my @vals;
-		foreach my $col (@cols){
+		foreach my $col (@{ $self->columns }){
 			push @vals, $row->{$col};
 		}
 		$text .= join(",", @vals) . "\n";
 	}
-		
-	$self->{_RESULTS} = $text;
-	return $self->{_RESULTS};
+	
+	$self->results($text);
 }
 
 1;
