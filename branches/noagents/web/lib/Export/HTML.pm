@@ -1,22 +1,15 @@
 package Export::HTML;
-use strict;
+use Moose;
 use Data::Dumper;
-use base qw( Export );
+extends 'Export';
 use XML::Writer;
 use IO::String;
 
-sub new {
-	my $class = shift;
-	my $self = $class->SUPER::new(@_);
-	$self->{_MIME_TYPE} = 'text/html';
-	$self->{_EXTENSION} = 'html';
-	return bless($self, $class);
-}
+has 'mime_type' => (is => 'rw', isa => 'Str', required => 1, default => 'text/html');
+has 'extension' => (is => 'rw', isa => 'Str', required => 1, default => '.html');
 
-sub results {
+sub BUILD {
 	my $self = shift;
-	
-	my @cols = @{ $self->{_COLUMNS} };
 	
 	my $io = new IO::String;
 	my $xw = new XML::Writer(OUTPUT => $io);
@@ -27,15 +20,15 @@ sub results {
 	
 	# Write column headers
 	$xw->startTag('tr');
-	foreach my $col (@cols){
+	foreach my $col (@{ $self->columns }){
 		$xw->dataElement('th', $col);
 	}
 	$xw->endTag('tr');
 		
 	# Write data rows
-	foreach my $row (@{ $self->{_GRID} }){
+	foreach my $row (@{ $self->grid }){
 		$xw->startTag('tr');
-		foreach my $col (@cols){
+		foreach my $col (@{ $self->columns }){
 			$xw->dataElement('td', $row->{$col});
 		}
 		$xw->endTag('tr');
@@ -46,8 +39,7 @@ sub results {
 	$xw->endTag('html');
 	$xw->end();
 		
-	$self->{_RESULTS} = ${ $io->string_ref() };
-	return $self->{_RESULTS};
+	$self->results(${ $io->string_ref() });
 }
 
 1;
