@@ -38,7 +38,7 @@ CREATE TABLE query_log (
 	query varchar(8000) NOT NULL,
 	system TINYINT UNSIGNED NOT NULL DEFAULT 0,
 	timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	num_results int UNSIGNED,
+	num_results int,
 	milliseconds int UNSIGNED,
 	archive BOOLEAN NOT NULL DEFAULT 0,
 	FOREIGN KEY (uid) REFERENCES users (uid) ON UPDATE CASCADE,
@@ -79,15 +79,13 @@ INSERT INTO query_schedule_actions (action_id, action, action_subroutine) VALUES
 CREATE TABLE saved_results (
 	qid INT UNSIGNED NOT NULL PRIMARY KEY,
 	comments VARCHAR(8000),
-	meta_info VARCHAR(8000),
 	FOREIGN KEY (qid) REFERENCES query_log (qid) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE saved_results_rows (
-	rowid INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+CREATE TABLE saved_results_data (
 	qid INT UNSIGNED NOT NULL,
-	data VARCHAR(8000) NOT NULL,
-	FOREIGN KEY (qid) REFERENCES query_log (qid) ON UPDATE CASCADE
+	data TEXT NOT NULL,
+	FOREIGN KEY (qid) REFERENCES saved_results (qid) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
 	
 

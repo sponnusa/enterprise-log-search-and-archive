@@ -2,6 +2,9 @@ package API;
 use Moose;
 with 'MooseX::Traits';
 use Data::Dumper;
+use Log::Log4perl;
+use Config::JSON;
+use JSON -convert_blessed_universally;
 use Date::Manip;
 use AnyEvent;
 use DBI;
@@ -18,6 +21,8 @@ use CHI;
 use Time::HiRes qw(time);
 use Module::Pluggable require => 1, search_path => [ qw( Export Info ) ];
 use URI::Escape qw(uri_unescape);
+use Mail::Internet;
+use Carp;
 
 use AnyEvent::DBI;
 
@@ -25,18 +30,19 @@ BEGIN {
 	# Override the native request format to retrieve hashes instead of arrays and allow multi-queries
 	sub AnyEvent::DBI::req_get  {
 	   my (undef, $st, @args) = @{+shift};
+
 	   my $sth = $AnyEvent::DBI::DBH->prepare_cached ($st, undef, 1)
 	      or die [$DBI::errstr];
-	
+
 	   my $rv = $sth->execute (@args)
-	      or die [$sth->errstr];
+	      or (warn $DBI::errstr and die [$DBI::errstr]);	      
 	        my @rows;
 	        do {
 	                while (my $row = $sth->fetchrow_hashref){
 	                        push @rows, $row;
 	                }
 	        } while ($sth->more_results);
-	
+
 	   [1, \@rows, $rv]
 	}
 	
@@ -181,6 +187,76 @@ has 'cache' => (is => 'rw', isa => 'Object', required => 1, default => sub { ret
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'add_warning' => 'push', 'clear_warnings' => 'clear' });
 
+sub BUILDARGS {
+	my ($class, %params) = @_;
+
+	# Optionally init everything here from just a given config file
+	if ($params{config_file}){
+		$params{conf} = new Config::JSON ( $params{config_file} ) or die("Unable to open config file");
+		my $log_level = 'DEBUG';
+		if ($params{conf}->get('debug_level')){
+			$log_level = $params{conf}->get('debug_level');
+		}
+		my $logdir = $params{conf}->get('logdir');
+		my $logfile = 'web.log';
+		if ($params{conf}->get('logfile')){
+			$logfile = $params{conf}->get('logfile');
+		}
+		my $log_conf = qq(
+			log4perl.category.App       = $log_level, File
+			log4perl.appender.File			 = Log::Log4perl::Appender::File
+			log4perl.appender.File.filename  = $logdir/$logfile 
+			log4perl.appender.File.layout = Log::Log4perl::Layout::PatternLayout
+			log4perl.appender.File.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %x%n%m%n
+			log4perl.appender.Screen         = Log::Log4perl::Appender::Screen
+			log4perl.appender.Screen.stderr  = 1
+			log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
+			log4perl.appender.Screen.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %x%n%m%n
+			log4perl.appender.Syncer            = Log::Log4perl::Appender::Synchronized
+			log4perl.appender.Syncer.appender   = File
+		);
+			
+		Log::Log4perl::init( \$log_conf ) or die("Unable to init logger\n");
+		$params{log} = Log::Log4perl::get_logger('App')
+		  or die("Unable to init logger\n");
+		
+		if ($log_level eq 'DEBUG' or $log_level eq 'TRACE'){
+			$params{json} = JSON->new->pretty->allow_nonref->allow_blessed;	
+		}
+		else {
+			$params{json} = JSON->new->allow_nonref->allow_blessed;
+		}
+			
+		$params{db} = DBI->connect(
+			$params{conf}->get('meta_db/dsn'),
+			$params{conf}->get('meta_db/username'),
+			$params{conf}->get('meta_db/password'),
+			{ 
+				PrintError => 0,
+				HandleError => \&_dbh_error_handler,
+				mysql_connect_timeout => $Db_timeout,
+				mysql_auto_reconnect => 1, # we will auto-reconnect on disconnect
+			}
+		) or die($DBI::errstr);
+	}
+		
+	return \%params;
+}
+
+sub _dbh_error_handler {
+	my $errstr = shift;
+	my $dbh    = shift;
+	my $query  = $dbh->{Statement};
+
+	$errstr .= " QUERY: $query";
+	Log::Log4perl::get_logger('App')->error($errstr);
+	foreach my $sth (grep { defined } @{$dbh->{ChildHandles}}){
+		$sth->rollback; # in case there was an active transaction
+	}
+	
+	confess($errstr);
+}
+
 sub BUILD {
 	my $self = shift;
 	
@@ -217,28 +293,28 @@ sub _get_ldap {
 sub get_user_info {
 	my $self = shift;
 	my $username = shift;
-	unless ($username){
-		if ($self->conf->get('auth/method') eq 'none'){
-			return {
-				username => 'user',
-				uid => 2,
-				is_admin => 1,
-				permissions => {
-					class_id => {
-						0 => 1,
-					},
-					host_id => {
-						0 => 1,
-					},
-					program_id => {
-						0 => 1,
-					},
+	if ($self->conf->get('auth/method') eq 'none'){
+		return {
+			username => 'user',
+			uid => 2,
+			is_admin => 1,
+			permissions => {
+				class_id => {
+					0 => 1,
 				},
-				filter => '',
-				email => $self->conf->get('user_email') ? $self->conf->get('user_email') : 'root@localhost',
-			};
-		}
-		else {
+				host_id => {
+					0 => 1,
+				},
+				program_id => {
+					0 => 1,
+				},
+			},
+			filter => '',
+			email => $self->conf->get('user_email') ? $self->conf->get('user_email') : 'root@localhost',
+		};
+	}
+	else {
+		unless ($username){
 			$self->log->error('Did not receive username');
 			return 0;
 		}
@@ -544,7 +620,7 @@ sub get_saved_result {
 	my @values = ($args->{qid});
 	
 	my ($query, $sth);
-	$query = 'SELECT t2.uid, t2.query, meta_info FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
+	$query = 'SELECT t2.uid, t2.query, milliseconds FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
 		'WHERE t1.qid=?';
 	if (not $args->{hash}){
 		$query .= ' AND uid=?';
@@ -558,28 +634,19 @@ sub get_saved_result {
 		$self->_error('No saved results for qid ' . $args->{qid} . ' found.');
 		return;
 	}
-	my $results = $self->json->decode($row->{meta_info});
+	my $results = {};
+	$results->{totalTime} = $row->{milliseconds};
 	my $saved_query = $self->json->decode($row->{query});
-	foreach my $item qw(query_params query_meta_params){
+	foreach my $item qw(query_string query_meta_params){
 		$results->{$item} = $saved_query->{$item};
 	}
-	$results->{results} = [];
-	if ($results->{groupby}){
-		$results->{groups} = {};
-		$results->{groups}->{ $results->{groupby} } = [];
-	}
 	
-	$query = 'SELECT data FROM saved_results_rows WHERE qid=? ORDER BY rowid ASC';
+	$query = 'SELECT data FROM saved_results_data WHERE qid=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid});
-	while (my $row = $sth->fetchrow_hashref){
-		if ($results->{groupby}){
-			push @{ $results->{groups}->{ $results->{groupby} } }, $self->json->decode($row->{data}); 
-		}
-		else {	
-			push @{ $results->{results} }, $self->json->decode($row->{data});
-		}
-	}
+	$row = $sth->fetchrow_hashref;
+	$results->{results} = $self->json->decode($row->{data});
+	
 	return $results;
 }
 
@@ -870,39 +937,116 @@ sub _get_group_members {
 sub get_stats {
 	my ($self, $args) = @_;
 	my $user = $args->{user_info};
+	$self->clear_warnings;
 	
 	my ($query, $sth);
 	my $stats = {};
 	my $days_ago = 7;
 	my $limit = 20;
 	
-	# Queries per user
-	$query = 'SELECT username, COUNT(*) AS count FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid)' . "\n" .
-		'WHERE timestamp > DATE_SUB(NOW(), INTERVAL ? DAY)' . "\n" .
-		'GROUP BY t1.uid ORDER BY count DESC LIMIT ?';
-	$sth = $self->db->prepare($query);
-	$sth->execute($days_ago, $limit);
-	$stats->{queries_per_user} = { x => [], User => [] };
-	while (my $row = $sth->fetchrow_hashref){
-		push @{ $stats->{queries_per_user}->{x} }, $row->{username};
-		push @{ $stats->{queries_per_user}->{User} }, $row->{count};
+#	# Queries per user
+#	$query = 'SELECT username, COUNT(*) AS count FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid)' . "\n" .
+#		'WHERE timestamp > DATE_SUB(NOW(), INTERVAL ? DAY)' . "\n" .
+#		'GROUP BY t1.uid ORDER BY count DESC LIMIT ?';
+#	$sth = $self->db->prepare($query);
+#	$sth->execute($days_ago, $limit);
+#	$stats->{queries_per_user} = { x => [], User => [] };
+#	while (my $row = $sth->fetchrow_hashref){
+#		push @{ $stats->{queries_per_user}->{x} }, $row->{username};
+#		push @{ $stats->{queries_per_user}->{User} }, $row->{count};
+#	}
+#	
+#	# General query stats
+#	$query = 'SELECT DATE_FORMAT(timestamp, "%Y-%m-%d") AS x, COUNT(*) AS Count, AVG(milliseconds) AS Avg_Time, ' . "\n" .
+#		'SUM(num_results) AS Results, AVG(num_results) AS Avg_Results' . "\n" .
+#		'FROM query_log WHERE timestamp > DATE_SUB(NOW(), INTERVAL ? DAY) GROUP BY x LIMIT ?';
+#	$sth = $self->db->prepare($query);
+#	$sth->execute($days_ago, $limit);
+#	$stats->{query_stats} = { x => [], Count => [], Avg_Time => [], Avg_Results => [] };
+#	while (my $row = $sth->fetchrow_hashref){
+#		foreach my $col (keys %{ $stats->{query_stats} }){
+#			push @{ $stats->{query_stats}->{$col} }, $row->{$col};
+#		}
+#	}
+	
+	$stats->{nodes} = $self->_get_nodes();
+		
+	my $intervals = 100;
+	if ($args->{intervals}){
+		$intervals = sprintf('%d', $args->{intervals});
 	}
 	
-	# General query stats
-	$query = 'SELECT DATE_FORMAT(timestamp, "%Y-%m-%d") AS x, COUNT(*) AS Count, AVG(milliseconds) AS Avg_Time, ' . "\n" .
-		'SUM(num_results) AS Results, AVG(num_results) AS Avg_Results' . "\n" .
-		'FROM query_log WHERE timestamp > DATE_SUB(NOW(), INTERVAL ? DAY) GROUP BY x LIMIT ?';
-	$sth = $self->db->prepare($query);
-	$sth->execute($days_ago, $limit);
-	$stats->{query_stats} = { x => [], Count => [], Avg_Time => [], Avg_Results => [] };
-	while (my $row = $sth->fetchrow_hashref){
-		foreach my $col (keys %{ $stats->{query_stats} }){
-			push @{ $stats->{query_stats}->{$col} }, $row->{$col};
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub {
+		$cv->send;
+	});
+	
+	foreach my $node (keys %{ $stats->{nodes} }){
+		next unless $stats->{nodes}->{$node}->{dbh};
+		# Get load stats
+		my $load_stats = {};
+		foreach my $item qw(load archive index){
+			$load_stats->{$item} = {
+				data => {
+					x => [],
+					LogsPerSec => [],
+					KBytesPerSec => [],
+				},
+			};
+						
+			$query = 'SELECT MIN(bytes) AS min_bytes, AVG(bytes) AS avg_bytes, MAX(bytes) AS max_bytes,' . "\n" .
+				'MIN(count) AS min_count, AVG(count) AS avg_count, MAX(count) AS max_count,' . "\n" .
+				'UNIX_TIMESTAMP(MAX(timestamp))-UNIX_TIMESTAMP(MIN(timestamp)) AS total_time, UNIX_TIMESTAMP(MIN(timestamp)) AS earliest' . "\n" .
+				'FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
+			$cv->begin;
+			$query = 'select * from stats limit 10';
+			#my $got = $stats->{nodes}->{$node}->{dbh}->get($query, $item, $args->{start}, $args->{end}, sub {
+			my $got = $stats->{nodes}->{$node}->{dbh}->get($query, sub {
+				my ($dbh, $rows, $rv) = @_;
+				$self->log->trace('here');
+				#$load_stats->{$item}->{summary} = $rows->[0];
+				$cv->end;
+			});
+			$self->log->trace('here got ' . Dumper($got));
+			
+#			$query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
+#			$cv->begin;
+#			$stats->{nodes}->{$node}->{dbh}->get($query, $item, $args->{start}, $args->{end}, sub {
+#				my ($dbh, $rows, $rv) = @_;
+#				$self->log->trace('here');
+#				# arrange in the number of buckets requested
+#				my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
+#				foreach my $row (@$rows){
+#					my $ts = $row->{ts} - $load_stats->{$item}->{summary}->{earliest};
+#					my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
+#					# Sanity check the bucket because too large an index array can cause an OoM error
+#					if ($bucket > $intervals){
+#						die('Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals);
+#					}
+#					unless ($load_stats->{$item}->{data}->{x}->[$bucket]){
+#						$load_stats->{$item}->{data}->{x}->[$bucket] = $row->{timestamp};
+#					}
+#					
+#					unless ($load_stats->{$item}->{data}->{LogsPerSec}->[$bucket]){
+#						$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] = 0;
+#					}
+#					$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] += ($row->{count} / $bucket_size);
+#					
+#					unless ($load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket]){
+#						$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] = 0;
+#					}
+#					$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] += ($row->{bytes} / 1024 / $bucket_size);
+#				}
+#				$cv->end;
+#			});
+#			$self->log->trace('here');
 		}
+		$stats->{nodes}->{$node} = $load_stats;
 	}
 	
-	#TODO
-	$stats->{nodes} = $self->_parallel_sql();
+	$cv->end;
+	$cv->recv;
+	$self->log->trace('here');
 		
 	# Combine the stats info for the nodes
 	my $combined = {};
@@ -911,9 +1055,8 @@ sub get_stats {
 	foreach my $stat qw(load index archive){
 		$combined->{$stat} = { x => [], LogsPerSec => [], KBytesPerSec => [] };
 		foreach my $node (keys %{ $stats->{nodes} }){
-			if ($stats->{nodes}->{$node} and $stats->{nodes}->{$node}->{results} 
-				and $stats->{nodes}->{$node}->{results}->{load_stats}){ 
-				my $load_data = $stats->{nodes}->{$node}->{results}->{load_stats}->{$stat}->{data};
+			if ($stats->{nodes}->{$node} and $stats->{nodes}->{$node}->{$stat}){ 
+				my $load_data = $stats->{nodes}->{$node}->{$stat}->{data};
 				next unless $load_data;
 				for (my $i = 0; $i < (scalar @{ $load_data->{x} }); $i++){
 					next unless $load_data->{x}->[$i];
@@ -949,7 +1092,7 @@ sub _get_nodes {
 		$nodes{$node}->{dbh} = AnyEvent::DBI->new('dbi:mysql:database=' . $db_name . ';host=' . $node, 
 			$node_conf->{$node}->{username}, $node_conf->{$node}->{password}, 
 			mysql_connect_timeout => $Db_timeout,
-			PrintError => 0, 
+			PrintError => 0,
 			mysql_multi_statements => 1, 
 			on_error => sub {
 				my ($dbh, $filename, $line, $fatal) = @_;
@@ -1002,16 +1145,6 @@ sub _get_sphinx_nodes {
 			$sphinx_port = $node_conf->{$node}->{sphinx_port};
 		}
 		$nodes{$node} = { db => $db_name };
-		
-#		my $timeout; $timeout = AnyEvent->timer(after => 1, cb => sub {
-#			my $err = 'DB connection timeout to node ' . $node; 
-#			$self->log->error($err);
-#			$nodes{$node}->{error} = $err;
-#			delete $nodes{$node}->{dbh};
-#			undef $timeout;
-#			$self->log->trace('cancelled timeout for DB node ' . $node);
-#			$cv->end;
-#		});
 								
 		$cv->begin;
 		$nodes{$node}->{dbh} = AnyEvent::DBI->new('dbi:mysql:database=' . $db_name . ';host=' . $node, 
@@ -1030,8 +1163,6 @@ sub _get_sphinx_nodes {
 			},
 			on_connect => sub {
 				my ($dbh, $success) = @_;
-				#undef $timeout;
-				$self->log->trace('cancelled timeout for DB node ' . $node);
 				if ($success){
 					$self->log->trace('connected to ' . $node);
 					$cv->end;
@@ -1046,15 +1177,6 @@ sub _get_sphinx_nodes {
 		});
 		
 		$self->log->trace('connecting to sphinx on node ' . $node);
-#		my $sph_timeout; $sph_timeout = AnyEvent->timer(after => $Db_timeout, cb => sub {
-#			my $err = 'Sphinx connection timeout to node ' . $node; 
-#			$self->log->error($err);
-#			$nodes{$node}->{error} = $err;
-#			delete $nodes{$node}->{dbh};
-#			undef $sph_timeout;
-#			$self->log->trace('cancelled timeout for SPH node ' . $node);
-#			$cv->end;
-#		});
 		
 		$cv->begin;
 		$nodes{$node}->{sphinx} = AnyEvent::DBI->new('dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef, 
@@ -1073,8 +1195,6 @@ sub _get_sphinx_nodes {
 			},
 			on_connect => sub {
 				my ($dbh, $success) = @_;
-#				undef $sph_timeout;
-				$self->log->trace('cancelled timeout for SPH node ' . $node);
 				if ($success){
 					$self->log->trace('connected to ' . $node);
 					$cv->end;
@@ -1144,12 +1264,17 @@ sub _get_node_info {
 	});
 	
 	foreach my $node (keys %$nodes){
-		next if exists $nodes->{$node}->{error};
-		$ret->{nodes}->{$node} = {};
 		if (exists $nodes->{$node}->{error}){
-			$ret->{nodes}->{$node}->{error} = $nodes->{$node}->{error};
+			$self->add_warning('node ' . $node . ' had error ' . $nodes->{$node}->{error});
+			delete $ret->{nodes}->{$node};
+			#$ret->{nodes}->{$node}->{error} = $nodes->{$node}->{error};
 			next;
 		}
+		$ret->{nodes}->{$node} = {
+			db => $nodes->{$node}->{db},
+			dbh => $nodes->{$node}->{dbh},
+		};
+		
 		
 		# Get indexes
 		$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records FROM %s.v_indexes WHERE ISNULL(locked_by) AND type!="unavailable" ORDER BY start', 
@@ -1165,6 +1290,7 @@ sub _get_node_info {
 					indexes => $rows,
 					min => $rows->[0]->{start_int},
 					max => $rows->[$#$rows]->{end_int},
+					start_max => $rows->[$#$rows]->{start_int},
 				};
 			}
 			else {
@@ -1186,7 +1312,12 @@ sub _get_node_info {
 			
 			if ($rows){
 				$self->log->trace('node returned rv: ' . $rv);
-				$ret->{nodes}->{$node}->{tables} = $rows;
+				$ret->{nodes}->{$node}->{tables} = {
+					tables => $rows,
+					min => $rows->[0]->{start_int},
+					max => $rows->[$#$rows]->{end_int},
+					start_max => $rows->[$#$rows]->{start_int},
+				};
 			}
 			else {
 				$self->log->error('No tables for node ' . $node);
@@ -1264,7 +1395,7 @@ sub _get_node_info {
 		}
 		if ($ret->{nodes}->{$node}->{indexes}->{max} > $max){
 			$max = $ret->{nodes}->{$node}->{indexes}->{max};
-			$start_max = $ret->{nodes}->{$node}->{indexes}->{min};
+			$start_max = $ret->{nodes}->{$node}->{indexes}->{start_max};
 		}
 	}
 	$ret->{min} = $min;
@@ -1349,7 +1480,6 @@ sub _get_node_info {
 
 sub get_form_params {
 	my ( $self, $args) = @_;
-	my $user = $args->{user_info};
 	
 	my $node_info = $self->_get_node_info();
 	#$self->log->trace('got node_info: ' . Dumper($node_info));
@@ -1364,7 +1494,7 @@ sub get_form_params {
 	};
 	
 	
-	if ($args->{permissions}){
+	if ($args and $args->{permissions}){
 		# this is for a user, restrict what gets sent back
 		unless ($args->{permissions}->{class_id}->{0}){
 			foreach my $class_id (keys %{ $form_params->{classes} }){
@@ -1641,62 +1771,48 @@ sub save_results {
 		$self->_error($@);
 		return;
 	}
-	unless ($args->{qid} and $args->{results} and ref($args->{results}) eq 'ARRAY'){
+	unless ($args->{qid} and $args->{results} and ref($args->{results})){
 		$self->_error('Invalid args: ' . Dumper($args));
 		return;
 	}
-	$args->{comments} = $comments;
 	
 	$self->log->debug('got results to save: ' . Dumper($args));
 		
-	my $meta_info = {};
-	my $results;
-	
-	if (scalar @{ $args->{results} }){
-		$results = [ @{ $args->{results} } ];
-	}
-	elsif (scalar keys %{ $args->{groups} }){
-		foreach my $group_name (keys %{ $args->{groups} }){
-			$meta_info->{groupby} = $group_name;
-			$results = [ @{ $args->{groups}->{$group_name} } ];
-			last; # only do the first one
-		}
-	}
-	else {
+	my $meta_info = { results => [] };
+		
+	unless (ref($args->{results})) {
 		$self->log->info('No results for query');
 		$self->_error('No results to save');
 		return 0;
 	}
 	
+	$meta_info->{results} = $args->{results};
+	$meta_info->{comments} = $comments;
+	$meta_info->{qid} = $args->{qid};
+
+	$self->_save_results($meta_info);
+}
+
+sub _save_results {
+	my ($self, $args) = @_;
+	
 	my ($query, $sth);
 	
 	$self->db->begin_work;
-	$query = 'INSERT INTO saved_results (qid, meta_info, comments) VALUES(?,?,?)';
+	$query = 'INSERT INTO saved_results (qid, comments) VALUES(?,?)';
 	$sth = $self->db->prepare($query);
 	
-	if ($args->{action_params} and ref($args->{action_params}) eq 'HASH'){
-		foreach my $key (keys %{ $args->{action_params} }){
-			$meta_info->{$key} = $args->{action_params}->{$key};
-		}
-	}
+	$sth->execute($args->{qid}, $args->{comments});
+	$query = 'INSERT INTO saved_results_data (qid, data) VALUES (?,?)';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{qid}, $self->json->encode($args->{results}));
 	
-	$meta_info->{totalRecords} = (scalar @{ $results });
-	$meta_info->{qid} = $args->{qid};
-	
-	eval {
-		$sth->execute($args->{qid}, $self->json->encode($meta_info), $args->{comments});
-		$query = 'INSERT INTO saved_results_rows (qid, data) VALUES (?,?)';
-		$sth = $self->db->prepare($query);
-		foreach my $row (@{ $results }){
-			$sth->execute($meta_info->{qid}, $self->json->encode($row));
-		}
-	};
-	if ($@){
-		$self->db->rollback;
-		$self->_error($@);
-		return;
-	}
-	
+#	$query = 'INSERT INTO saved_results_rows (qid, data) VALUES (?,?)';
+#	$sth = $self->db->prepare($query);
+#	foreach my $row (@{ $args->{results} }){
+#		$sth->execute($args->{qid}, $self->json->encode($row));
+#	}
+		
 	$self->db->commit;
 	
 	return 1;
@@ -1752,7 +1868,7 @@ sub _get_saved_query {
 	
 	my ( $query, $sth, $row );
 	
-	$query = 'SELECT t1.qid, t2.query, comments, meta_info' . "\n" .
+	$query = 'SELECT t1.qid, t2.query, comments' . "\n" .
 			'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
 			'WHERE t2.qid=?';
 	$sth = $self->db->prepare($query);
@@ -1784,7 +1900,7 @@ sub _get_saved_queries {
 		my $outer_top = $offset + $limit;
 		$query = 'SELECT * FROM ' . "\n" .
 			'(SELECT TOP ? * FROM ' . "\n" .
-			'(SELECT TOP ? t1.qid, t2.query, comments, meta_info FROM ' . "\n" .
+			'(SELECT TOP ? t1.qid, t2.query, comments FROM ' . "\n" .
 			'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid) ' . "\n" .
 		  	'WHERE uid=? ' . "\n" .
 		  	'ORDER BY qid DESC) OverallTop ' . "\n" .
@@ -1795,7 +1911,7 @@ sub _get_saved_queries {
 	}
 	else {
 		$query =
-		    'SELECT t1.qid, t2.query, comments, num_results, UNIX_TIMESTAMP(timestamp) AS timestamp, meta_info ' . "\n"
+		    'SELECT t1.qid, t2.query, comments, num_results, UNIX_TIMESTAMP(timestamp) AS timestamp ' . "\n"
 		  . 'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid) ' . "\n"
 		  . 'WHERE uid=?' . "\n"
 		  . 'ORDER BY qid DESC LIMIT ?,?';
@@ -1806,14 +1922,17 @@ sub _get_saved_queries {
 	my $queries = [];    # only save the latest unique query
 	while ( my $row = $sth->fetchrow_hashref ) {
 		# we have to decode this to make sure it doesn't end up as a string
-		my $meta_info = $self->json->decode( $row->{meta_info} );
-		my $decode = $self->json->decode($row->{query});
-		my $query = $decode->{query_params};
-		push @{$queries}, { 
+		my $decode;
+		eval { 
+			$decode = $self->json->decode($row->{query}); 
+		};
+		
+		my $query = $decode->{query_string};
+		push @{$queries}, {
 			qid => $row->{qid},
-			timestamp => $row->{timestamp}, #$meta_info->{time},
+			timestamp => $row->{timestamp},
 			query => $query, 
-			num_results => $row->{num_results}, #$meta_info->{recordsReturned}, 
+			num_results => $row->{num_results}, 
 			comments => $row->{comments},
 			hash => $self->_get_hash($row->{qid}),
 		};
@@ -1888,12 +2007,12 @@ sub get_previous_queries {
 			my $prev_query = $self->json->decode( $row->{query} );
 			if (    $prev_query
 				and ref($prev_query) eq 'HASH'
-				and $prev_query->{query_params} )
+				and $prev_query->{query_string} )
 			{
 				push @{$queries},
 				  {
 					qid          => $row->{qid},
-					query        => $prev_query->{query_params},
+					query        => $prev_query->{query_string},
 					query_obj    => $prev_query,
 					timestamp    => $row->{timestamp},
 					num_results  => $row->{num_results},
@@ -1926,7 +2045,7 @@ sub get_query_auto_complete {
 	
 	
 	my ( $query, $sth );
-	my $like = q/%},"query_params":"/ . $args->{query} . '%';
+	my $like = q/%},"query_string":"/ . $args->{query} . '%';
 	
 	# Find our type of database and use the appropriate query
 	my $db_type = $self->db->get_info(17);    #17 == SQL_DBMS_NAME
@@ -1957,18 +2076,18 @@ sub get_query_auto_complete {
 			my $prev_query = $self->json->decode( $row->{query} );
 			if (    $prev_query
 				and ref($prev_query) eq 'HASH'
-				and $prev_query->{query_params} )
+				and $prev_query->{query_string} )
 			{
 				unless (
-					    $queries->{ $prev_query->{query_params} }
-					and $queries->{ $prev_query->{query_params} }->{timestamp}
+					    $queries->{ $prev_query->{query_string} }
+					and $queries->{ $prev_query->{query_string} }->{timestamp}
 					cmp    # stored date is older
 					$row->{timestamp} < 0
 				  )
 				{
-					$queries->{ $prev_query->{query_params} } = {
+					$queries->{ $prev_query->{query_string} } = {
 						qid          => $row->{qid},
-						query        => $prev_query->{query_params},
+						query        => $prev_query->{query_string},
 						timestamp    => $row->{timestamp},
 						num_results  => $row->{num_results},
 						milliseconds => $row->{milliseconds},
@@ -2080,7 +2199,7 @@ sub get_running_archive_query {
 	my $row = $sth->fetchrow_hashref;
 	if ($row){
 		my $query_params = $self->json->decode($row->{query});
-		 return { qid => $row->{qid}, query => $query_params->{query_params} };
+		 return { qid => $row->{qid}, query => $query_params->{query_string} };
 	}
 	else {
 		 return {qid => 0};
@@ -2090,6 +2209,7 @@ sub get_running_archive_query {
 
 sub query {
 	my ($self, $args) = @_;
+	$self->clear_warnings;
 	unless ($args and ref($args) eq 'HASH'){
 		die('Invalid query args');
 	}
@@ -2102,14 +2222,18 @@ sub query {
 		# query_params should contain query_string and query_meta_params
 		$self->log->debug( "Decoded as : " . Dumper($decode) );
 		$args->{query_meta_params} = $decode->{query_meta_params};
-		$args->{query_string} = $decode->{query_params};
+		$args->{query_string} = $decode->{query_string};
 		if ($args->{query_meta_params}->{groupby}){
 			$args->{groupby} = $args->{query_meta_params}->{groupby}
 		}
 		if ($args->{query_meta_params}->{timeout}){
 			$args->{timeout} = sprintf("%d", ($args->{query_meta_params}->{timeout} * 1000)); #time is in milleseconds
 		}
+		if ($args->{query_meta_params}->{archive_query}){
+			$args->{archive_query} = $args->{query_meta_params}->{archive_query}
+		}
 	}
+	$self->log->trace('args: ' . Dumper($args));
 	
 	my $ret = { query_string => $args->{query_string} };	
 	
@@ -2171,6 +2295,7 @@ sub query {
 			
 		if ($is_archive){
 			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
+			$ret->{batch_query} = $qid;
 		}		
 		else {
 			# Actually perform the query
@@ -2185,12 +2310,12 @@ sub query {
 			}
 			#$self->log->trace('using node-info: ' . Dumper($args->{node_info}));
 			# propagate node errors
-			foreach my $node (keys %{ $args->{node_info} }){
-				if (exists $args->{node_info}->{nodes}->{$node}->{error}){
-					$ret->{errors} ||= [];
-					push @{ $ret->{errors} }, $args->{node_info}->{nodes}->{$node}->{error};
-				}
-			}
+#			foreach my $node (keys %{ $args->{node_info} }){
+#				if (exists $args->{node_info}->{nodes}->{$node}->{error}){
+#					$ret->{errors} ||= [];
+#					push @{ $ret->{errors} }, $args->{node_info}->{nodes}->{$node}->{error};
+#				}
+#			}
 			$self->_parse_query_string($args);
 			
 			#$self->stats->mark('query_parse', 1);
@@ -2200,7 +2325,7 @@ sub query {
 			$ret->{results} = $args->{results};
 			
 			#$self->stats->mark('query', 1);	
-			$self->log->info(sprintf("Query $qid returned %d rows", scalar @{ $args->{results} }));
+			$self->log->info(sprintf("Query $qid returned %d rows", $args->{recordsReturned}));
 				
 			$ret->{hash} = $self->_get_hash($qid); #tack on the hash for permalinking on the frontend
 			$ret->{totalTime} = int(
@@ -2212,23 +2337,24 @@ sub query {
 			  		. 'WHERE qid=?';
 			$sth = $self->db->prepare($query);
 			
-			$ret->{totalRecords} = $args->{total_records};
-			$ret->{recordsReturned} = scalar @{ $args->{results} };
+			$ret->{totalRecords} = $args->{totalRecords};
+			$ret->{recordsReturned} = $args->{recordsReturned};
 			if ($args->{groupby}){
 				$ret->{groupby} = $args->{groupby};
 			}
 			$sth->execute( $ret->{recordsReturned}, $ret->{totalTime}, $qid );
 			
-			if (scalar @{ $args->{errors} }){
-				if ($ret->{errors}){
-					push @{ $ret->{errors} }, $args->{errors};
-				}
-				else{
-					$ret->{errors} = $args->{errors};
-				}
-			}
+#			if (scalar @{ $args->{errors} }){
+#				if ($ret->{errors}){
+#					push @{ $ret->{errors} }, $args->{errors};
+#				}
+#				else{
+#					$ret->{errors} = $args->{errors};
+#				}
+#			}
 		}
 		
+		$ret->{errors} = $self->warnings;
 		return $ret;
 	}
 	else {
@@ -2334,11 +2460,13 @@ sub _sphinx_query {
 	my $nodes = $self->_get_sphinx_nodes($args);
 	my $ret = {};
 	my $overall_start = time();
-	$args->{errors} = [];
+#	$args->{errors} = [];
 	foreach my $node (keys %{ $nodes }){
 		if (exists $nodes->{$node}->{error}){
-			push @{ $args->{errors} }, $nodes->{$node}->{error};
-			$self->log->warn('not using node ' . $node . ' because ' . $nodes->{$node}->{error});
+#			push @{ $args->{errors} }, $nodes->{$node}->{error};
+			my $err_str = 'not using node ' . $node . ' because ' . $nodes->{$node}->{error};
+			$self->add_warning($err_str);
+			$self->log->warn($err_str);
 			delete $nodes->{$node};
 		}
 	}
@@ -2380,7 +2508,7 @@ sub _sphinx_query {
 			my @multi_values;
 			my $start = time();
 			foreach my $query (@{ $args->{queries} }){
-				my $search_query = $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where};
+				my $search_query = 'SELECT *, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where};
 				if (exists $query->{groupby}){
 					$search_query .= ' GROUP BY ' . $query->{groupby};
 				}
@@ -2402,7 +2530,8 @@ sub _sphinx_query {
 				if (not $rv){
 					my $e = 'node ' . $node . ' got error ' . $@;
 					$self->log->error($e);
-					push @{ $args->{errors} }, $e;
+#					push @{ $args->{errors} }, $e;
+					$self->add_warning($e);
 					$cv->end;
 					next;
 				}
@@ -2421,7 +2550,7 @@ sub _sphinx_query {
 				# Find what tables we need to query to resolve rows
 				my %tables;
 				ROW_LOOP: foreach my $row (@$rows){
-					foreach my $table_hash (@{ $args->{node_info}->{nodes}->{$node}->{tables} }){
+					foreach my $table_hash (@{ $args->{node_info}->{nodes}->{$node}->{tables}->{tables} }){
 						next unless $table_hash->{table_type} eq 'index';
 						if ($table_hash->{min_id} >= $row->{id} or $row->{id} <= $table_hash->{max_id}){
 							$tables{ $table_hash->{table_name} } ||= [];
@@ -2450,8 +2579,10 @@ sub _sphinx_query {
 						sub { 
 							my ($dbh, $rows, $rv) = @_;
 							if ($ret->{$node}->{error}){
-								$self->log->error('node ' . $node . ' got error ' . $ret->{$node}->{error});
-								push @{ $args->{errors} }, $ret->{$node}->{error};
+								my $errstr = 'node ' . $node . ' got error ' . $ret->{$node}->{error};
+								$self->log->error($errstr);
+#								push @{ $args->{errors} }, $ret->{$node}->{error};
+								$self->add_warning($errstr);
 								$cv->end;
 								next;
 							}
@@ -2475,9 +2606,9 @@ sub _sphinx_query {
 	$cv->end; # bookend initial begin
 	$cv->recv; # block until all of the above completes
 	
-	$args->{results} = [];
-	$args->{total_records} = 0;
+	$args->{totalRecords} = 0;
 	if (exists $args->{groupby}){
+		$args->{results} = {};
 		foreach my $groupby (@{ $args->{groupby} }){
 			my %agg;
 			foreach my $node (sort keys %$ret){
@@ -2500,7 +2631,6 @@ sub _sphinx_query {
 					else {
 						# Resolve with the mysql row
 						my $field_order = $self->_get_field($args, $groupby)->{ $sphinx_row->{class_id} }->{field_order};
-						#$key = $self->_resolve_value($args, $sphinx_row->{class_id}, $sphinx_row->{'@groupby'}, $field_order);
 						#$self->log->trace('resolving with row ' . Dumper($ret->{$node}->{results}->{ $sphinx_row->{id} }));
 						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{ $Field_order_to_field->{$field_order} };
 						$key = $self->_resolve_value($args, $sphinx_row->{class_id}, $key, $field_order);
@@ -2540,26 +2670,24 @@ sub _sphinx_query {
 						}
 					}
 				}
-				$args->{results} = [ @zero_filled ];
+				$args->{results}->{$groupby} = [ @zero_filled ];
 			}
 			else { 
 				# Sort these in descending value order
 				my @tmp;
 				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
+					$args->{totalRecords} += $agg{$key};
 					push @tmp, { intval => $agg{$key}, '@groupby' => $key, '@count' => $agg{$key} };
 				}
-				$args->{results} = [ @tmp ];
+				$args->{results}->{$groupby} = [ @tmp ];
 			}
-			
-			# Total these
-			foreach my $key (keys %agg){
-				$args->{total_records} += $agg{$key};
-			}
-		}
+			$args->{recordsReturned} += scalar keys %agg;
+		}	
 	}
 	else {
+		$args->{results} = [];
 		foreach my $node (keys %$ret){
-			$args->{total_records} += $ret->{$node}->{meta}->{total_found};
+			$args->{totalRecords} += $ret->{$node}->{meta}->{total_found};
 			foreach my $id (sort { $a <=> $b } keys %{ $ret->{$node}->{results} }){
 				my $row = $ret->{$node}->{results}->{$id};
 				$row->{_fields} = [
@@ -2581,16 +2709,17 @@ sub _sphinx_query {
 				push @{ $args->{results} }, $row;
 			}
 		}
+		$args->{recordsReturned} = scalar @{ $args->{results} };
 	}
 	
 	# Check for errors
-	foreach my $node (keys %{ $ret->{nodes} }){
-		if (exists $ret->{$node}->{error}){
-			push @{ $args->{errors} }, $ret->{$node}->{error};
-		}
-	}
+#	foreach my $node (keys %{ $ret->{nodes} }){
+#		if (exists $ret->{$node}->{error}){
+#			push @{ $args->{errors} }, $ret->{$node}->{error};
+#		}
+#	}
 	
-	$self->log->debug('completed query in ' . (time() - $overall_start) . ' with ' . (scalar @{ $args->{results} }) . ' rows');
+	$self->log->debug('completed query in ' . (time() - $overall_start) . ' with ' . $args->{recordsReturned} . ' rows');
 	
 	return 1;
 }
@@ -3009,6 +3138,62 @@ sub _parse_query_string {
 		}
 	}
 	
+	# Optimization: for the any-term AND fields, only search on the first term and use the rest as filters if the fields are int fields
+	if (@{ $args->{any_field_terms}->{and} }){
+		my %deletion_candidates;
+		foreach my $field_name (keys %{ $args->{attr_terms}->{and} }){
+			foreach my $class_id (keys %{ $args->{attr_terms}->{and}->{$field_name} }){
+				foreach my $attr (keys %{ $args->{attr_terms}->{and}->{$field_name}->{$class_id} }){
+					foreach my $raw_value (@{ $args->{attr_terms}->{and}->{$field_name}->{$class_id}->{$attr} }){
+						my $col = $attr;
+						$col =~ s/^attr\_//;
+						my $resolved_value = $self->_resolve_value($args, $class_id, $raw_value, $Field_to_order->{$col});
+						$deletion_candidates{$resolved_value} = 1;
+					}
+				}
+			}
+		}
+	
+		my @keep = shift @{ $args->{any_field_terms}->{and} };
+		foreach my $term (@{ $args->{any_field_terms}->{and} }){
+			if ($deletion_candidates{$term}){
+				$self->log->trace('Optimizing out any-field term search for term ' . $term);
+			}
+			else {
+				push @keep, $term;
+			}
+		}
+		$args->{any_field_terms}->{and} = [ @keep ];
+	}
+	
+	# Optimization: for the any-term NOT fields, only search if we can't filter
+	if (@{ $args->{any_field_terms}->{not} }){
+		my %deletion_candidates;
+		foreach my $field_name (keys %{ $args->{attr_terms}->{not} }){
+			foreach my $class_id (keys %{ $args->{attr_terms}->{not}->{$field_name} }){
+				foreach my $attr (keys %{ $args->{attr_terms}->{not}->{$field_name}->{$class_id} }){
+					foreach my $raw_value (@{ $args->{attr_terms}->{not}->{$field_name}->{$class_id}->{$attr} }){
+						my $col = $attr;
+						$col =~ s/^attr\_//;
+						my $resolved_value = $self->_resolve_value($args, $class_id, $raw_value, $Field_to_order->{$col});
+						$deletion_candidates{$resolved_value} = 1;
+					}
+				}
+			}
+		}
+	
+		my @keep;
+		foreach my $term (@{ $args->{any_field_terms}->{not} }){
+			if ($deletion_candidates{$term}){
+				$self->log->trace('Optimizing out any-field term search for term ' . $term);
+			}
+			else {
+				push @keep, $term;
+			}
+		}
+		$args->{any_field_terms}->{not} = [ @keep ];
+	}
+	
 	# Check all field terms to see if they are a stopword and warn if necessary
 	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
 		$self->log->debug('checking terms against ' . (scalar keys %$stopwords) . ' stopwords');
@@ -3033,6 +3218,17 @@ sub _parse_query_string {
 							}
 						}
 					}
+				}
+			}
+			for (my $i = 0; $i < (scalar @{ $args->{any_field_terms}->{$boolean} }); $i++){
+				my $term = $args->{any_field_terms}->{$boolean}->[$i];
+				if ($stopwords->{$term}){
+					my $err = 'Removed term ' . $term . ' which is too common';
+					$self->add_warning($err);
+					$self->log->warn($err);
+					$num_removed_terms++;
+					# Drop the term
+					splice(@{ $args->{any_field_terms}->{$boolean} }, $i, 1);
 				}
 			}
 		}
@@ -3073,90 +3269,13 @@ sub _parse_query_string {
 #			}
 #		}
 #	}
-	
-#	# Loop through and see if we have "between" statements where min and max are supplied by two separate range ops
-#	foreach my $boolean qw(range_and range_not){
-#		foreach my $class_id (keys %{ $args->{attr_terms}->{$boolean} }){
-#			foreach my $attr (keys %{ $args->{attr_terms}->{$boolean}->{$class_id} }){
-#				if (scalar @{ $args->{attr_terms}->{range_and}->{$class_id}->{$attr} }){
-#					# If there is more than one range given for AND, we have to do a workaround:
-#					# A<=VALUE<=B OR C<=VALUE<=D
-#					# becomes A<=VALUE<=D AND NOT (B+1<=VALUE<=C-1)
-#					
-#					# Find ranges in order
-#					my @values;
-#					
-#					# Find any stray values from single attr_id's included in AND and OR booleans.  
-#					#  These will have to count when finding the blanket min/max values for the umbrella include
-#					foreach my $and_or_boolean qw(and or){
-#						if (ref($args->{attr_terms}->{$and_or_boolean}->{$class_id}->{$attr}) eq 'HASH'){
-#							foreach my $val (keys %{ $args->{attr_terms}->{$and_or_boolean}->{$class_id}->{$attr} }){
-#								push @values, $val, $val;
-#							}
-#						}
-#						elsif (ref($args->{attr_terms}->{$and_or_boolean}->{$class_id}->{$attr}) eq 'ARRAY'){
-#							foreach my $val (@{ $args->{attr_terms}->{$and_or_boolean}->{$class_id}->{$attr} }){
-#								push @values, $val, $val;
-#							}
-#						}
-#					}
-#									
-#					foreach my $filter_hash (@{ $args->{attr_terms}->{range_and}->{$class_id}->{$attr} }){
-#						push @values, $filter_hash->{min};
-#						push @values, $filter_hash->{max};
-#					}
-#					@values = sort { $a <=> $b } @values;
-#					$self->log->trace('values: ' . join(',', @values));
-#					
-#					delete $args->{attr_terms}->{range_and}->{$class_id}->{$attr}; # clear what was there
-#					
-#					# Set the wide include
-#					push @{ $args->{attr_terms}->{range_and}->{$class_id}->{$attr} }, { attr => $attr, min => $values[0], max => $values[-1], exclude => 0 };
-#					$self->log->trace('including ' . $values[0] . '-' . $values[-1]);
-#					
-#					# Set the individual excludes
-#					for (my $i = 1; $i < ((scalar @values) - 1); $i += 2){
-#						my ($min, $max) = ($values[$i], $values[$i+1]);
-#						if ($max - $min <= 1){
-#							next;
-#						}
-#						$min++;
-#						$max--;
-#						$self->log->trace('excluding ' . $min . '-' . $max);
-#						push @{ $args->{attr_terms}->{range_and}->{$class_id}->{$attr} }, { attr => $attr, min => $min, max => $max, exclude => 1 };
-#					}
-#					
-#					# Remove the unused individual attr_id's now that they're in the ranges
-#					delete $args->{attr_terms}->{and}->{$class_id}->{$attr};
-#					delete $args->{attr_terms}->{or}->{$class_id}->{$attr};
-#				}
-#			}
-#		}
-#	}
-	
+
 	foreach my $item qw(attr_terms field_terms any_field_terms permitted_classes given_classes distinct_classes){
 		$self->log->trace("$item: " . Dumper($args->{$item}));
 	}
 	
 	# Verify that we're still going to actually have query terms after the filtering has taken place	
 	my $query_term_count = 0;
-#	if (scalar keys %{ $args->{distinct_classes} }){
-#		foreach my $term_type qw(field_terms attr_terms){
-#			foreach my $boolean qw(and or range_and){
-#				next unless $args->{$term_type}->{$boolean};
-#				foreach my $class_id (keys %{ $args->{$term_type}->{$boolean} }){
-#					foreach my $attr (keys %{ $args->{$term_type}->{$boolean}->{$class_id} }){
-#						if (ref($args->{$term_type}->{$boolean}->{$class_id}->{$attr}) eq 'ARRAY'){
-#							$query_term_count += scalar @{ $args->{$term_type}->{$boolean}->{$class_id}->{$attr} };
-#						}
-#						elsif (ref($args->{$term_type}->{$boolean}->{$class_id}->{$attr}) eq 'HASH'){
-#							$query_term_count += scalar keys %{ $args->{$term_type}->{$boolean}->{$class_id}->{$attr} };
-#						}
-#					}
-#				}
-#			}
-#		}
-#	}
 	
 	foreach my $boolean qw(and or range_and){
 		next unless $args->{field_terms}->{$boolean};
@@ -3232,9 +3351,11 @@ sub _parse_query_string {
 	
 	# Check to see if the query is after the latest end, but not in the future (this happens if the indexing process is backed up)
 	if ($args->{start_int} and $args->{start_int} <= time() and $args->{start_int} > $args->{node_info}->{start_max}){
+		$self->log->warn('Adjusted start_int ' . $args->{start_int} . ' to ' . $args->{node_info}->{start_max});
 		$args->{start_int} = $args->{node_info}->{start_max};
 	}
 	if ($args->{end_int} and $args->{end_int} <= time() and $args->{end_int} > $args->{node_info}->{max}){
+		$self->log->warn('Adjusted end_int ' . $args->{end_int} . ' to ' . $args->{node_info}->{max});
 		$args->{end_int} = $args->{node_info}->{max};
 	}
 	
@@ -3265,17 +3386,20 @@ sub _parse_query_term {
 			# Escape any digit-dash-word combos (except for host or program)
 			$term_hash->{value} =~ s/(\d+)\-/$1\\\-/g unless ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
 			
-			# Get rid of any non-indexed chars
-			$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g;
-			
-			# Escape any '@' or sphinx will error out thinking it's a field prefix
-			$term_hash->{value} =~ s/\@/\\\@/g;
-			
-			# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
-			if ($term_hash->{value} =~ /^[0-9]{15,}$/){
-				die('Integer search terms must be 15 or fewer digits, received ' 
-					. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.');
-				
+			if ($args->{archive_query}){
+				# Escape any special chars
+				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])/\\$1/g;
+			}
+			else {
+				# Get rid of any non-indexed chars
+				$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g;
+				# Escape any '@' or sphinx will error out thinking it's a field prefix
+				$term_hash->{value} =~ s/\@/\\\@/g;
+				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
+				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
+					die('Integer search terms must be 15 or fewer digits, received ' 
+						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.');
+				}
 			}
 			
 			if ($term_hash->{field} eq 'start'){
@@ -3371,12 +3495,24 @@ sub _parse_query_term {
 									$values->{fields}->{$class_id}->{$real_field};
 							}	
 						}
+#						foreach my $class_id (keys %{ $values->{attrs} }){
+#							push @{ $args->{any_field_terms}->{not} }, $term_hash->{value};
+#							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+#								$args->{attr_terms}->{not}->{$class_id}->{$real_field} ||= [];
+#								push @{ $args->{attr_terms}->{not}->{$class_id}->{$real_field} },
+#									$values->{attrs}->{$class_id}->{$real_field};
+#							}
+#						}
 						foreach my $class_id (keys %{ $values->{attrs} }){
 							push @{ $args->{any_field_terms}->{not} }, $term_hash->{value};
+							$args->{attr_terms}->{not}->{ $term_hash->{field} } ||= {};
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-								$args->{attr_terms}->{not}->{$class_id}->{$real_field} ||= [];
-								push @{ $args->{attr_terms}->{not}->{$class_id}->{$real_field} },
-									$values->{attrs}->{$class_id}->{$real_field};
+								if ($args->{attr_terms}->{not}->{ $term_hash->{field} }->{$class_id}->{$real_field}){
+									 push @{ $args->{attr_terms}->{not}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
+								}
+								else {
+									$args->{attr_terms}->{not}->{ $term_hash->{field} }->{$class_id}->{$real_field} = [ $values->{attrs}->{$class_id}->{$real_field} ];
+								}
 							}
 						}
 					}
@@ -3444,7 +3580,6 @@ sub _parse_query_term {
 							push @{ $args->{any_field_terms}->{and} }, $term_hash->{value};
 							$args->{attr_terms}->{and}->{ $term_hash->{field} } ||= {};
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-								#$args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field} = $values->{attrs}->{$class_id}->{$real_field}->[0];
 								if ($args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field}){
 									 push @{ $args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
 								}
@@ -3879,72 +4014,132 @@ sub _build_sphinx_match_str {
 	return $match_str;
 }
 
-sub _per_field_build_sphinx_match_str {
+sub _build_archive_match_str {
 	my ($self, $args) = @_;
 
 	# Create the Sphinx Extended2 matching mode query string to be placed in MATCH()
 	
 	# No-field match str
 	my $match_str = '';
-	my @tmp;
+	my (%and, %or, %not);
 	foreach my $term (@{ $args->{any_field_terms}->{and} }){
-		push @tmp, '(' . $term . ')';
+		$and{'msg LIKE "%' . $term . '%"'} = 1;
 	}
-	if (scalar @tmp){
-		$match_str .= ' (' . join(' ', @tmp) . ')';
-	}
-	
-	@tmp = ();
+		
+	my @or = ();
 	foreach my $term (@{ $args->{any_field_terms}->{or} }){
-		push @tmp, '(' . $term . ')';
-	}
-	if (scalar @tmp){
-		$match_str .= ' (' . join('|', @tmp) . ')';
+		$or{'msg LIKE "%' . $term . '%"'} = 1;
 	}
 	
-	@tmp = ();
+	my @not = ();
 	foreach my $term (@{ $args->{any_field_terms}->{not} }){
-		push @tmp, '(' . $term . ')';
-	}
-	if (scalar @tmp){
-		$match_str .= ' !(' . join('|', @tmp) . ')';
+		$not{'msg LIKE "%' . $term . '%"'} = 1;
 	}
 	
 	foreach my $class_id (sort keys %{ $args->{distinct_classes} }){
-		@tmp = ();
-		
 		# First, the ANDs
-		@tmp = ();
 		foreach my $field (sort keys %{ $args->{field_terms}->{and}->{$class_id} }){
-			push @tmp, '(@' . $field . ' ' . join(' ', @{ $args->{field_terms}->{and}->{$class_id}->{$field} }) . ')';
-		}
-		if (scalar @tmp){
-			$match_str .= ' (' . join(' ', @tmp) . ')';
+			foreach my $value (@{ $args->{field_terms}->{and}->{$class_id}->{$field} }){
+				$and{$field . ' LIKE "%' . $value . '%"'} = 1;
+			}
 		}
 				
 		# Then, the NOTs
-		@tmp = ();
 		foreach my $field (sort keys %{ $args->{field_terms}->{not}->{$class_id} }){
-			push @tmp, '(@' . $field . ' ' . join(' ', @{ $args->{field_terms}->{not}->{$class_id}->{$field} }) . ')';
-		}
-		if (scalar @tmp){
-			$match_str .= ' !(' . join('|', @tmp) . ')';
+			foreach my $value (@{ $args->{field_terms}->{not}->{$class_id}->{$field} }){
+				$not{$field . ' LIKE "%' . $value . '%"'} = 1;
+			}
 		}
 		
 		# Then, the ORs
-		@tmp = ();
 		foreach my $field (sort keys %{ $args->{field_terms}->{or}->{$class_id} }){
-			push @tmp, '(@' . $field . ' ' . join(' ', @{ $args->{field_terms}->{or}->{$class_id}->{$field} }) . ')';
+			foreach my $value (@{ $args->{field_terms}->{or}->{$class_id}->{$field} }){
+				$or{$field . ' LIKE "%' . $value . '%"'} = 1;
+			}
 		}
-		if (scalar @tmp){
-			$match_str .= ' (' . join('|', @tmp) . ')';
-		}
-	}	
+	}
 	
+	if (scalar keys %and){
+		$match_str .= ' (' . join(' AND ', sort keys %and) . ')';
+	}
+	if (scalar keys %or){
+		$match_str .= ' (' . join(' OR ', sort keys %or) . ')';
+	}
+	if (scalar keys %not){
+		$match_str .= ' NOT (' . join(' OR ', sort keys %not) . ')';
+	}
+		
 	$self->log->trace('match str: ' . $match_str);		
 	
 	return $match_str;
 }
+
+#sub _per_field_build_sphinx_match_str {
+#	my ($self, $args) = @_;
+#
+#	# Create the Sphinx Extended2 matching mode query string to be placed in MATCH()
+#	
+#	# No-field match str
+#	my $match_str = '';
+#	my @tmp;
+#	foreach my $term (@{ $args->{any_field_terms}->{and} }){
+#		push @tmp, '(' . $term . ')';
+#	}
+#	if (scalar @tmp){
+#		$match_str .= ' (' . join(' ', @tmp) . ')';
+#	}
+#	
+#	@tmp = ();
+#	foreach my $term (@{ $args->{any_field_terms}->{or} }){
+#		push @tmp, '(' . $term . ')';
+#	}
+#	if (scalar @tmp){
+#		$match_str .= ' (' . join('|', @tmp) . ')';
+#	}
+#	
+#	@tmp = ();
+#	foreach my $term (@{ $args->{any_field_terms}->{not} }){
+#		push @tmp, '(' . $term . ')';
+#	}
+#	if (scalar @tmp){
+#		$match_str .= ' !(' . join('|', @tmp) . ')';
+#	}
+#	
+#	foreach my $class_id (sort keys %{ $args->{distinct_classes} }){
+#		@tmp = ();
+#		
+#		# First, the ANDs
+#		@tmp = ();
+#		foreach my $field (sort keys %{ $args->{field_terms}->{and}->{$class_id} }){
+#			push @tmp, '(@' . $field . ' ' . join(' ', @{ $args->{field_terms}->{and}->{$class_id}->{$field} }) . ')';
+#		}
+#		if (scalar @tmp){
+#			$match_str .= ' (' . join(' ', @tmp) . ')';
+#		}
+#				
+#		# Then, the NOTs
+#		@tmp = ();
+#		foreach my $field (sort keys %{ $args->{field_terms}->{not}->{$class_id} }){
+#			push @tmp, '(@' . $field . ' ' . join(' ', @{ $args->{field_terms}->{not}->{$class_id}->{$field} }) . ')';
+#		}
+#		if (scalar @tmp){
+#			$match_str .= ' !(' . join('|', @tmp) . ')';
+#		}
+#		
+#		# Then, the ORs
+#		@tmp = ();
+#		foreach my $field (sort keys %{ $args->{field_terms}->{or}->{$class_id} }){
+#			push @tmp, '(@' . $field . ' ' . join(' ', @{ $args->{field_terms}->{or}->{$class_id}->{$field} }) . ')';
+#		}
+#		if (scalar @tmp){
+#			$match_str .= ' (' . join('|', @tmp) . ')';
+#		}
+#	}	
+#	
+#	$self->log->trace('match str: ' . $match_str);		
+#	
+#	return $match_str;
+#}
 
 sub _build_sphinx_query {
 	my $self = shift;
@@ -3957,6 +4152,7 @@ sub _build_sphinx_query {
 	my @or_vals;
 	
 	foreach my $class_id (sort keys %{ $args->{attr_terms}->{or} }){
+		next unless $args->{distinct_classes}->{$class_id};
 		foreach my $field (sort keys %{ $args->{attr_terms}->{or}->{$class_id} }){
 			foreach my $value (@{ $args->{attr_terms}->{or}->{$class_id}->{$field} }){
 				$self->log->trace('field: ' . $field . ', class: ' . $class_id);
@@ -3982,6 +4178,7 @@ sub _build_sphinx_query {
 	foreach my $field_name (sort keys %{ $args->{attr_terms}->{and} }){
 		my @clause;
 		foreach my $class_id (sort keys %{ $args->{attr_terms}->{and}->{$field_name} }){
+			next unless $args->{distinct_classes}->{$class_id};
 			foreach my $field (sort keys %{ $args->{attr_terms}->{and}->{$field_name}->{$class_id} }){
 				foreach my $value (@{ $args->{attr_terms}->{and}->{$field_name}->{$class_id}->{$field} }){
 				#my $value = $args->{attr_terms}->{and}->{$field_name}->{$class_id}->{$field};
@@ -4008,6 +4205,7 @@ sub _build_sphinx_query {
 
 	foreach my $field (sort keys %{ $args->{attr_terms}->{range_or} }){
 		foreach my $class_id (sort keys %{ $args->{attr_terms}->{range_or}->{$field} }){
+			next unless $args->{distinct_classes}->{$class_id};
 			foreach my $attr (sort keys %{ $args->{attr_terms}->{range_or}->{$field}->{$class_id} }){
 				foreach my $range_hash (@{ $args->{attr_terms}->{range_or}->{$field}->{$class_id}->{$attr} }){
 					if ($class_id){
@@ -4026,6 +4224,7 @@ sub _build_sphinx_query {
 	foreach my $field_name (sort keys %{ $args->{attr_terms}->{range_and} }){
 		my @clause;
 		foreach my $class_id (sort keys %{ $args->{attr_terms}->{range_and}->{$field_name} }){
+			next unless $args->{distinct_classes}->{$class_id};
 			foreach my $field (sort keys %{ $args->{attr_terms}->{range_and}->{$field_name}->{$class_id} }){
 				foreach my $range_hash (@{ $args->{attr_terms}->{range_and}->{$field_name}->{$class_id}->{$field} }){
 					if ($class_id){
@@ -4046,6 +4245,7 @@ sub _build_sphinx_query {
 	my @not_vals;
 	foreach my $field (sort keys %{ $args->{attr_terms}->{range_not} }){
 		foreach my $class_id (sort keys %{ $args->{attr_terms}->{range_not}->{$field} }){
+			next unless $args->{distinct_classes}->{$class_id};
 			foreach my $attr (sort keys %{ $args->{attr_terms}->{range_not}->{$field}->{$class_id} }){
 				foreach my $range_hash (@{ $args->{attr_terms}->{range_not}->{$field}->{$class_id}->{$attr} }){
 					if ($class_id){
@@ -4063,17 +4263,19 @@ sub _build_sphinx_query {
 	
 	foreach my $field_name (sort keys %{ $args->{attr_terms}->{not} }){
 		foreach my $class_id (sort keys %{ $args->{attr_terms}->{not}->{$field_name} }){
+			next unless $args->{distinct_classes}->{$class_id};
 			foreach my $attr (sort keys %{ $args->{attr_terms}->{not}->{$field_name}->{$class_id} }){
 				#my $field_hash = $self->_get_field($args, $field)->{$class_id};
-				#foreach my $value (@{ $args->{$type}->{not}->{$class_id}->{$field} }){
-				my $value = $args->{attr_terms}->{not}->{$field_name}->{$class_id}->{$attr};
-				if ($class_id){
-					push @not_clause, '(class_id=? AND ' . $attr . '=?)';
-					push @not_vals, $class_id, $value;
-				}
-				else {
-					push @not_clause, $attr . '=?';
-					push @not_vals, $value;
+				foreach my $value (@{ $args->{attr_terms}->{not}->{$field_name}->{$class_id}->{$attr} }){
+					#my $value = $args->{attr_terms}->{not}->{$field_name}->{$class_id}->{$attr};
+					if ($class_id){
+						push @not_clause, '(class_id=? AND ' . $attr . '=?)';
+						push @not_vals, $class_id, $value;
+					}
+					else {
+						push @not_clause, $attr . '=?';
+						push @not_vals, $value;
+					}
 				}
 			}
 		}
@@ -4112,8 +4314,16 @@ sub _build_sphinx_query {
 		$negative_qualifier = join(' OR ', @not_clause);
 	}
 	
-	my $select = "SELECT *, $positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier";
-	my $where = 'MATCH(\'' . $self->_build_sphinx_match_str($args) .'\') AND positive_qualifier=1 AND negative_qualifier=0';
+	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier";
+	my $where;
+	if ($args->{archive_query}){
+		$where = $self->_build_archive_match_str($args) . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier;
+	}
+	else {
+		$where = 'MATCH(\'' . $self->_build_sphinx_match_str($args) .'\')';
+		$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0';
+	}
+	
 	my @values = (@and_vals, @or_vals, @not_vals);
 	
 	# Check for no-class super-user query
@@ -4136,11 +4346,13 @@ sub _build_sphinx_query {
 			my $field_infos = $self->_get_field($args, $field);
 			$self->log->trace('field_infos: ' . Dumper($field_infos));
 			foreach my $class_id (keys %{$field_infos}){
+				next unless $args->{distinct_classes}->{$class_id};
 				push @{ $args->{queries} }, {
 					select => $select,
 					where => $where . ($class_id ? ' AND class_id=?' : ''),
 					values => [ @values, $class_id ? $class_id : () ],
 					groupby => $Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} },
+					groupby_field => $field,
 				};
 			}
 		}
@@ -4163,8 +4375,10 @@ sub format_results {
 	my $ret = '';
 	if ($args->{format} eq 'tsv'){
 		if ($args->{groupby}){
-			foreach my $row (@{ $args->{results} }){
-				print join("\t", $row->{'@groupby'}, $row->{'@count'}) . "\n";
+			foreach my $groupby (@{ $args->{groupby} }){
+				foreach my $row (@{ $args->{results}->{$groupby} }){
+					print join("\t", $row->{'@groupby'}, $row->{'@count'}) . "\n";
+				}
 			}
 		}
 		else {
@@ -4225,6 +4439,621 @@ sub export {
 		$self->log->error('Invalid args: ' . Dumper($args));
 		return 'Unable to build results object from args';
 	}
+}
+
+sub run_schedule {
+	my ($self, $args) = @_;
+	
+	if ($args and $args->{user_info} and $args->{user_info}->{username} ne 'system'){
+		die('Only system can run the schedule');
+	}
+	
+	my ($query, $sth);
+	
+	# Find the last run time from the bookmark table
+	$query = 'SELECT UNIX_TIMESTAMP(last_run) FROM schedule_bookmark';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	my $row = $sth->fetchrow_arrayref;
+	my $last_run_bookmark = $self->conf->get('schedule_interval'); # init to interval here so we don't underflow if 0
+	if ($row){
+		$last_run_bookmark = $row->[0];
+	}
+	
+	my $form_params = $self->get_form_params();
+	
+	# Expire schedule entries
+	$query = 'SELECT id, query, username FROM query_schedule JOIN users ON (query_schedule.uid=users.uid) WHERE end < UNIX_TIMESTAMP() AND enabled=1';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	my @ids;
+	my $counter = 0;
+	while (my $row = $sth->fetchrow_hashref){
+		push @ids, $row->{id};
+		my $user_info = $self->get_user_info($row->{username});
+		my $decode = $self->json->decode($row->{query});
+		
+		my $headers = {
+			To => $user_info->{email},
+			From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
+			Subject => 'ELSA alert has expired for query ' . $decode->{query_string},
+		};
+		my $body = 'The alert set for query ' . $decode->{query_string} . ' has expired and has been disabled.  ' .
+			'If you wish to continue receiving this query, please log into ELSA, enable the query, and set a new expiration date.';
+		
+		$self->_send_email({headers => $headers, body => $body});
+	}
+	if (scalar @ids){
+		$self->log->info('Expiring query schedule for ids ' . join(',', @ids));
+		$query = 'UPDATE query_schedule SET enabled=0 WHERE id IN (' . join(',', @ids) . ')';
+		$sth = $self->db->prepare($query);
+		$sth->execute;
+	}
+	
+	# Run schedule	
+	$query = 'SELECT t1.id AS query_schedule_id, username, t1.uid, query, frequency, start, end, action_subroutine, action_params' . "\n" .
+		'FROM query_schedule t1' . "\n" .
+		'JOIN users ON (t1.uid=users.uid)' . "\n" .
+		'JOIN query_schedule_actions t2 ON (t1.action_id=t2.action_id)' . "\n" .
+		'WHERE start <= ? AND end >= ? AND enabled=1' . "\n" .
+		'AND UNIX_TIMESTAMP() - UNIX_TIMESTAMP(last_alert) > alert_threshold';  # we won't even run queries we know we won't alert on
+	$sth = $self->db->prepare($query);
+	
+	my $cur_time = $form_params->{end_int};
+	$sth->execute($cur_time, $cur_time);
+	
+	my $user_info_cache = {};
+	
+	while (my $row = $sth->fetchrow_hashref){
+		my @freq_arr = split(':', $row->{frequency});
+		my $last_run;
+		my $farthest_back_to_check = $cur_time - $self->conf->get('schedule_interval');
+		my $how_far_back = $self->conf->get('schedule_interval');
+		while (not $last_run and $farthest_back_to_check > ($cur_time - (86400 * 366 * 2))){ # sanity check
+			$self->log->debug('$farthest_back_to_check:' . $farthest_back_to_check);
+			my @prev_dates = ParseRecur($row->{frequency}, 
+				ParseDate(scalar localtime($cur_time)), 
+				ParseDate(scalar localtime($farthest_back_to_check)),
+				ParseDate(scalar localtime($cur_time - 1))
+			);
+			if (scalar @prev_dates){
+				$self->log->trace('prev: ' . Dumper(\@prev_dates));
+				$last_run = UnixDate($prev_dates[$#prev_dates], '%s');
+				$self->log->trace('last_run:' . $prev_dates[$#prev_dates]);
+			}
+			else {
+				# Keep squaring the distance we'll go back to find the last date
+				$farthest_back_to_check -= $how_far_back;
+				$self->log->trace('how_far_back: ' . $how_far_back);
+				$how_far_back *= $self->conf->get('schedule_interval');
+			}
+		}
+		unless ($last_run){
+			$self->log->error('Could not find the last time we ran, aborting');
+			next;
+		}
+		# If the bookmark is earlier, use that because we could've missed runs between them
+		if ($last_run_bookmark < $last_run){
+			$self->log->info('Setting last_run to ' . $last_run_bookmark . ' because it is before ' . $last_run);
+			$last_run = $last_run_bookmark;
+		}
+		my @dates = ParseRecur($row->{frequency}, 
+			ParseDate(scalar localtime($cur_time)), 
+			ParseDate(scalar localtime($cur_time)),
+			ParseDate(scalar localtime($cur_time + $self->conf->get('schedule_interval')))
+		);
+		$self->log->trace('dates: ' . Dumper(\@dates) . ' row: ' . Dumper($row));
+		if (scalar @dates){
+			# Adjust the query time to avoid time that is potentially unindexed by offsetting by the schedule interval
+			my $query_params = $self->json->decode($row->{query});
+			$query_params->{query_meta_params}->{start} = ($last_run - $self->conf->get('schedule_interval'));
+			$query_params->{query_meta_params}->{end} = ($cur_time - $self->conf->get('schedule_interval'));
+			$query_params->{query_string} = delete $query_params->{query_string};
+			
+			if (!$user_info_cache->{ $row->{uid} }){
+				$user_info_cache->{ $row->{uid} } = $self->get_user_info($row->{username});
+				$self->log->trace('Got user info: ' . Dumper($user_info_cache->{ $row->{uid} }));
+			}
+			else {
+				$self->log->trace('Using existing user info');
+			}
+			$query_params->{user_info} = $user_info_cache->{ $row->{uid} };
+			
+			# Perform query
+			my $results = $self->query($query_params);
+			$counter++;
+			
+			# Take given action
+			unless ($self->can($row->{action_subroutine})){
+				$self->log->error('Invalid alert action: ' . $row->{action_subroutine});
+				next;
+			}
+			
+			if ($results and $results->{recordsReturned}){
+				my $action_params = $self->json->decode($row->{action_params});
+				$action_params->{comments} = 'Scheduled Query ' . $row->{query_schedule_id};
+				$action_params->{query_schedule_id} = $row->{query_schedule_id};
+				$action_params->{query} = $query_params;
+				$action_params->{results} = $results;
+				$self->log->debug('executing action ' . $row->{action_subroutine} . ' with params ' . Dumper($action_params));
+				my $sub = $row->{action_subroutine};
+				$self->$sub($action_params);
+			}
+		}
+	}
+	
+	# Update our bookmark to the current run
+	$query = 'UPDATE schedule_bookmark SET last_run=FROM_UNIXTIME(?)';
+	$sth = $self->db->prepare($query);
+	$sth->execute($cur_time);
+	unless ($sth->rows){
+		$query = 'INSERT INTO schedule_bookmark (last_run) VALUES (FROM_UNIXTIME(?))';
+		$sth = $self->db->prepare($query);
+		$sth->execute($cur_time);
+	}
+	
+	return $counter;
+}
+
+sub _send_email {
+	my ($self, $args) = @_;
+	
+	# Send the email
+	my $email_headers = new Mail::Header();
+	$email_headers->header_hashref($args->{headers});
+	my $email = new Mail::Internet( Header => $email_headers, Body => [ split(/\n/, $args->{body}) ] );
+	
+	$self->log->debug('email: ' . $email->as_string());
+	my $ret = $email->smtpsend(
+		Host => $self->conf->get('email/smtp_server'), 
+		Debug => 1, 
+		MailFrom => $self->conf->get('email/display_address')
+	);
+	if ($ret){
+		$self->log->debug('done sending email');
+		return 1;
+	}
+	else {
+		$self->log->error('Unable to send email: ' . $email->as_string() . ' to host ' . $self->conf->get('email/smtp_server'));
+		return 0;
+	}
+}
+
+
+sub _open_ticket {
+	my ($self, $args) = @_;
+	$self->log->debug('got results to create ticket on: ' . Dumper($args));
+	unless (ref($args) eq 'HASH' 
+		and $args->{results}){
+		$self->log->info('No results for query');
+		return 0;
+	}
+	
+	unless ($self->conf->get('ticketing/email')){
+		$self->log->error('No ticketing config setup.');
+		return;
+	}
+	
+	my $headers = {
+		To => $self->conf->get('ticketing/email'),
+		From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
+		Subject => $self->conf->get('email/subject') ? $self->conf->get('email/subject') : 'system',
+	};
+	my $body = sprintf($self->conf->get('ticketing/template'), $args->{query}->{query_string},
+		sprintf('%s/get_results?qid=%d&hash=%s', 
+			$self->conf->get('email/base_url') ? $self->conf->get('email/base_url') : 'http://localhost',
+			$args->{qid},
+			$self->_get_hash($args->{qid}),
+		)
+	);
+	
+	$self->_send_email({ headers => $headers, body => $body });
+}
+
+sub _alert {
+	my ($self, $args) = @_;
+	$self->log->debug('got results to alert on: ' . Dumper($args->{results}));
+		
+	unless (ref($args) eq 'HASH' 
+		and $args->{results}->{results} 
+		and ref($args->{results}->{results}) eq 'ARRAY'
+		and scalar @{ $args->{results}->{results} }){
+		$self->log->info('No results for query');
+		return 0;
+	}
+	
+	my $headers = {
+		To => $args->{query}->{user_info}->{email},
+		From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
+		Subject => $self->conf->get('email/subject') ? $self->conf->get('email/subject') : 'system',
+	};
+	my $body = sprintf('%d results for query %s', $args->{results}->{recordsReturned}, $args->{query}->{query_string}) .
+		"\r\n" . sprintf('%s/get_results?qid=%d&hash=%s', 
+			$self->conf->get('email/base_url') ? $self->conf->get('email/base_url') : 'http://localhost',
+			$args->{results}->{qid},
+			$self->_get_hash($args->{results}->{qid}),
+	);
+	
+	my ($query, $sth);
+	$query = 'SELECT UNIX_TIMESTAMP(last_alert) AS last_alert, alert_threshold FROM query_schedule WHERE id=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{query_schedule_id});
+	my $row = $sth->fetchrow_hashref;
+	if ((time() - $row->{last_alert}) < $row->{alert_threshold}){
+		$self->log->warn('Not alerting because last alert was at ' . (scalar localtime($row->{last_alert})) 
+			. ' and threshold is at ' . $row->{alert_threshold} . ' seconds.' );
+		return;
+	}
+	else {
+		$query = 'UPDATE query_schedule SET last_alert=NOW() WHERE id=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{query_schedule_id});
+	}
+	
+	$self->_send_email({ headers => $headers, body => $body});
+	
+	# Save the results
+	$self->_save_results({
+		meta_info => { groupby => $args->{groupby} },
+		qid => $args->{results}->{qid}, 
+		results => $args->{results}->{results}, 
+		comments => 'Scheduled Query ' . $args->{query_schedule_id} 
+	});
+}
+
+sub _batch_notify {
+	my ($self, $args) = @_;
+	#$self->log->trace('got results for batch: ' . Dumper($args));
+	
+	# Route back if something is wrong
+	
+	my $headers = {
+		To => $args->{query}->{user_info}->{email},
+		From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
+		Subject => sprintf('ELSA archive query %d complete with %d results', $args->{qid}, 
+			$args->{recordsReturned}),
+	};
+	my $body = sprintf('%d results for query %s', $args->{recordsReturned}, $args->{query_string}) .
+		"\r\n" . sprintf('%s/get_results?qid=%d&hash=%s', 
+			$self->conf->get('email/base_url') ? $self->conf->get('email/base_url') : 'http://localhost',
+			$args->{qid},
+			$self->_get_hash($args->{qid}),
+	);
+	
+	$self->_send_email({ headers => $headers, body => $body});
+}
+
+sub run_archive_queries {
+	my ($self, $args) = @_;
+	
+	if ($args and $args->{user_info} and $args->{user_info}->{username} ne 'system'){
+		die('Not authorized to run the schedule');
+	}
+	
+	my ($query, $sth);
+	$query = 'SELECT qid, username, query FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) WHERE ISNULL(num_results) AND archive=1';
+	$sth = $self->db->prepare($query);
+	$sth->execute;
+	
+	while (my $row = $sth->fetchrow_hashref){
+		my $user_info = $self->get_user_info($row->{username});
+		my $args = {
+			q => $row->{query},
+			user_info => $user_info,
+		};
+		# Record that we're starting so no one else starts it
+		my $sth2 = $self->db->prepare('UPDATE query_log SET num_results=-1 WHERE qid=?');
+		$sth2->execute($row->{qid});
+		
+		# Run the query
+		$args->{qid} = $row->{qid};
+		$self->_archive_query($args);
+		next if $args->{cancelled};
+		
+		# Record the results
+		$self->log->trace('got archive results: ' . Dumper($args->{results}) . ' ' . $args->{totalRecords});
+		$sth2 = $self->db->prepare('UPDATE query_log SET num_results=?, milliseconds=? WHERE qid=?');
+		$sth2->execute($args->{recordsReturned}, (1000 * $args->{timeTaken}), $row->{qid});
+		$sth2->finish;
+		
+		
+		$self->_save_results({ 
+			qid => $row->{qid}, 
+			comments => 'archive query',
+			results => $args->{results},
+			meta_info => $args->{groupby} ? { groupby => $args->{groupby} } : {},
+		});
+		$self->_batch_notify($args);
+	} 
+}	
+
+sub _archive_query {
+	my ($self, $args) = @_;
+	$self->clear_warnings;
+	$self->log->trace('running archive query with args: ' . Dumper($args));
+	if ($args->{q} ) {
+		# JSON-encoded query from web
+		my $decode = $self->json->decode($args->{q});
+		# q should contain query_string and query_meta_params
+		$self->log->debug( "Decoded as : " . Dumper($decode) );
+		$args->{query_meta_params} = $decode->{query_meta_params};
+		$args->{query_string} = $decode->{query_string};
+		if ($args->{query_meta_params}->{groupby}){
+			$args->{groupby} = $args->{query_meta_params}->{groupby}
+		}
+		if ($args->{query_meta_params}->{timeout}){
+			$args->{timeout} = sprintf("%d", ($args->{query_meta_params}->{timeout} * 1000)); #time is in milleseconds
+		}
+		if ($args->{query_meta_params}->{archive_query}){
+			$args->{archive_query} = $args->{query_meta_params}->{archive_query}
+		}
+	}
+	$self->log->trace('args: ' . Dumper($args));
+	
+	my $overall_start = time();
+	
+	# Set some sane defaults		
+	$args->{limit} ||= $Default_limit;
+	$args->{offset} ||= 0;
+		
+	my $ret = {};
+	$args->{node_info} = $self->_get_node_info();
+	$self->log->trace('using node-info: ' . Dumper($args->{node_info}));
+	# propagate node errors
+#	foreach my $node (keys %{ $args->{node_info}->{nodes} }){
+#		if (exists $args->{node_info}->{nodes}->{$node}->{error}){
+#			$ret->{errors} ||= [];
+#			push @{ $ret->{errors} }, $args->{node_info}->{nodes}->{$node}->{error};
+#		}
+#	}
+	$self->_parse_query_string($args);
+	$self->_build_sphinx_query($args);
+	foreach my $query (@{ $args->{queries} }){
+		$self->log->trace('query: ' . Dumper($query));
+	}
+	
+	my %queries; # per-node hash
+	foreach my $node (keys %{ $args->{node_info}->{nodes} }){
+		$ret->{$node} = { rows => [] };
+		$queries{$node} = [];
+		my $node_info = $args->{node_info}->{nodes}->{$node};
+		# Prune tables
+		my @table_arr;
+		foreach my $table (@{ $node_info->{tables}->{tables} }){
+			if ($args->{start_int} and $args->{end_int}){
+				if ($table->{table_type} eq 'archive' and
+					(($args->{start_int} >= $table->{start_int} and $args->{start_int} <= $table->{end_int})
+					or ($args->{end_int} >= $table->{start_int} and $args->{end_int} <= $table->{end_int})
+					or ($args->{start_int} <= $table->{start_int} and $args->{end_int} >= $table->{end_int})
+					or ($table->{start_int} <= $args->{start_int} and $table->{end_int} >= $args->{end_int}))
+				){
+					push @table_arr, $table->{table_name};
+				}
+			}
+			else {
+				push @table_arr, $table->{table_name};
+			}
+		}	
+		unless (@table_arr){
+			$self->log->debug('no tables for node ' . $node);
+			next;
+		}
+		
+		foreach my $table (@table_arr){
+			my $start = time();
+			foreach my $query (@{ $args->{queries} }){
+				# strip sphinx-specific attr_ prefix
+				$query->{where} =~ s/attr\_((?:i|s)\d)=\?/$1=\?/g; 
+				my $search_query;
+				if ($query->{groupby}){
+					$query->{groupby} =~ s/attr\_((?:i|s)\d)/$1/g;
+					$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby} AS $query->{groupby_field}\n" .
+						"FROM $table main\n" .
+						'WHERE ' . $query->{where} . "\nGROUP BY $query->{groupby_field}\n" . 'ORDER BY 1 DESC LIMIT ?,?';
+				}
+				else {
+					$search_query = "SELECT main.id,\n" .
+						"\"" . $node . "\" AS node,\n" .
+						"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
+						"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+						"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+						"FROM $table main\n" .
+						"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
+						"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
+						'WHERE ' . $query->{where} . "\n" . 'LIMIT ?,?';
+				}
+				#$self->log->debug('archive_query: ' . $search_query . ', values: ' . 
+				#	Dumper($query->{values}, $args->{offset}, $args->{limit}));
+				push @{ $queries{$node} }, 
+					{ query => $search_query, values => [ @{ $query->{values} }, $args->{offset}, $args->{limit} ] };
+			}
+		}
+	}
+	my $total_found = 0;
+	my ($query, $sth);
+	QUERY_LOOP: while (scalar keys %queries){
+		my $cv = AnyEvent->condvar;
+		$cv->begin(sub {
+			$cv->send;
+		});
+		
+		foreach my $node (keys %queries){
+			# Check if the query was cancelled
+			$query = 'SELECT num_results FROM query_log WHERE qid=?';
+			$sth = $self->db->prepare($query);
+			$sth->execute($args->{qid});
+			my $row = $sth->fetchrow_hashref;
+			if ($row->{num_results} eq -2){
+				$self->log->info('Query ' . $args->{qid} . ' has been cancelled');
+				$args->{cancelled} = 1;
+				return;
+			}
+			my $query_hash = shift @{ $queries{$node} };
+			unless (scalar @{ $queries{$node} }){
+				delete $queries{$node};
+				$self->log->debug('Finished archive queries for node ' . $node);
+			}
+			
+			eval {
+				my $start = time();
+				$self->log->debug('running query ' . $query_hash->{query} . ' with values ' . join(',', @{ $query_hash->{values} }));
+				$cv->begin;
+				$args->{node_info}->{nodes}->{$node}->{dbh}->get($query_hash->{query}, @{ $query_hash->{values} }, sub { 
+					$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
+					my ($dbh, $rows, $rv) = @_;
+					$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
+					if (not $rv){
+						my $e = 'node ' . $node . ' got error ' . $@;
+						$self->log->error($e);
+#						push @{ $args->{errors} }, $e;
+						$self->add_warning($e);
+						$cv->end;
+						next;
+					}
+					push @{ $ret->{$node}->{rows} }, @$rows;
+#					$total_found += scalar @$rows;
+					$cv->end; #end archive query
+				});
+			};
+			if ($@){
+				$ret->{$node}->{error} = 'sphinx query error: ' . $@;
+				$self->log->error('sphinx query error: ' . $@);
+				$cv->end;
+			}
+#			if ($total_found >= $args->{limit}){
+#				undef $cv;
+#				$self->log->debug('hit limit of ' . $args->{limit} . ' with ' . $total_found);
+#				last QUERY_LOOP;
+#			}
+		}
+		$cv->end; # bookend initial begin
+		$cv->recv; # block until all of the above completes
+	}
+	
+	$args->{totalRecords} = 0;
+	if ($args->{groupby}){
+		$args->{results} = {};
+		foreach my $groupby (@{ $args->{groupby} }){
+			my %agg;
+			foreach my $node (sort keys %$ret){
+				foreach my $row (@{ $ret->{$node}->{rows} }){
+					my $field_infos = $self->_resolve($args, $groupby, $row->{$groupby}, '=');
+					my $field = (keys %{ $field_infos->{attrs}->{ $row->{class_id} } })[0];
+					$field =~ s/attr\_//;
+					my $key;
+					if (exists $Field_to_order->{ $field }){
+						# Resolve normally
+						$key = $self->_resolve_value($args, $row->{class_id}, 
+							$row->{$groupby}, $Field_to_order->{ $field });
+					}
+					elsif (exists $Time_values->{ $field }){
+						# We will resolve later
+						$key = $groupby;
+					}
+					$agg{ $key } += $row->{count};	
+				}
+			}
+			$self->log->trace('got agg ' . Dumper(\%agg) . ' for groupby ' . $groupby);
+			if (exists $Time_values->{ $groupby }){
+				# Sort these in ascending label order
+				my @tmp;
+				foreach my $key (sort { $a <=> $b } keys %agg){
+					my $unixtime = ($key * $Time_values->{ $groupby });
+					push @tmp, { 
+						intval => $unixtime, 
+						'@groupby' => $self->_resolve_value($args, 0, 
+							$key, $Field_to_order->{ $groupby }), 
+						'@count' => $agg{$key}
+					};
+				}
+				
+				# Fill in zeroes for missing data so the graph looks right
+				my @zero_filled;
+				my $increment = $Time_values->{ $groupby };
+				$self->log->trace('using increment ' . $increment . ' for time value ' . $groupby);
+				OUTER: for (my $i = 0; $i < @tmp; $i++){
+					push @zero_filled, $tmp[$i];
+					if (exists $tmp[$i+1]){
+						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
+							$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
+							push @zero_filled, { 
+								'@groupby' => _epoch2iso($j), 
+								intval => $j,
+								'@count' => 0
+							};
+							last OUTER if scalar @zero_filled > $args->{limit};
+						}
+					}
+				}
+				$args->{results} = [ @zero_filled ];
+			}
+			else { 
+				# Sort these in descending value order
+				my @tmp;
+				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
+					push @tmp, { intval => $agg{$key}, '@groupby' => $key, '@count' => $agg{$key} };
+					$args->{totalRecords} += $agg{$key};
+					last if scalar keys %agg > $args->{limit};
+				}
+				$args->{results}->{$groupby} = [ @tmp ];
+				$args->{recordsReturned} += scalar @tmp;
+			}
+		}	
+	}
+	else {
+		$args->{results} = [];
+		NODE_LOOP: foreach my $node (keys %$ret){
+			$args->{totalRecords} += scalar @{ $ret->{$node}->{rows} };
+			foreach my $row (@{ $ret->{$node}->{rows} }){
+				$row->{_fields} = [
+						{ field => 'host', value => $row->{host}, class => 'any' },
+						{ field => 'program', value => $row->{program}, class => 'any' },
+						{ field => 'class', value => $row->{class}, class => 'any' },
+					];
+				# Resolve column names for fields
+				foreach my $col qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5){
+					my $value = delete $row->{$col};
+					# Swap the generic name with the specific field name for this class
+					my $field = $args->{node_info}->{fields_by_order}->{ $row->{class_id} }->{ $Field_to_order->{$col} }->{value};
+					if (defined $value and $field){
+						# See if we need to apply a conversion
+						$value = $self->_resolve_value($args, $row->{class_id}, $value, $Field_to_order->{$col});
+						push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $args->{node_info}->{classes_by_id}->{ $row->{class_id} } };
+					}
+				}
+				push @{ $args->{results} }, $row;
+				if (scalar @{ $args->{results} } >= $args->{limit}){
+					$self->log->trace('hit limit of ' . $args->{limit} . ' with ' . (scalar @{ $args->{results} }));
+					last NODE_LOOP;
+				}
+			}
+		}
+		$args->{recordsReturned} = scalar @{ $args->{results} };
+	}
+	
+	# Check for errors
+#	foreach my $node (keys %{ $ret->{nodes} }){
+#		if (exists $ret->{$node}->{error}){
+#			push @{ $args->{errors} }, $ret->{$node}->{error};
+#		}
+#	}
+	$args->{errors} = $self->warnings;
+	
+	$args->{timeTaken} = (time() - $overall_start);
+	
+	$self->log->debug('completed query in ' . $args->{timeTaken} . ' with ' . $args->{recordsReturned} . ' rows');
+	
+	return 1;
+}
+
+sub cancel_query {
+	my ($self, $args) = @_;
+	
+	my ($query, $sth);
+	$query = 'UPDATE query_log SET num_results=-2 WHERE qid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{qid});
+	return { ok => 1 };
 }
 
 1;
