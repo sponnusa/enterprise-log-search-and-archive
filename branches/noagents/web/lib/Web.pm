@@ -9,9 +9,9 @@ use YUI;
 
 use API;
 
-has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
-has 'conf' => ( is => 'ro', isa => 'Config::JSON', required => 1 );
-has 'json' => (is => 'ro', isa => 'JSON', required => 1);
+#has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
+#has 'conf' => ( is => 'ro', isa => 'Config::JSON', required => 1 );
+#has 'json' => (is => 'ro', isa => 'JSON', required => 1);
 has 'mode' => (is => 'rw', isa => 'Str', required => 1, default => sub { return 'index' });
 has 'session' => (is => 'rw', isa => 'Object', required => 0);
 has 'api' => (is => 'rw', isa => 'Object', required => 1);
@@ -41,7 +41,7 @@ sub call {
 	my $body;
 	my $method = $self->_extract_method($req->request_uri);
 	$method ||= 'index';
-	$self->log->debug('method: ' . $method);
+	$self->api->log->debug('method: ' . $method);
 	if (exists $Modes{ $method }){
 		my $sub = $method;
 		if ($Modes{ $method } == 1){
@@ -60,6 +60,9 @@ sub call {
 		}
 	}
 	
+	unless ($body){
+		$body = { error => $self->api->last_error };
+	}
 	$res->body($body);
 	$res->finalize();
 }
@@ -67,7 +70,7 @@ sub call {
 sub _extract_method {
 	my $self = shift;
 	my $uri = shift;
-	$self->log->debug('uri: ' . $uri);
+	$self->api->log->debug('uri: ' . $uri);
 	
 	$uri =~ /\/([^\/\?]+)\??([^\/]*)$/;
 	return $1;
@@ -86,7 +89,7 @@ sub _get_headers {
 #	unless ($dir){
 #		$dir = '';
 #	}
-	my $dir = $self->conf->get('email/base_url');
+	my $dir = $self->api->conf->get('email/base_url');
 	$dir =~ s/^https?\:\/\/[^\/]+\//\//; # strip off the URL to make $dir the URI
 	$dir = '';
 	my $HTML = <<'EOHTML'
@@ -98,7 +101,7 @@ EOHTML
 
 #	my $yui_css = YUI::css_link();
 #	my $yui_js = YUI::js_link();
-	my $yui = new YUI(%{ $self->conf->get('yui') });
+	my $yui = new YUI(%{ $self->api->conf->get('yui') });
 	$HTML .= $yui->css();
 	$HTML .= $yui->js();
 
@@ -124,8 +127,8 @@ body {
 EOHTML
 ;
 
-	if ($self->conf->get('javascript_debug_mode')){
-		$template .= 'YAHOO.ELSA.viewMode = \'' . $self->conf->get('javascript_debug_mode') . '\';' . "\n";
+	if ($self->api->conf->get('javascript_debug_mode')){
+		$template .= 'YAHOO.ELSA.viewMode = \'' . $self->api->conf->get('javascript_debug_mode') . '\';' . "\n";
 	}
 	$HTML .= sprintf($template, undef, undef, $dir);
 	
@@ -134,8 +137,8 @@ EOHTML
 		$HTML .= 'YAHOO.ELSA.IsAdmin = true;' . "\n";
 		
 		# Set the URL for getPcap if applicable
-		if ($self->conf->get('pcap_url')){
-			$HTML .= 'YAHOO.ELSA.pcapUrl = "' . $self->conf->get('pcap_url') . '"' . "\n";
+		if ($self->api->conf->get('pcap_url')){
+			$HTML .= 'YAHOO.ELSA.pcapUrl = "' . $self->api->conf->get('pcap_url') . '"' . "\n";
 		}
 	}
 	
@@ -145,7 +148,7 @@ EOHTML
 		$HTML .= 'var formParams = ' . encode_json($form_params) . ';';
 	}
 	else {
-		$HTML .= q/YAHOO.WISC.Error('Error contacting log server(s)');/;
+		$HTML .= q/YAHOO.ELSA.Error('Error contacting log server(s)');/;
 	}
 	
 	$HTML .= <<'EOHTML'
@@ -184,7 +187,7 @@ sub _get_index_body {
 <body class=" yui-skin-sam">
 <div id="menu_bar"></div>
 <div id="panel_root"></div>
-<h1>Enterprise Log Search and Archive</h1>
+<!--<h1>Enterprise Log Search and Archive</h1>-->
 <div id="query_form"></div>
 <div id="logs">
 	<div id="tabView">
@@ -215,7 +218,7 @@ sub get_results {
 		#my $ret = $self->rpc('get_saved_result', $args);
 		my $ret = $self->api->get_saved_result($args);
 		if ($ret and ref($ret) eq 'HASH'){
-			 $HTML .= '<script>var oGivenResults = ' . $self->json->encode($ret) . '</script>';
+			 $HTML .= '<script>var oGivenResults = ' . $self->api->json->encode($ret) . '</script>';
 			 $HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
 		}
 		else {
