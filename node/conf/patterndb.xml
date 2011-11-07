@@ -162,10 +162,10 @@
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="url">x.x.x.x,x.x.x.x,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200|46142|8583</test_message>
+						<test_message program="url">192.168.1.1,10.0.0.0,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200|46142|8583</test_message>
 						<test_values>
-							<test_value name="i0">x.x.x.x</test_value>
-							<test_value name="i1">x.x.x.x</test_value>
+							<test_value name="i0">192.168.1.1</test_value>
+							<test_value name="i1">10.0.0.0</test_value>
 							<test_value name="s0">GET</test_value>
 							<test_value name="s1">ajax.googleapis.com</test_value>
 							<test_value name="s2">/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js</test_value>
@@ -178,10 +178,10 @@
 						</test_values>
 					</example>
 					<example>
-						<test_message program="url">x.x.x.x,x.x.x.x,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200||8583</test_message>
+						<test_message program="url">192.168.1.1,10.0.0.0,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200||8583</test_message>
 						<test_values>
-							<test_value name="i0">x.x.x.x</test_value>
-							<test_value name="i1">x.x.x.x</test_value>
+							<test_value name="i0">192.168.1.1</test_value>
+							<test_value name="i1">10.0.0.0</test_value>
 							<test_value name="s0">GET</test_value>
 							<test_value name="s1">ajax.googleapis.com</test_value>
 							<test_value name="s2">/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js</test_value>
@@ -194,10 +194,10 @@
 						</test_values>
 					</example>
 					<example>
-						<test_message program="url">x.x.x.x,x.x.x.x,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200||</test_message>
+						<test_message program="url">192.168.1.1,10.0.0.0,GET,ajax.googleapis.com,/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js,http://slickdeals.net/,Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)|,com,googleapis.com,ajax.googleapis.com|200||</test_message>
 						<test_values>
-							<test_value name="i0">x.x.x.x</test_value>
-							<test_value name="i1">x.x.x.x</test_value>
+							<test_value name="i0">192.168.1.1</test_value>
+							<test_value name="i1">10.0.0.0</test_value>
 							<test_value name="s0">GET</test_value>
 							<test_value name="s1">ajax.googleapis.com</test_value>
 							<test_value name="s2">/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js</test_value>
@@ -226,19 +226,19 @@
 					<!--<pattern>@QSTRING:s0:[]@@QSTRING:s1: @[Classification:@QSTRING:s2: ]@ [Priority@QSTRING:i0: ]@: @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>-->
 				</patterns>
 				<example>
-					<test_message program="snort">[1:485:5] ICMP Destination Unreachable Communication Administratively Prohibited [Classification: Misc activity] [Priority: 3] {ICMP} x.x.x.x -> x.x.x.x</test_message>
+					<test_message program="snort">[1:485:5] ICMP Destination Unreachable Communication Administratively Prohibited [Classification: Misc activity] [Priority: 3] {ICMP} 192.168.1.1 -> 10.0.0.0</test_message>
 					<test_value name="s0">1:485:5</test_value>
 					<test_value name="s1">ICMP Destination Unreachable Communication Administratively Prohibited </test_value>
 					<test_value name="s2">Misc activity</test_value>
 					<test_value name="i0">3</test_value>
 					<test_value name="i1">ICMP</test_value>
-					<test_value name="i2">x.x.x.x</test_value>
-					<test_value name="i4">x.x.x.x</test_value>
+					<test_value name="i2">192.168.1.1</test_value>
+					<test_value name="i4">10.0.0.0</test_value>
 				</example>
 			</rule>
 		</rules>
 	</ruleset>
-	<ruleset>
+	<!--<ruleset>
 		<rules>
 			<rule class="10" id="10" context-id="ironport-icid" context-timeout="10" context-scope="program">
 				<patterns>
@@ -246,17 +246,17 @@
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="ironport_mail_logs">Info: New SMTP ICID 696117306 interface InternalNet (x.x.x.x) address x.x.x.x reverse dns host hostname verified yes</test_message>
+						<test_message program="ironport_mail_logs">Info: New SMTP ICID 696117306 interface InternalNet (192.168.1.1) address 192.168.1.1 reverse dns host hostname verified yes</test_message>
 						<test_value name="icid">696117306</test_value>
 						<test_value name="interface_name">InternalNet</test_value>
-						<test_value name="interface_ip">x.x.x.x</test_value>
-						<test_value name="sender_ip">x.x.x.x</test_value>
+						<test_value name="interface_ip">192.168.1.1</test_value>
+						<test_value name="sender_ip">192.168.1.1</test_value>
 						<test_value name="sender_dns">hostname</test_value>
 					</example>
 				</examples>
 			</rule>
 		</rules>
-	</ruleset>
+	</ruleset>-->
 	<ruleset>
 		<rules>
 			<rule class="11" id="11">
@@ -287,40 +287,151 @@
 		<rules>
 			<rule class="14" id="14">
 				<patterns>
-					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING:s0:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:s1:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ANYSTRING:s2@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING:s0:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ANYSTRING:s1@</pattern>
 				</patterns>
 				<examples>
 					<example>
 						<test_message program="bro_dns">1318443095.831281|0L5Ro2iPit1|10.0.0.0|23657|69.22.154.225|53|udp|31608|e2932.c.akamaiedge.net|1|C_INTERNET|1|A|0|NOERROR|F|T|F|F|F|1|20.000000|23.0.124.9</test_message>
+						<!-- srcip -->
 						<test_value name="i0">10.0.0.0</test_value>
+						<!-- srcport -->
 						<test_value name="i1">23657</test_value>
+						<!-- dstip -->
 						<test_value name="i2">69.22.154.225</test_value>
+						<!-- dstport -->
 						<test_value name="i3">53</test_value>
+						<!-- proto -->
 						<test_value name="i4">udp</test_value>
+						<!-- hostname -->
 						<test_value name="s0">e2932.c.akamaiedge.net</test_value>
-						<test_value name="s1">NOERROR</test_value>
-						<test_value name="s2">23.0.124.9</test_value>
+						<!-- answer -->
+						<test_value name="s1">23.0.124.9</test_value>
 					</example>
 				</examples>
 			</rule>
 		</rules>
 	</ruleset>
 	<ruleset>
-		<pattern>bro_notify</pattern>
+		<pattern>bro_notice</pattern>
 		<rules>
 			<rule class="15" id="15">
 				<patterns>
-					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ANYSTRING:s1@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ANYSTRING::@</pattern>
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="bro_notify">1318443067.534801|tZOKnx1pO1j|10.0.0.0|44780|198.87.182.145|80|HTTP::MD5|10.0.0.0 5074d0c1988df72c1be354f8b842021a http://msft.digitalrivercontent.net/01/108767003-10238044--NOA//office2010/X17-75238.exe|5074d0c1988df72c1be354f8b842021a|165.189.145.250|198.87.182.145|80|-|worker-2|Notice::ACTION_LOG|6|3600.000000|-|-|-|-|-|-|-|-|-</test_message>
+						<test_message program="bro_notice">1318443067.534801|tZOKnx1pO1j|10.0.0.0|44780|198.87.182.145|80|HTTP::MD5|10.0.0.0 5074d0c1988df72c1be354f8b842021a http://msft.digitalrivercontent.net/01/108767003-10238044--NOA//office2010/X17-75238.exe|5074d0c1988df72c1be354f8b842021a|165.189.145.250|198.87.182.145|80|-|worker-2|Notice::ACTION_LOG|6|3600.000000|-|-|-|-|-|-|-|-|-</test_message>
+						<!-- srcip -->
 						<test_value name="i0">10.0.0.0</test_value>
+						<!-- srcport -->
 						<test_value name="i1">44780</test_value>
+						<!-- dstip -->
 						<test_value name="i2">198.87.182.145</test_value>
+						<!-- dstport -->
 						<test_value name="i3">80</test_value>
+						<!-- notice_type -->
 						<test_value name="s0">HTTP::MD5</test_value>
-						<test_value name="s1">10.0.0.0 5074d0c1988df72c1be354f8b842021a http://msft.digitalrivercontent.net/01/108767003-10238044--NOA//office2010/X17-75238.exe|5074d0c1988df72c1be354f8b842021a|165.189.145.250|198.87.182.145|80|-|worker-2|Notice::ACTION_LOG|6|3600.000000|-|-|-|-|-|-|-|-|-</test_value>
+						<!-- notice_msg -->
+						<test_value name="s1">10.0.0.0 5074d0c1988df72c1be354f8b842021a http://msft.digitalrivercontent.net/01/108767003-10238044--NOA//office2010/X17-75238.exe</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset>
+		<pattern>bro_smtp</pattern>
+		<rules>
+			<rule class="16" id="16">
+				<patterns>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING::|@@ESTRING:s0:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:s3:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:s4:|@@ESTRING:s5:|@@ANYSTRING::@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="bro_smtp">1320612601.697404|SFiDYDwOSl8|10.0.0.0|45765|66.94.25.228|25|@woMgeVXDE|server.example.com|&lt;prvs=284e51a33=user@domain.com&gt;|&lt;user@example.com&gt;|Sun, 6 Nov 2011 14:50:00 -0600|"user" &lt;user@domain.com&gt;|"'user@example.com'" &lt;user@example.com&gt;|-|&lt;F3AC33A1A5033546890246040DCA32E303CDF29D5FE6@mailserver.domain.com&gt;|&lt;user@example.com&gt;|RE: some subject|-|from mailserver.domain.com ([10.0.0.0]) with mapi; Sun, 6 Nov 2011 14:50:01 -0600|from mailserver.domain.com ([10.0.0.0]) by mailserver.domain.com with ESMTP/TLS/RC4-MD5; 06 Nov 2011 14:50:01 -0600|250 2.0.0 10wk4g5v6k-1 Message accepted for delivery|192.168.1.1,10.0.0.0|-|F</test_message>
+						<!-- srcip -->
+						<test_value name="i0">10.0.0.0</test_value>
+						<!-- srcport -->
+						<test_value name="i1">45765</test_value>
+						<!-- dstip -->
+						<test_value name="i2">66.94.25.228</test_value>
+						<!-- dstport -->
+						<test_value name="i3">25</test_value>
+						<!-- server -->
+						<test_value name="s0">server.example.com</test_value>
+						<!-- from -->
+						<test_value name="s1">"user" &lt;user@domain.com&gt;</test_value>
+						<!-- to -->
+						<test_value name="s2">"'user@example.com'" &lt;user@example.com&gt;</test_value>
+						<!-- subject -->
+						<test_value name="s3">RE: some subject</test_value>
+						<!-- last_reply -->
+						<test_value name="s4">250 2.0.0 10wk4g5v6k-1 Message accepted for delivery</test_value>
+						<!-- path -->
+						<test_value name="s5">192.168.1.1,10.0.0.0</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset>
+		<pattern>bro_smtp_entities</pattern>
+		<rules>
+			<rule class="17" id="17">
+				<patterns>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING::|@@ESTRING:s0:|@@ESTRING:i4:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="bro_smtp_entities">1320613389.303478|zQQiHb1x3fj|216.33.127.82|37295|10.0.0.0|25|@VqmVdbY2Mm3|CDocuments and SettingsckaiserLocal SettingsTemporary Internet FilesContent.IE535ZF226Areport[3].pdf|54399|application/pdf|-|-|-</test_message>
+						<!-- srcip -->
+						<test_value name="i0">216.33.127.82</test_value>
+						<!-- srcport -->
+						<test_value name="i1">37295</test_value>
+						<!-- dstip -->
+						<test_value name="i2">10.0.0.0</test_value>
+						<!-- dstport -->
+						<test_value name="i3">25</test_value>
+						<!-- filename -->
+						<test_value name="s0">CDocuments and SettingsckaiserLocal SettingsTemporary Internet FilesContent.IE535ZF226Areport[3].pdf</test_value>
+						<!-- content_len -->
+						<test_value name="i4">54399</test_value>
+						<!-- mime_type -->
+						<test_value name="s1">application/pdf</test_value>
+						<!-- md5 -->
+						<test_value name="s2">-</test_value>
+						<!-- extraction_file -->
+						<test_value name="s3">-</test_value>
+						<!-- excerpt -->
+						<test_value name="s4">-</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset>
+		<pattern>bro_ssl</pattern>
+		<rules>
+			<rule class="18" id="18">
+				<patterns>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING::|@@ESTRING::|@@ESTRING:s0:|@@ESTRING::|@@ESTRING:s1:|@@ESTRING::|@@ESTRING:i4:|@@ANYSTRING::@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="bro_ssl">1319824864.447838|g6XHk1uplZc|10.0.0.0|19427|80.175.58.76|443|TLSv10|TLS_RSA_WITH_RC4_128_MD5|-|48eacd8fda1a4f48188288ce09ba84d93b8b40aaafdeafd8bace5a1ba9f7c3ce|CN=www.forneymaterialstesting.com,OU=Comodo InstantSSL,OU=Online Sales,O=Forney Inc,streetAddress=One Adams Place,L=Seven Fields\,,ST=Pennsylvania,postalCode=16046,C=US|1286341200.000000|1381035599.000000|04918ecb442ca62e6e8f29272b9cff42|ok</test_message>
+						<!-- srcip -->
+						<test_value name="i0">10.0.0.0</test_value>
+						<!-- srcport -->
+						<test_value name="i1">19427</test_value>
+						<!-- dstip -->
+						<test_value name="i2">80.175.58.76</test_value>
+						<!-- dstport -->
+						<test_value name="i3">443</test_value>
+						<!-- hostname -->
+						<test_value name="s0">-</test_value>
+						<!-- subject -->
+						<test_value name="s1">CN=www.forneymaterialstesting.com,OU=Comodo InstantSSL,OU=Online Sales,O=Forney Inc,streetAddress=One Adams Place,L=Seven Fields\,,ST=Pennsylvania,postalCode=16046,C=US</test_value>
+						<!-- expiration -->
+						<test_value name="i4">1381035599.000000</test_value>
 					</example>
 				</examples>
 			</rule>

@@ -1387,7 +1387,7 @@ YAHOO.ELSA.main = function () {
 					}
 				}
 				else {
-					oGroupButton.set('label', YAHOO.ELSA.Labels.noGroupBy);
+					oGroupButton.set('label', YAHOO.ELSA.Labels.defaultGroupBy);
 				}
 				// set times
 				if (YAHOO.ELSA.currentQuery.metas.start){
@@ -1418,7 +1418,7 @@ YAHOO.ELSA.main = function () {
 				}
 			}
 			else {
-				oGroupButton.set('label', YAHOO.ELSA.Labels.noGroupBy);
+				oGroupButton.set('label', YAHOO.ELSA.Labels.defaultGroupBy);
 				oArchiveButton.set('label', YAHOO.ELSA.Labels.index);
 				oArchiveButton.set('checked', false);
 			}
