@@ -35,14 +35,13 @@ BEGIN {
 	      or die [$DBI::errstr];
 
 	   my $rv = $sth->execute (@args)
-	      or (warn $DBI::errstr and die [$DBI::errstr]);	      
-	        my @rows;
+			or (warn $DBI::errstr and die [$DBI::errstr]);	      
+			my @rows;
 	        do {
-	                while (my $row = $sth->fetchrow_hashref){
-	                        push @rows, $row;
-	                }
-	        } while ($sth->more_results);
-
+				while (my $row = $sth->fetchrow_hashref){
+					push @rows, $row;
+				}
+			} while ($sth->more_results);
 	   [1, \@rows, $rv]
 	}
 	
@@ -56,7 +55,7 @@ BEGIN {
 	sub AnyEvent::DBI::req_sphinx  {
 		my (undef, $st, @args) = @{+shift};
 		my $sth = $AnyEvent::DBI::DBH->prepare_cached ($st, undef, 1)
-			or die [$DBI::errstr];
+			or (warn $DBI::errstr and die [$DBI::errstr]);
 	
 		my $rv = $sth->execute (@args) or die [$sth->errstr];
 		my @rows;
@@ -2538,13 +2537,6 @@ sub _sphinx_query {
 				$ret->{$node}->{sphinx_rows} = $rows;
 				$ret->{$node}->{meta} = $result->{meta};
 				
-#				# Find meta info
-#				my $meta_rows = pop
-#				$self->log->trace('meta_rows: ' . Dumper($meta_rows));
-#				$ret->{$node}->{meta} ||= {};
-#				foreach my $row (@$meta_rows){
-#					$ret->{$node}->{meta}->{ $row->{Variable_name} } += $row->{Value};
-#				}
 				$self->log->trace('$ret->{$node}->{meta}: ' . Dumper($ret->{$node}->{meta}));
 				
 				# Find what tables we need to query to resolve rows
@@ -2794,7 +2786,7 @@ sub _parse_query_string {
 	
 	# Check to see if the class was given in meta params
 	if ($args->{query_meta_params}->{class}){
-		$args->{given_classes}->{ sprintf("%d", $args->{node_info}->{classes}->{ lc($args->{query_meta_params}->{class}) }) } = 1;
+		$args->{given_classes}->{ sprintf("%d", $args->{node_info}->{classes}->{ uc($args->{query_meta_params}->{class}) }) } = 1;
 	}
 	
 	# If no class was given anywhere, see if we can divine it from a groupby or local_groupby
@@ -3394,7 +3386,11 @@ sub _parse_query_term {
 				# Get rid of any non-indexed chars
 				$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g;
 				# Escape any '@' or sphinx will error out thinking it's a field prefix
-				$term_hash->{value} =~ s/\@/\\\@/g;
+				#$term_hash->{value} =~ s/\@/\\\@/g;
+				if ($term_hash->{value} =~ /\@/){
+					# need to quote
+					$term_hash->{value} = '"' . $term_hash->{value} . '"';
+				}
 				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
 				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
 					die('Integer search terms must be 15 or fewer digits, received ' 
@@ -3504,7 +3500,9 @@ sub _parse_query_term {
 #							}
 #						}
 						foreach my $class_id (keys %{ $values->{attrs} }){
-							push @{ $args->{any_field_terms}->{not} }, $term_hash->{value};
+							push @{ $args->{any_field_terms}->{not} }, $term_hash->{value} if $class_id; #skip class 0
+							my $field_info = $self->_get_field($args, $term_hash->{field})->{$class_id};
+							next if $field_info->{field_type} eq 'string'; # skip string attributes
 							$args->{attr_terms}->{not}->{ $term_hash->{field} } ||= {};
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								if ($args->{attr_terms}->{not}->{ $term_hash->{field} }->{$class_id}->{$real_field}){
@@ -3577,7 +3575,9 @@ sub _parse_query_term {
 							}	
 						}
 						foreach my $class_id (keys %{ $values->{attrs} }){
-							push @{ $args->{any_field_terms}->{and} }, $term_hash->{value};
+							push @{ $args->{any_field_terms}->{and} }, $term_hash->{value} if $class_id; #skip class 0
+							my $field_info = $self->_get_field($args, $term_hash->{field})->{$class_id};
+							next if $field_info->{field_type} eq 'string'; # skip string attributes
 							$args->{attr_terms}->{and}->{ $term_hash->{field} } ||= {};
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								if ($args->{attr_terms}->{and}->{ $term_hash->{field} }->{$class_id}->{$real_field}){
@@ -3654,7 +3654,9 @@ sub _parse_query_term {
 							}	
 						}
 						foreach my $class_id (keys %{ $values->{attrs} }){
-							push @{ $args->{any_field_terms}->{or} }, $term_hash->{value};
+							push @{ $args->{any_field_terms}->{or} }, $term_hash->{value} if $class_id; # skip class 0
+							my $field_info = $self->_get_field($args, $term_hash->{field})->{$class_id};
+							next if $field_info->{field_type} eq 'string'; # skip string attributes
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								if ($args->{attr_terms}->{or}->{$class_id}->{$real_field}){
 									 push @{ $args->{attr_terms}->{or}->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
@@ -4152,11 +4154,11 @@ sub _build_sphinx_query {
 	my @or_vals;
 	
 	foreach my $class_id (sort keys %{ $args->{attr_terms}->{or} }){
-		next unless $args->{distinct_classes}->{$class_id};
+		next unless $args->{distinct_classes}->{$class_id} or $class_id eq 0;
 		foreach my $field (sort keys %{ $args->{attr_terms}->{or}->{$class_id} }){
 			foreach my $value (@{ $args->{attr_terms}->{or}->{$class_id}->{$field} }){
 				$self->log->trace('field: ' . $field . ', class: ' . $class_id);
-				if ($class_id){
+				if ($class_id){# and not $args->{node_info}->{fields_by_type}->{string}->{$raw_field}){
 					#$self->log->trace('field_hash: ' . Dumper($field_hash) . ', class_id: ' . $class_id . ', field_order: ' . $field_hash->{field_order } .
 					#	', attr: ' . $Field_order_to_attr->{ $field_hash->{field_order } });
 					#push @or_clause, '(class_id=? AND ' . $Field_order_to_attr->{ $field_hash->{field_order } } . '=?)';

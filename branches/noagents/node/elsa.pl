@@ -60,7 +60,7 @@ my $Dbh = DBI->connect(($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'
 	}) 
 	or die 'connection failed ' . $! . ' ' . $DBI::errstr;
 
-my $num_children = $Conf->{num_indexers} or die("undefined config for num_indexers");
+my $num_children = $Conf->{num_log_readers} or die("undefined config for num_log_readers");
 my $continue     = 1;
 my $Run          = 1;
 my $Missing_field_tolerance = 1;
@@ -148,9 +148,9 @@ sub _sql_error_handler {
 sub _create_sphinx_conf {
 	my $indexer = new Indexer(log => $Log, conf => Config::JSON->new( $conf_file ), class_info => $Class_info);
 	open(FH, '>' . $Conf->{sphinx}->{config_file}) or die("Cannot open config file for writing: $!");
-	print FH $indexer->get_sphinx_conf($Conf->{sphinx}->{config_template_file});
+	print FH $indexer->get_sphinx_conf();
 	close(FH);
-	print 'Wrote new config file using template at ' . $Conf->{sphinx}->{config_template_file} . ' to file ' . $Conf->{sphinx}->{config_file} . "\n";
+	print 'Wrote new config to file ' . $Conf->{sphinx}->{config_file} . "\n";
 }
 
 sub _process_batch {
@@ -187,7 +187,7 @@ sub _process_batch {
 	# Reset the miss cache
 	$args->{cache_add} = {};
 	
-	# End the loop after table_interval seconds
+	# End the loop after index_interval seconds
 	local $SIG{ALRM} = sub {
 		$Log->trace("ALARM");
 		$args->{run} = 0;
@@ -390,7 +390,7 @@ sub _get_class_info {
 	$sth = $Dbh->prepare($query);
 	$sth->execute;
 	while (my $row = $sth->fetchrow_hashref){
-		$ret->{classes}->{ $row->{id} } = $row->{class};
+		$ret->{classes_by_id}->{ $row->{id} } = $row->{class};
 	}
 		
 	# Get fields
@@ -403,6 +403,7 @@ sub _get_class_info {
 	$sth->execute;
 	while (my $row = $sth->fetchrow_hashref){
 		push @{ $ret->{fields} }, {
+			field => $row->{field},
 			fqdn_field => $row->{fqdn_field},
 			class => $row->{class}, 
 			value => $row->{field}, 
@@ -417,9 +418,8 @@ sub _get_class_info {
 	}
 	
 	# Find unique classes;
-	foreach my $class_id (keys %{ $ret->{classes} }){
-		$ret->{classes_by_id}->{$class_id} = $ret->{classes}->{$class_id};
-		$ret->{classes}->{ $ret->{classes}->{$class_id} } = $class_id;
+	foreach my $class_id (keys %{ $ret->{classes_by_id} }){
+		$ret->{classes}->{ $ret->{classes_by_id}->{$class_id} } = $class_id;
 	}
 	
 	# Find unique field conversions

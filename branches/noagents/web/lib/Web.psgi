@@ -50,6 +50,7 @@ elsif ($api->conf->get('auth/method') eq 'none'){
 else {
 	die('No auth method, please configure one!');
 }
+warn 'serving from ' . $FindBin::Bin . '../';
 
 builder {
 	$ENV{PATH_INFO} = $ENV{REQUEST_URI}; #mod_rewrite will mangle PATH_INFO, so we'll set this manually here in case it's being used

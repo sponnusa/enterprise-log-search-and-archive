@@ -1399,14 +1399,126 @@ sub _drop_indexes {
 
 sub get_sphinx_conf {
 	my $self = shift;
-	my $template = shift;
-	open(FH, $template) or die 'Error opening template: ' . $!;
-	my @lines;
-	while (<FH>){
-		chomp;
-		push @lines, $_;
-	}
-	close(FH);
+#	my $template = shift;
+#	open(FH, $template) or die 'Error opening template: ' . $!;
+#	my @lines;
+#	while (<FH>){
+#		chomp;
+#		push @lines, $_;
+#	}
+#	close(FH);
+
+	my $template_base = <<EOT
+indexer {
+        mem_limit = 256M
+        write_buffer = 100M
+}
+searchd {
+		listen_backlog = 1000
+        client_timeout = 300000
+        log = %1\$s/searchd.log
+        max_children = 30
+        max_filter_values = 4096
+        max_filters = 256
+        max_matches = 1000
+        max_packet_size = 8M
+        max_batch_queries = 1000
+        subtree_docs_cache = 8M
+        subtree_hits_cache = 16M
+        pid_file = %1\$s/searchd.pid
+        preopen_indexes = 0
+        query_log = %1\$s/query.log
+        read_timeout = 5
+        seamless_rotate = 1
+        unlink_old = 1
+        listen = 0.0.0.0:3307:mysql41
+        listen = 0.0.0.0:3312
+}
+source permanent {
+        sql_attr_timestamp = timestamp
+        sql_attr_uint = minute
+        sql_attr_uint = hour
+        sql_attr_uint = day
+        sql_attr_uint = host_id
+        sql_attr_uint = program_id
+        sql_attr_uint = class_id
+        sql_attr_uint = attr_i0
+        sql_attr_uint = attr_i1
+        sql_attr_uint = attr_i2
+        sql_attr_uint = attr_i3
+        sql_attr_uint = attr_i4
+        sql_attr_uint = attr_i5
+        sql_attr_uint = attr_s0
+        sql_attr_uint = attr_s1
+        sql_attr_uint = attr_s2
+        sql_attr_uint = attr_s3
+        sql_attr_uint = attr_s4
+        sql_attr_uint = attr_s5
+        sql_db = %4\$s
+        sql_user = %5\$s
+        sql_host = localhost
+        sql_pass = %6\$s
+        sql_range_step = 10000
+        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
+        type = mysql
+}
+index permanent {
+        charset_table = 0..9, A..Z->a..z, _, a..z, U+A8->U+B8, U+B8, U+C0..U+DF->U+E0..U+FF, U+E0..U+FF, U+2E, U+40, U+2D
+        docinfo = inline
+        ondisk_dict = 1
+        min_stemming_len = 7
+        mlock = 0
+        path = %2\$s/permanent
+        source = permanent
+        stopwords = %3\$s
+}
+
+source temporary {
+        sql_attr_timestamp = timestamp
+        sql_attr_uint = minute
+        sql_attr_uint = hour
+        sql_attr_uint = day
+        sql_attr_uint = host_id
+        sql_attr_uint = program_id
+        sql_attr_uint = class_id
+        sql_attr_uint = attr_i0
+        sql_attr_uint = attr_i1
+        sql_attr_uint = attr_i2
+        sql_attr_uint = attr_i3
+        sql_attr_uint = attr_i4
+        sql_attr_uint = attr_i5
+        sql_attr_uint = attr_s0
+        sql_attr_uint = attr_s1
+        sql_attr_uint = attr_s2
+        sql_attr_uint = attr_s3
+        sql_attr_uint = attr_s4
+        sql_attr_uint = attr_s5
+        sql_db = %4\$s
+        sql_user = %5\$s
+        sql_host = localhost
+        sql_pass = %6\$s
+        sql_range_step = 100000
+        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
+        type = mysql
+}
+index temporary {
+        charset_table = 0..9, A..Z->a..z, _, a..z, U+A8->U+B8, U+B8, U+C0..U+DF->U+E0..U+FF, U+E0..U+FF, U+2E, U+40, U+2D
+        docinfo = extern
+        ondisk_dict = 0
+        min_stemming_len = 7
+        mlock = 0
+        path = %2\$s/temporary
+        source = temporary
+        stopwords = %3\$s
+}
+	
+EOT
+;
+
+	my $template = sprintf($template_base, $self->conf->get('logdir'), $self->conf->get('sphinx/index_path'),
+		$self->conf->get('sphinx/stopwords_file'), $self->conf->get('database/db'), $self->conf->get('database/username'),
+		$self->conf->get('database/password'));
+
 	
 	my $perm_template = <<EOT
 source perm_%1\$d : permanent {
@@ -1441,8 +1553,8 @@ EOT
 ;
 
 	for (my $i = 1; $i <= $self->conf->get('num_indexes'); $i++){
-		push @lines, sprintf($perm_template, $i, $self->conf->get('sphinx/index_path'));
-		push @lines, sprintf($temp_template, $i, $self->conf->get('sphinx/index_path'));
+		$template .= sprintf($perm_template, $i, $self->conf->get('sphinx/index_path')) . "\n";
+		$template .= sprintf($temp_template, $i, $self->conf->get('sphinx/index_path')) . "\n";
 	}
 	
 	# Split all indexes into four evenly distributed groups
@@ -1463,20 +1575,18 @@ EOT
 	my $timeout = $Timeout * 1000;
 	my $agent_timeout = $Sphinx_agent_query_timeout * 1000;
 
-	push @lines, 
-		'index distributed_local {',
-		"\t" . 'type = distributed',
-		"\t" . 'agent_connect_timeout = ' . $timeout,
-		"\t" . 'agent_query_timeout = ' . $agent_timeout;
+	$template .= 'index distributed_local {' . "\n" .
+		"\t" . 'type = distributed' . "\n" .
+		"\t" . 'agent_connect_timeout = ' . $timeout . "\n" .
+		"\t" . 'agent_query_timeout = ' . $agent_timeout . "\n";
 	
 	foreach my $line (@local_index_arr){
-		push @lines, "\t" . 'agent = ' . $line;
+		$template .= "\t" . 'agent = ' . $line . "\n";
 	}
 	
-	push @lines, '}';
-
-	return join("\n", @lines);
+	$template .= '}' . "\n";
 	
+	return $template;
 }
 
 sub _get_next_index_id {
