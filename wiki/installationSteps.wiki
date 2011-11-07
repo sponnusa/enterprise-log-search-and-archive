@@ -21,7 +21,7 @@ sudo mysqladmin create syslog_web &&
 sudo mysql syslog_web -e "source /usr/local/elsa/web/conf/meta_db_schema.sql"
 
 # Copy conf to /etc/
-cp /usr/local/elsa/web/conf/elsa.conf /etc/elsa.conf
+cp /usr/local/elsa/web/conf/elsa.conf /etc/elsa_web.conf
 
 # Edit config and set meta_db info, set auth method, node connect info
 
@@ -37,7 +37,7 @@ sudo cpanm Moose Config::JSON Plack::Builder Plack::App::File Date::Manip Digest
 
 # Start the test web server to verify everything works
 cd /usr/local/elsa/web/lib &&
-ELSA_CONF=/etc/elsa.conf plackup Web.psgi
+ELSA_CONF=/etc/elsa_web.conf plackup Web.psgi
 
 # Try to connect on http://<web server ip>:5000
 
@@ -52,6 +52,10 @@ sudo cpanm starman
 cp /usr/local/elsa/etc/apache_site.conf /etc/apache2/vhost.d/elsa.conf
 # Edit /etc/apache2/vhost.d/elsa.conf appropriately for locations
 sudo restart apache2
+
+# Setup cron for alerts (optional)
+sudo crontab -e
+* * * * * perl /usr/local/elsa/web/cron.pl -c /etc/elsa_web.conf 2>&1 > /dev/null
 
 }}}
 
