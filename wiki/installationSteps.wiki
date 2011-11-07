@@ -4,79 +4,130 @@
 You will need working versions of
   * Linux
   * Syslog-NG >= 3.1
-  * MySQL >= 5.1
+  * MySQL >= 5.0
   * Sphinx >= 0.9.9
+  * Recent DBD::mysql (installed below)
 
-You will also need the following Perl modules on each logging node.  You can install these by running the contrib/elsa-logging-node-perl-modules-install.sh script.
-  * YAML::Syck
-  * Moose
-  * IO::Socket
-  * Data::Serializer
-  * POE::Event::Message
-  * Config::JSON
-  * Exception::Class
-  * POE::Component::PreforkDispatch
-  * Date::Manip
-  * DBD::mysql
-  * Sphinx::Config
-  * Sphinx::Search
-  * Sys::Info
-  * Sys::MemInfo
-  * String::CRC32
-  * Search::QueryParser
-  * Search::QueryParser::SQL
-  * Net::Server::Daemonize
-  * Log::Log4perl
+=Installation Steps for Web Frontend=
+{{{
+# Download ELSA
+wget "http://code.google.com/p/enterprise-log-search-and-archive/downloads/elsa.tar.gz"
 
-The web frontend will need Apache2 with mod_perl installed and these Perl modules.  You can install these by running the contrib/elsa-web-frontend-node-perl-modules-install.sh script.
-  * Config::JSON
-  * Net::LDAP::Express
-  * Net::LDAP::FilterBuilder
-  * Module::Pluggable
-  * URI::Escape
-  * Digest::HMAC_SHA1
-  * Mail::Internet
-  * File::Slurp
-  * MIME::Base64
-  * EV
-  * Time::HiRes
-  * YAML::Syck
-  * Moose
-  * Apache::Request
-  * Apache2::Const
-  * APR::Request::Param
-  * CGI
-  * CGI::Session::Driver::file
-  * CGI::Application::Plugin::Session
-  * CGI::Application::Plugin::Apache2::Request
-  * POE::Event::Message
-  * POE::Filter::Reference
-  * Data::Serializer
+# Create base directories
+cd /usr/local && sudo tar xzvf elsa.tar.gz
 
+# Create database.  This will vary depending on where your MySQL DB will be for the query info (not raw logs).
+sudo mysqladmin create syslog_web &&
+sudo mysql syslog_web -e "source /usr/local/elsa/web/conf/meta_db_schema.sql"
 
-= Installation Steps =
+# Copy conf to /etc/
+cp /usr/local/elsa/web/conf/elsa.conf /etc/elsa.conf
 
-After you've installed the above prerequisites, download ELSA and put it in /usr/local/elsa.  You can install it to a different directory, but you will need to adjust your environment from all of the documentation accordingly.
+# Edit config and set meta_db info, set auth method, node connect info
 
-==Logging Node(s)==
+# Install required Perl modules
+sudo cpan
+o conf prerequisites_policy follow
+o conf commit
+install App::cpanminus
+quit
 
-  # Download the code using svn {{{svn checkout "http://enterprise-log-search-and-archive.googlecode.com/svn/trunk/" /usr/local }}}
-  # Create the MySQL databases syslog and syslog_data {{{mysqladmin create syslog && mysqladmin create syslog_data}}}
-  # Populate the syslog database {{{mysql syslog < /usr/local/elsa/node/conf/schema.sql}}}
-  # Copy /usr/local/elsa/etc/elsa.conf to /etc/elsa.conf and edit to your environment.
-  # Create the Sphinx config file {{{/usr/local/elsa/create_sphinx_config.pl > /usr/local/etc/sphinx.conf}}}
-  # Start sphinx and make sure it is running {{{/usr/local/bin/searchd}}}
-  # Start the ELSA logging agent {{{perl /usr/local/elsa/node/agent.pl}}}
-  # Go inspect the log to make sure it has started up ok (/usr/local/elsa/log/node.log)
-  # Start syslog-ng {{{/usr/local/syslog-ng/sbin/syslog-ng}}}
-  # Go to the log tmp dir and make sure it is creating the tmp buffer logs in /usr/local/elsa/node/tmp
+# Now cpanm is available to install the rest
+sudo cpanm Moose Config::JSON Plack::Builder Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static
 
-==Web Server==
+# Start the test web server to verify everything works
+cd /usr/local/elsa/web/lib &&
+ELSA_CONF=/etc/elsa.conf plackup Web.psgi
 
-  # Download the code using svn {{{svn checkout "http://enterprise-log-search-and-archive.googlecode.com/svn/trunk/" /usr/local }}}
-  # Create a new virtual host or site in your Apache2 config.  A template is provided in /usr/local/elsa/etc/apache_site.conf.
-  # Copy /usr/local/elsa/etc/elsa.conf to /etc/elsa.conf and edit to fit your environment.
-  # Create the MySQL database syslog_meta_db {{{mysqladmin create syslog_meta_db}}}
-  # Populate the syslog_meta_db database {{{mysql syslog_meta_db < /usr/local/elsa/web/conf/meta_db_schema.mysql}}}
-  # Start Janus {{{perl /usr/local/elsa/web/janus.pl}}} and be sure that it runs with no errors.
-  # Visit the URL that your virtual site config points to and verify that you get a query page.
+# Try to connect on http://<web server ip>:5000
+
+# If all goes well, you can choose to either run permanently under a standalone Perl web server or under Apache.  The choice usually comes down to whether you are hosting other web sites alongside ELSA on this web node.
+
+# For standalone, install starman (production-grade version of plackup):
+sudo cpanm starman
+
+# Run starman just like plackup above
+
+# For Apache, locations vary, but this is the gist:
+cp /usr/local/elsa/etc/apache_site.conf /etc/apache2/vhost.d/elsa.conf
+# Edit /etc/apache2/vhost.d/elsa.conf appropriately for locations
+sudo restart apache2
+
+}}}
+
+= Installation Steps For Log Nodes =
+{{{
+# On the node, make the elsa dir
+sudo mkdir /usr/local/elsa && 
+sudo mkdir /usr/local/elsa/node && 
+sudo mkdir /usr/local/elsa/node/tmp && 
+sudo mkdir /usr/local/elsa/node/tmp/locks && 
+touch /usr/local/elsa/node/tmp/locks/directory
+
+# Copy the node files to the node (if there are separate front/backend nodes)
+scp -r node/elsa.pl node/Indexer.pm node/conf <node IP address>:/usr/local/elsa/node/
+
+# Install required Perl modules
+sudo cpan
+o conf prerequisites_policy follow
+o conf commit
+install App::cpanminus
+quit
+
+# Now cpanm is available to install the rest
+sudo cpanm Config::JSON String::CRC32 Log::Log4perl DBD::mysql 
+
+# Get and build sphinx on nodes
+cd /tmp
+wget "http://sphinxsearch.com/files/sphinx-2.0.1-beta.tar.gz"
+tar xzvf sphinx-2.0.1-beta.tar.gz
+cd sphinx-2.0.1-beta
+./configure --enable-id64 --prefix=/usr/local/sphinx && make && sudo make install
+
+# Get and build syslog-ng
+cd /tmp
+wget "http://www.balabit.com/downloads/files/syslog-ng/open-source-edition/3.2.4/source/eventlog_0.2.12.tar.gz" &&
+tar xzvf eventlog_0.2.12.tar.gz &&
+cd eventlog-0.2.12 &&
+./configure && make && sudo make install &&
+cd /tmp &&
+wget "http://www.balabit.com/downloads/files/syslog-ng/open-source-edition/3.2.4/source/syslog-ng_3.2.4.tar.gz" &&
+tar xzvf syslog-ng_3.2.4.tar.gz &&
+cd syslog-ng-3.2.4 &&
+./configure --prefix=/usr/local/syslog-ng-3.2.4 --enable-ipv6 && 
+make && sudo make install && 
+sudo ln -s /usr/local/syslog-ng-3.2.4 /usr/local/syslog-ng
+
+# Make data directories on node
+sudo mkdir /data/elsa && sudo mkdir /data/elsa/log && 
+sudo mkdir /data/elsa/tmp && sudo mkdir /data/elsa/tmp/buffers
+sudo mkdir /data/sphinx && sudo mkdir /data/sphinx/log
+
+# Install mysql schema
+mysqladmin -uroot create syslog && mysqladmin -uroot create syslog_data && 
+mysql -uroot -e 'GRANT ALL ON syslog.* TO "elsa"@"%" IDENTIFIED BY "biglog"' &&
+mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "biglog"' && 
+mysql -uelsa -pbiglog syslog -e "source /usr/local/elsa/node/conf/schema.sql"
+
+# Copy elsa.conf to node (if on different machine)
+scp node/conf/elsa.conf <node IP address>:/etc/elsa.conf
+
+# Edit the elsa.conf for any customizations
+# Edit database and make user/pass match install above
+# Edit log_size_limit to be maximum space you'll allow for logs
+# The other settings should be fine if you're using the dirs referred to in this doc.
+
+# Run elsa.pl for initial creation of sphinx config
+echo "" | perl /usr/local/elsa/node/elsa.pl -on -c /etc/elsa.conf
+
+# Initialize empty sphinx indexes
+/usr/local/sphinx/bin/indexer --config /usr/local/etc/sphinx.conf --rotate --all
+# Start sphinx
+/usr/local/sphinx/bin/searchd --config /usr/local/etc/sphinx.conf --iostats --cpustats
+
+# Start syslog-ng using the ELSA config
+/usr/local/syslog-ng/sbin/syslog-ng -f /usr/local/elsa/node/conf/syslog-ng.conf
+
+# Watch the log file to make sure it's working (after wiping indexes you should see batches processed and rows indexed)
+tail -f /data/elsa/log/node.log
+}}}
