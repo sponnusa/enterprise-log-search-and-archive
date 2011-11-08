@@ -103,7 +103,7 @@ make && sudo make install &&
 sudo ln -s /usr/local/syslog-ng-3.2.4 /usr/local/syslog-ng
 
 # Make data directories on node
-sudo mkdir /data/elsa && sudo mkdir /data/elsa/log && 
+sudo mkdir /data && sudo mkdir /data/elsa && sudo mkdir /data/elsa/log && 
 sudo mkdir /data/elsa/tmp && sudo mkdir /data/elsa/tmp/buffers
 sudo mkdir /data/sphinx && sudo mkdir /data/sphinx/log
 
