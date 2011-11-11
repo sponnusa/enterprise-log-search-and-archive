@@ -58,7 +58,8 @@ sudo cpanm Plack::Handler::Apache2
 ln -s /etc/apache2/sites-available/elsa.conf /etc/apache2/sites-enabled/elsa.conf
 sudo restart apache2
 
-# Setup cron for alerts (optional)
+# Setup alerts (optional)
+# Edit /etc/elsa_web.conf and set the "smtp_server" and "to" fields under "email"
 sudo crontab -e
 * * * * * perl /usr/local/elsa/web/cron.pl -c /etc/elsa_web.conf 2>&1 > /dev/null
 
