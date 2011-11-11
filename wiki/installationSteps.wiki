@@ -49,8 +49,12 @@ sudo cpanm starman
 # Run starman just like plackup above
 
 # For Apache, locations vary, but this is the gist:
-cp /usr/local/elsa/etc/apache_site.conf /etc/apache2/vhost.d/elsa.conf
-# Edit /etc/apache2/vhost.d/elsa.conf appropriately for locations
+cp /usr/local/elsa/web/conf/apache_site.conf /etc/apache2/sites-available/elsa.conf
+# Edit /etc/apache2/sites-available/elsa.conf appropriately for locations if you're using something non-default
+# Install the Apache2 handler:
+sudo cpanm Plack::Handler::Apache2
+# Enable the site
+ln -s /etc/apache2/sites-available/elsa.conf /etc/apache2/sites-enabled/elsa.conf
 sudo restart apache2
 
 # Setup cron for alerts (optional)
