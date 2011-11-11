@@ -158,6 +158,7 @@
 					<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@</pattern>
 					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@@NUMBER:i3:@|@NUMBER:i4:@</pattern>
 					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@|@NUMBER:i4:@</pattern>
+					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@@NUMBER:i3:@|</pattern>
 					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@</pattern>
 				</patterns>
 				<examples>
@@ -432,6 +433,77 @@
 						<test_value name="s1">CN=www.forneymaterialstesting.com,OU=Comodo InstantSSL,OU=Online Sales,O=Forney Inc,streetAddress=One Adams Place,L=Seven Fields\,,ST=Pennsylvania,postalCode=16046,C=US</test_value>
 						<!-- expiration -->
 						<test_value name="i4">1381035599.000000</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset>
+		<pattern>bro_http</pattern>
+		<rules>
+			<rule class="19" id="19">
+				<patterns>
+					<!--ts      uid     id.orig_h       id.orig_p       id.resp_h       id.resp_p       method  
+					host    uri     referrer        user_agent      request_body_len       
+					 request_body_interrupted        response_body_len       response_body_interrupted       status_code     
+					 status_msg      filename        tags    username        password        proxied mime_type
+       md5     extraction_file-->
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@
+					@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING:i5:|@@ESTRING::|@
+					@ESTRING:s5:|@@ANYSTRING::@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="bro_http">1319824864.447838|g6XHk1uplZc|10.0.0.0|19427|80.175.58.76|80|GET|www.google.com|/|http://example.com|myagent|200|0|1000|...</test_message>
+						<!-- srcip -->
+						<test_value name="i0">10.0.0.0</test_value>
+						<!-- srcport -->
+						<test_value name="i1">19427</test_value>
+						<!-- dstip -->
+						<test_value name="i2">80.175.58.76</test_value>
+						<!-- dstport -->
+						<test_value name="i3">80</test_value>
+						<!-- method -->
+						<test_value name="s0">GET</test_value>
+						<!-- host -->
+						<test_value name="s1">www.google.com</test_value>
+						<!-- uri -->
+						<test_value name="s2">/</test_value>
+						<!-- referer -->
+						<test_value name="s3">http://example.com</test_value>
+						<!-- user_agent -->
+						<test_value name="s4">myagent</test_value>
+						<!-- status_code -->
+						<test_value name="i4">200</test_value>
+						<!-- content_length -->
+						<test_value name="i5">1000</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset>
+		<pattern>bro_conn</pattern>
+		<rules>
+			<rule class="20" id="20">
+				<patterns>
+					<!--ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	service	duration	orig_bytes	resp_bytes	
+					conn_state	local_orig	missed_bytes	history	orig_pkts	orig_ip_bytes	resp_pkts	resp_ip_bytes-->
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@@ANYSTRING::@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="bro_conn">1319824864.447838|g6XHk1uplZc|10.0.0.0|19427|80.175.58.76|tcp|...</test_message>
+						<!-- srcip -->
+						<test_value name="i0">10.0.0.0</test_value>
+						<!-- srcport -->
+						<test_value name="i1">19427</test_value>
+						<!-- dstip -->
+						<test_value name="i2">80.175.58.76</test_value>
+						<!-- dstport -->
+						<test_value name="i3">80</test_value>
+						<!-- proto -->
+						<test_value name="i4">tcp</test_value>
 					</example>
 				</examples>
 			</rule>
