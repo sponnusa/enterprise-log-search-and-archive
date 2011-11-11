@@ -22,6 +22,7 @@ use Time::HiRes qw(time);
 use Module::Pluggable require => 1, search_path => [ qw( Export Info ) ];
 use URI::Escape qw(uri_unescape);
 use Mail::Internet;
+use Email::LocalDelivery;
 use Carp;
 
 use AnyEvent::DBI;
@@ -269,6 +270,9 @@ sub BUILD {
 		$Db_timeout = $self->conf->get('db/timeout');
 	}
 	
+	# init plugins
+	$self->plugins();
+	
 	return $self;
 }
 
@@ -309,7 +313,7 @@ sub get_user_info {
 				},
 			},
 			filter => '',
-			email => $self->conf->get('user_email') ? $self->conf->get('user_email') : 'root@localhost',
+			email => $self->conf->get('email/to') ? $self->conf->get('email/to') : 'root@localhost',
 		};
 	}
 	else {
@@ -1135,6 +1139,9 @@ sub _get_sphinx_nodes {
 		if ($args->{given_nodes}){
 			next unless $args->{given_nodes}->{$node};
 		}
+		if ($args->{excluded_nodes}){
+			next if $args->{excluded_nodes}->{$node};
+		}
 		my $db_name = 'syslog';
 		if ($node_conf->{$node}->{db}){
 			$db_name = $node_conf->{$node}->{db};
@@ -1445,7 +1452,7 @@ sub _get_node_info {
 			$ret->{field_conversions}->{ $field_hash->{class_id} }->{PROTO} ||= {};
 			$ret->{field_conversions}->{ $field_hash->{class_id} }->{PROTO}->{ $field_hash->{field_order} } = $field_hash->{value};
 		}
-		elsif ($field_hash->{value} eq 'country_code' and $field_hash->{pattern_type} eq 'QSTRING'){
+		elsif ($field_hash->{value} eq 'country_code' and $field_hash->{pattern_type} eq 'NUMBER'){
 			$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE} ||= {};
 			$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE}->{ $field_hash->{field_order} } = $field_hash->{value};
 		}
@@ -1805,12 +1812,6 @@ sub _save_results {
 	$query = 'INSERT INTO saved_results_data (qid, data) VALUES (?,?)';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid}, $self->json->encode($args->{results}));
-	
-#	$query = 'INSERT INTO saved_results_rows (qid, data) VALUES (?,?)';
-#	$sth = $self->db->prepare($query);
-#	foreach my $row (@{ $args->{results} }){
-#		$sth->execute($args->{qid}, $self->json->encode($row));
-#	}
 		
 	$self->db->commit;
 	
@@ -2234,79 +2235,82 @@ sub query {
 	}
 	$self->log->trace('args: ' . Dumper($args));
 	
-	my $ret = { query_string => $args->{query_string} };	
+	my $ret = { query_string => $args->{query_string}, query_meta_params => $args->{query_meta_params} };	
 	
-	if ($args->{query_string} ){
+	unless ($args->{query_string} ){
+		$self->_error('Invalid args: ' . Dumper($args));
+		return;
+	}
 		
-		my $is_system = 0;
-		# Is this a system-initiated query?
-		if ($args->{query_schedule_id}){
-			$is_system = 1;
-		}
-		elsif ($args->{user_info}->{username} eq 'system'){
-			$is_system = 1;
-		}
-		
-		my $is_archive = $args->{archive_query} ? 1 : 0;
-		if ($is_archive){
-			# Check to see if this user is already running an archive query
-			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND ISNULL(num_results)';
-			$sth = $self->db->prepare($query);
-			$sth->execute();
-			my $counter = 0;
-			while (my $row = $sth->fetchrow_hashref){
-				if ($row->{uid} eq $args->{user_info}->{uid}){
-					$self->_error('User ' . $args->{user_info}->{username} . ' already has an archive query running: ' . $row->{qid});
-					return;
-				}
-				$counter++;
-				if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
-					#TODO create a queuing mechanism for this
-					$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
-					return;
-				}
-			}
-		}
-
-		# Log the query
-		$self->db->begin_work;
-		$query = 'INSERT INTO query_log (uid, query, system, archive) VALUES (?, ?, ?, ?)';
-		$sth   = $self->db->prepare($query);
-		$sth->execute( $args->{user_info}->{uid}, 
-			$args->{q} ? $args->{q} : $self->json->encode({ query_string => $args->{query_string} }), 
-			$is_system, $is_archive );
-		$query = 'SELECT MAX(qid) AS qid FROM query_log';
-		$sth   = $self->db->prepare($query);
+	my $is_system = 0;
+	# Is this a system-initiated query?
+	if ($args->{query_schedule_id}){
+		$is_system = 1;
+	}
+	elsif ($args->{user_info}->{username} eq 'system'){
+		$is_system = 1;
+	}
+	
+	my $is_archive = $args->{archive_query} ? 1 : 0;
+	if ($is_archive){
+		# Check to see if this user is already running an archive query
+		$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND ISNULL(num_results)';
+		$sth = $self->db->prepare($query);
 		$sth->execute();
-		my $row = $sth->fetchrow_hashref;
-		my $qid = $row->{qid};
-		$self->db->commit;
-
-		$self->log->debug( "Received query with qid $qid at " . time() );
-		$ret->{qid} = $qid;
-		
-		# Set some sane defaults		
-		$args->{limit} ||= $Default_limit;
-		$args->{offset} ||= 0;
-		$args->{timeout} ||= sprintf("%d", ($self->conf->get('query_timeout') * 1000));
-	
-		$self->log->trace("Using timeout of $args->{timeout}");
-			
-		if ($is_archive){
-			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
-			$ret->{batch_query} = $qid;
-		}		
-		else {
-			# Actually perform the query
-			#$self->stats->mark('query');
-			
-			# Parse our query
-			#$self->stats->mark('query_parse');
-			$args->{node_info} = $self->cache->get('node_info');
-			unless ($args->{node_info}){
-				$args->{node_info} = $self->_get_node_info();
-				$self->cache->set('node_info', $args->{node_info}, $self->conf->get('sphinx/index_interval'));
+		my $counter = 0;
+		while (my $row = $sth->fetchrow_hashref){
+			if ($row->{uid} eq $args->{user_info}->{uid}){
+				$self->_error('User ' . $args->{user_info}->{username} . ' already has an archive query running: ' . $row->{qid});
+				return;
 			}
+			$counter++;
+			if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
+				#TODO create a queuing mechanism for this
+				$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
+				return;
+			}
+		}
+	}
+
+	# Log the query
+	$self->db->begin_work;
+	$query = 'INSERT INTO query_log (uid, query, system, archive) VALUES (?, ?, ?, ?)';
+	$sth   = $self->db->prepare($query);
+	$sth->execute( $args->{user_info}->{uid}, 
+		$args->{q} ? $args->{q} : $self->json->encode($ret), 
+		$is_system, $is_archive );
+	$query = 'SELECT MAX(qid) AS qid FROM query_log';
+	$sth   = $self->db->prepare($query);
+	$sth->execute();
+	my $row = $sth->fetchrow_hashref;
+	my $qid = $row->{qid};
+	$self->db->commit;
+
+	$self->log->debug( "Received query with qid $qid at " . time() );
+	$ret->{qid} = $qid;
+	
+	# Set some sane defaults		
+	$args->{limit} ||= $Default_limit;
+	$args->{offset} ||= 0;
+	$args->{timeout} ||= sprintf("%d", ($self->conf->get('query_timeout') * 1000));
+
+	$self->log->trace("Using timeout of $args->{timeout}");
+		
+	if ($is_archive){
+		# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
+		$ret->{batch_query} = $qid;
+	}		
+	else {
+		# Actually perform the query
+		#$self->stats->mark('query');
+		
+		# Parse our query
+		#$self->stats->mark('query_parse');
+		$args->{node_info} = $self->cache->get('node_info');
+		unless ($args->{node_info}){
+			$args->{node_info} = $self->_get_node_info();
+			$self->cache->set('node_info', $args->{node_info}, $self->conf->get('sphinx/index_interval'));
+		}
 			#$self->log->trace('using node-info: ' . Dumper($args->{node_info}));
 			# propagate node errors
 #			foreach my $node (keys %{ $args->{node_info} }){
@@ -2315,33 +2319,33 @@ sub query {
 #					push @{ $ret->{errors} }, $args->{node_info}->{nodes}->{$node}->{error};
 #				}
 #			}
-			$self->_parse_query_string($args);
+		$self->_parse_query_string($args);
+		
+		#$self->stats->mark('query_parse', 1);
+		
+		# Execute search
+		$self->_sphinx_query($args);
+		$ret->{results} = $args->{results};
+		
+		#$self->stats->mark('query', 1);	
+		$self->log->info(sprintf("Query $qid returned %d rows", $args->{recordsReturned}));
 			
-			#$self->stats->mark('query_parse', 1);
-			
-			# Execute search
-			$self->_sphinx_query($args);
-			$ret->{results} = $args->{results};
-			
-			#$self->stats->mark('query', 1);	
-			$self->log->info(sprintf("Query $qid returned %d rows", $args->{recordsReturned}));
-				
-			$ret->{hash} = $self->_get_hash($qid); #tack on the hash for permalinking on the frontend
-			$ret->{totalTime} = int(
-				(Time::HiRes::time() - $args->{start_time}) * 1000
-			);
-			
-			# Update the db to ack
-			$query = 'UPDATE query_log SET num_results=?, milliseconds=? '
-			  		. 'WHERE qid=?';
-			$sth = $self->db->prepare($query);
-			
-			$ret->{totalRecords} = $args->{totalRecords};
-			$ret->{recordsReturned} = $args->{recordsReturned};
-			if ($args->{groupby}){
-				$ret->{groupby} = $args->{groupby};
-			}
-			$sth->execute( $ret->{recordsReturned}, $ret->{totalTime}, $qid );
+		$ret->{hash} = $self->_get_hash($qid); #tack on the hash for permalinking on the frontend
+		$ret->{totalTime} = int(
+			(Time::HiRes::time() - $args->{start_time}) * 1000
+		);
+		
+		# Update the db to ack
+		$query = 'UPDATE query_log SET num_results=?, milliseconds=? '
+		  		. 'WHERE qid=?';
+		$sth = $self->db->prepare($query);
+		
+		$ret->{totalRecords} = $args->{totalRecords};
+		$ret->{recordsReturned} = $args->{recordsReturned};
+		if ($args->{groupby}){
+			$ret->{groupby} = $args->{groupby};
+		}
+		$sth->execute( $ret->{recordsReturned}, $ret->{totalTime}, $qid );
 			
 #			if (scalar @{ $args->{errors} }){
 #				if ($ret->{errors}){
@@ -2351,15 +2355,10 @@ sub query {
 #					$ret->{errors} = $args->{errors};
 #				}
 #			}
-		}
-		
-		$ret->{errors} = $self->warnings;
-		return $ret;
 	}
-	else {
-		$self->_error('Invalid args: ' . Dumper($args));
-		return;
-	}
+	
+	$ret->{errors} = $self->warnings;
+	return $ret;
 }
 
 sub get_log_info {
@@ -2379,17 +2378,28 @@ sub get_log_info {
 		$self->_error('Invalid args: ' . Dumper($decode));
 		return;
 	}
+	$self->log->trace('decode: ' . Dumper($decode));
 	
 	my $data;
 	
 	unless ($decode->{class} and $self->conf->get('plugins/' . $decode->{class})){
+		# Check to see if there is generic IP information for use with pcap
+		if ($self->conf->get('pcap_url')){
+			my %ip_fields = ( srcip => 1, dstip => 1, ip => 1);
+			foreach my $field (keys %$decode){
+				if ($ip_fields{$field}){
+					my $plugin = Info::Pcap->new(conf => $self->conf, data => $decode);
+					return  { summary => $plugin->summary, urls => $plugin->urls, plugins => $plugin->plugins };
+				}
+			}
+		}
 		$self->log->debug('no plugins for class ' . $decode->{class});
 		$data =  { summary => 'No info.', urls => [], plugins => [] };
 		return $data;
 	}
 	
 	eval {
-		my $plugin = $self->conf->get('plugins/' . $decode->{class})->new({conf => $self->conf, data => $decode});
+		my $plugin = $self->conf->get('plugins/' . $decode->{class})->new(conf => $self->conf, data => $decode);
 		$data =  { summary => $plugin->summary, urls => $plugin->urls, plugins => $plugin->plugins };
 	};
 	if ($@){
@@ -2459,10 +2469,8 @@ sub _sphinx_query {
 	my $nodes = $self->_get_sphinx_nodes($args);
 	my $ret = {};
 	my $overall_start = time();
-#	$args->{errors} = [];
 	foreach my $node (keys %{ $nodes }){
 		if (exists $nodes->{$node}->{error}){
-#			push @{ $args->{errors} }, $nodes->{$node}->{error};
 			my $err_str = 'not using node ' . $node . ' because ' . $nodes->{$node}->{error};
 			$self->add_warning($err_str);
 			$self->log->warn($err_str);
@@ -2670,6 +2678,7 @@ sub _sphinx_query {
 				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
 					$args->{totalRecords} += $agg{$key};
 					push @tmp, { intval => $agg{$key}, '@groupby' => $key, '@count' => $agg{$key} };
+					last if scalar @tmp > $args->{limit};
 				}
 				$args->{results}->{$groupby} = [ @tmp ];
 			}
@@ -2677,7 +2686,7 @@ sub _sphinx_query {
 		}	
 	}
 	else {
-		$args->{results} = [];
+		my @tmp;
 		foreach my $node (keys %$ret){
 			$args->{totalRecords} += $ret->{$node}->{meta}->{total_found};
 			foreach my $id (sort { $a <=> $b } keys %{ $ret->{$node}->{results} }){
@@ -2698,8 +2707,14 @@ sub _sphinx_query {
 						push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $args->{node_info}->{classes_by_id}->{ $row->{class_id} } };
 					}
 				}
-				push @{ $args->{results} }, $row;
+				push @tmp, $row;
 			}
+		}
+		# Trim to just the limit asked for
+		$args->{results} = [];
+		foreach my $row (sort { $a->{id} < $b->{id} } @tmp){
+			push @{ $args->{results} }, $row;
+			last if scalar @{ $args->{results} } >= $args->{limit};
 		}
 		$args->{recordsReturned} = scalar @{ $args->{results} };
 	}
@@ -2767,6 +2782,376 @@ sub _get_field {
 }
 
 sub _parse_query_string {
+	my ($self, $args) = @_;
+	#$self->log->trace('parsing query string from args: ' . Dumper($args));
+	
+	my $raw_query = $args->{query_string};
+	
+	my $stopwords = $self->conf->get('stopwords');
+	$args->{given_classes} = {};
+	$args->{excluded_classes} = {};
+	$args->{distinct_classes} = {};
+	$args->{permitted_classes} = {};
+	
+	# Attach the query filters for this user from permissions
+	my $filtered_raw_query = $raw_query;
+	if ($args->{user_info}->{permissions}->{filter}){
+		$filtered_raw_query .= ' ' . $args->{user_info}->{permissions}->{filter};
+	}
+	
+	# Check to see if the class was given in meta params
+	if ($args->{query_meta_params}->{class}){
+		$args->{given_classes}->{ sprintf("%d", $args->{node_info}->{classes}->{ uc($args->{query_meta_params}->{class}) }) } = 1;
+	}
+	
+	# If no class was given anywhere, see if we can divine it from a groupby
+	if (not scalar keys %{ $args->{given_classes} }){
+		if (exists $args->{groupby}){
+			foreach my $field (@{ $args->{groupby} }){
+				my $field_infos = $self->_get_field($args, $field);
+				foreach my $class_id (keys %{$field_infos}){
+					$args->{given_classes}->{$class_id} = 1;
+				}
+			}
+		}
+	}
+		
+	# Check for meta limit
+	if ($args->{query_meta_params}->{limit}){
+		$args->{limit} = sprintf("%d", $args->{query_meta_params}->{limit});
+		$self->log->debug("Set limit " . $args->{limit});
+	}
+	
+	foreach my $type qw(field_terms attr_terms){
+		foreach my $boolean qw(and or not){
+			$args->{$type}->{$boolean} = {};
+		}
+	}
+	foreach my $boolean qw(and or not){
+		$args->{any_field_terms}->{$boolean} = [];
+	}
+		
+	if ($raw_query =~ /\S/){ # could be meta_attr-only
+		my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
+		my $orig_parsed_query = $qp->parse($filtered_raw_query, $Implicit_plus) or die($qp->err);
+		$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
+		
+		my $parsed_query = dclone($orig_parsed_query); #dclone so recursion doesn't mess up original
+		
+		# Recursively parse the query terms
+		$self->_parse_query_term($args, $parsed_query);
+	}
+	else {
+		die('No query terms given');
+	}
+	
+	# Determine if there are any other search fields.  If there are, then use host as a filter.
+	$self->log->debug('field_terms: ' . Dumper($args->{field_terms}));
+	my $host_is_filter = 0;
+	foreach my $boolean qw(and or){
+		foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
+			next unless $class_id;
+			$host_is_filter++;
+		}
+		foreach my $term (@{ $args->{any_field_terms}->{$boolean} }){
+			$host_is_filter++;
+		}
+	}
+	if ($host_is_filter){
+		$self->log->trace('Using host as a filter because there were ' . $host_is_filter . ' query terms.');
+		$self->log->trace('$args->{field_terms} before adjustment: ' . Dumper($args->{field_terms}));
+		foreach my $boolean qw(or and not){
+			next unless $args->{field_terms}->{$boolean} 
+				and $args->{field_terms}->{$boolean}->{0} 
+				and $args->{field_terms}->{$boolean}->{0}->{host};
+			$args->{attr_terms}->{$boolean} ||= {};
+			$args->{attr_terms}->{$boolean}->{0} ||= {};
+			$args->{attr_terms}->{$boolean}->{0}->{host_id} = { map { $_ => 1 } @{ delete $args->{field_terms}->{$boolean}->{0}->{host} } };
+			$self->log->debug('swapping host_id field terms to be attr terms for boolean ' . $boolean);
+		}
+	}
+
+	$self->log->debug('attr before conversion: ' . Dumper($args->{attr_terms}));
+	
+	# Check for blanket allow on classes
+	if ($args->{user_info}->{permissions}->{class_id}->{0}){
+		$self->log->trace('User has access to all classes');
+		$args->{permitted_classes} = $args->{node_info}->{classes_by_id};
+	}
+	else {
+		$args->{permitted_classes} = { %{ $args->{query_meta_params}->{permissions}->{class_id} } };
+		# Drop any query terms that wanted to use an unpermitted class
+		foreach my $item qw(field_terms attr_terms){
+			foreach my $boolean qw(and or not range_and range_not range_or){
+				foreach my $class_id (keys %{ $args->{$item}->{$boolean} }){
+					next if $class_id eq 0; # this is handled specially below
+					unless ($args->{permitted_classes}->{$class_id}){
+						my $forbidden = delete $self->{$item}->{$boolean}->{$class_id};
+						$self->log->warn('Forbidding ' . $item . ' from class_id ' . $class_id . ' with ' . Dumper($forbidden));
+					}
+				}
+			}
+		}
+	}
+	
+	# Adjust classes if necessary
+	$self->log->trace('given_classes before adjustments: ' . Dumper($args->{given_classes}));
+	if (scalar keys %{ $args->{given_classes} } == 1 and $args->{given_classes}->{0}){
+		$args->{distinct_classes} = $args->{permitted_classes};
+	}
+	elsif (scalar keys %{ $args->{given_classes} }){ #if 0 (meaning any) is given, go with permitted classes
+		$args->{distinct_classes} = {};
+		foreach my $key (keys %{ $args->{given_classes} }){
+			if ($args->{permitted_classes}->{$key}){
+				$args->{distinct_classes}->{$key} = 1;
+			}
+		}
+	}
+	elsif (scalar keys %{ $args->{distinct_classes} }) {
+		foreach my $key (keys %{ $args->{distinct_classes} }){
+			unless ($args->{permitted_classes}->{$key}){
+				delete $args->{distinct_classes}->{$key};
+			}
+		}
+	}
+	else {
+		$args->{distinct_classes} = $args->{permitted_classes};
+	}
+	$self->log->trace('distinct_classes after adjustments: ' . Dumper($args->{distinct_classes}));
+	
+	if (scalar keys %{ $args->{excluded_classes} }){
+		foreach my $class_id (keys %{ $args->{excluded_classes} }){
+			$self->log->trace("Excluding class_id $class_id");
+			delete $args->{distinct_classes}->{$class_id};
+		}
+	}
+	
+	$self->log->debug('attr_terms: ' . Dumper($args->{attr_terms}));
+	
+	my $num_added_terms = 0;
+	my $num_removed_terms = 0;
+	
+	# Adjust hosts/programs based on permissions
+	foreach my $attr qw(host_id program_id){
+		# Do we have a blanket allow permission?
+		if ($args->{user_info}->{permissions}->{$attr}->{0}){
+			$self->log->debug('Permissions grant access to any ' . $attr);
+			next;
+		}
+		else {
+			# Need to only allow access to the whitelist in permissions
+			
+			# Add filters for the whitelisted items
+			# If there are no exceptions to the whitelist, no query will succeed
+			if (not scalar keys %{ $args->{query_meta_params}->{permissions}->{$attr} }){
+				die 'Insufficient privileges for querying any ' . $attr; 
+			}
+			
+			# Remove items not explicitly whitelisted
+			foreach my $boolean qw(and or){
+				foreach my $op ('', '='){
+					next unless $args->{attr_terms}->{$boolean}
+						and $args->{attr_terms}->{$boolean}->{$op}
+						and $args->{attr_terms}->{$boolean}->{$op}->{0} 
+						and $args->{attr_terms}->{$boolean}->{$op}->{0}->{$attr};
+					foreach my $id (keys %{ $args->{attr_terms}->{$boolean}->{$op}->{0}->{$attr} }){
+						unless($self->_is_permitted($args, $attr, $id)){
+							die "Insufficient permissions to query $id from $attr";
+						}
+					}
+				}
+			}
+
+
+			# Add required items to filter if no filter exists
+			unless (($args->{attr_terms}->{and} 
+				and $args->{attr_terms}->{and}->{0} 
+				and $args->{attr_terms}->{and}->{0}->{$attr}
+				and scalar keys %{ $args->{attr_terms}->{and}->{0}->{$attr} })
+				or ($args->{attr_terms}->{or} 
+				and $args->{attr_terms}->{or}->{0} 
+				and $args->{attr_terms}->{or}->{0}->{$attr}
+				and scalar keys %{ $args->{attr_terms}->{or}->{0}->{$attr} })){
+				foreach my $id (keys %{ $args->{query_meta_params}->{permissions}->{$attr} }){
+					$self->log->trace("Adding id $id to $attr based on permissions");
+					push @{ $args->{attr_terms}->{and}->{ $args->{query_meta_params}->{permissions}->{$attr}->{$id} }->{0}->{$attr} }, $id;
+					$num_added_terms++;
+				}
+			}
+		}
+	}
+	
+	# One-off for dealing with hosts as fields
+	foreach my $boolean qw(and or not){
+		if ($args->{field_terms}->{$boolean}->{0} and $args->{field_terms}->{$boolean}->{0}->{host}){
+			foreach my $host_int (@{ $args->{field_terms}->{$boolean}->{0}->{host} }){
+				if ($self->_is_permitted($args, 'host_id', $host_int)){
+					$self->log->trace('adding host_int ' . $host_int);
+					push @{ $args->{any_field_terms}->{$boolean} }, '(@host ' . $host_int . ')';
+					# Also add as an attr
+					push @{ $args->{attr_terms}->{$boolean}->{'='}->{0}->{host_id} }, $host_int;
+				}
+				else {
+					die "Insufficient permissions to query host_int $host_int";
+				}
+			}
+			delete $args->{field_terms}->{$boolean}->{0}->{host};
+		}
+	}
+	
+	# Optimization: for the any-term fields, only search on the first term and use the rest as filters if the fields are int fields
+	foreach my $boolean qw(and not){
+		unless (scalar @{ $args->{any_field_terms}->{$boolean} }){
+			$args->{any_field_terms}->{$boolean} = {};
+			next;
+		}
+		my %deletion_candidates;
+		foreach my $op (keys %{ $args->{attr_terms}->{$boolean} }){
+			foreach my $field_name (keys %{ $args->{attr_terms}->{$boolean}->{$op} }){
+				foreach my $class_id (keys %{ $args->{attr_terms}->{$boolean}->{$field_name} }){
+					foreach my $attr (keys %{ $args->{attr_terms}->{$boolean}->{$field_name}->{$class_id} }){
+						foreach my $raw_value (@{ $args->{attr_terms}->{$boolean}->{$field_name}->{$class_id}->{$attr} }){
+							my $col = $attr;
+							$col =~ s/^attr\_//;
+							my $resolved_value = $self->_resolve_value($args, $class_id, $raw_value, $Field_to_order->{$col});
+							$deletion_candidates{$resolved_value} = 1;
+						}
+					}
+				}
+			}
+		}
+	
+		my @keep = shift @{ $args->{any_field_terms}->{$boolean} };
+		foreach my $term (@{ $args->{any_field_terms}->{$boolean} }){
+			if ($deletion_candidates{$term}){
+				$self->log->trace('Optimizing out any-field term search for term ' . $term);
+			}
+			else {
+				push @keep, $term;
+			}
+		}
+		$args->{any_field_terms}->{$boolean} = { map { $_ => 1 } @keep };
+	}
+	$args->{any_field_terms}->{or} = { map { $_ => 1 } @{ $args->{any_field_terms}->{or} } };
+	
+	# Check all field terms to see if they are a stopword and warn if necessary
+	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
+		$self->log->debug('checking terms against ' . (scalar keys %$stopwords) . ' stopwords');
+		foreach my $boolean qw(and or not){
+			foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
+				foreach my $raw_field (keys %{ $args->{field_terms}->{$boolean}->{$class_id} }){
+					next unless $args->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
+					for (my $i = 0; $i < (scalar @{ $args->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }); $i++){
+						my $term = $args->{field_terms}->{$boolean}->{$class_id}->{$raw_field}->[$i];
+						if ($stopwords->{$term}){
+							my $err = 'Removed term ' . $term . ' which is too common';
+							$self->add_warning($err);
+							$self->log->warn($err);
+							$num_removed_terms++;
+							# Drop the term
+							if (scalar @{ $args->{field_terms}->{$boolean}->{$class_id}->{$raw_field} } == 1){
+								delete $args->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
+								last;
+							}
+							else {
+								splice(@{ $args->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
+							}
+						}
+					}
+				}
+			}
+			foreach my $term (keys %{ $args->{any_field_terms}->{$boolean} }){ 
+				if ($stopwords->{$term}){
+					my $err = 'Removed term ' . $term . ' which is too common';
+					$self->add_warning($err);
+					$self->log->warn($err);
+					$num_removed_terms++;
+					# Drop the term
+					delete $args->{any_field_terms}->{$boolean}->{$term};
+				}
+			}
+		}
+	}
+	
+	foreach my $item qw(attr_terms field_terms any_field_terms permitted_classes given_classes distinct_classes){
+		$self->log->trace("$item: " . Dumper($args->{$item}));
+	}
+	
+	# Verify that we're still going to actually have query terms after the filtering has taken place	
+	my $query_term_count = 0;
+	
+	foreach my $boolean qw(and or range_and){
+		next unless $args->{field_terms}->{$boolean};
+		foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
+			foreach my $attr (keys %{ $args->{field_terms}->{$boolean}->{$class_id} }){
+				$query_term_count++;
+			}
+		}
+	}
+	
+	foreach my $boolean qw(or and){
+		$query_term_count += scalar keys %{ $args->{any_field_terms}->{$boolean} }; 
+	}
+	
+	# we might have a class-only query
+	foreach my $class (keys %{ $args->{distinct_classes} }){
+		unless ($num_removed_terms){ # this query used to have terms, so it wasn't really class-only
+			$query_term_count++;
+		}
+	}
+	
+	$self->log->debug('query_term_count: ' . $query_term_count . ', num_added_terms: ' . $num_added_terms);
+	
+	unless ($query_term_count and $query_term_count > $num_added_terms){
+		die 'All query terms were stripped based on permissions or they were too common';
+	}
+	
+	if ($args->{query_meta_params}->{start}){
+		$args->{start_int} = sprintf('%d', $args->{query_meta_params}->{start});
+	}
+	if ($args->{query_meta_params}->{end}){
+		$args->{end_int} =sprintf('%d', $args->{query_meta_params}->{end});
+	}
+	$self->log->debug('META_PARAMS: ' . Dumper($args->{query_meta_params}));
+	
+	# Adjust query time params as necessary
+	if ($args->{query_meta_params}->{adjust_query_times}){
+		if ($args->{start_int} < $args->{min}){
+			$args->{start_int} = $args->{min};
+			$self->log->warn("Given start time too early, adjusting to " 
+				. _epoch2iso($args->{start_int}));
+		}
+		elsif ($args->{start_int} > $args->{max}){
+			$args->{start_int} = $args->{max} - $self->conf->get('sphinx/index_interval');
+			$self->log->warn("Given start time too late, adjusting to " 
+				. _epoch2iso($args->{start_int}));
+		}
+	}
+	
+	# Failsafe for times
+	if ($args->{query_meta_params}->{start} or $args->{query_meta_params}->{end}){
+		unless ($args->{start_int}){
+			$args->{start_int} = 0;
+		}
+		unless ($args->{end_int}){
+			$args->{end_int} = time();
+		}
+	}
+	
+	# Check to see if the query is after the latest end, but not in the future (this happens if the indexing process is backed up)
+	if ($args->{start_int} and $args->{start_int} <= time() and $args->{start_int} > $args->{node_info}->{start_max}){
+		$self->log->warn('Adjusted start_int ' . $args->{start_int} . ' to ' . $args->{node_info}->{start_max});
+		$args->{start_int} = $args->{node_info}->{start_max};
+	}
+	if ($args->{end_int} and $args->{end_int} <= time() and $args->{end_int} > $args->{node_info}->{max}){
+		$self->log->warn('Adjusted end_int ' . $args->{end_int} . ' to ' . $args->{node_info}->{max});
+		$args->{end_int} = $args->{node_info}->{max};
+	}
+	
+	return 1;
+}
+
+sub old_parse_query_string {
 	my ($self, $args) = @_;
 	#$self->log->trace('parsing query string from args: ' . Dumper($args));
 	
@@ -2886,17 +3271,19 @@ sub _parse_query_string {
 		foreach my $field (keys %{ $args->{attr_terms}->{$boolean} }){
 			foreach my $class_id (keys %{ $args->{attr_terms}->{$boolean}->{$field} }){
 				foreach my $attr (keys %{ $args->{attr_terms}->{$boolean}->{$field}->{$class_id} }){
-					my @arr = sort { $a <=> $b } @{ $args->{attr_terms}->{$boolean}->{$field}->{$class_id}->{$attr} };
-					my @new;
-					for (my $i = 0; $i < @arr; $i += 2){
-						push @new,
-							{ 
-								attr => $attr, 
-								min => $arr[$i],
-								max => $arr[$i+1],
-							};
+					foreach my $val_op_hash (@{ $args->{attr_terms}->{$boolean}->{$field}->{$class_id}->{$attr} }){
+						
 					}
-					$args->{attr_terms}->{$boolean}->{$field}->{$class_id}->{$attr} = [ @new ];
+#					my @new;
+#					for (my $i = 0; $i < @arr; $i += 2){
+#						push @new,
+#							{ 
+#								attr => $attr, 
+#								min => $arr[$i],
+#								max => $arr[$i+1],
+#							};
+#					}
+#					$args->{attr_terms}->{$boolean}->{$field}->{$class_id}->{$attr} = [ @new ];
 				}
 			}
 		}
@@ -3360,6 +3747,192 @@ sub _parse_query_term {
 	my $terms = shift;
 	
 	$self->log->debug('terms: ' . Dumper($terms));
+			
+	foreach my $operator (keys %{$terms}){
+		my $arr = $terms->{$operator};
+		foreach my $term_hash (@{$arr}){
+			next unless defined $term_hash->{value};
+			
+			# Recursively handle parenthetical directives
+			if (ref($term_hash->{value}) eq 'HASH'){
+				$self->_parse_query_term($args, $term_hash->{value});
+				next;
+			}
+			
+			# Escape any digit-dash-word combos (except for host or program)
+			$term_hash->{value} =~ s/(\d+)\-/$1\\\-/g unless ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
+			
+			if ($args->{archive_query}){
+				# Escape any special chars
+				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])/\\$1/g;
+			}
+			else {
+				# Get rid of any non-indexed chars
+				$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g;
+				# Escape any '@' or sphinx will error out thinking it's a field prefix
+				#$term_hash->{value} =~ s/\@/\\\@/g;
+				if ($term_hash->{value} =~ /\@/){
+					# need to quote
+					$term_hash->{value} = '"' . $term_hash->{value} . '"';
+				}
+				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
+				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
+					die('Integer search terms must be 15 or fewer digits, received ' 
+						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.');
+				}
+			}
+			
+			if ($term_hash->{field} eq 'start'){
+				# special case for start/end
+				$args->{start_int} = UnixDate($term_hash->{value}, "%s");
+				$self->log->trace("START: " . $args->{start_int});
+				next;
+			}
+			elsif ($term_hash->{field} eq 'end'){
+				# special case for start/end
+				$args->{end_int} = UnixDate($term_hash->{value}, "%s");
+				$self->log->trace("END: " . $args->{end_int});
+				next;
+			}
+			elsif ($term_hash->{field} eq 'limit'){
+				# special case for limit
+				$args->{limit} = sprintf("%d", $term_hash->{value});
+				$self->log->trace("Set limit " . $args->{limit});
+				next;
+			}
+			elsif ($term_hash->{field} eq 'offset'){
+				# special case for offset
+				$args->{offset} = sprintf("%d", $term_hash->{value});
+				$self->log->trace("Set offset " . $args->{offset});
+				next;
+			}
+			elsif ($term_hash->{field} eq 'class'){
+				# special case for class
+				my $class;
+				$self->log->trace('classes: ' . Dumper($args->{node_info}->{classes}));
+				if ($args->{node_info}->{classes}->{ uc($term_hash->{value}) }){
+					$class = lc($args->{node_info}->{classes}->{ uc($term_hash->{value}) });
+				}
+				else {
+					die("Unknown class $term_hash->{value}");
+				}
+				
+				if ($operator eq '-'){
+					# We're explicitly removing this class
+					$args->{excluded_classes}->{ $class } = 1;
+				}
+				else {
+					$args->{given_classes}->{ $class } = 1;
+				}
+				$self->log->debug("Set operator $operator for given class " . $term_hash->{value});		
+				next;
+			}
+			elsif ($term_hash->{field} eq 'groupby'){
+				my $field_infos = $self->_get_field($args, $term_hash->{value});
+				if ($field_infos){
+					$args->{groupby} ||= [];
+					push @{ $args->{groupby} }, lc($term_hash->{value});
+					$self->log->trace("Set groupby " . Dumper($args->{groupby}));
+				}
+				next;
+			}
+			elsif ($term_hash->{field} eq 'node'){
+				if ($term_hash->{value} =~ /^[\w\.]+$/){
+					if ($operator eq '-'){
+						$args->{excluded_nodes} ||= {};
+						$args->{excluded_nodes}->{ $term_hash->{value} } = 1;
+					}
+					else {
+						$args->{given_nodes} ||= {};
+						$args->{given_nodes}->{ $term_hash->{value} } = 1;
+					}
+				}
+				next;
+			}
+			
+			my $boolean = 'or';
+				
+			# Reverse if necessary
+			if ($operator eq '-' and $term_hash->{op} eq '!='){
+				$boolean = 'and';
+			}
+			elsif ($operator eq '-' and $term_hash->{op} eq '='){
+				$boolean = 'not';
+			}
+			elsif ($operator eq '+'){
+				$boolean = 'and';
+			}
+			elsif ($operator eq '-'){
+				$boolean = 'not';
+			}
+						
+			# Process a field/value or attr/value
+			if ($term_hash->{field} and $term_hash->{value}){
+				
+				my $operators = {
+					'>' => 1,
+					'>=' => 1,
+					'<' => 1,
+					'<=' => 1,
+					'!=' => 1, 
+				};
+				# Default unknown operators to AND
+				unless ($operators->{ $term_hash->{op} }){
+					$term_hash->{op} = '=';
+				}
+				
+				my $values = $self->_resolve(
+					$args,
+					$term_hash->{field}, 
+					$term_hash->{value}, 
+					$term_hash->{op}
+				);
+				
+				if ($term_hash->{op} !~ /[\<\>]/){ # ignore ranges
+					foreach my $class_id (keys %{ $values->{fields} }){
+						foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
+							$args->{field_terms}->{$boolean}->{$class_id}->{$real_field} ||= [];
+							push @{ $args->{field_terms}->{$boolean}->{$class_id}->{$real_field} }, 
+								$values->{fields}->{$class_id}->{$real_field};
+						}	
+					}
+				}
+				foreach my $class_id (keys %{ $values->{attrs} }){
+					if ($term_hash->{op} !~ /[\<\>]/ and not exists $args->{field_terms}->{$boolean}->{$class_id}){
+						push @{ $args->{any_field_terms}->{$boolean} }, $term_hash->{value} if $class_id; #skip class 0
+					}
+					my $field_info = $self->_get_field($args, $term_hash->{field})->{$class_id};
+					next if $field_info->{field_type} eq 'string'; # skip string attributes
+					$args->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} } ||= {};
+					foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+						$args->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+						push @{ $args->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
+					}
+				}
+			}				
+				
+			# Otherwise there was no field given, search all fields
+			elsif (defined $term_hash->{value}){
+				if($term_hash->{quote}){
+					$term_hash->{value} = $self->_normalize_quoted_value($term_hash->{value});
+				}
+				push @{ $args->{any_field_terms}->{$boolean} }, $term_hash->{value};
+			}
+			else {
+				die "no field or value given: " . Dumper($term_hash);
+			}
+		}
+	}
+	
+	return 1;
+}
+
+sub old_parse_query_term {
+	my $self = shift;
+	my $args = shift;
+	my $terms = shift;
+	
+	$self->log->debug('terms: ' . Dumper($terms));
 	
 	my $min_val = 0;
 	my $max_val = 2**32 - 1; #uint
@@ -3454,8 +4027,14 @@ sub _parse_query_term {
 			}
 			elsif ($term_hash->{field} eq 'node'){
 				if ($term_hash->{value} =~ /^[\w\.]+$/){
-					$args->{given_nodes} ||= {};
-					$args->{given_nodes}->{ $term_hash->{value} } = 1;
+					if ($operator eq '-'){
+						$args->{excluded_nodes} ||= {};
+						$args->{excluded_nodes}->{ $term_hash->{value} } = 1;
+					}
+					else {
+						$args->{given_nodes} ||= {};
+						$args->{given_nodes}->{ $term_hash->{value} } = 1;
+					}
 				}
 				next;
 			}
@@ -3514,29 +4093,42 @@ sub _parse_query_term {
 							}
 						}
 					}
-					elsif ($term_hash->{op} eq '<' or $term_hash->{op} eq '<=' or $term_hash->{op} eq '>' or $term_hash->{op} eq '>='){
+					elsif ($term_hash->{op} eq '<'){
 						foreach my $class_id (keys %{ $values->{attrs} }){
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								$args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
-								push @{ $args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
-#								unless ($args->{attr_terms}->{range_not}->{$class_id}->{$real_field}){
-#									$args->{attr_terms}->{range_not}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
-#								}
-#								$args->{attr_terms}->{range_not}->{$class_id}->{$real_field}->{max} = $values->{attrs}->{$class_id}->{$real_field}->[0];
+								# workaround for converting < to <=
+								$values->{attrs}->{$class_id}->{$real_field}--;
+								push @{ $args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { max => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};		
+					}
+					elsif ($term_hash->{op} eq '<='){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								push @{ $args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { max => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};		
+					}
+					elsif ($term_hash->{op} eq '>'){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								# workaround for converting > to >=
+								$values->{attrs}->{$class_id}->{$real_field}++;
+								push @{ $args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { min => $values->{attrs}->{$class_id}->{$real_field} };
 							}
 						};
-						
 					}
-#					elsif ($term_hash->{op} eq '>' or $term_hash->{op} eq '>='){
-#						foreach my $class_id (keys %{ $values->{attrs} }){
-#							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-#								unless ($args->{attr_terms}->{range_not}->{$class_id}->{$real_field}){
-#									$args->{attr_terms}->{range_not}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
-#								}
-#								$args->{attr_terms}->{range_not}->{$class_id}->{$real_field}->{min} = $values->{attrs}->{$class_id}->{$real_field}->[0];
-#							}
-#						};
-#					}
+					elsif ($term_hash->{op} eq '>='){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								push @{ $args->{attr_terms}->{range_not}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { min => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};
+					}
 					else {
 						# Only thing left is '!=' which in this context is a double-negative
 						foreach my $class_id (keys %{ $values->{fields} }){
@@ -3589,32 +4181,42 @@ sub _parse_query_term {
 							}
 						}
 					}
-					elsif ($term_hash->{op} eq '<' or $term_hash->{op} eq '<=' or $term_hash->{op} eq '>' or $term_hash->{op} eq '>='){
+					elsif ($term_hash->{op} eq '<'){
 						foreach my $class_id (keys %{ $values->{attrs} }){
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								$args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
-								push @{ $args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
-#								unless ($args->{attr_terms}->{range_and}->{$class_id}->{$real_field}){
-#									$args->{attr_terms}->{range_and}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
-#								}
-#								$args->{attr_terms}->{range_and}->{$class_id}->{$real_field}->{max} = $values->{attrs}->{$class_id}->{$real_field}->[0];
+								# workaround for converting < to <=
+								$values->{attrs}->{$class_id}->{$real_field}--;
+								push @{ $args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { max => $values->{attrs}->{$class_id}->{$real_field} };
 							}
-						}
+						};		
 					}
-#					elsif ($term_hash->{op} eq '>' or $term_hash->{op} eq '>='){
-#						foreach my $class_id (keys %{ $values->{attrs} }){
-#							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-#								unless ($args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field}){
-#									$args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
-#								}
-#								$args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field}->{min} = $values->{attrs}->{$class_id}->{$real_field}->[0];
-##								unless ($args->{attr_terms}->{range_and}->{$class_id}->{$real_field}){
-##									$args->{attr_terms}->{range_and}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
-##								}
-##								$args->{attr_terms}->{range_and}->{$class_id}->{$real_field}->{min} = $values->{attrs}->{$class_id}->{$real_field}->[0];
-#							}
-#						}
-#					}
+					elsif ($term_hash->{op} eq '<='){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								push @{ $args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { max => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};		
+					}
+					elsif ($term_hash->{op} eq '>'){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								# workaround for converting > to >=
+								$values->{attrs}->{$class_id}->{$real_field}++;
+								push @{ $args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { min => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};
+					}
+					elsif ($term_hash->{op} eq '>='){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								push @{ $args->{attr_terms}->{range_and}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { min => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};
+					}
 					else {
 						# Only thing left is '!='
 						foreach my $class_id (keys %{ $values->{fields} }){
@@ -3674,29 +4276,42 @@ sub _parse_query_term {
 							}
 						}
 					}
-					elsif ($term_hash->{op} eq '<' or $term_hash->{op} eq '<=' or $term_hash->{op} eq '>' or $term_hash->{op} eq '>='){
+					elsif ($term_hash->{op} eq '<'){
 						foreach my $class_id (keys %{ $values->{attrs} }){
 							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 								$args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
-								push @{ $args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
-#								unless ($args->{attr_terms}->{range_or}->{$class_id}->{$real_field}){
-#									$args->{attr_terms}->{range_or}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
-#								}
-#								$args->{attr_terms}->{range_or}->{$class_id}->{$real_field}->{max} = $values->{attrs}->{$class_id}->{$real_field}->[0];
+								# workaround for converting < to <=
+								$values->{attrs}->{$class_id}->{$real_field}--;
+								push @{ $args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { max => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};		
+					}
+					elsif ($term_hash->{op} eq '<='){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								push @{ $args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { max => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};		
+					}
+					elsif ($term_hash->{op} eq '>'){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								# workaround for converting > to >=
+								$values->{attrs}->{$class_id}->{$real_field}++;
+								push @{ $args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { min => $values->{attrs}->{$class_id}->{$real_field} };
 							}
 						};
-						
 					}
-#					elsif ($term_hash->{op} eq '>' or $term_hash->{op} eq '>='){
-#						foreach my $class_id (keys %{ $values->{attrs} }){
-#							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-#								unless ($args->{attr_terms}->{range_or}->{$class_id}->{$real_field}){
-#									$args->{attr_terms}->{range_or}->{$class_id}->{$real_field} = { min => $min_val, max => $max_val };
-#								}
-#								$args->{attr_terms}->{range_or}->{$class_id}->{$real_field}->{min} = $values->{attrs}->{$class_id}->{$real_field}->[0];
-#							}
-#						};
-#					}
+					elsif ($term_hash->{op} eq '>='){
+						foreach my $class_id (keys %{ $values->{attrs} }){
+							foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+								$args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
+								push @{ $args->{attr_terms}->{range_or}->{ $term_hash->{field} }->{$class_id}->{$real_field} }, { min => $values->{attrs}->{$class_id}->{$real_field} };
+							}
+						};
+					}
 					else {
 						# Only thing left is '!='
 						foreach my $class_id (keys %{ $values->{fields} }){
@@ -3903,7 +4518,7 @@ sub _resolve_value {
 	my $class_id = shift;
 	my $value = shift;
 	my $field_order = shift;
-		
+	
 	if ($args->{node_info}->{field_conversions}->{ $class_id }->{TIME}->{$field_order}){
 		return _epoch2iso($value * $Time_values->{ $Field_order_to_attr->{$field_order} });
 	}
@@ -3919,6 +4534,9 @@ sub _resolve_value {
 		and $args->{node_info}->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
 		my @arr = $value =~ /(\d{2})(\d{2})/;
 		return unpack('A*', pack('c*', @arr));
+	}
+	elsif ($Field_order_to_attr->{$field_order} eq 'class_id'){
+		return $args->{node_info}->{classes_by_id}->{$class_id};
 	}
 	else {
 		#apparently we don't know about any conversions
@@ -3964,17 +4582,17 @@ sub _build_sphinx_match_str {
 	# No-field match str
 	my $match_str = '';
 	my (%and, %or, %not);
-	foreach my $term (@{ $args->{any_field_terms}->{and} }){
+	foreach my $term (keys %{ $args->{any_field_terms}->{and} }){
 		$and{$term} = 1;
 	}
 		
 	my @or = ();
-	foreach my $term (@{ $args->{any_field_terms}->{or} }){
+	foreach my $term (keys %{ $args->{any_field_terms}->{or} }){
 		$or{$term} = 1;
 	}
 	
 	my @not = ();
-	foreach my $term (@{ $args->{any_field_terms}->{not} }){
+	foreach my $term (keys %{ $args->{any_field_terms}->{not} }){
 		$not{$term} = 1;
 	}
 	
@@ -4024,17 +4642,17 @@ sub _build_archive_match_str {
 	# No-field match str
 	my $match_str = '';
 	my (%and, %or, %not);
-	foreach my $term (@{ $args->{any_field_terms}->{and} }){
+	foreach my $term (keys %{ $args->{any_field_terms}->{and} }){
 		$and{'msg LIKE "%' . $term . '%"'} = 1;
 	}
 		
 	my @or = ();
-	foreach my $term (@{ $args->{any_field_terms}->{or} }){
+	foreach my $term (keys %{ $args->{any_field_terms}->{or} }){
 		$or{'msg LIKE "%' . $term . '%"'} = 1;
 	}
 	
 	my @not = ();
-	foreach my $term (@{ $args->{any_field_terms}->{not} }){
+	foreach my $term (keys %{ $args->{any_field_terms}->{not} }){
 		$not{'msg LIKE "%' . $term . '%"'} = 1;
 	}
 	
@@ -4150,6 +4768,185 @@ sub _build_sphinx_query {
 	die('args') unless $args and ref($args) eq 'HASH' and $args->{user_info};
 	
 	$args->{queries} = []; # place to store our query with our result in a multi-query
+	my %clauses = ( and => { clauses => [], vals => [] }, or => { clauses => [], vals => [] }, not => { clauses => [], vals => [] } );
+	
+	# Handle our basic equalities
+	foreach my $boolean (keys %clauses){
+		foreach my $field (sort keys %{ $args->{attr_terms}->{$boolean}->{'='} }){
+			my @clause;
+			foreach my $class_id (sort keys %{ $args->{attr_terms}->{$boolean}->{'='}->{$field} }){
+				next unless $args->{distinct_classes}->{$class_id} or $class_id eq 0;
+				foreach my $attr (sort keys %{ $args->{attr_terms}->{$boolean}->{'='}->{$field}->{$class_id} }){
+					foreach my $value (@{ $args->{attr_terms}->{$boolean}->{'='}->{$field}->{$class_id}->{$attr} }){
+						if ($class_id){
+							push @clause, '(class_id=? AND ' . $attr . '=?)';
+							push @{ $clauses{$boolean}->{vals} }, $class_id, $value;
+						}
+						else {
+							push @clause, $attr . '=?';
+							push @{ $clauses{$boolean}->{vals} }, $value;
+						}
+					}
+				}
+			}
+			push @{ $clauses{$boolean}->{clauses} }, [ @clause ];
+		}
+	}
+	
+	# Ranges are tougher: First sort by field name so we can group the ranges for the same field together in an OR
+	my %ranges;
+	foreach my $boolean qw(and or not){
+		foreach my $op (sort keys %{ $args->{attr_terms}->{$boolean} }){
+			next if $op eq '=';
+			foreach my $field (sort keys %{ $args->{attr_terms}->{$boolean}->{$op} }){
+				foreach my $class_id (sort keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field} }){
+					next unless $args->{distinct_classes}->{$class_id} or $class_id eq 0;
+					foreach my $attr (sort keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id} }){
+						$ranges{$boolean} ||= {};
+						$ranges{$boolean}->{$field} ||= {};
+						$ranges{$boolean}->{$field}->{$attr} ||= {};
+						$ranges{$boolean}->{$field}->{$attr}->{$class_id} ||= {};
+						$ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} ||= [];
+						foreach my $value (sort { $a < $b } @{ $args->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id}->{$attr} }){
+							push @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} }, $value;
+						}					
+					}
+				}				
+			}
+		}
+	}
+	
+	# Then divine which range operators go together by sorting them and dequeuing the appropriate operator until there are none left
+	foreach my $boolean qw(and or not){
+		foreach my $field (sort keys %{ $ranges{$boolean} }){
+			my @clause;
+			foreach my $attr (sort keys %{ $ranges{$boolean}->{$field} }){
+				foreach my $class_id (sort keys %{ $ranges{$boolean}->{$field}->{$attr} }){
+					while (scalar keys %{ $ranges{$boolean}->{$field}->{$attr}->{$class_id} }){
+						my ($min, $max, $min_op, $max_op);
+						$min = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'>'} };
+						$min_op = '>';
+						unless ($min){
+							$min = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'>='} };
+							$min_op = '>=';
+						}
+						unless ($min){
+							$min = 0;
+						}
+						$max = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'<'} };
+						$max_op = '<';
+						unless ($max){
+							$max = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'<='} };
+							$max_op = '<=';
+						}
+						unless ($max){
+							$max = 2**32;
+						}
+						if ($class_id){
+							push @clause, '(class_id=? AND ' . $attr . $min_op . '? AND ' . $attr . $max_op . '?)';
+							push @{ $clauses{$boolean}->{vals} }, $class_id, $min, $max;
+						}
+						else {
+							push @clause, '(' . $attr . $min_op . '? AND ' . $attr . $max_op . '?)';
+							push @{ $clauses{$boolean}->{vals} }, $min, $max;
+						}
+						foreach my $op ('>', '<', '>=', '<='){
+							if (exists $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op}){
+								delete $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op}
+									unless scalar @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} };
+							}
+						}
+					}
+				}
+			}
+			my $joined_clause = join(' OR ', @clause);
+			push @{ $clauses{$boolean}->{clauses} }, [ $joined_clause ];
+		}
+	}
+	
+	my $positive_qualifier = 1;
+	if (@{ $clauses{and}->{clauses} }){
+		my @clauses;
+		foreach my $clause_arr (@{ $clauses{and}->{clauses} }){
+			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
+		}
+		$positive_qualifier = join("\n" . ' AND ', @clauses);
+	}
+	if (@{ $clauses{or}->{clauses} }){
+		my @clauses;
+		foreach my $clause_arr (@{ $clauses{or}->{clauses} }){
+			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
+		}
+		$positive_qualifier .= "\n" . ' AND (' . join(' OR ', @clauses) . ')';
+	}
+	
+	my $negative_qualifier = 0;
+	if (@{ $clauses{not}->{clauses} }){
+		$negative_qualifier = join(' OR ', @{ $clauses{not}->{clauses} });
+	}
+	
+	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier";
+	my $where;
+	if ($args->{archive_query}){
+		$where = $self->_build_archive_match_str($args) . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier;
+	}
+	else {
+		$where = 'MATCH(\'' . $self->_build_sphinx_match_str($args) .'\')';
+		$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0';
+	}
+	
+	my @values = (@{ $clauses{and}->{vals} }, @{ $clauses{or}->{vals} }, @{ $clauses{not}->{vals} });
+	
+	# Check for no-class super-user query
+	unless (($args->{user_info}->{permissions}->{class_id}->{0} and $args->{given_classes}->{0})
+		#not (scalar keys %{ $args->{given_classes} }))
+		or $args->{groupby}){
+		$where .= ' AND class_id IN (' . join(',', map { '?' } keys %{ $args->{distinct_classes} }) . ')';
+		push @values, sort keys %{ $args->{distinct_classes} };
+	}
+	# Check for time given
+	if ($args->{start_int} and $args->{end_int}){
+		$where .= ' AND timestamp BETWEEN ? AND ?';
+		push @values, $args->{start_int}, $args->{end_int};
+	}
+	
+	# Add a groupby query if necessary
+	my $groupby;	
+	if ($args->{groupby}){
+		foreach my $field (@{ $args->{groupby} }){
+			my $field_infos = $self->_get_field($args, $field);
+			$self->log->trace('field_infos: ' . Dumper($field_infos));
+			foreach my $class_id (keys %{$field_infos}){
+				next unless $args->{distinct_classes}->{$class_id};
+				push @{ $args->{queries} }, {
+					select => $select,
+					where => $where . ($class_id ? ' AND class_id=?' : ''),
+					values => [ @values, $class_id ? $class_id : () ],
+					groupby => $Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} },
+					groupby_field => $field,
+				};
+			}
+		}
+	}
+	else {
+		# We can get away with a single query
+		push @{ $args->{queries} }, {
+			select => $select,
+			where => $where,
+			values => [ @values ],
+		};
+	}	
+		
+	return 1;
+}
+
+sub old_build_sphinx_query {
+	my $self = shift;
+	my $args = shift;
+	
+	die('args') unless $args and ref($args) eq 'HASH' and $args->{user_info};
+	
+	$args->{queries} = []; # place to store our query with our result in a multi-query
 	my @or_clause;
 	my @or_vals;
 	
@@ -4212,11 +5009,13 @@ sub _build_sphinx_query {
 				foreach my $range_hash (@{ $args->{attr_terms}->{range_or}->{$field}->{$class_id}->{$attr} }){
 					if ($class_id){
 						push @or_clause, '(class_id=? AND ' . $attr . '>=? AND ' . $attr . '<=?)';
-						push @or_vals, $class_id, $range_hash->{min}, $range_hash->{max};
+						push @or_vals, $class_id, $range_hash->{min} ? $range_hash->{min} : 0, 
+							$range_hash->{max} ? $range_hash->{max} : 2**32;
 					}
 					else {
 						push @or_clause, '(' . $attr . '>=? AND ' . $attr . '<=?)';
-						push @or_vals, $range_hash->{min}, $range_hash->{max};
+						push @or_vals, $range_hash->{min} ? $range_hash->{min} : 0, 
+							$range_hash->{max} ? $range_hash->{max} : 2**32;
 					}
 				}
 			}
@@ -4231,11 +5030,13 @@ sub _build_sphinx_query {
 				foreach my $range_hash (@{ $args->{attr_terms}->{range_and}->{$field_name}->{$class_id}->{$field} }){
 					if ($class_id){
 						push @clause, '(class_id=? AND ' . $field . '>=? AND ' . $field . '<=?)';
-						push @and_vals, $class_id, $range_hash->{min}, $range_hash->{max};
+						push @and_vals, $class_id, $range_hash->{min} ? $range_hash->{min} : 0, 
+							$range_hash->{max} ? $range_hash->{max} : 2**32;
 					}
 					else {
 						push @clause, '(' . $field . '>=? AND ' . $field . '<=?)';
-						push @and_vals, $range_hash, $range_hash;
+						push @and_vals, $range_hash->{min} ? $range_hash->{min} : 0, 
+							$range_hash->{max} ? $range_hash->{max} : 2**32;;
 					}
 				}
 			}
@@ -4252,11 +5053,13 @@ sub _build_sphinx_query {
 				foreach my $range_hash (@{ $args->{attr_terms}->{range_not}->{$field}->{$class_id}->{$attr} }){
 					if ($class_id){
 						push @not_clause, '(class_id=? AND ' . $attr . '>=? AND ' . $attr . '<=?)';
-						push @not_vals, $class_id, $range_hash->{min}, $range_hash->{max};
+						push @not_vals, $class_id, $range_hash->{min} ? $range_hash->{min} : 0, 
+							$range_hash->{max} ? $range_hash->{max} : 2**32;
 					}
 					else {
 						push @not_clause, '(' . $attr . '>=? AND ' . $attr . '<=?)';
-						push @not_vals, $range_hash->{min}, $range_hash->{max};
+						push @not_vals, $range_hash->{min} ? $range_hash->{min} : 0, 
+							$range_hash->{max} ? $range_hash->{max} : 2**32;
 					}
 				}
 			}
@@ -4606,17 +5409,23 @@ sub _send_email {
 	my $email = new Mail::Internet( Header => $email_headers, Body => [ split(/\n/, $args->{body}) ] );
 	
 	$self->log->debug('email: ' . $email->as_string());
-	my $ret = $email->smtpsend(
-		Host => $self->conf->get('email/smtp_server'), 
-		Debug => 1, 
-		MailFrom => $self->conf->get('email/display_address')
-	);
+	my $ret;
+	if ($self->conf->get('email/smtp_server')){
+		$ret = $email->smtpsend(
+			Host => $self->conf->get('email/smtp_server'), 
+			Debug => 1, 
+			MailFrom => $self->conf->get('email/display_address')
+		);
+	}
+	else {
+		($ret) = Email::LocalDelivery->deliver($email->as_string);
+	}
 	if ($ret){
 		$self->log->debug('done sending email');
 		return 1;
 	}
 	else {
-		$self->log->error('Unable to send email: ' . $email->as_string() . ' to host ' . $self->conf->get('email/smtp_server'));
+		$self->log->error('Unable to send email: ' . $email->as_string());
 		return 0;
 	}
 }
@@ -4707,10 +5516,8 @@ sub _batch_notify {
 	my ($self, $args) = @_;
 	#$self->log->trace('got results for batch: ' . Dumper($args));
 	
-	# Route back if something is wrong
-	
 	my $headers = {
-		To => $args->{query}->{user_info}->{email},
+		To => $args->{user_info}->{email},
 		From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
 		Subject => sprintf('ELSA archive query %d complete with %d results', $args->{qid}, 
 			$args->{recordsReturned}),
@@ -4873,13 +5680,20 @@ sub _archive_query {
 	}
 	my $total_found = 0;
 	my ($query, $sth);
-	QUERY_LOOP: while (scalar keys %queries){
+	my $queries_todo_count = 0;
+	foreach my $node (keys %queries){
+		$queries_todo_count += scalar @{ $queries{$node} };
+	}
+	
+	QUERY_LOOP: while ($queries_todo_count){
 		my $cv = AnyEvent->condvar;
 		$cv->begin(sub {
 			$cv->send;
 		});
 		
 		foreach my $node (keys %queries){
+			my $query_hash = shift @{ $queries{$node} };
+			next unless $query_hash;
 			# Check if the query was cancelled
 			$query = 'SELECT num_results FROM query_log WHERE qid=?';
 			$sth = $self->db->prepare($query);
@@ -4890,15 +5704,14 @@ sub _archive_query {
 				$args->{cancelled} = 1;
 				return;
 			}
-			my $query_hash = shift @{ $queries{$node} };
-			unless (scalar @{ $queries{$node} }){
-				delete $queries{$node};
-				$self->log->debug('Finished archive queries for node ' . $node);
-			}
 			
 			eval {
 				my $start = time();
-				$self->log->debug('running query ' . $query_hash->{query} . ' with values ' . join(',', @{ $query_hash->{values} }));
+				foreach my $key (keys %$query_hash){
+					$self->log->debug('node: ' . $node . ', key: ' . $key . ', val: ' . Dumper($query_hash->{$key}));
+				}
+				$self->log->debug('running query ' . $query_hash->{query});
+				$self->log->debug(' with values ' . join(',', @{ $query_hash->{values} }));
 				$cv->begin;
 				$args->{node_info}->{nodes}->{$node}->{dbh}->get($query_hash->{query}, @{ $query_hash->{values} }, sub { 
 					$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
@@ -4927,9 +5740,16 @@ sub _archive_query {
 #				$self->log->debug('hit limit of ' . $args->{limit} . ' with ' . $total_found);
 #				last QUERY_LOOP;
 #			}
+
 		}
 		$cv->end; # bookend initial begin
 		$cv->recv; # block until all of the above completes
+		
+		# See how many we have left to do in case we're done
+		$queries_todo_count = 0;
+		foreach my $node (keys %queries){
+			$queries_todo_count += scalar @{ $queries{$node} };
+		}
 	}
 	
 	$args->{totalRecords} = 0;
@@ -5004,6 +5824,7 @@ sub _archive_query {
 	}
 	else {
 		$args->{results} = [];
+		my @tmp; # we need to sort chronologically
 		NODE_LOOP: foreach my $node (keys %$ret){
 			$args->{totalRecords} += scalar @{ $ret->{$node}->{rows} };
 			foreach my $row (@{ $ret->{$node}->{rows} }){
@@ -5023,12 +5844,12 @@ sub _archive_query {
 						push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $args->{node_info}->{classes_by_id}->{ $row->{class_id} } };
 					}
 				}
-				push @{ $args->{results} }, $row;
-				if (scalar @{ $args->{results} } >= $args->{limit}){
-					$self->log->trace('hit limit of ' . $args->{limit} . ' with ' . (scalar @{ $args->{results} }));
-					last NODE_LOOP;
-				}
+				push @tmp, $row;
 			}
+		}
+		foreach my $row (sort { $a->{timestamp} cmp $b->{timestamp} } @tmp){
+			push @{ $args->{results} }, $row;
+			last if scalar @{ $args->{results} } >= $args->{limit};
 		}
 		$args->{recordsReturned} = scalar @{ $args->{results} };
 	}

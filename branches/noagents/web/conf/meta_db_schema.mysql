@@ -84,12 +84,13 @@ CREATE TABLE saved_results (
 
 CREATE TABLE saved_results_data (
 	qid INT UNSIGNED NOT NULL,
-	data TEXT NOT NULL,
+	data LONGTEXT NOT NULL,
 	FOREIGN KEY (qid) REFERENCES saved_results (qid) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
 	
 
 INSERT INTO users (uid, username) VALUES(1, "system");
+INSERT INTO users (uid, username) VALUES(2, "user");
 INSERT INTO groups (gid, groupname) VALUES(1, "system");
 INSERT INTO users_groups_map (uid, gid) VALUES((SELECT uid FROM users WHERE username="system"), (SELECT gid FROM groups WHERE groupname="system"));
 

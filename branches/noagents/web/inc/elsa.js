@@ -509,13 +509,16 @@ YAHOO.ELSA.Query = function(){
 		return sQuery; //YAHOO.util.Dom.get('q').value;
 	}
 	
-	this.stringifyMetas = function(){
-		var sQuery;
-		for (var field in this.metas){
-			sQuery += field + ':' + '"' + this.metas[field] + '"';
-		}
-		return sQuery;
-	}
+//	this.stringifyMetas = function(){
+//		var sQuery = '';
+//		logger.log('stringifying: ', this.metas);
+//		for (var field in this.metas){
+//			logger.log('field: '  + field + ', value: ' + this.metas[field]);
+//			sQuery += field + ':' + '"' + this.metas[field] + '"';
+//		}
+//		logger.log('returning: ' + sQuery);
+//		return sQuery;
+//	}
 	
 	this.toString = function(){
 		return YAHOO.lang.JSON.stringify( 
@@ -1817,14 +1820,14 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 		return false;
 	}
 	
-	this.query = p_oQuery;
+	//this.query = p_oQuery;
 	this.sentQuery = p_oQuery.toString(); //set this opaque string for later use
 	
 	/* Actually do the query */
-	logger.log('query obj:', p_oQuery);
-	logger.log('sending query:' + p_oQuery.toString());
+	//logger.log('query obj:', p_oQuery);
+	logger.log('sending query:' + this.sentQuery);//.toString());
 	var request = YAHOO.util.Connect.asyncRequest('GET', 
-			'Query/query?q=' + encodeURIComponent(p_oQuery.toString()),
+			'Query/query?q=' + encodeURIComponent(this.sentQuery),//.toString()),
 			{ 
 				success:function(oResponse){
 					var oRequest = oResponse.argument[0];
@@ -2968,6 +2971,45 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 		oData[ p_oRecord.getData()['_fields'][i].field ] =  p_oRecord.getData()['_fields'][i].value;
 	}
 	var oIps = {};
+	var aQuery = [];
+	
+	//if (defined(oData.proto) && oData.proto.toLowerCase() != 'tcp'){
+	//	YAHOO.ELSA.Error('Only TCP is supported for pcap retrieval.');
+	//}
+	
+	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport' ];
+	for (var i in aQueryParams){
+		var sParam = aQueryParams[i];
+		if (defined(oData[sParam])){
+			aQuery.push(sParam + '=' + oData[sParam]);
+		}
+	}
+	var sQuery = aQuery.join('&');
+	
+	// tack on the start/end +/- one minute
+	var oStart = new Date( p_oRecord.getData().timestamp );
+	oStart.setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
+	var oEnd = new Date( p_oRecord.getData().timestamp );
+	oEnd.setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
+	sQuery += '&start=' + getISODateTime(oStart) + '&end=' + getISODateTime(oEnd);
+	
+	var oPcapWindow = window.open(YAHOO.ELSA.pcapUrl + '/?' + sQuery);
+}
+
+
+YAHOO.ELSA.old_getPcap = function(p_sType, p_aArgs, p_oRecord){
+	logger.log('p_oRecord', p_oRecord);
+	
+	if (!p_oRecord){
+		YAHOO.ELSA.Error('Need a record selected to get pcap for.');
+		return;
+	}
+	
+	var oData = {};
+	for (var i in p_oRecord.getData()['_fields']){
+		oData[ p_oRecord.getData()['_fields'][i].field ] =  p_oRecord.getData()['_fields'][i].value;
+	}
+	var oIps = {};
 	var sQuery = 'q=';
 	
 	if (defined(oData.proto) && defined(oData.srcip) && defined(oData.dstip) && defined(oData.srcport) && defined(oData.dstport)){
@@ -3008,8 +3050,9 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	logger.log(oPcapWindow);
 }
 
-YAHOO.ELSA.getInfo = function(p_iId, p_iRecordId){
-	logger.log('arguments:', arguments);
+//YAHOO.ELSA.getInfo = function(p_iId, p_iRecordId){
+YAHOO.ELSA.getInfo = function(p_oEvent, p_oRecord){
+	/*logger.log('arguments:', arguments);
 	// Find the correct data table
 	var oDataTable;
 	for (var i in YAHOO.ELSA.localResults){
@@ -3035,7 +3078,8 @@ YAHOO.ELSA.getInfo = function(p_iId, p_iRecordId){
 	if (typeof oRecord == 'undefined'){
 		YAHOO.ELSA.Error('Unable to find record in dataTable');
 		return;
-	}
+	}*/
+	var oRecord = p_oRecord;
 	logger.log('p_oRecord', oRecord);
 	
 	var oData = {};

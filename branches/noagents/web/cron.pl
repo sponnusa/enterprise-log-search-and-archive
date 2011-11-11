@@ -23,12 +23,12 @@ else {
 }
 die('Cannot find config file, specify with -c or env variable ELSA_CONF') unless -f $config_file;
 my $api = API->new(config_file => $config_file) or die('Unable to start from given config file.');
-print "Running archive queries...\n";
-$api->run_archive_queries();
-print "done.\n";
 my $start = time();
 my $num_run = $api->run_schedule();
 my $duration = time() - $start;
 print "Ran $num_run queries in $duration seconds.\n";
+print "Running archive queries...\n";
+$api->run_archive_queries();
+print "done.\n";
 
 
