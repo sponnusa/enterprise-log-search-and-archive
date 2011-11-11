@@ -17,8 +17,9 @@ wget "http://code.google.com/p/enterprise-log-search-and-archive/downloads/elsa.
 cd /usr/local && sudo tar xzvf elsa.tar.gz
 
 # Create database.  This will vary depending on where your MySQL DB will be for the query info (not raw logs).
-sudo mysqladmin create syslog_web &&
-sudo mysql syslog_web -e "source /usr/local/elsa/web/conf/meta_db_schema.sql"
+sudo mysqladmin create elsa_web &&
+mysql -uroot -e 'GRANT ALL ON elsa_web.* TO "elsa"@"%" IDENTIFIED BY "biglog"' &&
+sudo mysql elsa_web -e "source /usr/local/elsa/web/conf/meta_db_schema.sql"
 
 # Copy conf to /etc/
 cp /usr/local/elsa/web/conf/elsa.conf /etc/elsa_web.conf
