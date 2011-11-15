@@ -75,7 +75,7 @@ cd /usr/local
 sudo svn export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa"
 sudo mkdir /usr/local/elsa/node/tmp && 
 sudo mkdir /usr/local/elsa/node/tmp/locks && 
-touch /usr/local/elsa/node/tmp/locks/directory
+sudo touch /usr/local/elsa/node/tmp/locks/directory
 
 # Install required Perl modules
 sudo cpan
