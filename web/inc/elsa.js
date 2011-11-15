@@ -602,16 +602,9 @@ YAHOO.ELSA.addTermFromOnClickNoSubmit = function(p_oEvent, p_aArgs){
 
 YAHOO.ELSA.addQueryTerm = function(p_sClass, p_sField, p_sValue){
 	logger.log('adding to current query class' + p_sClass + ', field:' + p_sField + ', val: ' + p_sValue);
-	//var tmp = YAHOO.ELSA.currentQuery.queryBoolean;
 	try {
-		//YAHOO.ELSA.currentQuery.queryBoolean = '+';
 		YAHOO.ELSA.currentQuery.addTerm(p_sClass + '.' + p_sField, p_sValue);
-		//YAHOO.ELSA.currentQuery.delMeta('groupby');
-		//YAHOO.ELSA.currentQuery.delMeta('groups_only');
-		//YAHOO.ELSA.currentQuery.delMeta('limit');
 	} catch(e) { YAHOO.ELSA.Error(e); }
-	
-	//YAHOO.ELSA.currentQuery.queryBoolean = tmp;
 };
 
 YAHOO.ELSA.addTermFromChart = function(p_iChartId, p_iIndex){
@@ -647,7 +640,6 @@ YAHOO.ELSA.addTermAndSubmit = function(p_sField, p_oData){
 		YAHOO.ELSA.currentQuery.addTerm(p_sField, '"' + sData + '"', '=');
 		YAHOO.ELSA.currentQuery.delMeta('groupby');
 		YAHOO.ELSA.currentQuery.delMeta('groups_only');
-		//YAHOO.ELSA.currentQuery.delMeta('local_groupby');
 		YAHOO.ELSA.currentQuery.delMeta('limit');
 		YAHOO.ELSA.currentQuery.submit();
 	} catch(e) { YAHOO.ELSA.Error(e); }
@@ -677,29 +669,12 @@ YAHOO.ELSA.groupData = function(p_iId, p_sClass, p_sField, p_sAggFunc){
 	// reset old values
 	YAHOO.ELSA.currentQuery.delMeta('groupby');
 	YAHOO.ELSA.currentQuery.delMeta('groups_only');
-	//YAHOO.ELSA.currentQuery.delMeta('local_groupby');
 	YAHOO.ELSA.currentQuery.delMeta('class');
 	YAHOO.ELSA.currentQuery.delMeta('limit');
 	
 	if (!p_sClass){
-		// determine if there are any strings and so we have to do a local_groupby
-		/*var sFieldType = 'int';
-		for (var i in YAHOO.ELSA.formParams.fields){
-			if (YAHOO.ELSA.formParams.fields[i].value === p_sField){
-				if (YAHOO.ELSA.formParams.fields[i].field_type === 'string'){
-					sFieldType = 'string';
-					break;
-				}
-			}
-		}
-		if (sFieldType != 'int'){
-			YAHOO.ELSA.currentQuery.addMeta('local_groupby', [p_sField]);
-			YAHOO.ELSA.currentQuery.addMeta('limit', YAHOO.ELSA.localGroupByQueryLimit);
-		}
-		else {*/
-			YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
-			YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
-		/*}*/
+		YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
+		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
 	}
 	else if (p_sClass == 'any'){
 		//any class, always an INT field
@@ -718,16 +693,8 @@ YAHOO.ELSA.groupData = function(p_iId, p_sClass, p_sField, p_sAggFunc){
 		}
 		
 		YAHOO.ELSA.currentQuery.addMeta('class', p_sClass);
-		// Only int field types can be grouped remotely in Sphinx
-		//if (sFieldType === 'int'){
-			YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
-			YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
-		/*}
-		else {
-			YAHOO.ELSA.currentQuery.addMeta('local_groupby', [p_sField]);
-			//make sure we've got as many results to process as possible
-			YAHOO.ELSA.currentQuery.addMeta('limit', YAHOO.ELSA.localGroupByQueryLimit);
-		}*/
+		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
+		YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
 	}
 	
 	// create new groupby results
@@ -806,7 +773,6 @@ YAHOO.ELSA.Results = function(){
 	
 	logger.log('before push: ', YAHOO.ELSA.localResults);
 	YAHOO.ELSA.localResults.push(this);
-	//this.id = YAHOO.ELSA.localResults.length; //next in the array
 	YAHOO.ELSA.queryResultCounter++;
 	this.id = YAHOO.ELSA.queryResultCounter;
 	logger.log('my id: ' + this.id);
@@ -1594,8 +1560,6 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			YAHOO.ELSA.Error('Error loading response' + e);
 		}
 		
-		//if (this.results.groups && keys(this.results.groups).length){
-		//if (this.results.groupby && this.results.groupby.length){
 		if (this.results.batch_query){
 			var oEl = document.createElement('h3');
 			oEl.innerHTML = 'Query ' + this.results.batch_query + ' submitted.  You will receive an email with your results.<br>';
@@ -1613,9 +1577,6 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 				for (var i in this.results.groupby){
 					var sGroupBy = this.results.groupby[i];
 					this.createGroupByDataTable(this.results.results[sGroupBy], sGroupBy, this.tab.get('contentEl'));
-				//}
-				//for (var i in this.results.groupby){
-				//	var sGroupBy = this.results.groupby[i];
 					this.groupByDataTables[sGroupBy].render();				
 					this.groupByDataTables[sGroupBy].sortColumn(
 						this.groupByDataTables[sGroupBy].getColumn('count'), 
@@ -1634,9 +1595,6 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 				for (var i in this.results.query_meta_params.groupby){
 					var sGroupBy = this.results.query_meta_params.groupby[i];
 					this.createGroupByDataTable(this.results.results[sGroupBy], sGroupBy, this.tab.get('contentEl'));
-				//}
-				//for (var i in this.results.groupby){
-				//	var sGroupBy = this.results.groupby[i];
 					this.groupByDataTables[sGroupBy].render();				
 					this.groupByDataTables[sGroupBy].sortColumn(
 						this.groupByDataTables[sGroupBy].getColumn('count'), 
@@ -1822,7 +1780,6 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 		return false;
 	}
 	
-	//this.query = p_oQuery;
 	this.sentQuery = p_oQuery.toString(); //set this opaque string for later use
 	
 	/* Actually do the query */
@@ -1984,14 +1941,12 @@ YAHOO.ELSA.getPreviousQueries = function(){
 					oPayload.totalRecords = oResponse.meta.totalRecords;
 					return oPayload;
 				}
-				//YAHOO.ELSA.prevSearchDT.render();
 				YAHOO.ELSA.previousQueriesPanel.setBody(dtDiv);
 			}
 			catch (e){
 				logger.log('Error:', e);
 			}
 		});
-		//YAHOO.ELSA.previousQueriesPanel.render();
 	}
 	
 	YAHOO.ELSA.previousQueriesPanel.render();
@@ -2140,7 +2095,6 @@ YAHOO.ELSA.saveResults = function(p_sType, p_aArgs, p_iId){
 	document.body.appendChild(dialogDiv);
 	YAHOO.ELSA.saveResultsDialog = new YAHOO.widget.Dialog(dialogDiv, {
 		underlay: 'none',
-		//zIndex: 3,
 		visible:true,
 		fixedcenter:true,
 		draggable:true,
@@ -2696,7 +2650,6 @@ YAHOO.ELSA.getQuerySchedule = function(){
 		
 		YAHOO.ELSA.getQuerySchedule.onEventShowCellEditor = function(p_oArgs){
 			logger.log('p_oArgs', p_oArgs);
-			// this = datatable
 			this.onEventShowCellEditor(p_oArgs);
 			logger.log('YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor():',YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor());
 			// increase the size of the textbox, if we have one
@@ -3052,35 +3005,7 @@ YAHOO.ELSA.old_getPcap = function(p_sType, p_aArgs, p_oRecord){
 	logger.log(oPcapWindow);
 }
 
-//YAHOO.ELSA.getInfo = function(p_iId, p_iRecordId){
 YAHOO.ELSA.getInfo = function(p_oEvent, p_oRecord){
-	/*logger.log('arguments:', arguments);
-	// Find the correct data table
-	var oDataTable;
-	for (var i in YAHOO.ELSA.localResults){
-		if (p_iId == YAHOO.ELSA.localResults[i].id){
-			oDataTable = YAHOO.ELSA.localResults[i].dataTable;
-			break;
-		}
-	}
-	if (typeof oDataTable == 'undefined'){
-		YAHOO.ELSA.Error('Unable to find dataTable');
-		return;
-	}
-	
-	// find the right record
-	var oRecord;
-	for (var i = 0; i < oDataTable.getRecordSet().getLength(); i++){
-		logger.log('i:', oDataTable.getRecordSet().getRecord(i));
-		if (oDataTable.getRecordSet().getRecord(i).getData().id == p_iRecordId){
-			oRecord = oDataTable.getRecordSet().getRecord(i);
-			break;
-		}
-	}
-	if (typeof oRecord == 'undefined'){
-		YAHOO.ELSA.Error('Unable to find record in dataTable');
-		return;
-	}*/
 	var oRecord = p_oRecord;
 	logger.log('p_oRecord', oRecord);
 	
@@ -3425,14 +3350,6 @@ YAHOO.ELSA.openTicket = function(p_sType, p_aArgs, p_iQid){
 			oCountEl.setAttribute('value', 6);
 			oFormEl.appendChild(oCountEl);
 		}
-		//var assignmentACDiv = document.createElement('div');
-		//document.body.appendChild(assignmentACDiv);
-		//var assignmentDataSource = new YAHOO.util.LocalDataSource(YAHOO.ELSA.formParams.assignments);
-		//YAHOO.ELSA.assignmentAutoComplete = new YAHOO.widget.AutoComplete('open_ticket_assignment', assignmentACDiv, assignmentDataSource);
-		//var oInputEl = YAHOO.util.Dom.get('open_ticket_assignment');
-		//YAHOO.util.Dom.addClass(oInputEl, 'AutoComplete');
-		//YAHOO.util.Dom.removeClass(oInputEl, 'yui-ac-input');
-		//logger.log('YAHOO.ELSA.assignmentAutoComplete', YAHOO.ELSA.assignmentAutoComplete);
 	}
 	else {
 		// update with the given qid
