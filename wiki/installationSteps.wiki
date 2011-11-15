@@ -68,7 +68,7 @@ sudo crontab -e
 = Installation Steps For Log Nodes =
 {{{
 # Install required packages
-sudo apt-get install gcc g++ mysql-server libmysqlclient-dev
+sudo apt-get install subversion gcc g++ mysql-server libmysqlclient-dev
 
 # Get the latest code from Google Code
 cd /usr/local
