@@ -38,7 +38,7 @@ YAHOO.ELSA.Stats.getStats = function(p_iStart, p_iEnd){
 						return;
 					}
 					else if (oReturn){
-						showQueryStats(oReturn.query_stats);
+						showQueryStats(oReturn);
 						showNodeStats(oReturn.combined_load_stats);
 					}
 					else {

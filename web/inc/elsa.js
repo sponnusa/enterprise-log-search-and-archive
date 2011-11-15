@@ -544,7 +544,9 @@ YAHOO.ELSA.Query = function(){
 			'hour': 1,
 			'any.hour': 1,
 			'day': 1,
-			'any.day': 1
+			'any.day': 1,
+			'node': 1,
+			'any.node': 1
 		};
 		if (oMetas[p_sFQDNField]){
 			return this.validateMeta(p_sFQDNField, oMetas[p_sFQDNField]);
