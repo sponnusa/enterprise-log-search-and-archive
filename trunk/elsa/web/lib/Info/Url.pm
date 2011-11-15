@@ -1,22 +1,16 @@
 package Info::Url;
-use strict;
+use Moose;
 use Data::Dumper;
-use base qw( Info );
+extends 'Info';
+has 'plugins' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [qw(getPcap)] });
 
-sub new {
-	my $class = shift;
-	my $self = $class->SUPER::new(@_);
-	die('No site given') unless $self->data and $self->data->{site};
-	bless($self, $class);
-
-	my $urls = [ 'http://whois.domaintools.com/' . $self->{data}->{site} ];
-	$self->summary('No summary for URL');
-	
-	$self->urls($urls);
-	
-	$self->plugins([qw(getPcap)]);
-	
-	return $self;
+sub BUILD {
+	my $self = shift;
+	if ($self->conf->get('info/url/url_templates')){
+		foreach my $template (@{ $self->conf->get('info/url/url_templates') } ){
+			push @{ $self->urls }, sprintf($template, $self->data->{site});
+		}
+	}
 }
 
 1;

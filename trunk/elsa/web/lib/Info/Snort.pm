@@ -1,60 +1,28 @@
 package Info::Snort;
-use strict;
+use Moose;
 use Data::Dumper;
-use base qw( Info );
-use Parse::Snort;
+extends 'Info';
+has 'sid' => (is => 'rw', isa => 'Int', required => 1);
+has 'gid' => (is => 'rw', isa => 'Int');
+has 'rev' => (is => 'rw', isa => 'Int');
+has 'plugins' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [qw(getPcap)] });
 
-sub new {
-	my $class = shift;
-	my $self = $class->SUPER::new(@_);
-	die('No sid given') unless $self->data and $self->data->{sig_sid};
-	$self->data->{sig_sid} =~ /(\d+):(\d+):(\d+)/;
-	$self->{_SID} = $2;
-	bless($self, $class);
-
-	my $urls = [];
-	my $rule = _get_rule($self->{_SID}, $self->conf->get('info/snort/rules_file'));
-	if ($rule){
-		$self->{_RULE} = $rule;
-		$self->summary($rule->as_string);
-		# Get URL's from references
-		if ($rule->references){
-			foreach my $reference (@{ $rule->references }){
-				if ($reference->[0] eq 'url'){
-					push @{ $urls }, 'http://' . $reference->[1];
-				}
-			}
-		}
-	}
-	else {
-		$self->summary('Unknown sid ' . $self->{_SID});
-	}
-	
-	$self->urls($urls);
-	
-	$self->plugins([qw(getPcap)]);
-	
-	return $self;
+sub BUILDARGS {
+	my ($class, %args) = @_;
+	$args{data}->{sig_sid} =~ /(\d+):(\d+):(\d+)/;
+	$args{gid} = $1;
+	$args{sid} = $2;
+	$args{rev} = $3;
+	return \%args;
 }
 
-sub _get_rule {
-	my $sid = shift;
-	my $rules_file = shift;
-	
-	die('Invalid file given: ' . $rules_file) unless -f $rules_file;
-	open(FH, $rules_file);
-	while (<FH>){
-		chomp;
-		next if /^\s*#/;
-		my $rule = new Parse::Snort();
-		$rule->parse($_);
-		if ($rule->sid eq $sid){
-			close(FH);
-			return $rule;
-		}	
+sub BUILD {
+	my $self = shift;
+	if ($self->conf->get('info/snort/url_templates')){
+		foreach my $template (@{ $self->conf->get('info/snort/url_templates') }){
+			push @{ $self->urls }, sprintf($template, $self->sid);
+		}
 	}
-	close(FH);
-	return 0;
 }
 
 1;

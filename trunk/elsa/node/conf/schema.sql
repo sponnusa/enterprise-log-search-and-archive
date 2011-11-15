@@ -14,8 +14,8 @@ CREATE TABLE classes (
 	UNIQUE KEY (class)
 ) ENGINE=InnoDB;
 
-INSERT INTO classes (id, class, parent_id) VALUES(0, "any", 0);
-INSERT INTO classes (id, class, parent_id) VALUES(1, "none", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(0, "ANY", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(1, "NONE", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(2, "FIREWALL_ACCESS_DENY", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(3, "FIREWALL_CONNECTION_END", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(4, "WINDOWS", 0);
@@ -24,6 +24,11 @@ INSERT INTO classes (id, class, parent_id) VALUES(8, "SNORT", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(11, "SSH_LOGIN", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(12, "SSH_ACCESS_DENY", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(13, "SSH_LOGOUT", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(14, "BRO_DNS", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(15, "BRO_NOTICE", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(16, "BRO_SMTP", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(17, "BRO_SMTP_ENTITIES", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(18, "BRO_SSL", 0);
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -87,6 +92,22 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("authmethod", "stri
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("device", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("service", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("port", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("answer", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("notice_type", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("notice_msg", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("server", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("from", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("to", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("subject", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("last_reply", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("path", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("filename", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("content_len", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("mime_type", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("md5", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("extraction_file", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("excerpt", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("expiration", "int", "NUMBER");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -161,6 +182,51 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="service"), 15);
 
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGOUT"), (SELECT id FROM fields WHERE field="user"), 12);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="proto"), 9);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="hostname"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="answer"), 12);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="notice_type"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="notice_msg"), 12);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="server"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="from"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="to"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="subject"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="last_reply"), 15);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="path"), 16);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="filename"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="content_len"), 9);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="mime_type"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="md5"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="extraction_file"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP_ENTITIES"), (SELECT id FROM fields WHERE field="excerpt"), 15);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSL"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSL"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSL"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSL"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSL"), (SELECT id FROM fields WHERE field="hostname"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSL"), (SELECT id FROM fields WHERE field="subject"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSL"), (SELECT id FROM fields WHERE field="expiration"), 9);
 
 
 CREATE TABLE table_types (
@@ -248,11 +314,11 @@ CREATE TABLE stats (
 	KEY (type)
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS current_indexes (
+/*CREATE TABLE IF NOT EXISTS current_indexes (
 	node INT UNSIGNED NOT NULL PRIMARY KEY,
 	timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	indexes TEXT NOT NULL
-) ENGINE=InnoDB;
+) ENGINE=InnoDB;*/
 
 CREATE TABLE IF NOT EXISTS buffers (
 	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,

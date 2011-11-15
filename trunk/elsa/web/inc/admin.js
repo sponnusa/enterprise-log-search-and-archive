@@ -395,21 +395,21 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 		if (p_oItem.attr == 'class_id'){
 			oButton = YAHOO.widget.Button.getButton('add_exception_form_' + p_oRecordData.gid + '_selected_class');
 		}
-		else if (p_oItem.attr == 'program_id'){
-			oButton = YAHOO.widget.Button.getButton('add_exception_form_' + p_oRecordData.gid + '_selected_program');
+//		else if (p_oItem.attr == 'program_id'){
+//			oButton = YAHOO.widget.Button.getButton('add_exception_form_' + p_oRecordData.gid + '_selected_program');
+//		}
+		else if (p_oItem.attr == 'node_id'){
+			oButton = YAHOO.widget.Button.getButton('add_exception_form_' + p_oRecordData.gid + '_selected_node');
 		}
-		
+				
 		oButton.set('label', p_oItem.text);
 	}
-	
-	
 	
 	var aMenus = [];
 	
 	// create the classes menu
 	var aClassesMenuItems = [];
-	for (var i in YAHOO.ELSA.Admin.formParams.classes){
-		sClassName = YAHOO.ELSA.Admin.formParams.classes[i];
+	for (var sClassName in YAHOO.ELSA.Admin.formParams.classes){
 		if (!sClassName){
 			sClassName = 'All';
 		}
@@ -422,7 +422,7 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 				obj: { 
 					gid: p_oRecordData.gid, 
 					attr: 'class_id', 
-					attr_id: i, 
+					attr_id: YAHOO.ELSA.Admin.formParams.classes[sClassName], 
 					text: sClassName
 				}
 			}
@@ -438,34 +438,62 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 		label: 'Class'
 	}
 	
-	// create the programs menu
-	var aProgramMenuItems = [];
-	for (var i in YAHOO.ELSA.Admin.formParams.programs){
-		for (var j in YAHOO.ELSA.Admin.formParams.programs[i]){
-			//is this currently a blacklist?
-			var oMenuItem = {
-				text: j,
-				value: YAHOO.ELSA.Admin.formParams.programs[i][j], 
-				onclick: { 
-					fn: onMenuSelect,
-					obj: { 
-						gid: p_oRecordData.gid, 
-						attr: 'program_id', 
-						attr_id: YAHOO.ELSA.Admin.formParams.programs[i][j], 
-						text: j
-					}
+//	// create the programs menu
+//	var aProgramMenuItems = [];
+//	for (var i in YAHOO.ELSA.Admin.formParams.programs){
+//		for (var j in YAHOO.ELSA.Admin.formParams.programs[i]){
+//			//is this currently a blacklist?
+//			var oMenuItem = {
+//				text: j,
+//				value: YAHOO.ELSA.Admin.formParams.programs[i][j], 
+//				onclick: { 
+//					fn: onMenuSelect,
+//					obj: { 
+//						gid: p_oRecordData.gid, 
+//						attr: 'program_id', 
+//						attr_id: YAHOO.ELSA.Admin.formParams.programs[i][j], 
+//						text: j
+//					}
+//				}
+//			}
+//			aProgramMenuItems.push(oMenuItem);
+//		}
+//	}
+//	logger.log('aProgramMenuItems', aProgramMenuItems);
+//	var oProgramMenuCfg = {
+//		type:'menu',
+//		id: 'add_exception_form_' + p_oRecordData.gid + '_selected_program',
+//		name: 'add_exception_form_' + p_oRecordData.gid + '_selected_program',
+//		menu: aProgramMenuItems,
+//		label: 'Program'
+//	}
+
+	// create the nodes menu
+	var aNodeMenuItems = [];
+	for (var i in YAHOO.ELSA.Admin.formParams.nodes){
+		var sNode = YAHOO.ELSA.Admin.formParams.nodes[i];
+		var oMenuItem = {
+			text: sNode,
+			value: sNode, 
+			onclick: { 
+				fn: onMenuSelect,
+				obj: { 
+					gid: p_oRecordData.gid, 
+					attr: 'node_id', 
+					attr_id: sNode, 
+					text: sNode
 				}
 			}
-			aProgramMenuItems.push(oMenuItem);
 		}
+		aNodeMenuItems.push(oMenuItem);
 	}
-	logger.log('aProgramMenuItems', aProgramMenuItems);
-	var oProgramMenuCfg = {
+	logger.log('aNodeMenuItems', aNodeMenuItems);
+	var oNodeMenuCfg = {
 		type:'menu',
-		id: 'add_exception_form_' + p_oRecordData.gid + '_selected_program',
-		name: 'add_exception_form_' + p_oRecordData.gid + '_selected_program',
-		menu: aProgramMenuItems,
-		label: 'Program'
+		id: 'add_exception_form_' + p_oRecordData.gid + '_selected_node',
+		name: 'add_exception_form_' + p_oRecordData.gid + '_selected_node',
+		menu: aNodeMenuItems,
+		label: 'Node'
 	}
 	
 	var oFormCfg = {
@@ -474,7 +502,8 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 		},
 		grid: [[
 			{type:'widget', className:'Button', args:oClassMenuCfg},
-			{type:'widget', className:'Button', args:oProgramMenuCfg},
+//			{type:'widget', className:'Button', args:oProgramMenuCfg},
+			{type:'widget', className:'Button', args:oNodeMenuCfg},
 			{type:'text', args:'Host'},
 			{type:'input', args:{id:'add_exception_form_' + p_oRecordData.gid + '_selected_host', size:35}}
 		]]

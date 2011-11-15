@@ -119,7 +119,10 @@ function getDateFromISO(sIsoDate){
 	var date = new Date();
 	var re = new RegExp(/(\d{4})\-(\d{1,2})\-(\d{1,2})\s+(\d{1,2})\:(\d{1,2})\:(\d{1,2})/);
 	var aMatches = re.exec(sIsoDate);
-	// strip any leading zeros before int parsing
+	if (typeof(aMatches) == 'undefined' || aMatches == null){
+		return false;
+	}
+	// strip ny leading zeros before int parsing
 	for (var i in aMatches){
 		var str = '' + aMatches[i];
 		str = str.replace(/^0(\d)/, '$1');
