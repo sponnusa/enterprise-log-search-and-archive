@@ -20,7 +20,7 @@ searchd {
         read_timeout = 5
         seamless_rotate = 1
         unlink_old = 1
-        listen = localhost:3307:mysql41
+        listen = 0.0.0.0:3307:mysql41
         listen = 0.0.0.0:3312
 }
 source permanent {
@@ -37,12 +37,18 @@ source permanent {
         sql_attr_uint = attr_i3
         sql_attr_uint = attr_i4
         sql_attr_uint = attr_i5
+        sql_attr_uint = attr_s0
+        sql_attr_uint = attr_s1
+        sql_attr_uint = attr_s2
+        sql_attr_uint = attr_s3
+        sql_attr_uint = attr_s4
+        sql_attr_uint = attr_s5
         sql_db = syslog_data
         sql_host = localhost
         sql_pass =
         sql_range_step = 10000
         sql_user = root
-        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
+        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
         type = mysql
 }
 index permanent {
@@ -70,12 +76,18 @@ source temporary {
         sql_attr_uint = attr_i3
         sql_attr_uint = attr_i4
         sql_attr_uint = attr_i5
+        sql_attr_uint = attr_s0
+        sql_attr_uint = attr_s1
+        sql_attr_uint = attr_s2
+        sql_attr_uint = attr_s3
+        sql_attr_uint = attr_s4
+        sql_attr_uint = attr_s5
         sql_db = syslog_data
         sql_host = localhost
         sql_pass =
         sql_range_step = 100000
         sql_user = root
-        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5,i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
+        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
         type = mysql
 }
 index temporary {
