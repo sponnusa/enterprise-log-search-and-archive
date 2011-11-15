@@ -26,6 +26,7 @@ sub call {
 	}
 	my $ret;
 	eval {
+		$self->api->freshen_db;
 		$ret = $self->api->$method($args);
 		unless ($ret){
 			$ret = { error => $self->api->last_error };
