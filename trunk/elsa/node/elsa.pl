@@ -21,7 +21,7 @@ getopts('onc:', \%Opts);
 
 $| = 1;
 my $pipes     = {};
-my $conf_file = $Opts{c} ? $Opts{c} : '/etc/elsa.conf';
+my $conf_file = $Opts{c} ? $Opts{c} : '/etc/elsa_node.conf';
 my $Conf = Config::JSON->new( $conf_file );
 $Conf = $Conf->{config}; # native hash is 10x faster than using Config::JSON->get()
 
@@ -112,7 +112,7 @@ if ($Opts{o}){
 	$Run = 0;
 }
 
-$SIG{TERM} = sub { $Run = 0; warn 'Shutting down' };
+$SIG{TERM} = sub { $Run = 0; $Log->warn('Shutting down'); };
 $SIG{CHLD} = 'IGNORE'; # will do the wait() so we don't create zombies
 
 my $total_processed = 0;
@@ -167,22 +167,23 @@ sub _process_batch {
 		$args->{offline_processing_end} = 0;
 	}
 	$fh->autoflush(1);
+	$fh->blocking(1);
 	
 	die "Non-existent buffer_dir: " . $Conf->{buffer_dir}
 		unless -d $Conf->{buffer_dir};
 		
 #	$Log->debug("Starting up with batch_id: $batch_id, first_id: $first_id");
 	
-	my $start_time = Time::HiRes::time();
+	$args->{start_time} = Time::HiRes::time();
 		
-	my $tempfile = File::Temp->new( DIR => $Conf->{buffer_dir}, UNLINK => 0 );
-	unless ($tempfile){
+	$args->{tempfile} = File::Temp->new( DIR => $Conf->{buffer_dir}, UNLINK => 0 );
+	unless ($args->{tempfile}){
 		$Log->error('Unable to create tempfile: ' . $!);
 		return 0;
 	}
-	$tempfile->autoflush(1);
-	my $batch_counter = 0;
-	my $error_counter = 0;
+	$args->{tempfile}->autoflush(1);
+	$args->{batch_counter} = 0;
+	$args->{error_counter} = 0;
 	
 	# Reset the miss cache
 	$args->{cache_add} = {};
@@ -191,6 +192,8 @@ sub _process_batch {
 	local $SIG{ALRM} = sub {
 		$Log->trace("ALARM");
 		$args->{run} = 0;
+		# safety in case we don't receive any logs, we'll still do post_proc and restart loop
+		$fh->blocking(0); 
 	};
 	unless ($args->{offline_processing}){
 		alarm $Conf->{sphinx}->{index_interval};
@@ -198,29 +201,29 @@ sub _process_batch {
 	
 	while (<$fh>){	
 		eval { 
-			$tempfile->print(join("\t", @{ _parse_line($args, $_) }) . "\n");
-			$batch_counter++;
+			$args->{tempfile}->print(join("\t", @{ _parse_line($args, $_) }) . "\n");
+			$args->{batch_counter}++;
 		};
 		if ($@){
 			my $e = $@;
-			$error_counter++;
+			$args->{error_counter}++;
 			if ($Conf->{log_parse_errors}){
 				$Log->error($e) 
 			}
 		}
 		last unless $args->{run};
 	}
-		
+	
 	# Update args to be results
-	$args->{file} = $tempfile->filename();
-	$args->{start} = $args->{offline_processing} ? $args->{offline_processing_start} : $start_time;
+	$args->{file} = $args->{tempfile}->filename();
+	$args->{start} = $args->{offline_processing} ? $args->{offline_processing_start} : $args->{start_time};
 	$args->{end} = $args->{offline_processing} ? $args->{offline_processing_end} : Time::HiRes::time();
-	$args->{total_processed} = $batch_counter;
-	$args->{total_errors} = $error_counter;
+	$args->{total_processed} = $args->{batch_counter};
+	$args->{total_errors} = $args->{error_counter};
 	
 	# Report back that we've finished
-	$Log->debug("Finished job process_batch with cache hits: $batch_counter and " . (scalar keys %{ $args->{cache_add} }) . ' new programs');
-	$Log->debug('Total errors: ' . $error_counter . ' (%' . (($error_counter / $batch_counter) * 100) . ')' ) if $batch_counter;
+	$Log->debug("Finished job process_batch with cache hits: $args->{batch_counter} and " . (scalar keys %{ $args->{cache_add} }) . ' new programs');
+	$Log->debug('Total errors: ' . $args->{error_counter} . ' (%' . (($args->{error_counter} / $args->{batch_counter}) * 100) . ')' ) if $args->{batch_counter};
 	
 	my ($query, $sth);
 	if (scalar keys %{ $args->{cache_add} }){
@@ -241,22 +244,22 @@ sub _process_batch {
 		$args->{cache_add} = {};
 	}
 	
-	if ($batch_counter){
+	if ($args->{batch_counter}){
 		$query = 'INSERT INTO buffers (filename) VALUES (?)';
 		$sth = $Dbh->prepare($query);
 		$sth->execute($args->{file});
-		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $batch_counter);
+		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter});
 	}
 		
 	# Reset the run marker
 	$args->{run} = 1;
 	
 	# Fork our post-batch processor
-	return $batch_counter unless $batch_counter;
+	return $args->{batch_counter} unless $args->{batch_counter};
 	my $pid = fork();
 	if ($pid){
 		# Parent
-		return $batch_counter;
+		return $args->{batch_counter};
 	}
 	# Child
 	$Log->trace('Child started');
