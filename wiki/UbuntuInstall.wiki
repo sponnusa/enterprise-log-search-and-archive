@@ -1,0 +1,18 @@
+#summary Ridiculously easy install on Ubuntu
+#labels Featured,Phase-Deploy
+
+= Ubuntu Install =
+
+Just use the install scripts in the contrib directory.  Have a look at them, then you can execute them directly from the web if you want to use default values.  If not, download them and edit the variables at the top to place things in the desired location.  By default, everything goes to /usr/local/elsa for the program files, /usr/local for sphinx and syslog-ng, and /data for log data.  You can run the web frontend on a log node if you choose.  
+
+Mind the sudo!  Inspect these before you run them by piping to "less" before you pipe to "sh."
+
+== Node ==
+{{{
+wget --quiet -O - "http://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa/contrib/install_ubuntu_node.sh" | sudo sh
+}}}
+
+== Web frontend ==
+{{{
+wget --quiet -O - "http://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa/contrib/install_ubuntu_web.sh" | sudo sh
+}}}
