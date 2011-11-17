@@ -3753,7 +3753,11 @@ sub _build_sphinx_query {
 	
 	my $negative_qualifier = 0;
 	if (@{ $clauses{not}->{clauses} }){
-		$negative_qualifier = join(' OR ', @{ $clauses{not}->{clauses} });
+		my @clauses;
+		foreach my $clause_arr (@{ $clauses{not}->{clauses} }){
+			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
+		}
+		$negative_qualifier = join("\n" . ' OR ', @clauses);
 	}
 	
 	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier";
