@@ -29,7 +29,7 @@ cpanm Moose Config::JSON Plack::Builder Plack::App::File Date::Manip Digest::SHA
 
 # Install mysql schema
 mysqladmin "-h$MYSQL_HOST" "-P$MYSQL_PORT" -uroot create elsa_web &&
-mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -uroot -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"\@\"%\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
+mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -uroot -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"@\"%\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
 mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "source $BASE_DIR/elsa/web/conf/meta_db_schema.mysql"
 
 # Copy elsa.conf to /etc/
@@ -37,7 +37,7 @@ cp "$BASE_DIR/elsa/web/conf/elsa.conf" /etc/elsa_web.conf
 
 # For Apache, locations vary, but this is the gist:
 cpanm Plack::Handler::Apache2
-cp "$BASE_DIR/elsa/web/conf/apache_site.conf" /etc/apache2/sites-available/elsa.conf
+cp "$BASE_DIR/elsa/web/conf/apache_site.conf" /etc/apache2/sites-available/elsa
 # Enable the site
 a2ensite elsa
 a2dissite default
