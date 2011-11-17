@@ -41,6 +41,7 @@ wget "http://www.balabit.com/downloads/files/syslog-ng/open-source-edition/$SYSL
 tar xzvf "eventlog_$EVENTLOG_VER.tar.gz" &&
 cd "eventlog-$EVENTLOG_VER" &&
 ./configure && make && make install &&
+ldconfig &&
 cd $TMP_DIR &&
 wget "http://www.balabit.com/downloads/files/syslog-ng/open-source-edition/$SYSLOG_VER/source/syslog-ng_$SYSLOG_VER.tar.gz" &&
 tar xzvf "syslog-ng_$SYSLOG_VER.tar.gz" &&
@@ -86,7 +87,8 @@ echo "Sleeping for 20 seconds to allow ELSA to init..."
 sleep 20
 
 # Test
-"$BASE_DIR/syslog-ng/bin/loggen" -Di -I 10 localhost 514
+echo "Sending test log messages..."
+"$BASE_DIR/syslog-ng/bin/loggen" -Di -I 1 localhost 514
 
 # Watch the log file to make sure it's working (after wiping indexes you should see batches processed and rows indexed)
 tail -f "$DATA_DIR/elsa/log/node.log"
