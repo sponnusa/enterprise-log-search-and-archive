@@ -34,6 +34,8 @@ svn export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn
 cd sphinx-svn
 ./configure --enable-id64 "--prefix=$BASE_DIR/sphinx" && make && make install
 touch "$BASE_DIR/etc/sphinx_stopwords.txt"
+sudo cp $BASE_DIR/elsa/contrib/searchd /etc/init.d/ &&
+update-rc.d searchd defaults
 
 # Get and build syslog-ng
 cd $TMP_DIR
@@ -52,6 +54,8 @@ ln -s "$BASE_DIR/syslog-ng-$SYSLOG_VER" "$BASE_DIR/syslog-ng"
 # Copy the syslog-ng.conf
 cp "$BASE_DIR/elsa/node/conf/syslog-ng.conf" "$BASE_DIR/syslog-ng/etc/elsa.conf" &&
 mkdir "$BASE_DIR/syslog-ng/var"
+sudo cp $BASE_DIR/elsa/contrib/syslog-ng /etc/init.d/ &&
+update-rc.d syslog-ng defaults
 
 # Make data directories on node
 mkdir -p "$DATA_DIR/elsa/log" && mkdir -p "$DATA_DIR/elsa/tmp/buffers" &&
@@ -77,10 +81,10 @@ echo "" | perl "$BASE_DIR/elsa/node/elsa.pl" -on -c /etc/elsa_node.conf
 # Initialize empty sphinx indexes
 "$BASE_DIR/sphinx/bin/indexer" --config "$BASE_DIR/etc/sphinx.conf" --rotate --all
 # Start sphinx
-"$BASE_DIR/sphinx/bin/searchd" --config "$BASE_DIR/etc/sphinx.conf"
+service searchd start
 
 # Start syslog-ng using the ELSA config
-"$BASE_DIR/syslog-ng/sbin/syslog-ng" -f "$BASE_DIR/elsa/node/conf/syslog-ng.conf"
+service syslog-ng start
 
 # Sleep to allow ELSA to initialize and validate its directory
 echo "Sleeping for 20 seconds to allow ELSA to init..."

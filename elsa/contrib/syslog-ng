@@ -1,0 +1,64 @@
+#!/bin/bash
+#
+# Init file for searchd
+#
+# chkconfig: 2345 55 25
+#
+# description: searchd 
+#
+# USE "chkconfig --add searchd" to configure Sphinx searchd service
+#
+# by Vladimir Fedorkov Mar 1, 2006, info@astellar.com
+# public domain
+
+BASE_PATH=/usr/local/syslog-ng
+EXEC_PATH=$BASE_PATH/sbin
+PID_FILE=$BASE_PATH/var/syslog-ng.pid
+CONF_FILE=/usr/local/elsa/node/conf/syslog-ng.conf
+
+RETVAL=0
+prog="syslog-ng"
+
+do_start() {
+	echo "Starting $prog"
+	$EXEC_PATH/$prog -f $CONF_FILE
+	RETVAL=$?
+	echo
+	return $RETVAL
+}
+
+do_stop() {
+	echo "Stopping $prog"
+	if [ -e $PID_FILE ] ; then
+		kill -15 `cat $PID_FILE`
+		sleep 5
+		if [ -e $PID_FILE ] ; then
+			kill -9 `cat $PID_FILE`
+		fi
+	fi
+	RETVAL=$?
+	echo
+	return $RETVAL
+}
+
+case $* in
+restart)
+	do_stop
+	do_start
+	;;
+start)
+	do_start
+	;;
+
+stop)
+	do_stop
+	;;
+
+*)
+	echo "usage: $0 {start|stop|restart}" >&2
+
+	exit 1
+	;;
+esac
+
+exit $RETVAL
