@@ -37,7 +37,7 @@ svn export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn
 cd sphinx-svn
 ./configure --enable-id64 "--prefix=$BASE_DIR/sphinx" && make && make install
 touch "$BASE_DIR/etc/sphinx_stopwords.txt"
-sudo cp $BASE_DIR/elsa/contrib/searchd /etc/init.d/ &&
+cp $BASE_DIR/elsa/contrib/searchd /etc/init.d/ &&
 update-rc.d searchd defaults
 
 # Get and build syslog-ng
@@ -57,7 +57,7 @@ ln -s "$BASE_DIR/syslog-ng-$SYSLOG_VER" "$BASE_DIR/syslog-ng"
 # Copy the syslog-ng.conf
 cp "$BASE_DIR/elsa/node/conf/syslog-ng.conf" "$BASE_DIR/syslog-ng/etc/syslog-ng.conf" &&
 mkdir "$BASE_DIR/syslog-ng/var"
-sudo cp $BASE_DIR/elsa/contrib/syslog-ng /etc/init.d/ &&
+cp $BASE_DIR/elsa/contrib/syslog-ng /etc/init.d/ &&
 update-rc.d syslog-ng defaults
 
 # Make data directories on node

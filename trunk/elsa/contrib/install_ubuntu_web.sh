@@ -37,10 +37,11 @@ mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -uroot -e "GRANT ALL ON $MYSQL_DB.* TO \"$
 mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "source $BASE_DIR/elsa/web/conf/meta_db_schema.mysql"
 
 # Copy elsa.conf to /etc/
-cat "$BASE_DIR/elsa/web/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_node.conf
+cat "$BASE_DIR/elsa/web/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_web.conf
 
 # Make data directories on node
 mkdir -p "$DATA_DIR/elsa/log"
+chown -R www-data "$DATA_DIR/elsa/log"
 
 # For Apache, locations vary, but this is the gist:
 cpanm Plack::Handler::Apache2
