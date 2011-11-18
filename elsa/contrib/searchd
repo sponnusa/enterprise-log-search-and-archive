@@ -11,10 +11,7 @@
 # by Vladimir Fedorkov Mar 1, 2006, info@astellar.com
 # public domain
 
-SUDO_USER=root
-
 BASE_PATH=/usr/local/sphinx
-PID_FILE=/var/run/searchd.pid
 CONFIG_FILE=/usr/local/etc/sphinx.conf
 
 EXEC_PATH=$BASE_PATH/bin
@@ -22,13 +19,9 @@ EXEC_PATH=$BASE_PATH/bin
 RETVAL=0
 prog="searchd"
 
-do_config() {
-	return 1
-}
-
 do_start() {
 	echo "Starting $prog"
-	sudo -u $SUDO_USER $EXEC_PATH/$prog --config $CONFIG_FILE
+	start-stop-daemon --start --exec $EXEC_PATH/$prog -- --config $CONFIG_FILE
 	RETVAL=$?
 	echo
 	return $RETVAL
@@ -36,13 +29,7 @@ do_start() {
 
 do_stop() {
 	echo "Stopping $prog"
-	if [ -e $PID_FILE ] ; then
-		kill -15 `cat $PID_FILE`
-		sleep 5
-		if [ -e $PID_FILE ] ; then
-			kill -9 `cat $PID_FILE`
-		fi
-	fi
+	start-stop-daemon --stop --exec $EXEC_PATH/$prog
 	RETVAL=$?
 	echo
 	return $RETVAL
@@ -50,8 +37,9 @@ do_stop() {
 
 case $* in
 
-config)
-	do_config
+restart)
+	do_stop
+	do_start
 	;;
 
 start)
@@ -63,7 +51,7 @@ stop)
 	;;
 
 *)
-	echo "usage: $0 {start|stop|config}" >&2
+	echo "usage: $0 {start|stop|restart}" >&2
 
 	exit 1
 	;;
