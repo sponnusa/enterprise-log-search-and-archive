@@ -85,13 +85,17 @@ service searchd start
 service syslog-ng start
 
 # Sleep to allow ELSA to initialize and validate its directory
-echo "Sleeping for 20 seconds to allow ELSA to init..."
-sleep 20
+echo "Sleeping for 60 seconds to allow ELSA to init..."
+sleep 60
 
 # Test
 echo "Sending test log messages..."
 "$BASE_DIR/syslog-ng/bin/loggen" -Di -I 1 localhost 514
 
+# Sleep to allow ELSA to initialize and validate its directory
+echo "Sleeping for 60 seconds to allow ELSA to load batch..."
+sleep 60
+
 # Watch the log file to make sure it's working (after wiping indexes you should see batches processed and rows indexed)
-tail -f "$DATA_DIR/elsa/log/node.log"
+grep "Indexed temp_1 " "$DATA_DIR/elsa/log/node.log"
 
