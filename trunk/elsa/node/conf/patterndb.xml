@@ -258,7 +258,8 @@
 			</rule>
 		</rules>
 	</ruleset>-->
-	<ruleset>
+	<ruleset name="ssh">
+		<pattern>sshd</pattern>
 		<rules>
 			<rule class="11" id="11">
 				<patterns>

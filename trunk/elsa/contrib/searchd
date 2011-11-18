@@ -14,7 +14,7 @@
 SUDO_USER=root
 
 BASE_PATH=/usr/local/sphinx
-PID_FILE=$BASE_PATH/var/searchd.pid
+PID_FILE=/var/run/searchd.pid
 CONFIG_FILE=/usr/local/etc/sphinx.conf
 
 EXEC_PATH=$BASE_PATH/bin

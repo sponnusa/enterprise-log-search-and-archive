@@ -2,6 +2,7 @@
 
 # CONFIG VARIABLES
 BASE_DIR="/usr/local"
+DATA_DIR="/data"
 TMP_DIR="/tmp"
 MYSQL_HOST="localhost"
 MYSQL_PORT="3306"
@@ -18,6 +19,9 @@ echo "debconf debconf/frontend select noninteractive" | debconf-set-selections
 # Install required packages
 apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2
 
+# Make debconf interactive again
+echo "debconf debconf/frontend select readline" | debconf-set-selections
+
 # Get the latest code from Google Code
 cd $BASE_DIR
 svn export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa"
@@ -33,7 +37,10 @@ mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -uroot -e "GRANT ALL ON $MYSQL_DB.* TO \"$
 mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "source $BASE_DIR/elsa/web/conf/meta_db_schema.mysql"
 
 # Copy elsa.conf to /etc/
-cp "$BASE_DIR/elsa/web/conf/elsa.conf" /etc/elsa_web.conf
+cat "$BASE_DIR/elsa/web/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_node.conf
+
+# Make data directories on node
+mkdir -p "$DATA_DIR/elsa/log"
 
 # For Apache, locations vary, but this is the gist:
 cpanm Plack::Handler::Apache2
@@ -42,10 +49,11 @@ cp "$BASE_DIR/elsa/web/conf/apache_site.conf" /etc/apache2/sites-available/elsa
 a2ensite elsa
 a2dissite default
 a2enmod rewrite
-sudo service apache2 restart
+service apache2 restart
 
 # Setup alerts (optional)
 echo "Adding cron entry for alerts..."
 # Edit /etc/elsa_web.conf and set the "smtp_server" and "to" fields under "email"
 echo "* * * * * perl $BASE_DIR/elsa/web/cron.pl -c /etc/elsa_web.conf 2>&1 > /dev/null" >> /var/spool/cron/crontabs/root
-
+chmod 600 /var/spool/cron/crontabs/root
+service cron restart

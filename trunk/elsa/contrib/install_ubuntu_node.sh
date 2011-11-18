@@ -17,6 +17,9 @@ echo "debconf debconf/frontend select noninteractive" | debconf-set-selections
 # Install required packages
 apt-get -qy install curl subversion gcc g++ mysql-server libmysqlclient-dev pkg-config libglib2.0-dev libpcre3-dev libcap-dev libnet1-dev libssl-dev
 
+# Make debconf interactive again
+echo "debconf debconf/frontend select readline" | debconf-set-selections
+
 # Get the latest code from Google Code
 cd $BASE_DIR
 svn export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa"
@@ -52,7 +55,7 @@ cd "syslog-ng-$SYSLOG_VER" &&
 make && make install && 
 ln -s "$BASE_DIR/syslog-ng-$SYSLOG_VER" "$BASE_DIR/syslog-ng"
 # Copy the syslog-ng.conf
-cp "$BASE_DIR/elsa/node/conf/syslog-ng.conf" "$BASE_DIR/syslog-ng/etc/elsa.conf" &&
+cp "$BASE_DIR/elsa/node/conf/syslog-ng.conf" "$BASE_DIR/syslog-ng/etc/syslog-ng.conf" &&
 mkdir "$BASE_DIR/syslog-ng/var"
 sudo cp $BASE_DIR/elsa/contrib/syslog-ng /etc/init.d/ &&
 update-rc.d syslog-ng defaults
@@ -68,12 +71,7 @@ mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "biglog"
 mysql -uelsa -pbiglog syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql"
 
 # Copy elsa.conf to /etc/
-cp "$BASE_DIR/elsa/node/conf/elsa.conf" /etc/elsa_node.conf
-
-# Edit the elsa_node.conf for any customizations
-# Edit database and make user/pass match the web node install above
-# Edit log_size_limit to be maximum space you'll allow for logs
-# The other settings should be fine if you're using the dirs referred to in this doc.
+cat "$BASE_DIR/elsa/node/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_node.conf
 
 # Run elsa.pl for initial creation of sphinx config
 echo "" | perl "$BASE_DIR/elsa/node/elsa.pl" -on -c /etc/elsa_node.conf
