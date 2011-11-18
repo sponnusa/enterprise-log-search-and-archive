@@ -78,7 +78,7 @@ YAHOO.ELSA.Admin.main = function(){
 			    pageLinks          : 10,
 		        rowsPerPage        : 5,
 		        rowsPerPageOptions : [15,30,60],
-		        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink}",
+		        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
 		        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
 		    });
 		    var oDefaultDataTableCfg = {

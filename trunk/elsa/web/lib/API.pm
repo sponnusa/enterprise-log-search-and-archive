@@ -507,7 +507,7 @@ sub get_user_info {
 	}
 	$self->log->debug('User info thus far: ' . Dumper($user_info));
 
-	$user_info->{permissions} = $self->_get_permissions($user_info->{groups})
+	$user_info->{permissions} = $self->_get_permissions($user_info->{groups}, $user_info->{is_admin})
 		or ($self->log->error('Unable to get permissions') and return 0);
 	$self->log->debug('got permissions: ' . Dumper($user_info->{permissions}));
 
@@ -522,44 +522,50 @@ sub get_user_info {
 
 
 sub _get_permissions {
-	my ($self, $groups) = @_;
+	my ($self, $groups, $is_admin) = @_;
 	return {} unless $groups and ref($groups) eq 'ARRAY' and scalar @$groups;
 	my ($query, $sth);
 	
 	# Find group permissions
 	my %permissions;
 	ATTR_LOOP: foreach my $attr qw(class_id host_id program_id node_id){
-		$query =
-		  'SELECT DISTINCT attr_id' . "\n" .
-		  'FROM groups t1' . "\n" .
-		  'LEFT JOIN permissions t2 ON (t1.gid=t2.gid)' . "\n" .
-		  'WHERE attr=? AND t1.groupname IN (';
-		my @values = ( $attr );
-		my @placeholders;
-		foreach my $group ( @{ $groups } ) {
-			push @placeholders ,       '?';
-			push @values, $group;
+		if ($is_admin){
+			$permissions{$attr} = { 0 => 1 };
+			next ATTR_LOOP;
 		}
-		$query .= join( ', ', @placeholders ) . ')';
-		$sth = $self->db->prepare($query);
-		$sth->execute(@values);
-		my @arr;
-		while (my $row = $sth->fetchrow_hashref){
-			# If at any point we get a zero, that means that all are allowed, no exceptions, so bug out to the next attr loop iter
-			if ($row->{attr_id} eq '0' or $row->{attr_id} eq 0){
-				$permissions{$attr} = { 0 => 1 };
-				next ATTR_LOOP;
+		else {
+			$query =
+			  'SELECT DISTINCT attr_id' . "\n" .
+			  'FROM groups t1' . "\n" .
+			  'LEFT JOIN permissions t2 ON (t1.gid=t2.gid)' . "\n" .
+			  'WHERE attr=? AND t1.groupname IN (';
+			my @values = ( $attr );
+			my @placeholders;
+			foreach my $group ( @{ $groups } ) {
+				push @placeholders ,       '?';
+				push @values, $group;
 			}
-			push @arr, $row->{attr_id};
-		}
-		# Special case for program/node which defaults to allow
-		foreach my $allow_attr qw(program_id node_id){
-			if (scalar @arr == 0 and $attr eq $allow_attr){
-				$permissions{$attr} = { 0 => 1 };
-				next ATTR_LOOP;
+			$query .= join( ', ', @placeholders ) . ')';
+			$sth = $self->db->prepare($query);
+			$sth->execute(@values);
+			my @arr;
+			while (my $row = $sth->fetchrow_hashref){
+				# If at any point we get a zero, that means that all are allowed, no exceptions, so bug out to the next attr loop iter
+				if ($row->{attr_id} eq '0' or $row->{attr_id} eq 0){
+					$permissions{$attr} = { 0 => 1 };
+					next ATTR_LOOP;
+				}
+				push @arr, $row->{attr_id};
 			}
+			# Special case for program/node which defaults to allow
+			foreach my $allow_attr qw(program_id node_id){
+				if (scalar @arr == 0 and $attr eq $allow_attr){
+					$permissions{$attr} = { 0 => 1 };
+					next ATTR_LOOP;
+				}
+			}
+			$permissions{$attr} = { map { $_ => 1 } @arr };
 		}
-		$permissions{$attr} = { map { $_ => 1 } @arr };
 	}
 	
 	# Get filters using the values/placeholders found above
@@ -2837,7 +2843,7 @@ sub _parse_query_string {
 		$args->{permitted_classes} = $args->{node_info}->{classes_by_id};
 	}
 	else {
-		$args->{permitted_classes} = { %{ $args->{query_meta_params}->{permissions}->{class_id} } };
+		$args->{permitted_classes} = { %{ $args->{user_info}->{permissions}->{class_id} } };
 		# Drop any query terms that wanted to use an unpermitted class
 		foreach my $item qw(field_terms attr_terms){
 			foreach my $boolean qw(and or not range_and range_not range_or){
@@ -2901,7 +2907,7 @@ sub _parse_query_string {
 			
 			# Add filters for the whitelisted items
 			# If there are no exceptions to the whitelist, no query will succeed
-			if (not scalar keys %{ $args->{query_meta_params}->{permissions}->{$attr} }){
+			if (not scalar keys %{ $args->{user_info}->{permissions}->{$attr} }){
 				die 'Insufficient privileges for querying any ' . $attr; 
 			}
 			
@@ -2930,9 +2936,9 @@ sub _parse_query_string {
 				and $args->{attr_terms}->{or}->{0} 
 				and $args->{attr_terms}->{or}->{0}->{$attr}
 				and scalar keys %{ $args->{attr_terms}->{or}->{0}->{$attr} })){
-				foreach my $id (keys %{ $args->{query_meta_params}->{permissions}->{$attr} }){
+				foreach my $id (keys %{ $args->{user_info}->{permissions}->{$attr} }){
 					$self->log->trace("Adding id $id to $attr based on permissions");
-					push @{ $args->{attr_terms}->{and}->{ $args->{query_meta_params}->{permissions}->{$attr}->{$id} }->{0}->{$attr} }, $id;
+					push @{ $args->{attr_terms}->{and}->{ $args->{user_info}->{permissions}->{$attr}->{$id} }->{0}->{$attr} }, $id;
 					$num_added_terms++;
 				}
 			}
