@@ -1425,7 +1425,7 @@ searchd {
         max_batch_queries = 1000
         subtree_docs_cache = 8M
         subtree_hits_cache = 16M
-        pid_file = %1\$s/searchd.pid
+        pid_file = %2\$s
         preopen_indexes = 0
         query_log = %1\$s/query.log
         read_timeout = 5
@@ -1515,9 +1515,9 @@ index temporary {
 EOT
 ;
 
-	my $template = sprintf($template_base, $self->conf->get('logdir'), $self->conf->get('sphinx/index_path'),
-		$self->conf->get('sphinx/stopwords_file'), $self->conf->get('database/db'), $self->conf->get('database/username'),
-		$self->conf->get('database/password'));
+	my $template = sprintf($template_base, $self->conf->get('logdir'), $self->conf->get('sphinx/pid_file'),
+		$self->conf->get('sphinx/index_path'), $self->conf->get('sphinx/stopwords_file'), 
+		$self->conf->get('database/db'), $self->conf->get('database/username'), $self->conf->get('database/password'));
 
 	
 	my $perm_template = <<EOT
