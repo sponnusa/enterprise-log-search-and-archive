@@ -66,8 +66,10 @@ mkdir -p "$DATA_DIR/sphinx/log"
 
 # Install mysql schema
 mysqladmin -uroot create syslog && mysqladmin -uroot create syslog_data && 
+mysql -uroot -e 'GRANT ALL ON syslog.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
 mysql -uroot -e 'GRANT ALL ON syslog.* TO "elsa"@"%" IDENTIFIED BY "biglog"' &&
-mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "biglog"' && 
+mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
+mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "biglog"' &&  
 mysql -uelsa -pbiglog syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql"
 
 # Copy elsa.conf to /etc/

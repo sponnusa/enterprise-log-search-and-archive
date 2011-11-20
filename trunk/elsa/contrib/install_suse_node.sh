@@ -7,6 +7,7 @@ TMP_DIR="/tmp"
 EVENTLOG_VER="0.2.12"
 SYSLOG_VER="3.2.4"
 
+ntpdate time.nist.gov
 zypper update
 
 # Install required packages
@@ -28,6 +29,7 @@ cd $TMP_DIR
 svn export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn
 cd sphinx-svn
 ./configure --enable-id64 "--prefix=$BASE_DIR/sphinx" && make && make install
+mkdir -p $BASE_DIR/etc &&
 touch "$BASE_DIR/etc/sphinx_stopwords.txt"
 cp $BASE_DIR/elsa/contrib/searchd /etc/init.d/ &&
 chkconfig searchd on
@@ -59,7 +61,6 @@ mkdir -p "$DATA_DIR/sphinx/log"
 # Install mysql schema
 service mysql start
 mysqladmin -uroot create syslog && mysqladmin -uroot create syslog_data && 
-CREATE USER 'elsa'@'%' IDENTIFIED BY 'biglog'
 mysql -uroot -e 'GRANT ALL ON syslog.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
 mysql -uroot -e 'GRANT ALL ON syslog.* TO "elsa"@"%" IDENTIFIED BY "biglog"' &&
 mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
@@ -70,7 +71,6 @@ mysql -uelsa -pbiglog syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql"
 cat "$BASE_DIR/elsa/node/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_node.conf
 
 # Run elsa.pl for initial creation of sphinx config
-mkdir -p $BASE_DIR/etc
 echo "" | perl "$BASE_DIR/elsa/node/elsa.pl" -on -c /etc/elsa_node.conf
 
 # Initialize empty sphinx indexes
@@ -87,7 +87,7 @@ sleep 60
 
 # Test
 echo "Sending test log messages..."
-"$BASE_DIR/syslog-ng/bin/loggen" -Di -I 1 localhost 514
+"$BASE_DIR/syslog-ng/bin/loggen" -Di -I 1 127.0.0.1 514
 
 # Sleep to allow ELSA to initialize and validate its directory
 echo "Sleeping for 60 seconds to allow ELSA to load batch..."
