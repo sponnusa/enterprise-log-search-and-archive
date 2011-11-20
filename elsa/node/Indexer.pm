@@ -42,7 +42,8 @@ sub BUILD {
 		$self->conf->get('database/password'), 
 		{
 			RaiseError => 1, 
-			mysql_auto_reconnect => 1
+			mysql_auto_reconnect => 1,
+			mysql_local_infile => 1, # Needed by some MySQL implementations
 		})
 	) or die 'connection failed ' . $! . ' ' . $DBI::errstr;
 	$self->log->debug('db id: ' . $self->dbh_id);		
