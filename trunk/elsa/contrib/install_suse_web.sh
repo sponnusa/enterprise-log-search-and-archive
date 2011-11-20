@@ -48,6 +48,8 @@ SuSEfirewall2
  
 # Enable the site
 a2enmod rewrite
+a2enmod perl
+echo "LoadModule perl_module                 /usr/lib/apache2/mod_perl.so" >> /etc/apache2/sysconfig.d/loadmodule.conf
 service apache2 restart
 
 # Setup alerts (optional)
