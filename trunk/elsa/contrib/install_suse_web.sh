@@ -14,7 +14,7 @@ ntpdate time.nist.gov
 zypper update
 
 # Install required packages
-zypper -qn install curl subversion gcc gcc-c++ mysql-community-server-client libmysqlclient-devel apache2-prefork apache2-mod_perl apache2-mod_perl-devel
+zypper -qn install curl subversion make gcc gcc-c++ mysql-community-server-client libmysqlclient-devel apache2-prefork apache2-mod_perl apache2-mod_perl-devel
 
 # Get the latest code from Google Code
 cd $BASE_DIR
@@ -35,8 +35,8 @@ mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB 
 cat "$BASE_DIR/elsa/web/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_web.conf
 
 # Make data directories on node
-mkdir -p "$DATA_DIR/elsa/log"
-chown -R www-data "$DATA_DIR/elsa/log"
+mkdir -p "$DATA_DIR/elsa/log" &&
+chown -R wwwrun "$DATA_DIR/elsa/log"
 
 # For Apache, locations vary, but this is the gist:
 cpanm Plack::Handler::Apache2
