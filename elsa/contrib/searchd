@@ -13,6 +13,7 @@
 
 BASE_PATH=/usr/local/sphinx
 CONFIG_FILE=/usr/local/etc/sphinx.conf
+PID_FILE=/var/run/searchd.pid
 
 EXEC_PATH=$BASE_PATH/bin
 
@@ -21,7 +22,8 @@ prog="searchd"
 
 do_start() {
 	echo "Starting $prog"
-	start-stop-daemon --start --exec $EXEC_PATH/$prog -- --config $CONFIG_FILE
+	#start-stop-daemon --start --exec $EXEC_PATH/$prog -- --config $CONFIG_FILE
+	$EXEC_PATH/$prog --config $CONFIG_FILE
 	RETVAL=$?
 	echo
 	return $RETVAL
@@ -29,7 +31,14 @@ do_start() {
 
 do_stop() {
 	echo "Stopping $prog"
-	start-stop-daemon --stop --exec $EXEC_PATH/$prog
+	#start-stop-daemon --stop --exec $EXEC_PATH/$prog
+	if [ -e $PID_FILE ] ; then
+		kill -15 `cat $PID_FILE`
+		sleep 5
+		if [ -e $PID_FILE ] ; then
+		        kill -9 `cat $PID_FILE`
+		fi
+	fi
 	RETVAL=$?
 	echo
 	return $RETVAL
