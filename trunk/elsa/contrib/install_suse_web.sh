@@ -36,6 +36,7 @@ cat "$BASE_DIR/elsa/web/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | 
 
 # Make data directories on node
 mkdir -p "$DATA_DIR/elsa/log" &&
+touch "$DATA_DIR/elsa/log/web.log" &&
 chown -R wwwrun "$DATA_DIR/elsa/log" &&
 echo "Created and set permissions for log dir $DATA_DIR/elsa/log"
 
@@ -52,6 +53,8 @@ a2enmod rewrite
 a2enmod perl
 echo "LoadModule perl_module                 /usr/lib/apache2/mod_perl.so" >> /etc/apache2/sysconfig.d/loadmodule.conf
 service apache2 restart
+# Verify that we can write to logs
+chown -R wwwrun "$DATA_DIR/elsa/log"
 
 # Setup alerts (optional)
 echo "Adding cron entry for alerts..."
