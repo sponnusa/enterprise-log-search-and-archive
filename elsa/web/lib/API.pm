@@ -1528,6 +1528,7 @@ sub get_form_params {
 	my $form_params = {
 		start => _epoch2iso($node_info->{min}),
 		start_int => $node_info->{min},
+		display_start_int => $node_info->{min},
 		end => _epoch2iso($node_info->{max}),
 		end_int => $node_info->{max},
 		classes => $node_info->{classes},
@@ -1535,6 +1536,11 @@ sub get_form_params {
 		fields => $node_info->{fields},
 		nodes => [ keys %{ $node_info->{nodes} } ],
 	};
+	
+	# You can change the default start time displayed to web users by changing this config setting
+	if ($self->conf->get('default_start_time_offset')){
+		$form_params->{display_start_time} = ($node_info->{max} - (86400 * $self->conf->get('default_start_time_offset')));
+	}
 	
 	
 	if ($args and $args->{permissions}){
@@ -2504,7 +2510,7 @@ sub _sphinx_query {
 				$self->log->debug('Sphinx query for node ' . $node . ' finished in ' . (time() - $start));
 				my ($dbh, $result, $rv) = @_;
 				if (not $rv){
-					my $e = 'node ' . $node . ' got error ' . $@;
+					my $e = 'node ' . $node . ' got error ' . $result;
 					$self->log->error($e);
 					$self->add_warning($e);
 					$cv->end;
@@ -2809,29 +2815,22 @@ sub _parse_query_string {
 		die('No query terms given');
 	}
 	
-	# Determine if there are any other search fields.  If there are, then use host as a filter.
-	$self->log->debug('field_terms: ' . Dumper($args->{field_terms}));
-	my $host_is_filter = 0;
-	foreach my $boolean qw(and or){
-		foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
-			next unless $class_id;
-			$host_is_filter++;
-		}
-		foreach my $term (@{ $args->{any_field_terms}->{$boolean} }){
-			$host_is_filter++;
-		}
-	}
-	if ($host_is_filter){
-		$self->log->trace('Using host as a filter because there were ' . $host_is_filter . ' query terms.');
-		$self->log->trace('$args->{field_terms} before adjustment: ' . Dumper($args->{field_terms}));
-		foreach my $boolean qw(or and not){
-			next unless $args->{field_terms}->{$boolean} 
-				and $args->{field_terms}->{$boolean}->{0} 
-				and $args->{field_terms}->{$boolean}->{0}->{host};
-			$args->{attr_terms}->{$boolean} ||= {};
-			$args->{attr_terms}->{$boolean}->{0} ||= {};
-			$args->{attr_terms}->{$boolean}->{0}->{host_id} = { map { $_ => 1 } @{ delete $args->{field_terms}->{$boolean}->{0}->{host} } };
-			$self->log->debug('swapping host_id field terms to be attr terms for boolean ' . $boolean);
+	# One-off for dealing with hosts as fields
+	foreach my $boolean qw(and or not){
+		foreach my $op (keys %{ $args->{attr_terms}->{$boolean} }){
+			if ($args->{attr_terms}->{$boolean}->{$op}->{host} 
+				and $args->{attr_terms}->{$boolean}->{$op}->{host}->{0}
+				and $args->{attr_terms}->{$boolean}->{$op}->{host}->{0}->{host_id}){
+				foreach my $host_int (@{ $args->{attr_terms}->{$boolean}->{$op}->{host}->{0}->{host_id} }){
+					if ($self->_is_permitted($args, 'host_id', $host_int)){
+						$self->log->trace('adding host_int ' . $host_int);
+						push @{ $args->{any_field_terms}->{$boolean} }, '(@host ' . $host_int . ')';
+					}
+					else {
+						die "Insufficient permissions to query host_int $host_int";
+					}
+				}
+			}
 		}
 	}
 
@@ -2945,23 +2944,25 @@ sub _parse_query_string {
 		}
 	}
 	
-	# One-off for dealing with hosts as fields
-	foreach my $boolean qw(and or not){
-		if ($args->{field_terms}->{$boolean}->{0} and $args->{field_terms}->{$boolean}->{0}->{host}){
-			foreach my $host_int (@{ $args->{field_terms}->{$boolean}->{0}->{host} }){
-				if ($self->_is_permitted($args, 'host_id', $host_int)){
-					$self->log->trace('adding host_int ' . $host_int);
-					push @{ $args->{any_field_terms}->{$boolean} }, '(@host ' . $host_int . ')';
-					# Also add as an attr
-					push @{ $args->{attr_terms}->{$boolean}->{'='}->{0}->{host_id} }, $host_int;
-				}
-				else {
-					die "Insufficient permissions to query host_int $host_int";
-				}
-			}
-			delete $args->{field_terms}->{$boolean}->{0}->{host};
-		}
-	}
+#	foreach my $boolean qw(and or not){
+#		if ($args->{field_terms}->{$boolean}->{0} and $args->{field_terms}->{$boolean}->{0}->{host}){
+#			foreach my $host_int (@{ $args->{field_terms}->{$boolean}->{0}->{host} }){
+#				if ($self->_is_permitted($args, 'host_id', $host_int)){
+#					$self->log->trace('adding host_int ' . $host_int);
+#					push @{ $args->{any_field_terms}->{$boolean} }, '(@host ' . $host_int . ')';
+#					# Also add as an attr
+#					push @{ $args->{attr_terms}->{$boolean}->{'='}->{0}->{host_id} }, $host_int;
+#				}
+#				else {
+#					die "Insufficient permissions to query host_int $host_int";
+#				}
+#			}
+#			delete $args->{field_terms}->{$boolean}->{0}->{host};
+#			unless (scalar keys %{ $args->{field_terms}->{$boolean}->{0} }){
+#				delete $args->{field_terms}->{$boolean}->{0};
+#			}
+#		}
+#	}
 	
 	# Optimization: for the any-term fields, only search on the first term and use the rest as filters if the fields are int fields
 	foreach my $boolean qw(and not){
@@ -3031,6 +3032,32 @@ sub _parse_query_string {
 					$self->log->warn($err);
 					$num_removed_terms++;
 					# Drop the term
+					delete $args->{any_field_terms}->{$boolean}->{$term};
+				}
+			}
+		}
+	}
+	
+	# Determine if there are any other search fields.  If there are, then use host as a filter.
+	$self->log->debug('field_terms: ' . Dumper($args->{field_terms}));
+	$self->log->debug('any_field_terms: ' . Dumper($args->{any_field_terms}));
+	my $host_is_filter = 0;
+	foreach my $boolean qw(and or){
+		foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
+			next unless $class_id;
+			$host_is_filter++;
+		}
+		foreach my $term (sort keys %{ $args->{any_field_terms}->{$boolean} }){
+			next if $term =~ /^\(\@host \d+\)$/; # Don't count host here
+			$host_is_filter++;
+		}
+	}
+	if ($host_is_filter){
+		$self->log->trace('Using host as a filter because there were ' . $host_is_filter . ' query terms.');
+		foreach my $boolean qw(or and not){
+			foreach my $term (sort keys %{ $args->{any_field_terms}->{$boolean} }){
+				if ($term =~ /^\(\@host \d+\)$/){
+					$self->log->trace('Deleted term ' . $term);
 					delete $args->{any_field_terms}->{$boolean}->{$term};
 				}
 			}
@@ -3261,6 +3288,12 @@ sub _parse_query_term {
 					$term_hash->{value}, 
 					$term_hash->{op}
 				);
+				
+#				if ($term_hash->{field} eq 'host'){
+#					# special case for host which is also a field
+#					$values->{fields}->{0}->{host} = unpack('N*', inet_aton($term_hash->{value}));
+#				}
+			
 				
 				if ($term_hash->{op} !~ /[\<\>]/){ # ignore ranges
 					foreach my $class_id (keys %{ $values->{fields} }){

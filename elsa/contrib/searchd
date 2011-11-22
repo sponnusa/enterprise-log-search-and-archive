@@ -40,7 +40,6 @@ do_stop() {
 		fi
 	fi
 	RETVAL=$?
-	echo
 	return $RETVAL
 }
 
