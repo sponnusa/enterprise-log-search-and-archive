@@ -372,10 +372,13 @@ YAHOO.ELSA.main = function () {
 				id: 'query_menu'
 			}
 		};
+		
+		var oStartDate = new Date((formParams.display_start_time) * 1000);
+				
 		oFormGridCfg['grid'] = [
 			[ 
 				{type:'text', args:'From'}, 
-				{type:'input', args:{id:'start_time', size:15, value:formParams.start}}, 
+				{type:'input', args:{id:'start_time', size:15, value:getISODateTime(oStartDate)}}, 
 				{type:'text', args:'To'},
 				{type:'input', args:{id:'end_time', size:15}},
 				{type:'widget', className:'Button', args:oTermMenuButtonCfg},
@@ -392,6 +395,10 @@ YAHOO.ELSA.main = function () {
 			
 			YAHOO.util.Dom.get('query_form').appendChild(oTargetForm);
 			
+			// Tack on the tooltip for earliest start date
+			var oStartToolTip = new YAHOO.widget.Tooltip('start_time_tool_tip', { context: 'start_time', text: 'Earliest: ' + formParams.start});
+			var oStartToolTip = new YAHOO.widget.Tooltip('end_time_tool_tip', { context: 'end_time', text: 'Latest: ' + formParams.end});
+						
 			/* Put the cursor in the main search field */
 			if (YAHOO.util.Dom.get('q')){
 				YAHOO.util.Dom.get('q').focus();	
