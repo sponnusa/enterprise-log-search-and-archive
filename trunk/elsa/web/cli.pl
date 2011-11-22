@@ -24,7 +24,7 @@ my $user_info = $api->get_user_info('system');
 
 my $result = $api->query({query_string => $opts{q}, user_info => $user_info});
 my $duration = time() - $start;
-exit unless $result and ref($result) eq 'HASH' and $result->{results} and ref($result->{results}) eq 'ARRAY';
+exit unless $result and ref($result) eq 'HASH' and $result->{results} and ref($result->{results});
 $result->{format} = $opts{f} ? $opts{f} : 'tsv';
 if ($result->{errors}){
 	foreach (@{ $result->{errors} }){

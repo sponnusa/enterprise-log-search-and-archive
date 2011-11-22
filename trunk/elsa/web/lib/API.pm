@@ -2605,6 +2605,12 @@ sub _sphinx_query {
 						# We will resolve later
 						$key = $sphinx_row->{'@groupby'};
 					}
+					elsif ($groupby eq 'program'){
+						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{program};
+					}
+					elsif ($groupby eq 'class'){
+						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{class};
+					}
 					elsif (exists $Field_to_order->{ $groupby }){
 						# Resolve normally
 						$key = $self->_resolve_value($args, $sphinx_row->{class_id}, 
@@ -3233,6 +3239,9 @@ sub _parse_query_term {
 				if ($field_infos or $term_hash->{value} eq 'node'){
 					$args->{groupby} ||= [];
 					push @{ $args->{groupby} }, lc($term_hash->{value});
+					foreach my $class_id (keys %$field_infos){
+						$args->{given_classes}->{$class_id} = 1;
+					}
 					$self->log->trace("Set groupby " . Dumper($args->{groupby}));
 				}
 				next;
@@ -3812,12 +3821,12 @@ sub _build_sphinx_query {
 	my @values = (@{ $clauses{and}->{vals} }, @{ $clauses{or}->{vals} }, @{ $clauses{not}->{vals} });
 	
 	# Check for no-class super-user query
-	unless (($args->{user_info}->{permissions}->{class_id}->{0} and $args->{given_classes}->{0})
-		#not (scalar keys %{ $args->{given_classes} }))
-		or $args->{groupby}){
+#	unless (($args->{user_info}->{permissions}->{class_id}->{0} and $args->{given_classes}->{0})
+#		#not (scalar keys %{ $args->{given_classes} }))
+#		or $args->{groupby}){
 		$where .= ' AND class_id IN (' . join(',', map { '?' } keys %{ $args->{distinct_classes} }) . ')';
 		push @values, sort keys %{ $args->{distinct_classes} };
-	}
+#	}
 	# Check for time given
 	if ($args->{start_int} and $args->{end_int}){
 		$where .= ' AND timestamp BETWEEN ? AND ?';
