@@ -1,0 +1,121 @@
+#summary User Guide for ELSA
+#labels Featured
+
+=Introduction=
+Enterprise Log Search and Archive is a solution to achieve the following:
+ * Normalize, store, and index logs at unlimited volumes and rates
+ * Provide a simple and clean search interface and API
+ * Provide an infrastructure for alerting, reporting and sharing logs
+ * Control user actions with local or LDAP/AD-based permissions
+ * Exist as a completely free and open-source project
+
+ELSA accomplishes these goals by harnessing the highly-specialized strengths of other open-source projects:  Perl provides the glue to asynchronously tie the log receiver (Syslog-NG) together with storage (MySQL) and indexing (Sphinx Search) and serves this over a web interface provided either by Apache or any other web server, including a standalone pure-Perl server for a lighter footprint.
+
+==Why ELSA?==
+I wrote ELSA because commercial tools were both lacking and cost prohibitive.  The only tool that provided the features I needed was Splunk.  Unfortunately, it was cost prohibitive and was too slow to receive the log volume I wanted on the hardware I had available.  ELSA is inspired by Splunk but is focused on speed versus dashboards and presentation.
+
+In designing ELSA, I tried the following components but found them too slow.  Here they are ordered from fastest to slowest for indexing speeds (non-scientifically tested):
+ # Tokyo Cabinet
+ # MongoDB
+ # TokuDB MySQL plugin
+ # Elastic Search (Lucene)
+ # Splunk
+ # HBase
+ # CouchDB
+ # MySQL Fulltext
+
+=Capabilities=
+
+ELSA achieves n node scalability by allowing every log receiving node to operate completely independently of the others.  Queries from a client through the API against the nodes are sent in parallel so the query will take only the amount of time the of the longest response.  Query results are aggregated by the API before being sent to the client as a response.  Response times vary depending on the number of query terms and their selectivity, but a given node on modest hardware takes about one half second per billion log entries.
+
+Log reception rates greater than 50,000 events per second per node are achieved through the use of a fast pattern parser in Syslog-NG called PatternDB.  The pattern parser allows Syslog-NG to normalize logs without resorting to computationally expensive regular expressions.  This allows for sustained high log reception rates in Syslog-NG which are piped directly to a Perl program which further normalizes the logs and prepares large text files for batch inserting into MySQL.  MySQL is capable of inserting over 100,000 rows per second when batch loading like this.  After each batch is loaded, Sphinx indexes the newly inserted rows in temporary indexes, then again in larger batches every few hours in permanent indexes.  
+
+Sphinx can create temporary indexes at a rate of 50,000 logs per second consolidate these temporary indexes at around 35,000 logs per second, which becomes the terminal sustained rate for a given node.  The effective bursting rate is around 100,000 logs per second, which is the upper bound of Syslog-NG on most platforms.  If indexing cannot keep up, a backlog of raw text files will accumulate.  In this way, peaks of several hours or more can be endured without log loss but with an indexing delay.
+
+The overall flow diagram looks like this:
+
+Live, continuously:
+
+Network → Syslog-NG → Raw text file
+
+Batch load (by default every minute):
+
+Raw text file → MySQL → Sphinx
+
+=File Locations=
+
+The main ELSA configuration files are /etc/elsa_node.conf and /etc/elsa_web.conf.  All configuration is controlled through these files, except for query permissions which are stored in the database and administrated through the web interface.  Nodes read in the elsa_node.conf file every batch load, so changes may be made to it without having to restart Syslog-NG.
+
+Most Linux distributions do not ship recent versions of Syslog-NG.  Therefore, the install compiles it from source and installs it to $BASE_DIR/syslog-ng with the configuration file in $BASE_DIR/syslog-ng/etc/, where it will be read by default.  By default, $BASE_DIR is /usr/local and $DATA_DIR is /data.  Syslog-NG writes raw files to $DATA_DIR/elsa/tmp/buffers/<random file name> and loads them into the index and archive tables at an interval configured in the elsa_node.conf file, which is 60 seconds by default.  The files are deleted upon successful load.  When the logs are bulk inserted into the database, Sphinx is called to index the new rows.  When indexing is complete, the loader notes the new index in the database which will make it available to the next query.  Indexes are stored in $DATA_DIR/sphinx and comprise about as much space as the raw data stored in MySQL.  
+
+Archive tables typically compress at a 10:1 ratio, and therefore use only about 5% of the total space allocated to logs compared with the index tables and indexes themselves.  The index tables are necessary because Sphinx searches return only the ID's of the matching logs, not the logs themselves, therefore a primary key lookup is required to retrieve the raw log for display.  For this reason, archive tables alone are insufficient because they do not contain a primary key.
+
+=Web Server=
+
+The web frontend is typically served with Apache, but the Plack Perl module allows for any web server to be used, including a standalone server called Starman which can be downloaded from CPAN.  Any implementation will still have all authentication features available because they are implemented in the underlying Perl.
+
+The server is backended on the ELSA web database, (elsa_web by default), which stores user information including permissions, query log, stored results, and query schedules for alerting.
+
+Admins are designated by configuration variables in the elsa_web.conf file, either by system group when using local auth, or by LDAP/AD group when using LDAP auth.  To designate a group as an admin, add the group to the array in the configuration.  Under the “none” auth mode, all users are admins because they are all logged in under a single pseudo-username.  
+
+=Configuration=
+
+Most settings in the elsa_web.conf and elsa_node.conf files should be fine with the defaults, but there are a few important settings which need to be changed depending on the environment.
+==elsa_web.conf:==
+ * Nodes: Contains the connection information to the log node databases which hold the actual data.
+ * Auth_method: Controls how authentication and authorization occurs.  For LDAP, the ldap settings must also be filled out.
+ * Link_key: should be changed to something other than the default.  It is used to salt the auth hashes for permalinks.
+ * Email: For alerts and archive query notifications, you need to setup the email server to use.
+ * Meta_db: Should point to the database which stores the web management information.  This can reside on a node, but probably shouldn't.  The performance won't be much of a factor, so running this locally on the web server should be fine.
+==elsa_node.conf:==
+ * Database: Edit the connection settings for the local database, if non-default.
+ * Log_size_limit: Total size in bytes allowed for all logs and indexes.
+ * Sphinx/perm_index_size: This setting must be tweaked so that perm_index_size number of logs come into the system before (num_indexes * sphinx/index_interval) seconds pass.
+ * Archive/percentage: Percentage of log_size_limit reserved for archive.
+
+=Permissions=
+
+Log access is permitted by allowing certain groups either universal access or a whitelist of attributes.  The attributes can be log hosts (the hosts that initially generate the logs), ranges of hosts (by IP), log classes, or log nodes (the nodes that store the logs).  Groups can be either AD groups or local system groups, as per the configuration.
+
+=Queries=
+
+Query syntax is loosely based on Google search syntax.  Terms are searched as whole keywords (no wildcards).  Searches may contain boolean operations specifying that a term is required using the plus sign, negating using the minus sign, or no sign indicating that it is an “OR.”  Parenthesis may be used to group terms.  Numeric fields, including hosts, may have greater than or less than (and equal to) operators combined with the boolean operators.  Queries can be very simple, like looking for any mention of an IP addres:
+{{{
+10.0.20.1
+}}}
+Or a website
+{{{
+site:www.google.com
+}}}
+Here is an example query for finding Symantec Anti-Virus alerts on Windows logs on ten hosts that does not contain the keyword “TrackingCookie:”
+{{{
++eventid:51 host>10.0.0.10 host<10.0.0.20 -TrackingCookie
+}}}
+One could also look for account lockouts that do not come from certain hosts:
+{{{
++class:windows +locked -host>10.0.0.10 -host<10.0.0.20
+}}}
+To see what hosts have had lockout events, one could run:
+{{{
++class:windows +”locked out”
+}}}
+and choose the ANY.host field from the “Report On” menu.
+
+When the API issues the query, it is parsed and sent to Sphinx.  It then receives the log ID's that match and the API queries MySQL for those ID's:
+
+Query → Parse → Authorize → Log → Sphinx → MySQL → Aggregation → Presentation
+
+=Archive Queries=
+
+Queries for logs in the archive tables take much longer than indexed queries.  For this reason, they are run in the background and the requester is notified via email when the query results are ready.  The results are viewed through the link in the email or through the web interface menu for “Saved Results.”  Archive queries are run exactly like normal queries except that the “Index” toggle button is changed to “Archive.”  They may be performed on the same time range available in the indexed logs as a way of performing wildcard searches not restricted to a keyword.  For example, if it was necessary to find a log matching a partial word, one could run an archive search with a narrow time selection.  A user may only run a single archive query at a time to prevent system overload.  In addition, there is a configuration variable specifying how many concurrent users may run an archive query (the default is four).  Most systems can search about 10 million logs per minute per node from the archive.  The overall flow looks like this:
+
+Archive Query → Parse → Authorize → Log → Batch message to user
+ 				(then in background)	→ MySQL → Store in web MySQL → Email
+
+=Alerts=
+
+Any query that has been run may be turned into an alert by clicking the “Results...” menu button and choosing “alert.”  This will execute the exact same search after every new batch of logs is loaded, and will notify the user via email of new hits in a manner similar to the archive search results.
+
+=Scheduled Queries=
+
+Any query may be scheduled to run at a specified interval.  This can be useful for creating daily or hourly reports.  Creating the scheduled query is similar to creating the alert in that you choose the option from the “Results...” button after performing a search you wish to create a report from.
