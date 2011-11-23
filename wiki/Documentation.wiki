@@ -7,6 +7,7 @@ Enterprise Log Search and Archive is a solution to achieve the following:
  * Provide a simple and clean search interface and API
  * Provide an infrastructure for alerting, reporting and sharing logs
  * Control user actions with local or LDAP/AD-based permissions
+ * Plugin system for taking actions with logs
  * Exist as a completely free and open-source project
 
 ELSA accomplishes these goals by harnessing the highly-specialized strengths of other open-source projects:  Perl provides the glue to asynchronously tie the log receiver (Syslog-NG) together with storage (MySQL) and indexing (Sphinx Search) and serves this over a web interface provided either by Apache or any other web server, including a standalone pure-Perl server for a lighter footprint.
@@ -36,11 +37,21 @@ The overall flow diagram looks like this:
 
 Live, continuously:
 
-Network → Syslog-NG → Raw text file
+Network → Syslog-NG (PatternDB) → Raw text file
 
 Batch load (by default every minute):
 
 Raw text file → MySQL → Sphinx
+
+=Plugins=
+ELSA ships with several plugins:
+ * Windows logs from [eventlog-to-syslog.googlecode.com Eventlog-to-Syslog]
+ * Snort/Suricata logs
+ * Bro logs
+ * Url logs from [http://enterprise-log-search-and-archive.googlecode.com/files/httpry_logger.pl httpry_logger]
+These plugins tell the web server what to do when a user clicks the "Info" link next to each log.  It can do anything, but it is designed for returning useful information in a dialog panel in ELSA with an actions menu.  An example that ships with ELSA is that if a [http://streamdb.googlecode.com StreamDB] URL is configured (or OpenFPC) any log that has an IP address in it will have a "getPcap" option which will autofill pcap request parameters for one-click access to the traffic related to the log being viewed.
+
+New plugins can be added easily by subclassing the "Info" Perl class and editing the elsa_web.conf file to include them.  Contributions are welcome!
 
 =File Locations=
 
@@ -70,7 +81,7 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
 ==elsa_node.conf:==
  * Database: Edit the connection settings for the local database, if non-default.
  * Log_size_limit: Total size in bytes allowed for all logs and indexes.
- * Sphinx/perm_index_size: This setting must be tweaked so that perm_index_size number of logs come into the system before (num_indexes * sphinx/index_interval) seconds pass.
+ * Sphinx/perm_index_size: This setting must be tweaked so that perm_index_size number of logs come into the system before (num_indexes `*` sphinx/index_interval) seconds pass.
  * Archive/percentage: Percentage of log_size_limit reserved for archive.
 
 =Permissions=
