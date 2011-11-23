@@ -45,7 +45,7 @@ Raw text file → MySQL → Sphinx
 
 =Plugins=
 ELSA ships with several plugins:
- * Windows logs from [eventlog-to-syslog.googlecode.com Eventlog-to-Syslog]
+ * Windows logs from [http://eventlog-to-syslog.googlecode.com Eventlog-to-Syslog]
  * Snort/Suricata logs
  * Bro logs
  * Url logs from [http://enterprise-log-search-and-archive.googlecode.com/files/httpry_logger.pl httpry_logger]
