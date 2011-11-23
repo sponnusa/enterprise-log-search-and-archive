@@ -175,7 +175,8 @@ set_node_mysql(){
 	mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "biglog"'
 	
 	# Above could fail with db already exists, but this is the true test for success
-	mysql -uelsa -pbiglog syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql"
+	mysql -uelsa -pbiglog syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql" &&
+	enable_service "$MYSQL_SERVICE_NAME"
 	return $?
 }
 
@@ -284,10 +285,10 @@ suse_set_apache(){
 	cpanm Plack::Handler::Apache2 &&
 	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/vhosts.d/elsa.conf &&
 	# Allow firewall port for apache web server
-	echo "opening firewall port 80" &&
-	cp /etc/sysconfig/SuSEfirewall2 /etc/sysconfig/SuSEfirewall2.bak_by_elsa && 
-	cat /etc/sysconfig/SuSEfirewall2.bak_by_elsa | sed -e "s|FW_CONFIGURATIONS_EXT=\"|FW_CONFIGURATIONS_EXT=\"apache2 |" > /etc/sysconfig/SuSEfirewall2 &&
-	SuSEfirewall2 &&
+	#echo "opening firewall port 80" &&
+	#cp /etc/sysconfig/SuSEfirewall2 /etc/sysconfig/SuSEfirewall2.bak_by_elsa && 
+	#cat /etc/sysconfig/SuSEfirewall2.bak_by_elsa | sed -e "s|FW_CONFIGURATIONS_EXT=\"|FW_CONFIGURATIONS_EXT=\"apache2 |" > /etc/sysconfig/SuSEfirewall2 &&
+	#SuSEfirewall2 &&
 	 
 	# Enable the site
 	a2enmod rewrite &&
@@ -296,6 +297,7 @@ suse_set_apache(){
 	# Verify that we can write to logs
 	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
 	service apache2 restart
+	enable_service "apache2"
 	return $?
 }
 
@@ -309,6 +311,7 @@ ubuntu_set_apache(){
 	a2enmod rewrite &&
 	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
 	service apache2 restart
+	enable_service "apache2"
 	return $?
 }
 
@@ -323,11 +326,12 @@ centos_set_apache(){
 	chcon --reference=/var/log/httpd/error_log -R $DATA_DIR &&
 	setsebool -P httpd_can_network_connect on &&
 	service httpd restart
+	enable_service "httpd"
 	# Set firewall
-	echo "opening firewall port 80" &&
-	cp /etc/sysconfig/iptables /etc/sysconfig/iptables.bak.elsa &&
-	cat /etc/sysconfig/iptables.bak.elsa | sed -e "s|-A INPUT -i lo -j ACCEPT|-A INPUT -i lo -j ACCEPT\n-A INPUT -m state --state NEW -m tcp -p tcp --dport 80 -j ACCEPT|" > /etc/sysconfig/iptables &&
-	service iptables restart
+	#echo "opening firewall port 80" &&
+	#cp /etc/sysconfig/iptables /etc/sysconfig/iptables.bak.elsa &&
+	#cat /etc/sysconfig/iptables.bak.elsa | sed -e "s|-A INPUT -i lo -j ACCEPT|-A INPUT -i lo -j ACCEPT\n-A INPUT -m state --state NEW -m tcp -p tcp --dport 80 -j ACCEPT|" > /etc/sysconfig/iptables &&
+	#service iptables restart
 	return $?
 }
 
@@ -377,4 +381,7 @@ elif [ "$INSTALL" = "web" ]; then
 		exec_func $OP
 	fi
 fi
+
+echo "!!!!!! IMPORTANT !!!!!!!!!"
+echo "If you have a host-based firewall like IPTables running, remember to allow ports 80 (and/or 443) for the web server and ports 514 (syslog), 3306 (MySQL), and 3307 (Sphinx) for log nodes"
 
