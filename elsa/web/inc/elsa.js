@@ -1274,6 +1274,14 @@ YAHOO.ELSA.Form.prototype.appendItem = function(p_oEl, p_oArgs){
 			p_oArgs.callback(p_oArgs, oInputEl, p_oEl);
 		}
 	}
+	else if (p_oArgs.type == 'element'){
+		logger.log('element args:', p_oArgs);
+		var oEl = document.createElement(p_oArgs.element);
+		for (var arg in p_oArgs.args){
+			oEl[arg] = p_oArgs.args[arg];
+		}
+		p_oEl.appendChild(oEl);
+	}
 	else {
 		throw 'Unknown grid type: ' + p_oArgs.type;
 	}
