@@ -1318,7 +1318,7 @@ sub _get_node_info {
 		
 		
 		# Get indexes
-		$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records FROM %s.v_indexes WHERE ISNULL(locked_by) AND type!="unavailable" ORDER BY start', 
+		$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records FROM %s.v_indexes ORDER BY start', 
 			$nodes->{$node}->{db});
 		$cv->begin;
 		$self->log->trace($query);
