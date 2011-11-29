@@ -777,6 +777,7 @@ YAHOO.ELSA.Results = function(){
 	this.id = YAHOO.ELSA.queryResultCounter;
 	logger.log('my id: ' + this.id);
 	this.highlights = {};
+	this.apply_highlights = [];
 	
 	var oSelf = this;
 	
@@ -789,7 +790,11 @@ YAHOO.ELSA.Results = function(){
 			var msg = cloneVar(oRecord.getData().msg);
 			for (var sHighlight in oSelf.highlights){
 				var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
-				msg = msg.replace(re, '<span class=\'highlight\'>$1</span>');
+				var aMatches = msg.match(re);
+				if (aMatches != null){
+					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
+					msg = msg.replace(re, sReplacement);
+				}
 			}		
 			msgDiv.innerHTML = msg;
 			p_elCell.appendChild(msgDiv);
@@ -799,7 +804,7 @@ YAHOO.ELSA.Results = function(){
 			
 			for (var i in oTempWorkingSet){
 				var fieldHash = oTempWorkingSet[i];
-				fieldHash.value_with_markup = fieldHash.value;
+				fieldHash.value_with_markup = escapeHTML(fieldHash.value);
 				//logger.log('fieldHash', fieldHash);
 				
 				// create chart link
@@ -820,13 +825,18 @@ YAHOO.ELSA.Results = function(){
 				
 				for (var sHighlight in oSelf.highlights){
 					var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
+					//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
 					if (fieldHash['value_with_markup']){
-						fieldHash['value_with_markup'] = fieldHash['value_with_markup'].replace(re, '<span class=\'highlight\'>$1</span>');
+						var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
+						var aMatches = msg.match(re);
+						if (aMatches != null){
+							var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
+							fieldHash['value_with_markup'] = fieldHash['value_with_markup'].replace(re, sReplacement);
+						}
 					}
 					else {
 						fieldHash['value_with_markup'] = '';
 					}
-					
 					a.innerHTML = fieldHash['value_with_markup'];
 				}
 				
@@ -845,14 +855,14 @@ YAHOO.ELSA.Results = function(){
 		}
 	}
 	
-	this.formatAddHighlights = function(p_elCell, oRecord, oColumn, p_oData){
-		var sText = p_oData;
-		for (var sHighlight in oSelf.highlights){
-			var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
-			sText = sText.replace(re, '<span class="highlight">$1</span>');
-		}
-		p_elCell.innerHTML = sText;
-	}
+//	this.formatAddHighlights = function(p_elCell, oRecord, oColumn, p_oData){
+//		var sText = p_oData;
+//		for (var sHighlight in oSelf.highlights){
+//			var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
+//			sText = sText.replace(re, '<span class="highlight">$1</span>');
+//		}
+//		p_elCell.innerHTML = sText;
+//	}
 	
 	this.formatDate = function(p_elCell, oRecord, oColumn, p_oData)
 	{
@@ -1004,6 +1014,14 @@ YAHOO.ELSA.Results = function(){
 	    try{
 	    	logger.log('About to create DT with ', "dt"+this.id, oColumns, this.dataSource, oTableCfg);
 	    	this.dataTable = new YAHOO.widget.DataTable(p_oElContainer, oColumns, this.dataSource, oTableCfg);
+	    	logger.log('highlights: ', this.apply_highlights);
+	    	// Now apply the highlights to the divs
+			for (var i in this.apply_highlights){
+				logger.log('applying ' + this.apply_highlights[i] + ' to ' + 'highlight_' + this.id + '_' + i);
+				var oEl = YAHOO.util.Dom.get('highlight_' + this.id + '_' + i);
+				logger.log('oEl: ', oEl);
+				oEl.innerText = this.apply_highlights[i];
+			}
 	    	logger.log('datatable: ', this.dataTable);
 	  	 	YAHOO.util.Dom.removeClass(p_oElContainer, 'hiddenElement');
 	    }catch(e){
