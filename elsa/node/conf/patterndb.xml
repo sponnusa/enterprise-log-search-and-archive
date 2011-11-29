@@ -153,6 +153,7 @@
 				<patterns>
 					<!--<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s5:,@@ESTRING:s2:,@@ESTRING:s3:,@@STRING:s4: :/;,.-()@</pattern>-->
 					<!--<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@STRING:s5:,.-@</pattern>-->
+					<!-- httpry_logger.pl -->
 					<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@@NUMBER:i3:@|@NUMBER:i4:@</pattern>
 					<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@|@NUMBER:i4:@</pattern>
 					<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@</pattern>
@@ -160,6 +161,10 @@
 					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@|@NUMBER:i4:@</pattern>
 					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@@NUMBER:i3:@|</pattern>
 					<pattern>@IPv4:i0:@|@IPv4:i1:@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING:i2:|@</pattern>
+					<!-- suricata -->
+					<pattern>@ESTRING:: @@ESTRING:s1: [**] @@ESTRING:s2: [**] @@ESTRING:s4: [**] @@IPv4:i0:@:@NUMBER:i1:@ -> @IPv4:i2:@:@NUMBER:i3:@</pattern>
+					<!-- suricata extended -->
+					<pattern>@ESTRING:: @@ESTRING:s1: [**] @@ESTRING:s2: [**] @@ESTRING:s4: [**] @@ESTRING:s3: [**] @@ESTRING:s0: [**] @@ESTRING:: [**] @@ESTRING:i2: [**] @@NUMBER:i3:@ bytes [**] @IPv4:i0:@:@NUMBER:i1:@ -> @IPv4:i2:@:@NUMBER:i3:@</pattern>
 				</patterns>
 				<examples>
 					<example>
