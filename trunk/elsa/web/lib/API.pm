@@ -2631,6 +2631,7 @@ sub _sphinx_query {
 				# Sort these in ascending label order
 				my @tmp;
 				foreach my $key (sort { $a <=> $b } keys %agg){
+					$args->{totalRecords} += $agg{$key};
 					my $unixtime = ($key * $Time_values->{ $groupby });
 					$self->log->trace('key: ' . $key . ', tv: ' . $Time_values->{ $groupby } . ', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($unixtime)));
 					push @tmp, { 
@@ -2850,13 +2851,29 @@ sub _parse_query_string {
 	else {
 		$args->{permitted_classes} = { %{ $args->{user_info}->{permissions}->{class_id} } };
 		# Drop any query terms that wanted to use an unpermitted class
-		foreach my $item qw(field_terms attr_terms){
-			foreach my $boolean qw(and or not range_and range_not range_or){
-				foreach my $class_id (keys %{ $args->{$item}->{$boolean} }){
-					next if $class_id eq 0; # this is handled specially below
-					unless ($args->{permitted_classes}->{$class_id}){
-						my $forbidden = delete $self->{$item}->{$boolean}->{$class_id};
-						$self->log->warn('Forbidding ' . $item . ' from class_id ' . $class_id . ' with ' . Dumper($forbidden));
+		
+		foreach my $boolean qw(and or not range_and range_not range_or){
+			foreach my $op (keys %{ $args->{attr_terms}->{$boolean} }){
+				foreach my $field_name (keys %{ $args->{attr_terms}->{$boolean}->{$op} }){
+					for (my $i = 0; $i < scalar @{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name} }; $i++){
+						my $class_id = $args->{attr_terms}->{$boolean}->{$op}->{$field_name}->[$i];
+						next if $class_id eq 0; # this is handled specially below
+						unless ($args->{permitted_classes}->{$class_id}){
+							my $forbidden = splice(@{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name} }, $i, 1);
+							$self->log->warn('Forbidding attr_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
+						}
+					}
+				}
+			}
+			
+			foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
+				foreach my $field_name (keys %{ $args->{field_terms}->{$boolean}->{$class_id} }){
+					for (my $i = 0; $i < scalar @{ $args->{field_terms}->{$boolean}->{$class_id}->{$field_name} }; $i++){
+						next if $class_id eq 0; # this is handled specially below
+						unless ($args->{permitted_classes}->{$class_id}){
+							my $forbidden = splice(@{ $args->{field_terms}->{$boolean}->{$class_id}->{$field_name} }, $i, 1);
+							$self->log->warn('Forbidding field_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
+						}
 					}
 				}
 			}
@@ -3850,7 +3867,7 @@ sub _build_sphinx_query {
 			my $field_infos = $self->_get_field($args, $field);
 			$self->log->trace('field_infos: ' . Dumper($field_infos));
 			foreach my $class_id (keys %{$field_infos}){
-				next unless $args->{distinct_classes}->{$class_id};
+				next unless $args->{distinct_classes}->{$class_id} or $class_id == 0;
 				push @{ $args->{queries} }, {
 					select => $select,
 					where => $where . ($class_id ? ' AND class_id=?' : ''),
