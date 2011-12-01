@@ -454,9 +454,12 @@
 					 request_body_interrupted        response_body_len       response_body_interrupted       status_code     
 					 status_msg      filename        tags    username        password        proxied mime_type
        md5     extraction_file-->
-					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@
-					@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING:i5:|@@ESTRING::|@
-					@ESTRING:s5:|@@ANYSTRING::@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING::|@@ESTRING::|@@ESTRING:i5:|@@ESTRING:i4:|@@ESTRING::|@@ANYSTRING::@</pattern>
+					<!--ts      uid     id.orig_h       id.orig_p       id.resp_h       id.resp_p       trans_depth     method  
+					  host    uri     referrer        user_agent      request_body_len        response_body_len       status_code     
+					  status_msg      info_code       info_msg        filename        tags    username        password        
+					  proxied mime_type       md5     extraction_file-->
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING::|@@ESTRING:i5:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING::|@@ANYSTRING@</pattern>
 				</patterns>
 				<examples>
 					<example>
