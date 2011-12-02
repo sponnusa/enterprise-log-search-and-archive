@@ -31,8 +31,10 @@ sub BUILD {
 		foreach my $field_hash (@{ $self->_raw_results->[0]->{_fields} }){
 			push @{ $self->columns }, $field_hash->{field};
 		}
+		push @{ $self->columns }, 'msg';
+		
 		foreach my $row (@{ $self->_raw_results }){
-			my $grid_hash = { timestamp => $row->{timestamp} };
+			my $grid_hash = { timestamp => $row->{timestamp}, msg => $row->{msg} };
 			foreach my $field_hash (@{ $row->{_fields} }){
 				$grid_hash->{ $field_hash->{field} } = $field_hash->{value};
 			}

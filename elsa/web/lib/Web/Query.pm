@@ -41,7 +41,7 @@ sub call {
 		$res->content_type($ret->{mime_type});
 		$res->body($ret->{ret});
 		if ($ret->{filename}){
-			$res->header(-attachment => $ret->{filename});
+			$res->header('Content-disposition', 'attachment; filename=' . $ret->{filename});
 		}
 	}
 	else {

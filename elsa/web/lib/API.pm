@@ -2633,11 +2633,12 @@ sub _sphinx_query {
 				foreach my $key (sort { $a <=> $b } keys %agg){
 					$args->{totalRecords} += $agg{$key};
 					my $unixtime = ($key * $Time_values->{ $groupby });
-					$self->log->trace('key: ' . $key . ', tv: ' . $Time_values->{ $groupby } . ', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($unixtime)));
+										
+					$self->log->trace('key: ' . $key . ', tv: ' . $Time_values->{ $groupby } . 
+						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($unixtime)));
 					push @tmp, { 
 						intval => $unixtime, 
-						'@groupby' => $self->_resolve_value($args, 0, 
-							$key, $Field_to_order->{ $groupby }), 
+						'@groupby' => $self->_resolve_value($args, 0, $key, $Field_to_order->{ $groupby }), 
 						'@count' => $agg{$key}
 					};
 				}
@@ -2855,11 +2856,12 @@ sub _parse_query_string {
 		foreach my $boolean qw(and or not range_and range_not range_or){
 			foreach my $op (keys %{ $args->{attr_terms}->{$boolean} }){
 				foreach my $field_name (keys %{ $args->{attr_terms}->{$boolean}->{$op} }){
-					for (my $i = 0; $i < scalar @{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name} }; $i++){
-						my $class_id = $args->{attr_terms}->{$boolean}->{$op}->{$field_name}->[$i];
+					#for (my $i = 0; $i < scalar @{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name} }; $i++){
+					foreach my $class_id (keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+						#my $class_id = $args->{attr_terms}->{$boolean}->{$op}->{$field_name}->[$i];
 						next if $class_id eq 0; # this is handled specially below
 						unless ($args->{permitted_classes}->{$class_id}){
-							my $forbidden = splice(@{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name} }, $i, 1);
+							my $forbidden = delete $args->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id};
 							$self->log->warn('Forbidding attr_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
 						}
 					}
@@ -2867,14 +2869,10 @@ sub _parse_query_string {
 			}
 			
 			foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
-				foreach my $field_name (keys %{ $args->{field_terms}->{$boolean}->{$class_id} }){
-					for (my $i = 0; $i < scalar @{ $args->{field_terms}->{$boolean}->{$class_id}->{$field_name} }; $i++){
-						next if $class_id eq 0; # this is handled specially below
-						unless ($args->{permitted_classes}->{$class_id}){
-							my $forbidden = splice(@{ $args->{field_terms}->{$boolean}->{$class_id}->{$field_name} }, $i, 1);
-							$self->log->warn('Forbidding field_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
-						}
-					}
+				next if $class_id eq 0; # this is handled specially below
+				unless ($args->{permitted_classes}->{$class_id}){
+					my $forbidden = delete $args->{field_terms}->{$boolean}->{$class_id};
+					$self->log->warn('Forbidding field_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
 				}
 			}
 		}
@@ -3949,7 +3947,11 @@ sub export {
 			}
 		}
 		if ($results_obj){
-			return { ret => $results_obj->results(), mime_type => $results_obj->mime_type() };
+			return { 
+				ret => $results_obj->results(), 
+				mime_type => $results_obj->mime_type(), 
+				filename => CORE::time() . $results_obj->extension,
+			};
 		}
 		
 		$self->log->error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
