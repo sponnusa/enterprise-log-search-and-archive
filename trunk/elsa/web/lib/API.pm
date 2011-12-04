@@ -25,73 +25,11 @@ use Mail::Internet;
 use Email::LocalDelivery;
 use Carp;
 
-use AnyEvent::DBI;
-
-BEGIN {
-	# Override the native request format to retrieve hashes instead of arrays and allow multi-queries
-	sub AnyEvent::DBI::req_get  {
-	   my (undef, $st, @args) = @{+shift};
-	   my $sth = $AnyEvent::DBI::DBH->prepare_cached ($st, undef, 1)
-	      #or die [$DBI::errstr];
-	      or return [0, $DBI::errstr, 0];
-	   my $rv = $sth->execute (@args)
-			#or (warn $DBI::errstr and die [$DBI::errstr]);
-			or (warn $DBI::errstr and return [0, $DBI::errstr, 0]);    
-			my @rows;
-	        do {
-				while (my $row = $sth->fetchrow_hashref){
-					push @rows, $row;
-				}
-			} while ($sth->more_results);
-		$sth->finish;
-
-	   [1, \@rows, $rv]
-	}
-	
-	sub AnyEvent::DBI::get {
-		my $cb = pop;
-		splice @_, 1, 0, $cb, (caller)[1,2], 'req_get';
-		&AnyEvent::DBI::_req
-	}
-	
-	# Add a special getter for sphinx to deal with SHOW META attached multiqueries
-	sub AnyEvent::DBI::req_sphinx  {
-		my (undef, $st, @args) = @{+shift};
-		my $sth = $AnyEvent::DBI::DBH->prepare_cached ($st, undef, 1)
-			or (warn $DBI::errstr and return [0,$DBI::errstr,0]);
-	
-		my $rv = $sth->execute (@args) or return [0,$sth->errstr,0];
-		my @rows;
-		my %meta;
-		my $in_meta = 0;
-		do {
-			while (my $row = $sth->fetchrow_hashref){
-				# Is this a meta block row?
-				if (exists $row->{Value} and exists $row->{Variable_name} and (scalar keys %$row) eq 2){
-					$in_meta = 1; # meta should come at the end of the set
-				}
-				if ($in_meta){
-					$meta{ $row->{Variable_name} } = $row->{Value};
-				}
-				else {
-					push @rows, $row;
-				}
-			}
-		} while ($sth->more_results);
-		return [1, { rows => \@rows, meta => \%meta }, $rv];
-	}
-	
-	sub AnyEvent::DBI::sphinx {
-		my $cb = pop;
-		splice @_, 1, 0, $cb, (caller)[1,2], 'req_sphinx';
-		&AnyEvent::DBI::_req
-	}
-}
+use AsyncMysql;
 
 our $Default_limit = 100;
 our $Max_limit = 1000;
 our $Implicit_plus = 0;
-our $Max_batch_queries = 32; # Sphinx default
 our $Db_timeout = 3;
 
 our $Field_order_to_attr = {
@@ -1070,43 +1008,45 @@ sub get_stats {
 			unless ($stats->{nodes}->{$node}->{dbh}){
 				$self->log->warn('no dbh for node ' . $node . ':' . Dumper($stats->{nodes}->{$node}->{dbh}));
 			}
-			$stats->{nodes}->{$node}->{dbh}->get($query, $item, $args->{start}, $args->{end}, sub {
-				my ($dbh, $rows, $rv) = @_;
-				$self->log->trace('got stat for node ' . $node . ': ' . Dumper($rows));
-				$load_stats->{$item}->{summary} = $rows->[0];
-				$cv->end;
-			});
+			$stats->{nodes}->{$node}->{dbh}->query($query, sub {
+					my ($dbh, $rows, $rv) = @_;
+					$self->log->trace('got stat for node ' . $node . ': ' . Dumper($rows));
+					$load_stats->{$item}->{summary} = $rows->[0];
+					$cv->end;
+				},
+				$item, $args->{start}, $args->{end});
 			
 			$query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
 			$cv->begin;
-			$stats->{nodes}->{$node}->{dbh}->get($query, $item, $args->{start}, $args->{end}, sub {
-				my ($dbh, $rows, $rv) = @_;
-				$self->log->trace('here');
-				# arrange in the number of buckets requested
-				my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
-				foreach my $row (@$rows){
-					my $ts = $row->{ts} - $load_stats->{$item}->{summary}->{earliest};
-					my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
-					# Sanity check the bucket because too large an index array can cause an OoM error
-					if ($bucket > $intervals){
-						die('Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals);
+			$stats->{nodes}->{$node}->{dbh}->query($query, sub {
+					my ($dbh, $rows, $rv) = @_;
+					$self->log->trace('here');
+					# arrange in the number of buckets requested
+					my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
+					foreach my $row (@$rows){
+						my $ts = $row->{ts} - $load_stats->{$item}->{summary}->{earliest};
+						my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
+						# Sanity check the bucket because too large an index array can cause an OoM error
+						if ($bucket > $intervals){
+							die('Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals);
+						}
+						unless ($load_stats->{$item}->{data}->{x}->[$bucket]){
+							$load_stats->{$item}->{data}->{x}->[$bucket] = $row->{timestamp};
+						}
+						
+						unless ($load_stats->{$item}->{data}->{LogsPerSec}->[$bucket]){
+							$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] = 0;
+						}
+						$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] += ($row->{count} / $bucket_size);
+						
+						unless ($load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket]){
+							$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] = 0;
+						}
+						$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] += ($row->{bytes} / 1024 / $bucket_size);
 					}
-					unless ($load_stats->{$item}->{data}->{x}->[$bucket]){
-						$load_stats->{$item}->{data}->{x}->[$bucket] = $row->{timestamp};
-					}
-					
-					unless ($load_stats->{$item}->{data}->{LogsPerSec}->[$bucket]){
-						$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] = 0;
-					}
-					$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] += ($row->{count} / $bucket_size);
-					
-					unless ($load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket]){
-						$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] = 0;
-					}
-					$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] += ($row->{bytes} / 1024 / $bucket_size);
-				}
-				$cv->end;
-			});
+					$cv->end;
+				},
+				$item, $args->{start}, $args->{end});
 			
 			
 		}
@@ -1146,6 +1086,32 @@ sub get_stats {
 }
 
 sub _get_nodes {
+	my $self = shift;
+	my %nodes;
+	my $node_conf = $self->conf->get('nodes');
+	
+	my $db_name = 'syslog';
+	foreach my $node (keys %$node_conf){
+		if ($node_conf->{$node}->{db}){
+			$db_name = $node_conf->{$node}->{db};
+		}
+		$nodes{$node} = { db => $db_name };
+		$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
+			'dbi:mysql:database=' . $db_name . ';host=' . $node, 
+			$node_conf->{$node}->{username}, 
+			$node_conf->{$node}->{password}, 
+			{
+				mysql_connect_timeout => $Db_timeout,
+				PrintError => 0,
+				mysql_multi_statements => 1,
+			}
+		]);
+	}
+		
+	return \%nodes;
+}
+
+sub old_get_nodes {
 	my $self = shift;
 	my %nodes;
 	my $node_conf = $self->conf->get('nodes');
@@ -1193,7 +1159,58 @@ sub _get_nodes {
 	return \%nodes;
 }
 
+
 sub _get_sphinx_nodes {
+	my $self = shift;
+	my $args = shift;
+	my %nodes;
+	my $node_conf = $self->conf->get('nodes');
+	
+	foreach my $node (keys %$node_conf){
+		if ($args->{given_nodes}){
+			next unless $args->{given_nodes}->{$node};
+		}
+		if ($args->{excluded_nodes}){
+			next if $args->{excluded_nodes}->{$node};
+		}
+		my $db_name = 'syslog';
+		if ($node_conf->{$node}->{db}){
+			$db_name = $node_conf->{$node}->{db};
+		}
+		my $sphinx_port = 3307;
+		if ($node_conf->{$node}->{sphinx_port}){
+			$sphinx_port = $node_conf->{$node}->{sphinx_port};
+		}
+		$nodes{$node} = { db => $db_name };
+								
+		$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
+			'dbi:mysql:database=' . $db_name . ';host=' . $node, 
+			$node_conf->{$node}->{username}, 
+			$node_conf->{$node}->{password}, 
+			{
+				mysql_connect_timeout => $Db_timeout,
+				PrintError => 0,
+				mysql_multi_statements => 1,
+			}
+		]);
+		
+		$self->log->trace('connecting to sphinx on node ' . $node);
+		
+		$nodes{$node}->{sphinx} = AsyncMysql->new(log => $self->log, db_args => [
+			'dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef,
+			{
+				mysql_connect_timeout => $Db_timeout,
+				PrintError => 0,
+				mysql_multi_statements => 1,
+				mysql_bind_type_guessing => 1,
+			}
+		]);		
+	}
+	
+	return \%nodes;
+}
+
+sub old_get_sphinx_nodes {
 	my $self = shift;
 	my $args = shift;
 	my %nodes;
@@ -1289,6 +1306,7 @@ sub _get_sphinx_nodes {
 	return \%nodes;
 }
 
+
 sub _get_node_info {
 	my $self = shift;
 	my ($query, $sth);
@@ -1305,12 +1323,12 @@ sub _get_node_info {
 	});
 	
 	foreach my $node (keys %$nodes){
-		if (exists $nodes->{$node}->{error}){
-			$self->add_warning('node ' . $node . ' had error ' . $nodes->{$node}->{error});
-			delete $ret->{nodes}->{$node};
-			#$ret->{nodes}->{$node}->{error} = $nodes->{$node}->{error};
-			next;
-		}
+#		if (exists $nodes->{$node}->{error}){
+#			$self->add_warning('node ' . $node . ' had error ' . $nodes->{$node}->{error});
+#			delete $ret->{nodes}->{$node};
+#			#$ret->{nodes}->{$node}->{error} = $nodes->{$node}->{error};
+#			next;
+#		}
 		$ret->{nodes}->{$node} = {
 			db => $nodes->{$node}->{db},
 			dbh => $nodes->{$node}->{dbh},
@@ -1322,24 +1340,24 @@ sub _get_node_info {
 			$nodes->{$node}->{db});
 		$cv->begin;
 		$self->log->trace($query);
-		$nodes->{$node}->{dbh}->get($query, sub {
-			my ($dbh, $rows, $rv) = @_;
-			
-			if ($rv and $rows){
-				$self->log->trace('node returned rv: ' . $rv);
-				$ret->{nodes}->{$node}->{indexes} = {
-					indexes => $rows,
-					min => $rows->[0]->{start_int},
-					max => $rows->[$#$rows]->{end_int},
-					start_max => $rows->[$#$rows]->{start_int},
-				};
-			}
-			else {
-				$self->log->error('No indexes for node ' . $node . ', rv: ' . $rv);
-				$ret->{nodes}->{$node}->{error} = 'No indexes for node ' . $node;
-			}
-			$cv->end;
-		});
+		$nodes->{$node}->{dbh}->query($query, sub {
+				my ($dbh, $rows, $rv) = @_;
+				
+				if ($rv and $rows){
+					$self->log->trace('node returned rv: ' . $rv);
+					$ret->{nodes}->{$node}->{indexes} = {
+						indexes => $rows,
+						min => $rows->[0]->{start_int},
+						max => $rows->[$#$rows]->{end_int},
+						start_max => $rows->[$#$rows]->{start_int},
+					};
+				}
+				else {
+					$self->log->error('No indexes for node ' . $node . ', rv: ' . $rv);
+					$ret->{nodes}->{$node}->{error} = 'No indexes for node ' . $node;
+				}
+				$cv->end;
+			});
 		
 		# Get tables
 		$query = sprintf('SELECT table_name, start, UNIX_TIMESTAMP(start) AS start_int, end, ' .
@@ -1348,44 +1366,44 @@ sub _get_node_info {
 			$nodes->{$node}->{db});
 		$cv->begin;
 		$self->log->trace($query);
-		$nodes->{$node}->{dbh}->get($query, sub {
-			my ($dbh, $rows, $rv) = @_;
-			
-			if ($rv and $rows){
-				$self->log->trace('node returned rv: ' . $rv);
-				$ret->{nodes}->{$node}->{tables} = {
-					tables => $rows,
-					min => $rows->[0]->{start_int},
-					max => $rows->[$#$rows]->{end_int},
-					start_max => $rows->[$#$rows]->{start_int},
-				};
-			}
-			else {
-				$self->log->error('No tables for node ' . $node);
-				$ret->{nodes}->{$node}->{error} = 'No tables for node ' . $node;
-			}
-			$cv->end;
-		});
+		$nodes->{$node}->{dbh}->query($query, sub {
+				my ($dbh, $rows, $rv) = @_;
+				
+				if ($rv and $rows){
+					$self->log->trace('node returned rv: ' . $rv);
+					$ret->{nodes}->{$node}->{tables} = {
+						tables => $rows,
+						min => $rows->[0]->{start_int},
+						max => $rows->[$#$rows]->{end_int},
+						start_max => $rows->[$#$rows]->{start_int},
+					};
+				}
+				else {
+					$self->log->error('No tables for node ' . $node);
+					$ret->{nodes}->{$node}->{error} = 'No tables for node ' . $node;
+				}
+				$cv->end;
+			});
 		
 		# Get classes
 		$query = "SELECT id, class FROM classes";
 		$cv->begin;
 		$self->log->trace($query);
-		$nodes->{$node}->{dbh}->get($query, sub {
-			my ($dbh, $rows, $rv) = @_;
-			
-			if ($rv and $rows){
-				$ret->{nodes}->{$node}->{classes} = {};
-				foreach my $row (@$rows){
-					$ret->{nodes}->{$node}->{classes}->{ $row->{id} } = $row->{class};
+		$nodes->{$node}->{dbh}->query($query, sub {
+				my ($dbh, $rows, $rv) = @_;
+				
+				if ($rv and $rows){
+					$ret->{nodes}->{$node}->{classes} = {};
+					foreach my $row (@$rows){
+						$ret->{nodes}->{$node}->{classes}->{ $row->{id} } = $row->{class};
+					}
 				}
-			}
-			else {
-				$self->log->error('No classes for node ' . $node);
-				$ret->{nodes}->{$node}->{error} = 'No classes for node ' . $node;
-			}
-			$cv->end;
-		});
+				else {
+					$self->log->error('No classes for node ' . $node);
+					$ret->{nodes}->{$node}->{error} = 'No classes for node ' . $node;
+				}
+				$cv->end;
+			});
 		
 		# Get fields
 		$query = sprintf("SELECT DISTINCT field, class, field_type, input_validation, field_id, class_id, field_order,\n" .
@@ -1395,32 +1413,32 @@ sub _get_node_info {
 			"JOIN %1\$s.classes t3 ON (t2.class_id=t3.id)\n", $nodes->{$node}->{db});
 		$cv->begin;
 		$self->log->trace($query);
-		$nodes->{$node}->{dbh}->get($query, sub {
-			my ($dbh, $rows, $rv) = @_;
-			
-			if ($rv and $rows){
-				$ret->{nodes}->{$node}->{fields} = [];
-				foreach my $row (@$rows){
-					push @{ $ret->{nodes}->{$node}->{fields} }, {
-						fqdn_field => $row->{fqdn_field},
-						class => $row->{class}, 
-						value => $row->{field}, 
-						text => uc($row->{field}),
-						field_id => $row->{field_id},
-						class_id => $row->{class_id},
-						field_order => $row->{field_order},
-						field_type => $row->{field_type},
-						input_validation => $row->{input_validation},
-						pattern_type => $row->{pattern_type},
-					};
+		$nodes->{$node}->{dbh}->query($query, sub {
+				my ($dbh, $rows, $rv) = @_;
+				
+				if ($rv and $rows){
+					$ret->{nodes}->{$node}->{fields} = [];
+					foreach my $row (@$rows){
+						push @{ $ret->{nodes}->{$node}->{fields} }, {
+							fqdn_field => $row->{fqdn_field},
+							class => $row->{class}, 
+							value => $row->{field}, 
+							text => uc($row->{field}),
+							field_id => $row->{field_id},
+							class_id => $row->{class_id},
+							field_order => $row->{field_order},
+							field_type => $row->{field_type},
+							input_validation => $row->{input_validation},
+							pattern_type => $row->{pattern_type},
+						};
+					}
 				}
-			}
-			else {
-				$self->log->error('No fields for node ' . $node);
-				$ret->{nodes}->{$node}->{error} = 'No fields for node ' . $node;
-			}
-			$cv->end;
-		});
+				else {
+					$self->log->error('No fields for node ' . $node);
+					$ret->{nodes}->{$node}->{error} = 'No fields for node ' . $node;
+				}
+				$cv->end;
+			});
 	}
 	$cv->end;
 	
@@ -2391,7 +2409,7 @@ sub get_log_info {
 		$decode = $self->json->decode(decode_base64($args->{q}));
 	};
 	if ($@){
-		$self->_error('Invalid JSON args: ' . Dumper($args));
+		$self->_error('Invalid JSON args: ' . Dumper($args) . ': ' . $@);
 		return;
 	}
 	
@@ -2506,7 +2524,7 @@ sub _sphinx_query {
 			$self->log->trace('multiquery: ' . join(';', @multi_queries));
 			$self->log->trace('values: ' . join(',', @multi_values));
 			$cv->begin;
-			$nodes->{$node}->{sphinx}->sphinx(join(';', @multi_queries) . ';SHOW META', @multi_values, sub { 
+			$nodes->{$node}->{sphinx}->sphinx(join(';', @multi_queries) . ';SHOW META', sub { 
 				$self->log->debug('Sphinx query for node ' . $node . ' finished in ' . (time() - $start));
 				my ($dbh, $result, $rv) = @_;
 				if (not $rv){
@@ -2551,7 +2569,7 @@ sub _sphinx_query {
 					$self->log->trace('table query for node ' . $node . ': ' . $table_query 
 						. ', placeholders: ' . join(',', @{ $tables{$table} }));
 					$cv->begin;
-					$nodes->{$node}->{dbh}->get($table_query, @{ $tables{$table} }, 
+					$nodes->{$node}->{dbh}->query($table_query, 
 						sub { 
 							my ($dbh, $rows, $rv) = @_;
 							if (not $rv){
@@ -2569,10 +2587,11 @@ sub _sphinx_query {
 								$ret->{$node}->{results}->{ $row->{id} } = $row;
 							}
 							$cv->end;
-						});
+						}, 
+						@{ $tables{$table} });
 				}
 				$cv->end; #end sphinx query
-			});
+			}, @multi_values);
 		};
 		if ($@){
 			$ret->{$node}->{error} = 'sphinx query error: ' . $@;
@@ -3680,15 +3699,17 @@ sub _build_archive_match_str {
 		}
 	}
 	
+	my @strs;
 	if (scalar keys %and){
-		$match_str .= ' (' . join(' AND ', sort keys %and) . ')';
+		push @strs, ' (' . join(' AND ', sort keys %and) . ')';
 	}
 	if (scalar keys %or){
-		$match_str .= ' (' . join(' OR ', sort keys %or) . ')';
+		push @strs, ' (' . join(' OR ', sort keys %or) . ')';
 	}
 	if (scalar keys %not){
-		$match_str .= ' NOT (' . join(' OR ', sort keys %not) . ')';
+		push @strs, ' NOT (' . join(' OR ', sort keys %not) . ')';
 	}
+	$match_str .= join(' AND ', @strs);
 		
 	$self->log->trace('match str: ' . $match_str);		
 	
@@ -4424,20 +4445,21 @@ sub _archive_query {
 				$self->log->debug('running query ' . $query_hash->{query});
 				$self->log->debug(' with values ' . join(',', @{ $query_hash->{values} }));
 				$cv->begin;
-				$args->{node_info}->{nodes}->{$node}->{dbh}->get($query_hash->{query}, @{ $query_hash->{values} }, sub { 
-					$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
-					my ($dbh, $rows, $rv) = @_;
-					$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
-					if (not $rv){
-						my $e = 'node ' . $node . ' got error ' . $@;
-						$self->log->error($e);
-						$self->add_warning($e);
-						$cv->end;
-						next;
-					}
-					push @{ $ret->{$node}->{rows} }, @$rows;
-					$cv->end; #end archive query
-				});
+				$args->{node_info}->{nodes}->{$node}->{dbh}->query($query_hash->{query}, sub { 
+						$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
+						my ($dbh, $rows, $rv) = @_;
+						$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
+						if (not $rv){
+							my $e = 'node ' . $node . ' got error ' . $rows;
+							$self->log->error($e);
+							$self->add_warning($e);
+							$cv->end;
+							next;
+						}
+						push @{ $ret->{$node}->{rows} }, @$rows;
+						$cv->end; #end archive query
+					},
+					@{ $query_hash->{values} });
 			};
 			if ($@){
 				$ret->{$node}->{error} = 'sphinx query error: ' . $@;
