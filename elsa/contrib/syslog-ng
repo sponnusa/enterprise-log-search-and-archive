@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # Init file for searchd
 #
@@ -20,7 +20,6 @@ prog="syslog-ng"
 
 do_start() {
 	echo "Starting $prog"
-	#start-stop-daemon --start --exec $EXEC_PATH/$prog
 	$EXEC_PATH/$prog
 	RETVAL=$?
 	echo
