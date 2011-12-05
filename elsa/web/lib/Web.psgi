@@ -14,6 +14,7 @@ my $config_file = '/usr/local/elsa/etc/elsa.conf';
 if ($ENV{ELSA_CONF}){
 	$config_file = $ENV{ELSA_CONF};
 }
+
 my $api = API->new(config_file => $config_file) or die('Unable to start from given config file.');
 
 my $auth;
@@ -66,3 +67,5 @@ builder {
 	mount '/Query' => Web::Query->new(api => $api)->to_app;
 	mount '/' => Web->new(api => $api)->to_app;
 };
+
+
