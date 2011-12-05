@@ -11,6 +11,8 @@ MYSQL_PORT="3306"
 MYSQL_DB="elsa_web"
 MYSQL_USER="elsa"
 MYSQL_PASS="biglog"
+MYSQL_ROOT_USER="root"
+MYSQL_ROOT_PASS=""
 
 # These should be fine
 EVENTLOG_VER="0.2.12"
@@ -36,21 +38,34 @@ fi
 
 DISTRO="ubuntu"
 MYSQL_SERVICE_NAME="mysql"
-CRONTAB_DIR="crontabs"
+CRONTAB_DIR="/var/spool/cron/crontabs"
 WEB_USER="www-data"
 CRON_SERVICE="cron"
+INIT_DIR=/etc/init.d/
 if [ -f /etc/redhat-release ] || [ -f /etc/fedora-release ]; then
 	DISTRO="centos"
 	MYSQL_SERVICE_NAME="mysqld"
-	CRONTAB_DIR=""
+	CRONTAB_DIR="/var/spool/cron"
 	WEB_USER="apache"
 	CRON_SERVICE="crond"
 elif [ -f /etc/SuSE-release ]; then
 	DISTRO="suse"
-	CRONTAB_DIR="tabs"
+	CRONTAB_DIR="/var/spool/cron/tabs"
 	WEB_USER="wwwrun"
+elif [ -f /etc/freebsd-update.conf ]; then
+	DISTRO="freebsd"
+	CRONTAB_DIR="/var/cron/tabs"
+	INIT_DIR=/usr/local/etc/rc.d/
+	WEB_USER="www"
+	# FreeBSD does better over HTTP than FTP
+	export PACKAGEROOT="http://ftp.freebsd.org"
 fi
 echo "Assuming distro to be $DISTRO"
+
+MYSQL_PASS_SWITCH=""
+if [ "$MYSQL_ROOT_PASS" != "" ]; then
+    MYSQL_PASS_SWITCH="-p$MYSQL_ROOT_PASS"
+fi
 
 centos_get_node_packages(){
 	# Install required packages
@@ -79,6 +94,90 @@ ubuntu_get_node_packages(){
 	return $?
 }
 
+freebsd_get_node_packages(){
+	pkg_add -vFr subversion wget curl mysql55-server perl syslog-ng3 p5-App-cpanminus &&
+	enable_service "mysql" &&
+	service mysql-server start &&
+	disable_service "syslogd" &&
+	# This could fail if it's already disabled
+	service syslogd stop
+	enable_service "syslog-ng" &&
+	cp /usr/local/etc/syslog-ng.conf.dist /usr/local/etc/syslog-ng.conf &&
+	service syslog-ng start
+	
+	return $?
+}	
+
+freebsd_get_node_packages_ports(){
+	portsnap update
+	if [ $? -ne 0 ]; then
+		portsnap extract
+	fi
+		
+	# Install subversion
+	if [ \! -f /usr/local/bin/svn ]; then
+		cd /usr/ports/devel/subversion && make install clean
+	fi
+	
+	# Install curl
+	if [ \! -f /usr/local/bin/curl ]; then
+		cd /usr/ports/ftp/curl && make install clean
+	fi
+	
+	# Install MySQL client and server
+	if [ \! -f /usr/local/bin/mysql ] || [ \! -f /usr/local/bin/mysqld_safe ]; then
+		cd /usr/ports/databases/mysql55-server &&
+		make install clean;
+	
+		# Enable MySQL
+		echo 'mysql_enable="YES"' >> /etc/rc.conf
+		service mysql-server start
+		# Turn on ARCHIVE engine
+		/usr/local/bin/mysql -e "install plugin archive soname 'ha_archive.so'"
+	fi
+	
+	# Install Perl
+	if [ \! -f /usr/local/bin/perl ]; then
+		cd /usr/ports/lang/perl5.10 && make install clean
+	fi
+	
+	# These should happen automatically because of the syslog-ng install
+	## Install libnet
+	#if [ \! -f /usr/local/include/libnet115/libnet.h ]; then
+	#	cd /usr/ports/net/libnet-devel && make install clean
+	#fi
+	
+	## Install glib-2.0
+	#if [ \! -f /usr/local/include/glib-2.0/glib.h ]; then
+	#	cd /usr/ports/devel/glib20 && make install clean
+	#fi
+	
+	## Install OpenSSL
+	#if [ \! -d /usr/local/include/openssl ]; then
+	#	cd /usr/ports/security/openssl && make install clean
+	#fi
+	
+	# Install Syslog-NG
+	if [ \! -f /usr/local/sbin/syslog-ng ]; then
+		cd /usr/ports/sysutils/syslog-ng && make install clean
+	fi
+	
+	if [ \! -f /usr/local/etc/elsa_syslog-ng.conf ]; then
+		# Copy the syslog-ng.conf
+		echo "Creating elsa_syslog-ng.conf"
+		cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "/usr/local/etc/elsa_syslog-ng.conf" &&
+		echo "@include \"elsa_syslog-ng.conf\"" >> /usr/local/etc/syslog-ng.conf
+	fi
+	
+	disable_service "syslogd" &&
+	# This could fail if it's already disabled
+	service syslogd stop
+	enable_service "syslog-ng" &&
+	service syslog-ng restart
+	
+	return $?
+}	
+
 set_date(){
 	ntpdate time.nist.gov
 	# we don't care about the error code, and sometimes ntpd blocks this
@@ -88,7 +187,7 @@ set_date(){
 get_elsa(){
 	# Get the latest code from Google Code
 	cd $BASE_DIR
-	svn --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" &&
+	svn --non-interactive --trust-server-cert --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" &&
 	mkdir -p "$BASE_DIR/elsa/node/tmp/locks" && 
 	touch "$BASE_DIR/elsa/node/tmp/locks/directory"
 	return $?
@@ -96,11 +195,24 @@ get_elsa(){
 
 build_node_perl(){
 	# Install required Perl modules
-	cd $TMP_DIR && curl -L http://cpanmin.us | perl - App::cpanminus
+	
+	if [ \! -f /usr/local/bin/cpanm ]; then
+		cd $TMP_DIR && curl -L http://cpanmin.us | perl - App::cpanminus
+	fi
+	
+	# FreeBSD has trouble testing with the current version of ExtUtils
+	if [ "$DISTRO" = "freebsd" ]; then
+		cpanm -n ExtUtils::MakeMaker
+	fi
+	
+	if [ "$DISTRO" = "centos" ]; then
+		# No test because of a bug in the CentOS-specific distro detection
+		cpanm -n Sys::Info
+	fi
+	
 	# Now cpanm is available to install the rest
-	cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::MemInfo &&
-	# Force this because of a bug in the CentOS-specific distro detection
-	cpanm -f Sys::Info
+	cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::MemInfo Sys::Info
+	
 	return $?
 }
 
@@ -108,25 +220,65 @@ enable_service(){
 	if [ "$DISTRO" = "centos" ] || [ "$DISTRO" = "suse" ]; then
 		chkconfig $1 on
 		return $?
+	elif [ "$DISTRO" = "ubuntu" ]; then
+		update-rc.d $1 defaults
+	elif [ "$DISTRO" = "freebsd" ]; then
+		SVC_NAME=$(echo $1 | sed -e "s|\-|\_|g")
+		grep $SVC_NAME"_enable=\"YES\"" /etc/rc.conf
+		if [ $? -ne 0 ]; then
+			echo "Editing /etc/rc.conf to enable $1"
+			echo $SVC_NAME"_enable=\"YES\"" >> /etc/rc.conf
+		fi
 	fi
-	update-rc.d $1 defaults
+	return $?
+}	
+
+disable_service(){
+	if [ "$DISTRO" = "centos" ] || [ "$DISTRO" = "suse" ]; then
+		chkconfig $1 off
+		return $?
+	elif [ "$DISTRO" = "ubuntu" ]; then
+		update-rc.d $1 disable
+	elif [ "$DISTRO" = "freebsd" ]; then
+		SVC_NAME=$(echo $1 | sed -e "s|\-|\_|g")
+		grep $SVC_NAME"_enable=\"NO\"" /etc/rc.conf
+		if [ $? -ne 0 ]; then
+			echo "Editing /etc/rc.conf to disable $1"
+			echo $SVC_NAME"_enable=\"NO\"" >> /etc/rc.conf
+		fi
+	fi
 	return $?
 }	
 
 build_sphinx(){
 	# Get and build sphinx on nodes
 	cd $TMP_DIR &&
-	svn --force export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn &&
+	svn --non-interactive --trust-server-cert --force export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn &&
 	cd sphinx-svn &&
 	./configure --enable-id64 "--prefix=$BASE_DIR/sphinx" && make && make install &&
 	mkdir -p $BASE_DIR/etc &&
-	touch "$BASE_DIR/etc/sphinx_stopwords.txt" &&
-	cp $BASE_DIR/elsa/contrib/searchd /etc/init.d/ &&
+	touch "$BASE_DIR/etc/sphinx_stopwords.txt"
+	if [ "$DISTRO" == "freebsd" ]; then
+		cp $BASE_DIR/elsa/contrib/searchd.freebsd $INIT_DIR/searchd
+	else
+		cp $BASE_DIR/elsa/contrib/searchd $INIT_DIR
+	fi
 	enable_service "searchd"
 	return $?
 }
 
 build_syslogng(){
+	# we already installed on FreeBSD
+	if [ "$DISTRO" = "freebsd" ]; then
+		if [ \! -f /usr/local/etc/elsa_syslog-ng.conf ]; then
+			# Copy the syslog-ng.conf
+			echo "Creating elsa_syslog-ng.conf"
+			cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "/usr/local/etc/elsa_syslog-ng.conf" &&
+			echo "@include \"elsa_syslog-ng.conf\"" >> /usr/local/etc/syslog-ng.conf &&
+			service syslog-ng restart
+		fi
+		return $?
+	fi
 	# Get and build syslog-ng
 	cd $TMP_DIR &&
 	curl "http://www.balabit.com/downloads/files/syslog-ng/open-source-edition/$SYSLOG_VER/source/eventlog_$EVENTLOG_VER.tar.gz" > "eventlog_$EVENTLOG_VER.tar.gz" &&
@@ -146,7 +298,7 @@ build_syslogng(){
 	# Copy the syslog-ng.conf
 	cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf" &&
 	mkdir -p "$BASE_DIR/syslog-ng/var" &&
-	cp $BASE_DIR/elsa/contrib/syslog-ng /etc/init.d/ &&
+	cp $BASE_DIR/elsa/contrib/syslog-ng $INIT_DIR &&
 	enable_service "syslog-ng"
 	return $?
 }
@@ -168,11 +320,11 @@ set_node_mysql(){
 	
 	# Install mysql schema
 	service $MYSQL_SERVICE_NAME start
-	mysqladmin -uroot create syslog && mysqladmin -uroot create syslog_data && 
-	mysql -uroot -e 'GRANT ALL ON syslog.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
-	mysql -uroot -e 'GRANT ALL ON syslog.* TO "elsa"@"%" IDENTIFIED BY "biglog"' &&
-	mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
-	mysql -uroot -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "biglog"'
+	mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog && mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog_data && 
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "elsa"@"%" IDENTIFIED BY "biglog"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "biglog"'
 	
 	# Above could fail with db already exists, but this is the true test for success
 	mysql -uelsa -pbiglog syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql" &&
@@ -205,7 +357,11 @@ init_elsa(){
 test_elsa(){
 	# Test
 	echo "Sending test log messages..."
-	"$BASE_DIR/syslog-ng/bin/loggen" -Di -I 1 127.0.0.1 514 &&
+	if [ "$DISTRO" = "freebsd" ]; then
+		/usr/local/bin/loggen -Di -I 1 127.0.0.1 514
+	else
+		"$BASE_DIR/syslog-ng/bin/loggen" -Di -I 1 127.0.0.1 514
+	fi
 	
 	# Sleep to allow ELSA to initialize and validate its directory
 	echo "Sleeping for 60 seconds to allow ELSA to load batch..."
@@ -242,14 +398,47 @@ centos_get_web_packages(){
 	return $?
 }
 
+freebsd_get_web_packages(){
+	pkg_add -vFr subversion curl mysql55-client perl ap20-mod_perl2 p5-App-cpanminus
+	RET=$?
+	# pkg_add will return 6 when packages were already present
+	if [ "$RET" -ne 0 ] && [ "$RET" -ne 6 ]; then
+		echo "retval was $RET"
+		return 1
+	fi
+	
+	# Edit the load modules file to disable unique_id, as it causes problems when host does not have FQDN
+	cp /usr/local/etc/apache2/httpd.conf /usr/local/etc/apache2/httpd.conf.bak &&
+	cat /usr/local/etc/apache2/httpd.conf.bak | sed -e "s|LoadModule unique_id_module|#LoadModule unique_id_module|" > /usr/local/etc/apache2/httpd.conf &&
+	
+	enable_service "apache2" &&
+	service apache2 start
+		
+	return $?
+}	
+
 build_web_perl(){
 	# Install required Perl modules
-	cd $TMP_DIR && curl -L http://cpanmin.us | perl - App::cpanminus &&
+	
+	if [ \! -f /usr/local/bin/cpanm ]; then
+		cd $TMP_DIR && curl -L http://cpanmin.us | perl - App::cpanminus
+	fi
+	
+	# FreeBSD has trouble testing with the current version of ExtUtils
+	if [ "$DISTRO" = "freebsd" ]; then
+		cpanm -n ExtUtils::MakeMaker
+	fi
+	
+	if [ "$DISTRO" = "centos" ]; then
+		# No test because of a bug in the CentOS-specific distro detection
+		cpanm -n Sys::Info
+	fi
+		
 	# Now cpanm is available to install the rest
-	cpanm -f Sys::Info
+	
 	# PAM requires some user input for testing, and we don't want that
-	cpanm --notest Authen::PAM &&
-	cpanm Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session
+	cpanm -n Authen::PAM &&
+	cpanm Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info
 	return $?
 }
 
@@ -262,9 +451,9 @@ set_web_mysql(){
 	fi
 	
 	# Install mysql schema
-	mysqladmin "-h$MYSQL_HOST" "-P$MYSQL_PORT" -uroot create elsa_web &&
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -uroot -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"@\"localhost\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -uroot -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"@\"%\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
+	mysqladmin "-h$MYSQL_HOST" "-P$MYSQL_PORT" -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create elsa_web &&
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"@\"localhost\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"@\"%\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "source $BASE_DIR/elsa/web/conf/meta_db_schema.mysql"
 	return $?
 }
@@ -335,20 +524,47 @@ centos_set_apache(){
 	return $?
 }
 
+freebsd_set_apache(){
+	# For Apache, locations vary, but this is the gist:
+	egrep "^LoadModule perl_module" /usr/local/etc/apache2/httpd.conf
+	if [ $? -ne 0 ]; then
+		echo "Enabling mod_perl"
+		echo "LoadModule perl_module libexec/apache2/mod_perl.so" >> /usr/local/etc/apache2/httpd.conf
+	fi
+	cpanm Plack::Handler::Apache2 &&
+	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /usr/local/etc/apache2/Includes/elsa.conf &&
+	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
+	service apache2 restart
+	
+	return $?
+}
+
 set_cron(){
 	# Setup alerts (optional)
 	echo "Adding cron entry for alerts..."
 	# Edit /etc/elsa_web.conf and set the "smtp_server" and "to" fields under "email"
-	grep "elsa/web/cron.pl" /var/spool/cron/$CRONTAB_DIR/root
+	grep "elsa/web/cron.pl" $CRONTAB_DIR/root
 	if [ $? -eq 0 ]; then
 		echo "Cron already installed"
 		return 0;
 	fi
 	
-	echo "* * * * * perl $BASE_DIR/elsa/web/cron.pl -c /etc/elsa_web.conf 2>&1 > /dev/null" >> /var/spool/cron/$CRONTAB_DIR/root &&
-	chmod 600 /var/spool/cron/$CRONTAB_DIR/root &&
+	echo "* * * * * perl $BASE_DIR/elsa/web/cron.pl -c /etc/elsa_web.conf 2>&1 > /dev/null" >> $CRONTAB_DIR/root &&
+	chmod 600 $CRONTAB_DIR/root &&
 	service $CRON_SERVICE restart
 	return $?
+}
+
+check_svn_proxy(){
+	if [ "$http_proxy" != "" ] || [ "$https_proxy" != "" ]; then
+		echo "http_proxy set, verifying subversion is setup accordingly..."
+		grep "http-proxy-host" /etc/subversion/servers | grep -v "#"
+		if [ $? -eq 1 ]; then
+			echo "ERROR: Please set the proxy settings in /etc/subversion/servers before continuing"
+			return 1
+		fi
+	fi
+	return 0
 }
 
 exec_func(){
@@ -366,7 +582,7 @@ exec_func(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "get_elsa" "build_node_perl" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "build_node_perl" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa"; do
 			exec_func $FUNCTION
 		done
 	else
@@ -374,7 +590,7 @@ if [ "$INSTALL" = "node" ]; then
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "get_elsa" "build_web_perl" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_elsa" "build_web_perl" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron"; do
 			exec_func $FUNCTION
 		done
 	else
