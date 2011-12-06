@@ -1,5 +1,7 @@
 #!/bin/sh
 
+export PATH=$PATH:/usr/local/bin
+
 # EDIT CONFIG VARIABLES
 BASE_DIR="/usr/local"
 DATA_DIR="/data"
@@ -133,7 +135,7 @@ freebsd_get_node_packages_ports(){
 		echo 'mysql_enable="YES"' >> /etc/rc.conf
 		service mysql-server start
 		# Turn on ARCHIVE engine
-		/usr/local/bin/mysql -e "install plugin archive soname 'ha_archive.so'"
+		mysql -e "install plugin archive soname 'ha_archive.so'"
 	fi
 	
 	# Install Perl
@@ -358,7 +360,7 @@ test_elsa(){
 	# Test
 	echo "Sending test log messages..."
 	if [ "$DISTRO" = "freebsd" ]; then
-		/usr/local/bin/loggen -Di -I 1 127.0.0.1 514
+		loggen -Di -I 1 127.0.0.1 514
 	else
 		"$BASE_DIR/syslog-ng/bin/loggen" -Di -I 1 127.0.0.1 514
 	fi
