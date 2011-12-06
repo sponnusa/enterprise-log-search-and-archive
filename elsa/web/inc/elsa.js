@@ -776,8 +776,6 @@ YAHOO.ELSA.Results = function(){
 	YAHOO.ELSA.queryResultCounter++;
 	this.id = YAHOO.ELSA.queryResultCounter;
 	logger.log('my id: ' + this.id);
-	this.highlights = {};
-	this.apply_highlights = [];
 	
 	var oSelf = this;
 	
@@ -788,8 +786,8 @@ YAHOO.ELSA.Results = function(){
 			msgDiv.setAttribute('class', 'msg');
 			//apply highlights
 			var msg = cloneVar(oRecord.getData().msg);
-			for (var sHighlight in oSelf.highlights){
-				var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
+			for (var sHighlight in oSelf.results.highlights){
+				var re = new RegExp('(' + sHighlight + ')', 'ig');
 				var aMatches = msg.match(re);
 				if (aMatches != null){
 					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
@@ -823,8 +821,8 @@ YAHOO.ELSA.Results = function(){
 				a.setAttribute('href', '#');//Will jump to the top of page. Could be annoying
 				a.setAttribute('class', 'value');
 				
-				for (var sHighlight in oSelf.highlights){
-					var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
+				for (var sHighlight in oSelf.results.highlights){
+					var re = new RegExp('(' + sHighlight + ')', 'ig');
 					//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
 					if (fieldHash['value_with_markup']){
 						var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
@@ -1014,14 +1012,6 @@ YAHOO.ELSA.Results = function(){
 	    try{
 	    	logger.log('About to create DT with ', "dt"+this.id, oColumns, this.dataSource, oTableCfg);
 	    	this.dataTable = new YAHOO.widget.DataTable(p_oElContainer, oColumns, this.dataSource, oTableCfg);
-	    	logger.log('highlights: ', this.apply_highlights);
-	    	// Now apply the highlights to the divs
-			for (var i in this.apply_highlights){
-				logger.log('applying ' + this.apply_highlights[i] + ' to ' + 'highlight_' + this.id + '_' + i);
-				var oEl = YAHOO.util.Dom.get('highlight_' + this.id + '_' + i);
-				logger.log('oEl: ', oEl);
-				oEl.innerText = this.apply_highlights[i];
-			}
 	    	logger.log('datatable: ', this.dataTable);
 	  	 	YAHOO.util.Dom.removeClass(p_oElContainer, 'hiddenElement');
 	    }catch(e){
@@ -1039,7 +1029,6 @@ YAHOO.ELSA.Results = function(){
 		}
 		logger.log('p_oGroupBy', p_oGroupBy);
 		logger.log('p_sGroupBy', p_sGroupBy);
-		//var oGroupData = p_oGroupBy[p_sGroupBy];
 		var oGroupData = p_oGroupBy;
 		logger.log('oGroupData', oGroupData);
 		
@@ -1499,27 +1488,27 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 	
 	this.queryString = p_sQueryString; 
 	
-	// Create the search highlight terms
-	var aQueryWords = p_sQueryString.split(/\s+/);
-	for (var i in aQueryWords){
-		if (!aQueryWords[i]){
-			continue;
-		}
-		
-		aQueryWords[i] = aQueryWords[i].replace(/[^a-zA-Z0-9\.\-\@\_\:\=\>\<]/g, ''); //strip non-alpha-num
-		var aHighlightTerms = aQueryWords[i].split(/[=<>:]+/);
-		logger.log('aHighlightTerms', aHighlightTerms);
-		if (aHighlightTerms.length == 1){
-			if (aHighlightTerms[0]){
-				this.highlights[ aHighlightTerms[0] ] = 1;
-			}
-		}
-		else if (aHighlightTerms.length == 2){
-			if (aHighlightTerms[1]){
-				this.highlights[ aHighlightTerms[1] ] = 1;
-			}
-		}
-	}
+//	// Create the search highlight terms
+//	var aQueryWords = p_sQueryString.split(/\s+/);
+//	for (var i in aQueryWords){
+//		if (!aQueryWords[i]){
+//			continue;
+//		}
+//		
+//		aQueryWords[i] = aQueryWords[i].replace(/[^a-zA-Z0-9\.\-\@\_\:\=\>\<]/g, ''); //strip non-alpha-num
+//		var aHighlightTerms = aQueryWords[i].split(/[=<>:]+/);
+//		logger.log('aHighlightTerms', aHighlightTerms);
+//		if (aHighlightTerms.length == 1){
+//			if (aHighlightTerms[0]){
+//				this.highlights[ aHighlightTerms[0] ] = 1;
+//			}
+//		}
+//		else if (aHighlightTerms.length == 2){
+//			if (aHighlightTerms[1]){
+//				this.highlights[ aHighlightTerms[1] ] = 1;
+//			}
+//		}
+//	}
 	
 	this.tabView = p_oTabView;
 	YAHOO.util.Dom.removeClass(this.tabView, 'hiddenElement');

@@ -2372,6 +2372,29 @@ sub query {
 		
 		$self->_parse_query_string($args);
 		
+		# Find highlights to inform the web client
+		$ret->{highlights} = {};	
+		foreach my $boolean qw(and or){
+			foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
+				foreach my $field_name (keys %{ $args->{field_terms}->{$boolean}->{$class_id} }){
+					foreach my $term (@{ $args->{field_terms}->{$boolean}->{$class_id}->{$field_name} }){
+						my $regex = $term;
+						$regex =~ s/^\s{2,}/\ /;
+						$regex =~ s/\s{2,}$/\ /;
+						$regex =~ s/\s/\./g;
+						$ret->{highlights}->{$regex} = 1;
+					}
+				}
+			}
+			foreach my $term (sort keys %{ $args->{any_field_terms}->{$boolean} }){
+				my $regex = $term;
+				$regex =~ s/^\s{2,}/\ /;
+				$regex =~ s/\s{2,}$/\ /;
+				$regex =~ s/\s/\./g;
+				$ret->{highlights}->{$regex} = 1;
+			}
+		}
+		
 		# Execute search
 		$self->_sphinx_query($args);
 		$ret->{results} = $args->{results};
