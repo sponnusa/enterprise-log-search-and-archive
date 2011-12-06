@@ -1796,7 +1796,7 @@ sub update_scheduled_query {
 	my ($query, $sth);
 	my $new_args = {};
 	foreach my $given_arg (keys %{ $args }){
-		next if $given_arg eq 'id';
+		next if $given_arg eq 'id' or $given_arg eq 'user_info';
 		unless ($attr_map->{$given_arg}){
 			$self->_error('Invalid arg: ' . $given_arg);
 			return;
