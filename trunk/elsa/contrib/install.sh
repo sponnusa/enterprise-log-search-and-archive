@@ -97,12 +97,21 @@ ubuntu_get_node_packages(){
 }
 
 freebsd_get_node_packages(){
-	pkg_add -vFr subversion wget curl mysql55-server perl syslog-ng3 p5-App-cpanminus &&
+	pkg_add -Fr subversion wget curl mysql55-server perl syslog-ng p5-App-cpanminus &&
 	enable_service "mysql" &&
 	service mysql-server start &&
 	disable_service "syslogd" &&
 	# This could fail if it's already disabled
 	service syslogd stop
+	
+	# Check to see if we got syslog-ng v3 from pkg_add
+	pkg_info -E -x syslog-ng | cut -d\- -f3 | egrep "^3\."
+	if [ $? -eq 1 ]; then
+		echo "Added old syslog-ng, correcting with syslog-ng3"
+		pkg_delete $(pkg_info -E -x syslog-ng) &&
+		pkg_add -r syslog-ng3
+	fi
+	
 	enable_service "syslog-ng" &&
 	cp /usr/local/etc/syslog-ng.conf.dist /usr/local/etc/syslog-ng.conf &&
 	service syslog-ng start
