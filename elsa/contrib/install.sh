@@ -296,8 +296,13 @@ build_syslogng(){
 	tar xzvf "eventlog_$EVENTLOG_VER.tar.gz" &&
 	cd "eventlog-$EVENTLOG_VER" &&
 	./configure && make && make install &&
-	echo "/usr/local/lib" >> /etc/ld.so.conf &&
-	ln -fs "$BASE_DIR/lib/pkgconfig/eventlog.pc" /usr/lib/pkgconfig/ &&
+	echo "/usr/local/lib" >> /etc/ld.so.conf
+	if [ -d /usr/lib64/pkgconfig ]; then
+		ln -fs "$BASE_DIR/lib/pkgconfig/eventlog.pc" /usr/lib64/pkgconfig/
+	fi 
+	if [ -d /usr/lib/pkgconfig ]; then
+		ln -fs "$BASE_DIR/lib/pkgconfig/eventlog.pc" /usr/lib/pkgconfig/
+	fi 
 	ldconfig &&
 	cd $TMP_DIR &&
 	curl "http://www.balabit.com/downloads/files/syslog-ng/open-source-edition/$SYSLOG_VER/source/syslog-ng_$SYSLOG_VER.tar.gz" > "syslog-ng_$SYSLOG_VER.tar.gz" &&
