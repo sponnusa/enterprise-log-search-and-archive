@@ -2373,7 +2373,7 @@ sub query {
 		$self->_parse_query_string($args);
 		
 		# Find highlights to inform the web client
-		$ret->{highlights} = {};	
+		my $highlights = {};	
 		foreach my $boolean qw(and or){
 			foreach my $class_id (keys %{ $args->{field_terms}->{$boolean} }){
 				foreach my $field_name (keys %{ $args->{field_terms}->{$boolean}->{$class_id} }){
@@ -2382,7 +2382,7 @@ sub query {
 						$regex =~ s/^\s{2,}/\ /;
 						$regex =~ s/\s{2,}$/\ /;
 						$regex =~ s/\s/\./g;
-						$ret->{highlights}->{$regex} = 1;
+						$highlights->{$regex} = 1;
 					}
 				}
 			}
@@ -2391,9 +2391,11 @@ sub query {
 				$regex =~ s/^\s{2,}/\ /;
 				$regex =~ s/\s{2,}$/\ /;
 				$regex =~ s/\s/\./g;
-				$ret->{highlights}->{$regex} = 1;
+				$highlights->{$regex} = 1;
 			}
 		}
+		
+		$ret->{highlights} = { %$highlights };
 		
 		# Execute search
 		$self->_sphinx_query($args);
@@ -2551,11 +2553,11 @@ sub _sphinx_query {
 				$self->log->debug('Sphinx query for node ' . $node . ' finished in ' . (time() - $start));
 				my ($dbh, $result, $rv) = @_;
 				if (not $rv){
-					my $e = 'node ' . $node . ' got error ' . $result;
+					my $e = 'node ' . $node . ' got error ' .  Dumper($result);
 					$self->log->error($e);
 					$self->add_warning($e);
 					$cv->end;
-					next;
+					return;
 				}
 				my $rows = $result->{rows};
 				$self->log->trace('node ' . $node . ' got sphinx result: ' . Dumper($result));

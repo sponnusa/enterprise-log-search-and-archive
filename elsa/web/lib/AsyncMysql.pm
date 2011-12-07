@@ -9,29 +9,49 @@ has 'db_args' => (is => 'rw', isa => 'ArrayRef', required => 1);
 has 'query_id' => (traits => ['Counter'], is => 'rw', isa => 'Num', required => 1, default => 1, handles => { next_id => 'inc' });
 has 'watchers' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 
+our $Retries = 3;
+
 sub query {
 	my $self = shift;
 	my $query = shift;
 	my $cb = shift;
 	my @values = @_;
 	
+	
+	my $attempts = 0;
+	my $dbh;
+	while ($attempts < $Retries){
+		$attempts++;
+		eval {
+			$dbh = DBI->connect_cached(@{$self->db_args}) or die($DBI::errstr);
+			$attempts = $Retries;
+		};
+		if ($@){
+			$self->log->error('Got connection error ' . $@);
+		}
+	}
+	unless ($dbh){
+		$self->log->error('Unable to make a connection after ' . $Retries . ' attempts');
+		$cb->(undef, $@, -1);
+		return;
+	}
+		
 	eval {
-		my $dbh = DBI->connect(@{$self->db_args}) or die($DBI::errstr);
 		# Make sure RaiseError is enabled so we can catch problems in this eval block
 		$dbh->{RaiseError} = 1;
 		my $sth = $dbh->prepare($query, { async => 1 });
 		$sth->execute(@values);
 		my $id = $self->next_id;
-		$self->log->trace("Executing query $query with id $id");
+		#$self->log->trace("Executing query $query with id $id");
 		$self->watchers->{$id} = AnyEvent->io( fh => $dbh->mysql_fd, poll => 'r', cb => sub {
-			$self->log->trace("MySQL result for query $query");
 			my @rows;
 			while (my $row = $sth->fetchrow_hashref){
 				push @rows, $row;
 			}
 			$cb->($dbh, \@rows, 1);
-			$self->log->trace("Got " . (scalar @rows) . " results for query $query");
+			#$self->log->trace("Got " . (scalar @rows) . " results for query $query");
 			delete $self->watchers->{$id};
+			return;
 		});
 	};
 	if ($@){
@@ -47,8 +67,26 @@ sub sphinx {
 	my $cb = shift;
 	my @values = @_;
 	
+	my $attempts = 0;
+	my $dbh;
+	while ($attempts < $Retries){
+		$attempts++;
+		eval {
+			$dbh = DBI->connect_cached(@{$self->db_args}) or die($DBI::errstr);
+			$attempts = $Retries;
+		};
+		if ($@){
+			$self->log->error('Got connection error ' . $@);
+			sleep 1;
+		}
+	}
+	unless ($dbh){
+		$self->log->error('Unable to make a connection after ' . $Retries . ' attempts');
+		$cb->(undef, $@, -1);
+		return;
+	}
+	
 	eval {
-		my $dbh = DBI->connect(@{$self->db_args}) or die($DBI::errstr);
 		my $sth = $dbh->prepare($query, { async => 1 });
 		$sth->execute(@values);
 		my $id = $self->next_id;
@@ -71,7 +109,7 @@ sub sphinx {
 					}
 				}
 			} while ($sth->more_results);
-			$cb->(1, { rows => \@rows, meta => \%meta }, $sth->rows);
+			$cb->(1, { rows => \@rows, meta => \%meta }, 1);
 			$self->log->trace("Got " . (scalar @rows) . " results for query $query");
 		});
 	};
