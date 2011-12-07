@@ -2,16 +2,17 @@
 #labels Featured,Phase-Deploy
 
 = Supported Operating Systems =
-==Linux only!==
+==Linux and FreeBSD only!==
 Tested on:
  * Ubuntu 10.04
  * openSUSE 12.1
  * CentOS 6.0 Final
+ * FreeBSD 8.2
 Will probably work with:
  * Debian
  * RHEL, Fedora
  * SLES
-
+ * FreeBSD > 8.2
 
 = Step 1 =
 Grab the auto-installer:
