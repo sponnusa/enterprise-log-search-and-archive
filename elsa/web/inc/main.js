@@ -27,6 +27,9 @@ YAHOO.ELSA.main = function () {
 					YAHOO.ELSA.currentQuery.addMeta('start', oStartTime);
 				}
 			}
+			else {
+				YAHOO.ELSA.currentQuery.delMeta('start');
+			}
 			if (YAHOO.util.Dom.get('end_time').value){
 				oEndTime = getDateFromISO(YAHOO.util.Dom.get('end_time').value)/1000;
 				if (!oEndTime){
@@ -36,6 +39,9 @@ YAHOO.ELSA.main = function () {
 				else {
 					YAHOO.ELSA.currentQuery.addMeta('end', oEndTime);
 				}
+			}
+			else {
+				YAHOO.ELSA.currentQuery.delMeta('end');
 			}
 			if (oStartTime > oEndTime){
 				YAHOO.ELSA.Error('Start time greater than end time');
