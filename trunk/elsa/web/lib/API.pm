@@ -1020,9 +1020,10 @@ sub get_stats {
 			$cv->begin;
 			$stats->{nodes}->{$node}->{dbh}->query($query, sub {
 					my ($dbh, $rows, $rv) = @_;
-					$self->log->trace('here');
+					return unless $intervals;
 					# arrange in the number of buckets requested
 					my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
+					return unless $bucket_size;
 					foreach my $row (@$rows){
 						my $ts = $row->{ts} - $load_stats->{$item}->{summary}->{earliest};
 						my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
