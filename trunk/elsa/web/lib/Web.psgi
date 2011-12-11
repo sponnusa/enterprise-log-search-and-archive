@@ -48,6 +48,16 @@ elsif ($api->conf->get('auth/method') eq 'none'){
 	package main;
 	$auth = Authen::Simple::Null->new(log => $api->log);
 }
+elsif ($api->conf->get('auth/method') eq 'db'){
+	require Authen::Simple::DBI;
+	$auth = Authen::Simple::DBI->new(
+		dsn => $api->conf->get('auth_db/dsn') ? $api->conf->get('auth_db/dsn') : $api->conf->get('meta_db/dsn'),
+		username =>	$api->conf->get('auth_db/username') ? $api->conf->get('auth_db/username') : $api->conf->get('meta_db/username'),
+		password => $api->conf->get('auth_db/password') ? $api->conf->get('auth_db/password') : $api->conf->get('meta_db/password'),
+		log => $api->log,
+		statement => $api->conf->get('auth_db/auth_statement') ? $api->conf->get('auth_db/auth_statement') : 'SELECT PASSWORD(password) FROM users WHERE username=?',
+	);
+}
 else {
 	die('No auth method, please configure one!');
 }
