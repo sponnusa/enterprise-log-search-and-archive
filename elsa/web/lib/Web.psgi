@@ -18,7 +18,7 @@ if ($ENV{ELSA_CONF}){
 my $api = API->new(config_file => $config_file) or die('Unable to start from given config file.');
 
 my $auth;
-if ($api->conf->get('auth/method') eq 'LDAP' and $api->conf->get('ldap')){
+if (lc($api->conf->get('auth/method')) eq 'ldap' and $api->conf->get('ldap')){
 	require Authen::Simple::LDAP;
 	$auth = Authen::Simple::LDAP->new(
 		host        => $api->conf->get('ldap/host'),
