@@ -2267,7 +2267,6 @@ sub get_running_archive_query {
 	}
 }
 
-
 sub query {
 	my ($self, $args) = @_;
 	$self->clear_warnings;
@@ -4119,6 +4118,7 @@ sub run_schedule {
 			$query_params->{query_meta_params}->{start} = ($last_run - $self->conf->get('schedule_interval'));
 			$query_params->{query_meta_params}->{end} = ($cur_time - $self->conf->get('schedule_interval'));
 			$query_params->{query_string} = delete $query_params->{query_string};
+			$query_params->{query_schedule_id} = $row->{query_schedule_id};
 			
 			if (!$user_info_cache->{ $row->{uid} }){
 				$user_info_cache->{ $row->{uid} } = $self->get_user_info($row->{username});
