@@ -169,19 +169,19 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SNORT"), (SELECT id FROM fields WHERE field="dstport"), 10);
 
 
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="authmethod"), 12);
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="user"), 13);
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="device"), 14);
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="port"), 6);
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="service"), 15);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="authmethod"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="user"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="device"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="port"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGIN"), (SELECT id FROM fields WHERE field="service"), 14);
 
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="authmethod"), 12);
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="user"), 13);
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="device"), 14);
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="port"), 6);
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="service"), 15);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="authmethod"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="user"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="device"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="port"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_ACCESS_DENY"), (SELECT id FROM fields WHERE field="service"), 14);
 
-INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGOUT"), (SELECT id FROM fields WHERE field="user"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="SSH_LOGOUT"), (SELECT id FROM fields WHERE field="user"), 11);
 
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="srcip"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_DNS"), (SELECT id FROM fields WHERE field="srcport"), 6);
