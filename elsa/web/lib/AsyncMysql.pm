@@ -110,7 +110,9 @@ sub sphinx {
 				}
 			} while ($sth->more_results);
 			$cb->(1, { rows => \@rows, meta => \%meta }, 1);
-			$self->log->trace("Got " . (scalar @rows) . " results for query $query");
+			#$self->log->trace("Got " . (scalar @rows) . " results for query $query");
+			delete $self->watchers->{$id};
+			return;
 		});
 	};
 	if ($@){
