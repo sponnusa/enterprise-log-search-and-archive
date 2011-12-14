@@ -3436,13 +3436,14 @@ sub _resolve {
 		}
 		
 		my $field_order = $field_infos->{$class_id}->{field_order};
+		my $short_field_name = $field_infos->{$class_id}->{value};
 		# Check for string match and make that a term
-		if (exists $args->{node_info}->{fields_by_type}->{string}->{ $raw_field } and
+		if (exists $args->{node_info}->{fields_by_type}->{string}->{ $short_field_name } and
 			($operator eq '=' or $operator eq '-' or $operator eq '')){
 			$values{fields}->{$class_id}->{ $Field_order_to_field->{ $field_order } } = $raw_value;
 					#[ $raw_value ]; #[ $self->_normalize_value($args, $class_id, $raw_value, $field_order) ];
 		}
-		elsif (exists $args->{node_info}->{fields_by_type}->{string}->{ $raw_field }){
+		elsif (exists $args->{node_info}->{fields_by_type}->{string}->{ $short_field_name }){
 			die('Invalid operator for string field');
 		}
 		elsif ($Field_order_to_attr->{ $field_order }){
