@@ -2367,7 +2367,7 @@ sub query {
 		$args->{node_info} = $self->cache->get('node_info');
 		unless ($args->{node_info}){
 			$args->{node_info} = $self->_get_node_info();
-			$self->cache->set('node_info', $args->{node_info}, $self->conf->get('sphinx/index_interval'));
+			$self->cache->set('node_info', $args->{node_info}, $self->conf->get('node_info_cache_timeout') ? $self->conf->get('node_info_cache_timeout') : 60);
 		}
 		
 		$self->_parse_query_string($args);
