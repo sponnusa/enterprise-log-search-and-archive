@@ -187,12 +187,10 @@ function save_image (p_iId){
 	logger.log('save image with id ' + p_iId);
 	try {
 		var sImageData = YAHOO.util.Dom.get(YAHOO.ELSA.Charts[p_iId].container).get_img_binary();
-		//var sImageData = YAHOO.util.Dom.get('chart').get_img_binary();
-		//var sImageData = YAHOO.util.Dom.get('chart_' + p_iId).get_img_binary();
 		var oEl = document.createElement('img');
 		oEl.id = 'save_image';
 		oEl.src = 'data:image/png;base64,' + sImageData;
-		win = window.open('', 'Save Chart', 'left=20,top=20,width=700,height=500,toolbar=0,resizable=1,status=0');
+		win = window.open('', 'SaveChart', 'left=20,top=20,width=700,height=500,toolbar=0,resizable=1,status=0');
 		win.document.body.appendChild(oEl);
 		//logger.log('data len: ' + sImageData);
 	}
@@ -208,7 +206,7 @@ YAHOO.ELSA.Chart.saveImage = function (p_oEvent, p_iId){
 		var oEl = document.createElement('img');
 		oEl.id = 'save_image';
 		oEl.src = 'data:image/png;base64,' + sImageData;
-		win = window.open('', 'Save Chart', 'left=20,top=20,width=700,height=500,toolbar=0,resizable=1,status=0');
+		win = window.open('', 'SaveChart', 'left=20,top=20,width=700,height=500,toolbar=0,resizable=1,status=0');
 		win.document.body.appendChild(oEl);
 	}
 	catch (e){
