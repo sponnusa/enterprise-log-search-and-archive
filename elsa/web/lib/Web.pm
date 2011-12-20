@@ -9,9 +9,6 @@ use YUI;
 
 use API;
 
-#has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
-#has 'conf' => ( is => 'ro', isa => 'Config::JSON', required => 1 );
-#has 'json' => (is => 'ro', isa => 'JSON', required => 1);
 has 'mode' => (is => 'rw', isa => 'Str', required => 1, default => sub { return 'index' });
 has 'session' => (is => 'rw', isa => 'Object', required => 0);
 has 'api' => (is => 'rw', isa => 'Object', required => 1);
@@ -139,6 +136,11 @@ EOHTML
 		# Set the URL for getPcap if applicable
 		if ($self->api->conf->get('pcap_url')){
 			$HTML .= 'YAHOO.ELSA.pcapUrl = "' . $self->api->conf->get('pcap_url') . '"' . "\n";
+		}
+		
+		# Set SIRT URL if applicable
+		if ($self->api->conf->get('sirt_url')){
+			$HTML .= 'YAHOO.ELSA.SIRTUrl = "' . $self->api->conf->get('sirt_url') . '"' . "\n";
 		}
 	}
 	
