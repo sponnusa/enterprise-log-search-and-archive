@@ -380,7 +380,7 @@ YAHOO.ELSA.main = function () {
 			}
 		};
 		
-		var oStartDate = new Date((formParams.display_start_time) * 1000);
+		var oStartDate = new Date((formParams.display_start_int) * 1000);
 				
 		oFormGridCfg['grid'] = [
 			[ 

@@ -3178,6 +3178,41 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 	YAHOO.ELSA.logInfoDialog.bringToTop();
 }
 
+YAHOO.ELSA.sendToSIRT = function(p_sType, p_aArgs, p_oRecord){
+	logger.log('p_oRecord', p_oRecord);
+	
+	if (!p_oRecord){
+		YAHOO.ELSA.Error('Need a record.');
+		return;
+	}
+	var callback = {
+		success: function(oResponse){
+			oSelf = oResponse.argument[0];
+			if (oResponse.responseText){
+				var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+				if (typeof oReturn === 'object'){
+					logger.log('attached ok');
+					YAHOO.ELSA.logInfoDialog.hide();
+				}
+				else {
+					logger.log(oReturn);
+				}
+			}
+			else {
+				logger.log(oReturn);
+			}
+		},
+		failure: function(oResponse){
+			return [ false, ''];
+		},
+		argument: [this]
+	};
+	var sPayload = YAHOO.lang.JSON.stringify(p_oRecord.getData());
+	sPayload.replace(/;/, '', 'g');
+	logger.log('sPayload: ' + sPayload);
+	var oConn = YAHOO.util.Connect.asyncRequest('POST', YAHOO.ELSA.SIRTUrl, callback, 'data=' + Base64.encode(sPayload));
+}
+
 YAHOO.ELSA.openTicket = function(p_sType, p_aArgs, p_iQid){
 	if (!YAHOO.ELSA.openTicketDialog){
 		var action_id = 0;

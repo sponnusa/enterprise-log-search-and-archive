@@ -1558,7 +1558,7 @@ sub get_form_params {
 	
 	# You can change the default start time displayed to web users by changing this config setting
 	if ($self->conf->get('default_start_time_offset')){
-		$form_params->{display_start_time} = ($node_info->{max} - (86400 * $self->conf->get('default_start_time_offset')));
+		$form_params->{display_start_int} = ($node_info->{max} - (86400 * $self->conf->get('default_start_time_offset')));
 	}
 	
 	
@@ -1861,6 +1861,11 @@ sub save_results {
 
 sub _save_results {
 	my ($self, $args) = @_;
+	
+	unless ($args->{qid}){
+		$self->log->error('No qid found');
+		return;
+	}
 	
 	my ($query, $sth);
 	
@@ -2445,7 +2450,13 @@ sub get_log_info {
 	$self->log->trace('decode: ' . Dumper($decode));
 	
 	my $data;
+	my $plugins = [];
 	
+	# Check to see if SIRT is available and include
+	if ($self->conf->get('sirt_url')){
+		push @$plugins, 'sendToSIRT';
+	}
+		
 	unless ($decode->{class} and $self->conf->get('plugins/' . $decode->{class})){
 		# Check to see if there is generic IP information for use with pcap
 		if ($self->conf->get('pcap_url')){
@@ -2453,18 +2464,21 @@ sub get_log_info {
 			foreach my $field (keys %$decode){
 				if ($ip_fields{$field}){
 					my $plugin = Info::Pcap->new(conf => $self->conf, data => $decode);
-					return  { summary => $plugin->summary, urls => $plugin->urls, plugins => $plugin->plugins };
+					push @$plugins, @{ $plugin->plugins };
+					return  { summary => $plugin->summary, urls => $plugin->urls, plugins => $plugins };
 				}
 			}
 		}
+		
 		$self->log->debug('no plugins for class ' . $decode->{class});
-		$data =  { summary => 'No info.', urls => [], plugins => [] };
+		$data =  { summary => 'No info.', urls => [], plugins => $plugins };
 		return $data;
 	}
 	
 	eval {
 		my $plugin = $self->conf->get('plugins/' . $decode->{class})->new(conf => $self->conf, data => $decode);
-		$data =  { summary => $plugin->summary, urls => $plugin->urls, plugins => $plugin->plugins };
+		push @$plugins, @{ $plugin->plugins };
+		$data =  { summary => $plugin->summary, urls => $plugin->urls, plugins => $plugins };
 	};
 	if ($@){
 		my $e = $@;
@@ -4146,6 +4160,7 @@ sub run_schedule {
 				$action_params->{query_schedule_id} = $row->{query_schedule_id};
 				$action_params->{query} = $query_params;
 				$action_params->{results} = $results;
+				$action_params->{qid} = $results->{qid};
 				$self->log->debug('executing action ' . $row->{action_subroutine} . ' with params ' . Dumper($action_params));
 				my $sub = $row->{action_subroutine};
 				$self->$sub($action_params);
