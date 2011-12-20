@@ -787,9 +787,10 @@ YAHOO.ELSA.Results = function(){
 		try {
 			var msgDiv = document.createElement('div');
 			msgDiv.setAttribute('class', 'msg');
+			var msg = cloneVar(oRecord.getData().msg);
+			
 			if (oSelf.results.highlights){
 				//apply highlights
-				var msg = cloneVar(oRecord.getData().msg);
 				for (var sHighlight in oSelf.results.highlights){
 					var re = new RegExp('(' + sHighlight + ')', 'ig');
 					var aMatches = msg.match(re);
@@ -841,9 +842,10 @@ YAHOO.ELSA.Results = function(){
 						else {
 							fieldHash['value_with_markup'] = '';
 						}
-						a.innerHTML = fieldHash['value_with_markup'];
 					}
 				}
+				
+				a.innerHTML = fieldHash['value_with_markup'];
 				
 				oDiv.appendChild(document.createTextNode('='));
 				oDiv.appendChild(a);
