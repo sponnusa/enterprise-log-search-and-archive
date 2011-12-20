@@ -787,16 +787,18 @@ YAHOO.ELSA.Results = function(){
 		try {
 			var msgDiv = document.createElement('div');
 			msgDiv.setAttribute('class', 'msg');
-			//apply highlights
-			var msg = cloneVar(oRecord.getData().msg);
-			for (var sHighlight in oSelf.results.highlights){
-				var re = new RegExp('(' + sHighlight + ')', 'ig');
-				var aMatches = msg.match(re);
-				if (aMatches != null){
-					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
-					msg = msg.replace(re, sReplacement);
+			if (oSelf.results.highlights){
+				//apply highlights
+				var msg = cloneVar(oRecord.getData().msg);
+				for (var sHighlight in oSelf.results.highlights){
+					var re = new RegExp('(' + sHighlight + ')', 'ig');
+					var aMatches = msg.match(re);
+					if (aMatches != null){
+						var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
+						msg = msg.replace(re, sReplacement);
+					}
 				}
-			}		
+			}
 			msgDiv.innerHTML = msg;
 			p_elCell.appendChild(msgDiv);
 			
@@ -824,21 +826,23 @@ YAHOO.ELSA.Results = function(){
 				a.setAttribute('href', '#');//Will jump to the top of page. Could be annoying
 				a.setAttribute('class', 'value');
 				
-				for (var sHighlight in oSelf.results.highlights){
-					var re = new RegExp('(' + sHighlight + ')', 'ig');
-					//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
-					if (fieldHash['value_with_markup']){
-						var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
-						var aMatches = msg.match(re);
-						if (aMatches != null){
-							var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
-							fieldHash['value_with_markup'] = fieldHash['value_with_markup'].replace(re, sReplacement);
+				if (oSelf.results.highlights){
+					for (var sHighlight in oSelf.results.highlights){
+						var re = new RegExp('(' + sHighlight + ')', 'ig');
+						//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
+						if (fieldHash['value_with_markup']){
+							var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
+							var aMatches = msg.match(re);
+							if (aMatches != null){
+								var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
+								fieldHash['value_with_markup'] = fieldHash['value_with_markup'].replace(re, sReplacement);
+							}
 						}
+						else {
+							fieldHash['value_with_markup'] = '';
+						}
+						a.innerHTML = fieldHash['value_with_markup'];
 					}
-					else {
-						fieldHash['value_with_markup'] = '';
-					}
-					a.innerHTML = fieldHash['value_with_markup'];
 				}
 				
 				oDiv.appendChild(document.createTextNode('='));
@@ -1146,6 +1150,36 @@ YAHOO.ELSA.Results = function(){
 YAHOO.ELSA.Results.Given = function(p_oResults){
 	this.superClass = YAHOO.ELSA.Results;
 	this.superClass();
+	this.results = p_oResults;
+	
+	this.formatFields = function(p_elCell, oRecord, oColumn, p_oData){
+		//logger.log('called formatFields on ', oRecord);
+		try {
+			var msgDiv = document.createElement('div');
+			msgDiv.setAttribute('class', 'msg');
+			var msg = cloneVar(oRecord.getData().msg);
+			msgDiv.innerHTML = msg;
+			p_elCell.appendChild(msgDiv);
+			
+			var oDiv = document.createElement('div');
+			var oTempWorkingSet = cloneVar(p_oData);
+			
+			for (var i in oTempWorkingSet){
+				var fieldHash = oTempWorkingSet[i];
+				fieldHash.value_with_markup = escapeHTML(fieldHash.value);
+				//logger.log('fieldHash', fieldHash);
+				
+				// create field text
+				var oText = document.createTextNode(fieldHash['field'] + '=' + fieldHash['value'] + ' ');
+				oDiv.appendChild(oText);
+			}
+			p_elCell.appendChild(oDiv);
+		}
+		catch (e){
+			logger.log('exception while parsing field:', e);
+			return '';
+		}
+	}
 	
 	var oDiv = document.createElement('div');
 	oDiv.id = 'given_results';
