@@ -3348,6 +3348,10 @@ sub _parse_query_term {
 			elsif ($operator eq '-'){
 				$boolean = 'not';
 			}
+			
+			if($term_hash->{quote}){
+				$term_hash->{value} = $self->_normalize_quoted_value($term_hash->{value});
+			}	
 						
 			# Process a field/value or attr/value
 			if ($term_hash->{field} and $term_hash->{value}){
@@ -3402,9 +3406,6 @@ sub _parse_query_term {
 				
 			# Otherwise there was no field given, search all fields
 			elsif (defined $term_hash->{value}){
-				if($term_hash->{quote}){
-					$term_hash->{value} = $self->_normalize_quoted_value($term_hash->{value});
-				}
 				push @{ $args->{any_field_terms}->{$boolean} }, $term_hash->{value};
 			}
 			else {
@@ -3610,7 +3611,7 @@ sub _normalize_quoted_value {
 	my $value = shift;
 	
 	# Strip punctuation
-	$value =~ s/[^a-zA-Z0-9\.\@\s\-]/\ /g;
+	$value =~ s/[^a-zA-Z0-9\.\@\s\-\_]/\ /g;
 	return '"' . $value . '"';
 }
 
