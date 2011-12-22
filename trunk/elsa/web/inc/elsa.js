@@ -1102,7 +1102,13 @@ YAHOO.ELSA.Results = function(){
 		oEl.setStyle('float', 'left');
 		bothDiv.appendChild(oChartEl);
 		logger.log('p_oElContainer: ' + p_oElContainer.innerHTML);
-		var sTitle = this.tab.get('labelEl').innerText;
+		var sTitle;
+		if (this.tab){
+			sTitle = this.tab.get('labelEl').innerText;
+		}
+		else {
+			sTitle = p_sGroupBy;
+		}
 		var oChart = new YAHOO.ELSA.Chart.Auto(oChartEl.id, 'bar', sTitle, this.chartData, YAHOO.ELSA.addTermFromChart);
 		
 		var formatValue = function(p_elCell, oRecord, oColumn, p_oData){
@@ -1128,8 +1134,7 @@ YAHOO.ELSA.Results = function(){
 	    var dataSource = new YAHOO.util.DataSource(p_oGroupBy);
 	    dataSource.maxCacheEntries = 4; //cache these
 		dataSource.responseType = YAHOO.util.DataSource.TYPE_JSARRAY;
-	    dataSource.responseSchema = {
-	        //resultsList: p_sGroupBy,
+		dataSource.responseSchema = {
 	        fields: oFields
 	    };
 	    
@@ -1187,9 +1192,16 @@ YAHOO.ELSA.Results.Given = function(p_oResults){
 	oDiv.id = 'given_results';
 	YAHOO.util.Dom.get('logs').appendChild(oDiv);
 	
-	this.createDataTable(p_oResults, oDiv);
-	
-	this.dataTable.render();
+	if (p_oResults.query_meta_params && p_oResults.query_meta_params.groups_only){
+		for (var i in p_oResults.query_meta_params.groupby){
+			var sGroupBy = p_oResults.query_meta_params.groupby[i];
+			this.createGroupByDataTable(p_oResults.results[sGroupBy], sGroupBy, oDiv);
+		}
+	}
+	else {
+		this.createDataTable(p_oResults, oDiv);
+		this.dataTable.render();
+	}
 }
 	
 YAHOO.ELSA.Form = function(p_oFormEl, p_oFormCfg){
