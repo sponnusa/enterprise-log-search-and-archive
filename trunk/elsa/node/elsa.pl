@@ -17,7 +17,7 @@ use lib $FindBin::Bin;
 use Indexer;
 
 my %Opts;
-getopts('onc:', \%Opts);
+getopts('onc:f:', \%Opts);
 
 $| = 1;
 my $pipes     = {};
@@ -105,6 +105,12 @@ unless ($Opts{n}){
 	print "Validating directory...\n";
 	my $indexer = new Indexer(log => $Log, conf => Config::JSON->new( $conf_file ), class_info => $Class_info);
 	$indexer->initial_validate_directory();
+}
+
+if ($Opts{f}){
+	print "Processing file $Opts{f}...\n";
+	_process_batch($Opts{f});
+	exit;
 }
 
 if ($Opts{o}){
