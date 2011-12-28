@@ -217,19 +217,18 @@ sub get_results {
 		my $args = $req->query_parameters->as_hashref;
 		$args->{uid} = $self->session->get('user_info')->{uid};
 		
-		#my $ret = $self->rpc('get_saved_result', $args);
 		my $ret = $self->api->get_saved_result($args);
 		if ($ret and ref($ret) eq 'HASH'){
 			 $HTML .= '<script>var oGivenResults = ' . $self->api->json->encode($ret) . '</script>';
 			 $HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
 		}
 		else {
-			$self->_error('Unable to get results, got: ' . Dumper($ret));
+			$self->api->_error('Unable to get results, got: ' . Dumper($ret));
 			$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unable to get results"); });</script>';
 		}
 	}
 	else {
-		$self->_error('Unauthorized');
+		$self->api->_error('Unauthorized');
 		$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unauthorized"); });</script>';
 	}
 	
