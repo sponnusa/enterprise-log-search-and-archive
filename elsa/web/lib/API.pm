@@ -177,7 +177,7 @@ sub BUILDARGS {
 		else {
 			$params{json} = JSON->new->allow_nonref->allow_blessed;
 		}
-			
+		
 		$params{db} = DBI->connect(
 			$params{conf}->get('meta_db/dsn'),
 			$params{conf}->get('meta_db/username'),
@@ -231,7 +231,7 @@ sub freshen_db {
 sub BUILD {
 	my $self = shift;
 	
-	if ( $self->conf->get('auth/method') eq 'LDAP' ) {
+	if ( uc($self->conf->get('auth/method')) eq 'LDAP' ) {
 		require Net::LDAP::Express;
 		require Net::LDAP::FilterBuilder;
 		$self->ldap($self->_get_ldap());
@@ -325,7 +325,7 @@ sub get_user_info {
 	}
 
 	# Get the groups this user is a part of
-	if ( $self->conf->get('auth/method') eq 'LDAP' ) {
+	if ( uc($self->conf->get('auth/method')) eq 'LDAP' ) {
 		$self->ldap($self->_get_ldap());
 		unless ($self->ldap) {
 			$self->log->error('Unable to connect to LDAP server');
@@ -377,7 +377,7 @@ sub get_user_info {
 			}
 		}
 	}
-	elsif ($self->conf->get('auth/method') eq 'local'){
+	elsif (lc($self->conf->get('auth/method')) eq 'local'){
 		my %in;
 		while (my @arr = getgrent()){
 			my @members = split(/\s+/, $arr[3]);
@@ -401,7 +401,7 @@ sub get_user_info {
 		}
 		$user_info->{email} = $username . '@localhost';
 	}
-	elsif ($self->conf->get('auth/method') eq 'db'){
+	elsif (lc($self->conf->get('auth/method')) eq 'db'){
 		die('No admin groups listed in admin_groups') unless $self->conf->get('admin_groups');
 		my ($query, $sth);
 		$query = 'SELECT groupname FROM groups t1 JOIN users_groups_map t2 ON (t1.uid=t2.uid) JOIN users t3 ON (t2.uid=t3.uid) WHERE t3.username=?';
@@ -2545,8 +2545,8 @@ sub _sphinx_query {
 		}
 		
 		eval {
-			my @multi_queries;
-			my @multi_values;
+			my @sphinx_queries;
+			my @sphinx_values;
 			my $start = time();
 			foreach my $query (@{ $args->{queries} }){
 				my $search_query = 'SELECT *, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where};
@@ -2554,16 +2554,16 @@ sub _sphinx_query {
 					$search_query .= ' GROUP BY ' . $query->{groupby};
 				}
 				$search_query .= ' LIMIT ?,? OPTION ranker=none';
-				push @multi_values, @{ $query->{values } }, $args->{offset}, $args->{limit};
+				push @sphinx_values, @{ $query->{values } }, $args->{offset}, $args->{limit};
 				$self->log->debug('sphinx_query: ' . $search_query . ', values: ' . 
 					Dumper($query->{values}));
-				push @multi_queries, $search_query;
+				push @sphinx_queries, $search_query;
 			}
 			
-			$self->log->trace('multiquery: ' . join(';', @multi_queries));
-			$self->log->trace('values: ' . join(',', @multi_values));
+			$self->log->trace('multiquery: ' . join(';', @sphinx_queries));
+			$self->log->trace('values: ' . join(',', @sphinx_values));
 			$cv->begin;
-			$nodes->{$node}->{sphinx}->sphinx(join(';', @multi_queries) . ';SHOW META', sub { 
+			$nodes->{$node}->{sphinx}->sphinx(join(';', @sphinx_queries) . ';SHOW META', sub { 
 				$self->log->debug('Sphinx query for node ' . $node . ' finished in ' . (time() - $start));
 				my ($dbh, $result, $rv) = @_;
 				if (not $rv){
@@ -2593,25 +2593,33 @@ sub _sphinx_query {
 					}
 				}
 				
-				# Go get the actual rows from the dbh
-				foreach my $table (sort keys %tables){
-					my $placeholders = join(',', map { '?' } @{ $tables{$table} });
-					my $table_query = sprintf("SELECT main.id,\n" .
-						"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
-						"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
-						"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
-						"FROM %1\$s main\n" .
-						"LEFT JOIN %2\$s.programs ON main.program_id=programs.id\n" .
-						"LEFT JOIN %2\$s.classes ON main.class_id=classes.id\n" .
-						' WHERE main.id IN (' . $placeholders . ')',
-						$table, $nodes->{$node}->{db});
+				if (scalar keys %tables){				
+					# Go get the actual rows from the dbh
+					my @table_queries;
+					my @table_query_values;
+					foreach my $table (sort keys %tables){
+						my $placeholders = join(',', map { '?' } @{ $tables{$table} });
+						my $table_query = sprintf("SELECT %1\$s.id,\n" .
+							"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
+							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+							"FROM %1\$s\n" .
+							"LEFT JOIN %2\$s.programs ON %1\$s.program_id=programs.id\n" .
+							"LEFT JOIN %2\$s.classes ON %1\$s.class_id=classes.id\n" .
+							'WHERE %1$s.id IN (' . $placeholders . ')',
+							$table, $nodes->{$node}->{db});
+						push @table_queries, $table_query;
+						push @table_query_values, @{ $tables{$table} };
+					}
+					my $table_query = join(';', @table_queries);
+					
 					$self->log->trace('table query for node ' . $node . ': ' . $table_query 
-						. ', placeholders: ' . join(',', @{ $tables{$table} }));
+						. ', placeholders: ' . join(',', @table_query_values));
 					$cv->begin;
-					$nodes->{$node}->{dbh}->query($table_query, 
+					$nodes->{$node}->{dbh}->multi_query($table_query, 
 						sub { 
 							my ($dbh, $rows, $rv) = @_;
-							if (not $rv){
+							if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 								my $errstr = 'node ' . $node . ' got error ' . $rows;
 								$self->log->error($errstr);
 								$self->add_warning($errstr);
@@ -2626,11 +2634,14 @@ sub _sphinx_query {
 								$ret->{$node}->{results}->{ $row->{id} } = $row;
 							}
 							$cv->end;
-						}, 
-						@{ $tables{$table} });
+						},
+						@table_query_values);
+					$cv->end; #end sphinx query	
 				}
-				$cv->end; #end sphinx query
-			}, @multi_values);
+				else {
+					$cv->end; #end sphinx query
+				}
+			}, @sphinx_values);
 		};
 		if ($@){
 			$ret->{$node}->{error} = 'sphinx query error: ' . $@;
@@ -3612,7 +3623,13 @@ sub _normalize_quoted_value {
 	
 	# Strip punctuation
 	$value =~ s/[^a-zA-Z0-9\.\@\s\-\_]/\ /g;
-	return '"' . $value . '"';
+	# Quoted integers don't work for some reason
+	if ($value =~ /^\d+$/){
+		return $value;
+	}
+	else {
+		return '"' . $value . '"';
+	}
 }
 
 sub _is_permitted {
