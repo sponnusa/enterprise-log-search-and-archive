@@ -884,9 +884,15 @@ YAHOO.ELSA.Results = function(){
 		var curDate = new Date();
 		// only display the year if it isn't the current year
 		if (curDate.getYear() != oDate.getYear()){
-			p_elCell.innerHTML = YAHOO.ELSA.TimeTranslation.Days[ oDate.getDay() ] + ' ' +  
-			YAHOO.ELSA.TimeTranslation.Months[ oDate.getMonth() ] + ' ' + oDate.getDate() +
-			oDate.getYear() + ' ' + oDate.getHours() + ':' + oDate.getMinutes() + ':' + oDate.getSeconds();
+			p_elCell.innerHTML = sprintf('%04d %s %s %02d %02d:%02d:%02d',
+				oDate.getYear() + 1900,
+				YAHOO.ELSA.TimeTranslation.Days[ oDate.getDay() ],
+				YAHOO.ELSA.TimeTranslation.Months[ oDate.getMonth() ],
+				oDate.getDate(),
+				oDate.getHours(),
+				oDate.getMinutes(),
+				oDate.getSeconds()
+			);
 		}
 		else {
 			p_elCell.innerHTML = sprintf('%s %s %02d %02d:%02d:%02d',
