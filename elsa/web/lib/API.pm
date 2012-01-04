@@ -3502,12 +3502,12 @@ sub _normalize_value {
 	
 	if ($field_order == $Field_to_order->{host}){ #host is handled specially
 		my @ret;
-		if ($value =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) {
-			@ret = ( unpack('N*', inet_aton($value)) ); 
+		if ($value =~ /^"?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"?$/) {
+			@ret = ( unpack('N*', inet_aton($1)) ); 
 		}
-		elsif ($value =~ /^[a-zA-Z0-9\-\.]+$/){
-			my $host_to_resolve = $value;
-			unless ($value =~ /\./){
+		elsif ($value =~ /^"?([a-zA-Z0-9\-\.]+)"?$/){
+			my $host_to_resolve = $1;
+			unless ($host_to_resolve =~ /\./){
 				my $fqdn_hostname = Sys::Hostname::FQDN::fqdn();
 				$fqdn_hostname =~ /^[^\.]+\.(.+)/;
 				my $domain = $1;
