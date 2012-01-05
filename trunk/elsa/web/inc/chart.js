@@ -183,22 +183,6 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 	logger.log('element: ', YAHOO.util.Dom.get(this.container));
 };
 
-function save_image (p_iId){
-	logger.log('save image with id ' + p_iId);
-	try {
-		var sImageData = YAHOO.util.Dom.get(YAHOO.ELSA.Charts[p_iId].container).get_img_binary();
-		var oEl = document.createElement('img');
-		oEl.id = 'save_image';
-		oEl.src = 'data:image/png;base64,' + sImageData;
-		win = window.open('', 'SaveChart', 'left=20,top=20,width=700,height=500,toolbar=0,resizable=1,status=0');
-		win.document.body.appendChild(oEl);
-		//logger.log('data len: ' + sImageData);
-	}
-	catch (e){
-		YAHOO.ELSA.Error(e);
-	}
-}
-
 YAHOO.ELSA.Chart.saveImage = function (p_oEvent, p_iId){
 	logger.log('save image with id ' + p_iId);
 	try {
@@ -213,21 +197,3 @@ YAHOO.ELSA.Chart.saveImage = function (p_oEvent, p_iId){
 		YAHOO.ELSA.Error(e);
 	}
 }
-
-YAHOO.ELSA.Chart.showImage = function(p_oResponse){
-	try {
-		win = window.open('', 'Save Chart', 'left=20,top=20,width=700,height=500,toolbar=0,resizable=1,status=0');
-		if (!win){
-			YAHOO.ELSA.Error('Unable to open new window!');
-		} 
-		//logger.log('response', p_oResponse.responseText);
-		
-		var oEl = document.createElement('img');
-		oEl.id = 'save_image';
-		win.document.body.appendChild(oEl);
-	}
-	catch (e){
-		logger.log(e);
-	}
-	
-};
