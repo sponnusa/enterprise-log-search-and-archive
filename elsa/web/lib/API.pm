@@ -3500,6 +3500,11 @@ sub _normalize_value {
 	return $value unless $args->{node_info}->{field_conversions}->{ $class_id };
 	#$self->log->debug("normalizing for class_id $class_id with the following: " . Dumper($args->{node_info}->{field_conversions}->{ $class_id }));
 	
+	# Normalize if quoted
+	if ($value =~ /^["']([^"']+)["']$/){
+		$value = $1;
+	}
+	
 	if ($field_order == $Field_to_order->{host}){ #host is handled specially
 		my @ret;
 		if ($value =~ /^"?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"?$/) {
