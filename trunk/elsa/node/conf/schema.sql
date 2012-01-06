@@ -59,7 +59,7 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("class_id", "int", 
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("msg", "string", "NONE");
 
 INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("ip", "int", "PCRE-IPv4", "IPv4");
-INSERT INTO fields (field, field_type, pattern_type) VALUES ("proto", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("proto", "int", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("o_int", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("srcip", "int", "IPv4", "IPv4");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("srcport", "int", "NUMBER");
