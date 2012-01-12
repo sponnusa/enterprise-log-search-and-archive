@@ -3723,7 +3723,7 @@ sub _build_archive_match_str {
 	# Create the Sphinx Extended2 matching mode query string to be placed in MATCH()
 	
 	# No-field match str
-	my $match_str = '';
+	my $match_str = '1=1';
 	my (%and, %or, %not);
 	foreach my $term (keys %{ $args->{any_field_terms}->{and} }){
 		$and{'msg LIKE "%' . $term . '%"'} = 1;
@@ -4057,6 +4057,8 @@ sub run_schedule {
 	
 	my ($query, $sth);
 	
+	my $cur_time = CORE::time();
+	
 	# Find the last run time from the bookmark table
 	$query = 'SELECT UNIX_TIMESTAMP(last_run) FROM schedule_bookmark';
 	$sth = $self->db->prepare($query);
@@ -4102,12 +4104,12 @@ sub run_schedule {
 		'FROM query_schedule t1' . "\n" .
 		'JOIN users ON (t1.uid=users.uid)' . "\n" .
 		'JOIN query_schedule_actions t2 ON (t1.action_id=t2.action_id)' . "\n" .
-		'WHERE start <= ? AND end >= ? AND enabled=1' . "\n" .
+		'WHERE ? BETWEEN start AND end AND enabled=1' . "\n" .
 		'AND UNIX_TIMESTAMP() - UNIX_TIMESTAMP(last_alert) > alert_threshold';  # we won't even run queries we know we won't alert on
 	$sth = $self->db->prepare($query);
 	
-	my $cur_time = $form_params->{end_int};
-	$sth->execute($cur_time, $cur_time);
+	#my $cur_time = $form_params->{end_int};
+	$sth->execute($cur_time);
 	
 	my $user_info_cache = {};
 	
@@ -4153,7 +4155,7 @@ sub run_schedule {
 		if (scalar @dates){
 			# Adjust the query time to avoid time that is potentially unindexed by offsetting by the schedule interval
 			my $query_params = $self->json->decode($row->{query});
-			$query_params->{query_meta_params}->{start} = ($last_run - $self->conf->get('schedule_interval'));
+			$query_params->{query_meta_params}->{start} = 1 + ($last_run - $self->conf->get('schedule_interval')); # add a sec to avoid overlap
 			$query_params->{query_meta_params}->{end} = ($cur_time - $self->conf->get('schedule_interval'));
 			$query_params->{query_string} = delete $query_params->{query_string};
 			$query_params->{query_schedule_id} = $row->{query_schedule_id};
@@ -4559,6 +4561,10 @@ sub _archive_query {
 					my $field_infos = $self->_resolve($args, $groupby, $row->{$groupby}, '=');
 					my $field = (keys %{ $field_infos->{attrs}->{ $row->{class_id} } })[0];
 					$field =~ s/attr\_//;
+					unless ($field){
+						# Must have been a field not an attr
+						$field = (keys %{ $field_infos->{fields}->{ $row->{class_id} } })[0];
+					}
 					my $key;
 					if (exists $Field_to_order->{ $field }){
 						# Resolve normally
