@@ -19,7 +19,7 @@ use Sys::Hostname::FQDN;
 use String::CRC32;
 use CHI;
 use Time::HiRes qw(time);
-use Module::Pluggable require => 1, search_path => [ qw( Export Info ) ];
+use Module::Pluggable require => 1, search_path => [ qw( Export Info Transform ) ];
 use URI::Escape qw(uri_unescape);
 use Mail::Internet;
 use Email::LocalDelivery;
@@ -2426,6 +2426,9 @@ sub query {
 		$sth->execute( $ret->{recordsReturned}, $ret->{totalTime}, $qid );
 	}
 	
+	# Apply transforms
+	$self->_transform($args);
+	
 	$ret->{errors} = $self->warnings;
 	return $ret;
 }
@@ -2843,6 +2846,11 @@ sub _parse_query_string {
 	if ($args->{user_info}->{permissions}->{filter}){
 		$filtered_raw_query .= ' ' . $args->{user_info}->{permissions}->{filter};
 	}
+	
+	# Strip off any transforms and apply later
+	($filtered_raw_query, my @transforms) = split(/\s*\|\s+/, $filtered_raw_query);
+	$self->log->trace('query: ' . $filtered_raw_query . ', transforms: ' . join(' ', @transforms));
+	$args->{transforms} = [ @transforms ];
 	
 	# Check to see if the class was given in meta params
 	if ($args->{query_meta_params}->{class}){
@@ -4040,6 +4048,67 @@ sub export {
 	else {
 		$self->log->error('Invalid args: ' . Dumper($args));
 		return 'Unable to build results object from args';
+	}
+}
+
+sub transform {
+	my ($self, $args) = @_;
+	
+	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
+		my ($transforms,$data);
+		eval {
+			$args->{transforms} = $self->json->decode(uri_unescape($args->{transforms}));
+			$args->{results} = $self->json->decode(uri_unescape($args->{data}));
+			$self->log->debug( "Decoded data as : " . Dumper($data) );
+		};
+		if ($@){
+			$self->log->error("invalid args, error: $@, args: " . Dumper($args));
+			return 'Unable to build results object from args';
+		}
+		
+		$self->_transform($args);
+		my $results = $args->{results};
+		
+		return { 
+			ret => $results, 
+			mime_type => 'application/javascript',
+		};
+	}
+	else {
+		$self->log->error('Invalid args: ' . Dumper($args));
+		return 'Unable to build results object from args';
+	}
+}
+
+sub _transform {
+	my ($self, $args) = @_;
+	
+	if ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{transforms} ) {
+		my $num_found = 0;
+		foreach my $transform (@{ $args->{transforms} }){
+			my $results_obj;
+			my $plugin_fqdn = 'Transform::' . $transform;
+			foreach my $plugin ($self->plugins()){
+				if (lc($plugin) eq lc($plugin_fqdn)){
+					$self->log->debug('loading plugin ' . $plugin);
+					$args->{results} = $plugin->new(conf => $self->conf, log => $self->log, 
+						cache => CHI->new(driver => 'RawMemory', datastore => {}), data => $args->{results})->data;
+					$self->log->debug('results:' . Dumper($args->{results}));
+					$num_found++;
+				}
+			}
+		}
+		
+		unless ($num_found){
+			$self->log->error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
+				join(', ', $self->plugins()) . ' ' . Dumper($args));
+			return 0;
+		}
+		return 1;
+	}
+	else {
+		$self->log->error('Invalid args: ' . Dumper($args));
+		return 0;
 	}
 }
 

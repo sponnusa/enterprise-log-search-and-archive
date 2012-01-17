@@ -317,7 +317,4 @@ EOHTML
 	return $HTML;	
 }
 
-
-
-
 1;
