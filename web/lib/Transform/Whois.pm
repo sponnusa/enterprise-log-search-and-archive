@@ -27,20 +27,10 @@ sub BUILD {
 		
 		$self->cv(AnyEvent->condvar);
 		$self->cv->begin;
-		if ($datum->{_fields}){
-			foreach my $field_hash (@{ $datum->{_fields} }){
-				if ($field_hash->{field} eq 'srcip' or $field_hash->{field} eq 'dstip'){
-					$datum->{transforms}->{whois}->{ $field_hash->{field} } = {};
-					$self->_lookup($datum, $field_hash->{field}, $field_hash->{value});
-				}
-			}
-		}
-		else {
-			foreach my $key (%{ $datum }){
-				if ($key eq 'srcip' or $key eq 'dstip'){
-					$datum->{transforms}->{whois}->{$key} = {};
-					$self->_lookup($datum, $key, $datum->{$key});
-				}
+		foreach my $key (keys %{ $datum }){
+			if ($key eq 'srcip' or $key eq 'dstip'){
+				$datum->{transforms}->{whois}->{$key} = {};
+				$self->_lookup($datum, $key, $datum->{$key});
 			}
 		}
 		
@@ -48,16 +38,12 @@ sub BUILD {
 		$self->cv->recv;
 		
 		foreach my $key qw(srcip dstip){
-			if ($datum->{transforms}->{whois}->{$key} and not $datum->{transforms}->{whois}->{$key}->{is_local}){
-				$self->log->debug('transform: ' . Dumper($datum->{transforms}->{whois}->{$key}));
-				foreach my $field (keys %{ $datum->{transforms}->{whois}->{$key} }){
-					if ($datum->{_fields}){
-						push @{ $datum->{_fields} }, { field => $field, value => $datum->{transforms}->{whois}->{$key}->{$field}, class => 'Transform.Whois' };
-					}
-					else {
-						$datum->{$field} = $datum->{transforms}->{whois}->{$key}->{$field};
-					}
-				}
+			if ($datum->{transforms}->{whois}->{$key} and $datum->{transforms}->{whois}->{$key}->{is_local}){
+				delete $datum->{transforms}->{whois}->{$key};
+#				$self->log->debug('transform: ' . Dumper($datum->{transforms}->{whois}->{$key}));
+#				foreach my $field (keys %{ $datum->{transforms}->{whois}->{$key} }){
+#						$datum->{$field} = $datum->{transforms}->{whois}->{$key}->{$field};
+#				}
 				last;
 			}
 		}
