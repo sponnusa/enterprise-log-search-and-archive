@@ -9,6 +9,8 @@ has 'data' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { {}
 # A transform may be a "meta" tranform which refers to other transforms
 has 'transforms' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] });
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => '');
+has 'groupby' => (is => 'rw', isa => 'Str', required => 1, default => '');
+has 'args' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] });
 
 sub BUILDARGS {
 	my $class = shift;
@@ -40,5 +42,6 @@ sub BUILDARGS {
 	}
 	
 	return \%params;
-} 
+}
+
 1;
