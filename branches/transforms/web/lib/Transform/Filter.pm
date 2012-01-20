@@ -27,6 +27,7 @@ sub BUILD {
 		foreach my $transform (keys %{ $datum->{transforms} }){
 			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
 			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
+				next unless ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
 				foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
 					next unless $key =~ $self->field;
 					if ($datum->{transforms}->{$transform}->{$transform_field}->{$key} =~ $self->regex){

@@ -23,13 +23,13 @@ sub BUILD {
 	my $self = shift;
 	
 	foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{whois} = {};
+		$datum->{transforms}->{$Name} = {};
 		
 		$self->cv(AnyEvent->condvar);
 		$self->cv->begin;
 		foreach my $key (keys %{ $datum }){
 			if ($key eq 'srcip' or $key eq 'dstip'){
-				$datum->{transforms}->{whois}->{$key} = {};
+				$datum->{transforms}->{$Name}->{$key} = {};
 				$self->_lookup($datum, $key, $datum->{$key});
 			}
 		}
@@ -38,11 +38,12 @@ sub BUILD {
 		$self->cv->recv;
 		
 		foreach my $key qw(srcip dstip){
-			if ($datum->{transforms}->{whois}->{$key} and $datum->{transforms}->{whois}->{$key}->{is_local}){
-				delete $datum->{transforms}->{whois}->{$key};
-#				$self->log->debug('transform: ' . Dumper($datum->{transforms}->{whois}->{$key}));
-#				foreach my $field (keys %{ $datum->{transforms}->{whois}->{$key} }){
-#						$datum->{$field} = $datum->{transforms}->{whois}->{$key}->{$field};
+			if ($datum->{transforms}->{$Name}->{$key} and $datum->{transforms}->{$Name}->{$key}->{is_local}){
+				my $deleted = delete $datum->{transforms}->{$Name}->{$key};
+				$datum->{transforms}->{$Name}->{$key}->{customer} = $deleted->{customer};
+#				$self->log->debug('transform: ' . Dumper($datum->{transforms}->{$Name}->{$key}));
+#				foreach my $field (keys %{ $datum->{transforms}->{$Name}->{$key} }){
+#						$datum->{$field} = $datum->{transforms}->{$Name}->{$key}->{$field};
 #				}
 				last;
 			}
@@ -58,7 +59,7 @@ sub _lookup {
 	my $field = shift;
 	my $ip = shift;
 	
-	my $ret = $datum->{transforms}->{whois}->{$field};
+	my $ret = $datum->{transforms}->{$Name}->{$field};
 	$self->log->trace('Looking up ip ' . $ip);
 	$self->cv->begin;
 		
@@ -70,7 +71,8 @@ sub _lookup {
 		foreach my $start (keys %$known_subnets){
 			my $start_int = unpack('N*', inet_aton($start));
 			if ($start_int <= $ip_int and unpack('N*', inet_aton($known_subnets->{$start}->{end})) >= $ip_int){
-				$datum->{customer} = $known_subnets->{$start}->{org};
+				#$datum->{customer} = $known_subnets->{$start}->{org};
+				$ret->{customer} = $known_subnets->{$start}->{org};
 				foreach my $key qw(name descr org cc country state city){
 					$ret->{$key} = $known_orgs->{ $known_subnets->{$start}->{org} }->{$key};
 				}
@@ -88,7 +90,7 @@ sub _lookup {
 		$ret->{name} = $ip_info->{name};
 		$ret->{descr} = $ip_info->{descr};
 		$ret->{org} = $ip_info->{org};
-		$ret->{cc} = $ip_info->{cc} if exists $ret->{cc};
+		$ret->{cc} = $ip_info->{cc} ? $ip_info->{cc} : 'US';
 		my $org_url = $ip_info->{org_url};
 		unless ($org_url){
 			$self->log->warn('No org_url found from ip_url ' . $ip_url . ' in ip_info: ' . Dumper($ip_info));
@@ -168,7 +170,7 @@ sub _lookup_ip_ripe {
 	my $ip = shift;
 	my $field = shift;
 	
-	my $ret = $datum->{transforms}->{whois}->{$field};
+	my $ret = $datum->{transforms}->{$Name}->{$field};
 	
 	my $ripe_url = 'http://apps.db.ripe.net/whois/grs-lookup/' . lc($registrar) . '-grs/inetnum/' . $ip;
 	my $cached = $self->cache->get($ripe_url);
@@ -237,7 +239,7 @@ sub _lookup_org {
 	
 	$org_url =~ /\/([^\/]+)$/;
 	my $key = $1;
-	my $ret = $datum->{transforms}->{whois}->{$field};
+	my $ret = $datum->{transforms}->{$Name}->{$field};
 	
 	if (my $cached = $self->cache->get($key)){
 		$self->log->trace('Using cached url ' . $org_url . ' with key ' . $key); 

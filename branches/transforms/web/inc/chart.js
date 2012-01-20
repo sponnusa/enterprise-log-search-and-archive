@@ -14,7 +14,7 @@ YAHOO.ELSA.Chart.open_flash_chart_data = function(p_iId){
 }
 
 // Auto-graph given a graph type, title, and AoH of data
-YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p_callback){
+YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p_callback, p_iWidth, p_iHeight, p_sBgColor){
 	if (typeof p_callback == 'undefined'){
 		p_callback = function(){};
 	}
@@ -151,6 +151,9 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 			steps:(this.ymax / 10)
 		}
 	}
+	if (p_sBgColor){
+		chartCfg.bg_colour = p_sBgColor;
+	}
 	this.cfg = chartCfg;
 	
 	// create a div within the given container so we can append the "Save As..." link
@@ -173,7 +176,15 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 	YAHOO.ELSA.Charts.push(this);
 	logger.log('outerContainerDiv', outerContainerDiv);
 	try {
-		swfobject.embedSWF("inc/open-flash-chart.swf", this.container, 500, 300, 
+		var iWidth = 500;
+		if (p_iWidth){
+			iWidth = p_iWidth;
+		}
+		var iHeight = 300;
+		if (p_iHeight){
+			iHeight = p_iHeight;
+		}
+		swfobject.embedSWF("inc/open-flash-chart.swf", this.container, iWidth, iHeight, 
 			"9.0.0", "expressInstall.swf", 
 			{"get-data" : "YAHOO.ELSA.Chart.open_flash_chart_data", "id" : this.id }, {"wmode" : "opaque"} );
 	}
