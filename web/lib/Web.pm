@@ -19,6 +19,7 @@ our %Modes = (
 	stats => 1,
 	get_results => 1,
 	admin => 1,
+	transform => 2,
 );
 
 #sub BUILD {
@@ -315,6 +316,37 @@ EOHTML
 ;
 	
 	return $HTML;	
+}
+
+sub transform {
+	my $self = shift;
+	my $req = shift;
+	my $args = $req->query_parameters->as_hashref;
+	
+	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
+		my ($transforms,$data);
+		eval {
+			$args->{transforms} = $self->api->json->decode(uri_unescape($args->{transforms}));
+			$args->{results} = $self->api->json->decode(uri_unescape($args->{data}));
+			$self->api->log->debug( "Decoded data as : " . Dumper($data) );
+		};
+		if ($@){
+			$self->api->log->error("invalid args, error: $@, args: " . Dumper($args));
+			return 'Unable to build results object from args';
+		}
+		
+		$self->api->transform($args);
+		my $results = $args->{results};
+		
+		return { 
+			ret => $results, 
+			mime_type => 'application/javascript',
+		};
+	}
+	else {
+		$self->api->log->error('Invalid args: ' . Dumper($args));
+		return 'Unable to build results object from args';
+	}
 }
 
 1;

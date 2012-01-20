@@ -2440,7 +2440,7 @@ sub query {
 			push @{ $transform_args->{results} }, $condensed_hash;
 		}
 		
-		$self->_transform($transform_args);
+		$self->transform($transform_args);
 		$self->log->debug('$transform_args' . Dumper($transform_args));
 		
 		if ($transform_args->{groupby}){
@@ -2457,7 +2457,9 @@ sub query {
 				# Some transforms can filter records out entirely by setting the __DELETE__ transform flag
 				next if $transform_args->{results}->[$i]->{transforms}->{__DELETE__};
 				foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
+					next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
 					foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
+						next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
 						foreach my $transform_key (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
 							push @{ $ret->{results}->[$i]->{_fields} }, { 
 								field => $transform_field . '.' . $transform_key, 
@@ -3770,7 +3772,7 @@ sub _build_sphinx_match_str {
 		if (scalar keys %not){
 			$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
 		}
-		push @class_match_strs, $class_match_str;
+		push @class_match_strs, $class_match_str if $class_match_str;
 	}
 	
 	if (@class_match_strs){
@@ -4118,35 +4120,6 @@ sub export {
 sub transform {
 	my ($self, $args) = @_;
 	
-	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
-		my ($transforms,$data);
-		eval {
-			$args->{transforms} = $self->json->decode(uri_unescape($args->{transforms}));
-			$args->{results} = $self->json->decode(uri_unescape($args->{data}));
-			$self->log->debug( "Decoded data as : " . Dumper($data) );
-		};
-		if ($@){
-			$self->log->error("invalid args, error: $@, args: " . Dumper($args));
-			return 'Unable to build results object from args';
-		}
-		
-		$self->_transform($args);
-		my $results = $args->{results};
-		
-		return { 
-			ret => $results, 
-			mime_type => 'application/javascript',
-		};
-	}
-	else {
-		$self->log->error('Invalid args: ' . Dumper($args));
-		return 'Unable to build results object from args';
-	}
-}
-
-sub _transform {
-	my ($self, $args) = @_;
-	
 	if ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{transforms} ) {
 		my $num_found = 0;
 		my $cache;
@@ -4167,7 +4140,7 @@ sub _transform {
 		foreach my $raw_transform (@{ $args->{transforms} }){
 			$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
 			my $transform = $1;
-			my @transform_args = split(/\,/, $2);
+			my @transform_args = $2 ? split(/\,/, $2) : ();
 			my $plugin_fqdn = 'Transform::' . $transform;
 			foreach my $plugin ($self->plugins()){
 				if (lc($plugin) eq lc($plugin_fqdn)){

@@ -93,8 +93,15 @@ sub _query {
 				if ($entry->{Incident}){
 					if ($entry->{Incident}->{Assessment}){
 						if ($entry->{Incident}->{Assessment}->{Impact}){
-							$cif_datum->{type} = $entry->{Incident}->{Assessment}->{Impact}->{content};
-							$cif_datum->{severity} = $entry->{Incident}->{Assessment}->{Impact}->{severity};
+							$self->log->debug('$entry' . Dumper($entry));
+							if (ref($entry->{Incident}->{Assessment}->{Impact})){
+								$cif_datum->{type} = $entry->{Incident}->{Assessment}->{Impact}->{content};
+								$cif_datum->{severity} = $entry->{Incident}->{Assessment}->{Impact}->{severity};
+							}
+							else {
+								$cif_datum->{type} = $entry->{Incident}->{Assessment}->{Impact};
+								$cif_datum->{severity} = 'low';
+							}
 						}
 						if ($entry->{Incident}->{Assessment}->{Confidence}){
 							$cif_datum->{confidence} = $entry->{Incident}->{Assessment}->{Confidence}->{content};
