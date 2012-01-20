@@ -64,6 +64,14 @@ sub _query {
 	
 	if ($query =~ /\d+\.\d+\.\d+\.\d+/){
 		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rdata/ip/%s', $query);
+		
+		my $info = $self->cache->get($url);
+		if ($info){
+			$datum->{transforms}->{$Name}->{$key} = $info;
+			$self->cv->end;
+			return;
+		}
+		
 		$self->log->debug('getting ' . $url);
 		http_request GET => $url, headers => { 
 			Accept => 'text/plain', 
@@ -83,12 +91,22 @@ sub _query {
 				push @$info, $bailiwick;
 			}
 			#$datum->{transforms}->{$Name}->{$key} = [ map { 'hostname' => $_ }, @$info ];
-			$datum->{transforms}->{$Name}->{$key} = { 'hostnames' => join(' ', @$info) };
+			$info = { 'hostnames' => join(' ', @$info) };
+			$datum->{transforms}->{$Name}->{$key} = $info;
+			$self->cache->set($url, $info);
 			$self->cv->end;
 		};
 	}
 	else {
 		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rrset/name/%s', $query);
+		
+		my $info = $self->cache->get($url);
+		if ($info){
+			$datum->{transforms}->{$Name}->{$key} = $info;
+			$self->cv->end;
+			return;
+		}
+		
 		$self->log->debug('getting ' . $url);
 		http_request GET => $url, headers => { 
 			Accept => 'application/json', 
@@ -121,12 +139,13 @@ sub _query {
 					$uniq_ips->{$ip} = 1;
 				}	
 			}
-			$datum->{transforms}->{$Name}->{$key} = 
-			{ 
+			my $info = { 
 				earliest => scalar localtime($earliest), 
 				ips => join(' ', keys %$uniq_ips), 
 				age => sprintf('%.d days', ((time() - $earliest)/86400)),
 			};
+			$datum->{transforms}->{$Name}->{$key} = $info;
+			$self->cache->set($url, $info);
 			$self->cv->end;
 		};
 	};

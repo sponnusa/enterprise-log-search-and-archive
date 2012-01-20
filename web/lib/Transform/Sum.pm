@@ -24,13 +24,16 @@ sub BUILD {
 	my $sums = {};
 	foreach my $datum (@{ $self->data }){
 		foreach my $transform (keys %{ $datum->{transforms} }){
+			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
 			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
 				if (exists $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }){
-					if ($sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } } =~ /^\d+$/){
+					if ($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } =~ /^\d+$/){
 						$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } } += 
 							$datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby };
 					}
 					else {
+						$self->log->debug('incrementing ' . $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } . ' from ' .
+							$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }); 
 						$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }++;
 					}
 				}

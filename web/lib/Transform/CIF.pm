@@ -66,6 +66,13 @@ sub _query {
 	my $url = sprintf('http://%s/api/%s?apikey=%s&fmt=json', 
 		$self->conf->get('transforms/cif/server'), $query, $self->conf->get('transforms/cif/apikey'));
 	
+	my $info = $self->cache->get($url);
+	if ($info){
+		$datum->{transforms}->{$Name}->{$key} = $info;
+		$self->cv->end;
+		return;
+	}
+	
 	$self->log->debug('getting ' . $url);
 	http_request GET => $url, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
@@ -78,6 +85,7 @@ sub _query {
 			$self->cv->end;
 			return;
 		}
+		$self->cache->set($url, $body);
 				
 		if ($data and ref($data) eq 'HASH' and $data->{status} eq '200' and $data->{data}->{feed} and $data->{data}->{feed}->{entry}){
 			foreach my $entry ( @{ $data->{data}->{feed}->{entry}} ){
@@ -139,8 +147,9 @@ sub _query {
 					if ($entry->{Incident}->{Description}){
 						$cif_datum->{reason} = $entry->{Incident}->{Description};
 					}
+					$datum->{transforms}->{$Name}->{$key} = $cif_datum;
+					$self->cache->set($url, $cif_datum);
 				}
-				$datum->{transforms}->{$Name}->{$key} = $cif_datum;
 			}
 		}
 		$self->cv->end;
