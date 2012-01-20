@@ -2452,7 +2452,10 @@ sub query {
 		}
 		else {
 			# Now go back and insert the transforms
+			my @final;
 			for (my $i = 0; $i < scalar @{ $ret->{results} }; $i++){
+				# Some transforms can filter records out entirely by setting the __DELETE__ transform flag
+				next if $transform_args->{results}->[$i]->{transforms}->{__DELETE__};
 				foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
 					foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
 						foreach my $transform_key (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
@@ -2464,7 +2467,9 @@ sub query {
 						}
 					}
 				}
+				push @final, $ret->{results}->[$i];
 			}
+			$ret->{results} = [ @final ];
 		}
 	}
 	
@@ -3721,7 +3726,20 @@ sub _build_sphinx_match_str {
 		$not{$term} = 1;
 	}
 	
+	if (scalar keys %and){
+		$match_str .= ' (' . join(' ', sort keys %and) . ')';
+	}
+	if (scalar keys %or){
+		$match_str .= ' (' . join('|', sort keys %or) . ')';
+	}
+	if (scalar keys %not){
+		$match_str .= ' !(' . join('|', sort keys %not) . ')';
+	}
+	
+	my @class_match_strs;
 	foreach my $class_id (sort keys %{ $args->{distinct_classes} }){
+		(%and, %or, %not) = ();
+		my $class_match_str = '';
 		# First, the ANDs
 		foreach my $field (sort keys %{ $args->{field_terms}->{and}->{$class_id} }){
 			foreach my $value (@{ $args->{field_terms}->{and}->{$class_id}->{$field} }){
@@ -3742,18 +3760,23 @@ sub _build_sphinx_match_str {
 				$or{'(@' . $field . ' ' . $value . ')'} = 1;
 			}
 		}
+		
+		if (scalar keys %and){
+			$class_match_str .= ' (' . join(' ', sort keys %and) . ')';
+		}
+		if (scalar keys %or){
+			$class_match_str .= ' (' . join('|', sort keys %or) . ')';
+		}
+		if (scalar keys %not){
+			$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
+		}
+		push @class_match_strs, $class_match_str;
 	}
 	
-	if (scalar keys %and){
-		$match_str .= ' (' . join(' ', sort keys %and) . ')';
-	}
-	if (scalar keys %or){
-		$match_str .= ' (' . join('|', sort keys %or) . ')';
-	}
-	if (scalar keys %not){
-		$match_str .= ' !(' . join('|', sort keys %not) . ')';
-	}
-		
+	if (@class_match_strs){
+		$match_str .= ' (' . join('|', @class_match_strs) . ')';
+	}	
+	
 	$self->log->trace('match str: ' . $match_str);		
 	
 	return $match_str;
@@ -4126,6 +4149,21 @@ sub _transform {
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{transforms} ) {
 		my $num_found = 0;
+		my $cache;
+		eval {
+			$cache = CHI->new(
+				driver => 'DBI', 
+				dbh => $self->db, 
+				create_table => 1,
+				table_prefix => 'cache_',
+				namespace => 'transforms',
+			);
+		};
+		if (@$){
+			$self->log->warn('Falling back to RawMemory for cache, consider installing CHI::Driver::DBI');
+			$cache = CHI->new(driver => 'RawMemory', datastore => {});
+		}
+		$self->log->debug('using cache ' . Dumper($cache));
 		foreach my $raw_transform (@{ $args->{transforms} }){
 			$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
 			my $transform = $1;
@@ -4134,9 +4172,12 @@ sub _transform {
 			foreach my $plugin ($self->plugins()){
 				if (lc($plugin) eq lc($plugin_fqdn)){
 					$self->log->debug('loading plugin ' . $plugin);
-					my $plugin_object = $plugin->new(conf => $self->conf, log => $self->log, 
-						cache => CHI->new(driver => 'RawMemory', datastore => {}), 
-						data => $args->{results}, args => [ @transform_args ]);
+					my $plugin_object = $plugin->new(
+						conf => $self->conf, 
+						log => $self->log, 
+						cache => $cache,
+						data => $args->{results}, 
+						args => [ @transform_args ]);
 					$args->{results} = $plugin_object->data;
 					if ($plugin_object->groupby){
 						$args->{groupby} = [ $plugin_object->groupby ];
