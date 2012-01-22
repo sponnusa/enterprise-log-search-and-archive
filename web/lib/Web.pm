@@ -5,6 +5,8 @@ use Data::Dumper;
 use Plack::Request;
 use Plack::Session;
 use JSON -convert_blessed_universally;
+use URI::Escape qw(uri_unescape);
+use Encode;
 use YUI;
 
 use API;
@@ -54,7 +56,30 @@ sub call {
 			}
 		}
 		elsif ($Modes{ $method } == 2){
-			$body = $self->$sub($req);
+			#$body = $self->$sub($req);
+			my $ret;
+			eval {
+				$ret = $self->$sub($req);
+				unless ($ret){
+					$ret = { error => $self->api->last_error };
+				}
+			};
+			if ($@){
+				my $e = $@;
+				$self->api->log->error($e);
+				$body = [encode_utf8($self->api->json->encode({error => $e}))];
+			}
+			elsif (ref($ret) and $ret->{mime_type}){
+				$res->content_type($ret->{mime_type});
+				$body = $ret->{ret};
+				if ($ret->{filename}){
+					$res->header('Content-disposition', 'attachment; filename=' . $ret->{filename});
+				}
+			}
+			else {
+				$body = [encode_utf8($self->api->json->encode($ret))];
+			}
+			$body = [encode_utf8($self->api->json->encode($ret))];
 		}
 	}
 	
@@ -321,14 +346,13 @@ EOHTML
 sub transform {
 	my $self = shift;
 	my $req = shift;
-	my $args = $req->query_parameters->as_hashref;
+	my $args = $req->parameters->as_hashref;
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
-		my ($transforms,$data);
 		eval {
 			$args->{transforms} = $self->api->json->decode(uri_unescape($args->{transforms}));
-			$args->{results} = $self->api->json->decode(uri_unescape($args->{data}));
-			$self->api->log->debug( "Decoded data as : " . Dumper($data) );
+			$args->{results} = $self->api->json->decode(uri_unescape(delete $args->{data}));
+			$self->api->log->debug( "Decoded $args as : " . Dumper($args) );
 		};
 		if ($@){
 			$self->api->log->error("invalid args, error: $@, args: " . Dumper($args));
@@ -337,6 +361,19 @@ sub transform {
 		
 		$self->api->transform($args);
 		my $results = $args->{results};
+		foreach my $result (@$results){
+			foreach my $transform (keys %{ $result->{transforms} }){
+				next unless ref($result->{transforms}->{$transform}) eq 'HASH';
+				foreach my $transform_field (keys %{ $result->{transforms}->{$transform} }){
+					next unless ref($result->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
+					foreach my $transform_key (keys %{ $result->{transforms}->{$transform}->{$transform_field} }){
+						$result->{ join('.', $transform, $transform_field, $transform_key) } = 
+							$result->{transforms}->{$transform}->{$transform_field}->{$transform_key};
+					}
+				}
+			}		
+		}
+		$self->api->log->debug( "Got results: " . Dumper($results) );
 		
 		return { 
 			ret => $results, 

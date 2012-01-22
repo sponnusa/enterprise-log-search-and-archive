@@ -4132,7 +4132,7 @@ sub transform {
 				namespace => 'transforms',
 			);
 		};
-		if (@$){
+		if (@$ or not $cache){
 			$self->log->warn('Falling back to RawMemory for cache, consider installing CHI::Driver::DBI');
 			$cache = CHI->new(driver => 'RawMemory', datastore => {});
 		}
@@ -4145,17 +4145,23 @@ sub transform {
 			foreach my $plugin ($self->plugins()){
 				if (lc($plugin) eq lc($plugin_fqdn)){
 					$self->log->debug('loading plugin ' . $plugin);
-					my $plugin_object = $plugin->new(
-						conf => $self->conf, 
-						log => $self->log, 
-						cache => $cache,
-						data => $args->{results}, 
-						args => [ @transform_args ]);
-					$args->{results} = $plugin_object->data;
-					if ($plugin_object->groupby){
-						$args->{groupby} = [ $plugin_object->groupby ];
+					eval {
+						my $plugin_object = $plugin->new(
+							conf => $self->conf, 
+							log => $self->log, 
+							cache => $cache,
+							data => $args->{results}, 
+							args => [ @transform_args ]);
+						$args->{results} = $plugin_object->data;
+						if ($plugin_object->groupby){
+							$args->{groupby} = [ $plugin_object->groupby ];
+						}
+						$num_found++;
+					};
+					if ($@){
+						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
+							. Dumper($args->{results}) . ' and args ' . Dumper(\@transform_args) . ': ' . $@);
 					}
-					$num_found++;
 				}
 			}
 		}
