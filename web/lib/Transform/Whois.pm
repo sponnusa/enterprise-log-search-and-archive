@@ -11,6 +11,7 @@ our $Name = 'Whois';
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 has 'cache' => (is => 'rw', isa => 'Object', required => 1);
 has 'cv' => (is => 'rw', isa => 'Object');
+has 'cache_stats' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { hits => 0, misses => 0 } });
 
 #sub BUILDARGS {
 #	my $class = shift;
@@ -26,7 +27,13 @@ sub BUILD {
 		$datum->{transforms}->{$Name} = {};
 		
 		$self->cv(AnyEvent->condvar);
+		my $w = AnyEvent->timer (after => 10, cb => sub {
+	      $self->log->error('TIMEOUT ' . Dumper($self->cv));
+	      $self->cv->send;
+	   });
+	   
 		$self->cv->begin;
+		
 		foreach my $key (keys %{ $datum }){
 			if ($key eq 'srcip' or $key eq 'dstip'){
 				$datum->{transforms}->{$Name}->{$key} = {};
@@ -36,6 +43,7 @@ sub BUILD {
 		
 		$self->cv->end;
 		$self->cv->recv;
+		undef $w;
 		
 		foreach my $key qw(srcip dstip){
 			if ($datum->{transforms}->{$Name}->{$key} and $datum->{transforms}->{$Name}->{$key}->{is_local}){
@@ -48,7 +56,10 @@ sub BUILD {
 				last;
 			}
 		}
+		
 	}
+	
+	$self->log->info('cache hits: ' . $self->cache_stats->{hits} . ', misses: ' . $self->cache_stats->{misses});
 	
 	return $self;
 }
@@ -62,7 +73,7 @@ sub _lookup {
 	my $ret = $datum->{transforms}->{$Name}->{$field};
 	$self->log->trace('Looking up ip ' . $ip);
 	$self->cv->begin;
-		
+	
 	# Check known orgs
 	my $ip_int = unpack('N*', inet_aton($ip));
 	if ($self->conf->get('transforms/whois/known_subnets') and $self->conf->get('transforms/whois/known_orgs')){
@@ -84,9 +95,15 @@ sub _lookup {
 		}
 	}
 	my $ip_url = 'http://whois.arin.net/rest/ip/' . $ip;
-	my $ip_info = $self->cache->get($ip_url);
-	if ($ip_info){
+	my $ip_info = $self->cache->get($ip_url, expire_if => sub {
+		if ($_[0]->value->{name} or $_[0]->value->{ripe_ip}){
+			return 0;
+		}
+		return 1;
+	});
+	if ($ip_info and $ip_info->{name}){
 		$self->log->trace( 'Using cached ip ' . Dumper($ip_info) );
+		$self->cache_stats->{hits}++;
 		$ret->{name} = $ip_info->{name};
 		$ret->{descr} = $ip_info->{descr};
 		$ret->{org} = $ip_info->{org};
@@ -109,8 +126,19 @@ sub _lookup {
 		$self->cv->end;
 		return;
 	}
+	elsif ($ip_info and $ip_info->{ripe_ip}){
+		$self->cache_stats->{hits}++;
+		my $org = $self->_lookup_ip_ripe($datum, $ip_info->{ripe_ip}, $ip, $field);
+		$self->cv->end;
+		return;
+	}
+	else {
+		$self->log->debug('got cached ip_info: ' . Dumper($ip_info));
+	}
+	
 	
 	$self->log->debug( 'getting ' . $ip_url );
+	$self->cache_stats->{misses}++;
 	http_request GET => $ip_url, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		my $whois;
@@ -131,6 +159,7 @@ sub _lookup {
 					or $whois->{net}->{orgRef}->{'@handle'} eq 'AFRINIC'
 					or $whois->{net}->{orgRef}->{'@handle'} eq 'LACNIC'){
 					$self->log->trace('Getting RIPE IP with org ' . $whois->{net}->{orgRef}->{'@handle'});
+					$self->cache->set($ip_url, { ripe_ip => $whois->{net}->{orgRef}->{'@handle'} });
 					$org = $self->_lookup_ip_ripe($datum, $whois->{net}->{orgRef}->{'@handle'}, $ip, $field);
 				}
 				else {
@@ -158,6 +187,33 @@ sub _lookup {
 				}
 			}
 		}
+		elsif ($whois->{net}->{customerRef} and $whois->{net}->{customerRef}->{'$'}){
+			my $org;
+			$ret->{org} = $whois->{net}->{customerRef}->{'@handle'};
+			$ret->{descr} = $whois->{net}->{customerRef}->{'@name'};
+			$ret->{name} = $whois->{net}->{name}->{'$'};
+			
+			my $org_url = $whois->{net}->{customerRef}->{'$'};
+			$self->log->debug( 'set cache for ' . $ip_url );
+			#TODO set the cache for the subnet, not the IP so we can avoid future lookups to the same subnet
+			$self->cache->set($ip_url, {
+				name => $ret->{name},
+				descr => $ret->{descr},
+				org => $ret->{org},
+				org_url => $org_url,
+			});
+			$self->cache_stats->{misses}++;
+			
+			$org = $self->cache->get($org_url);
+			if ($org){
+				$self->log->trace( 'Using cached org' );
+				$self->cache_stats->{hits}++;
+			}
+			else {
+				$self->_lookup_org($datum, $org_url, $field);
+			}
+			
+		}
 		$self->cv->end;
 		return;
 	}
@@ -176,6 +232,7 @@ sub _lookup_ip_ripe {
 	my $cached = $self->cache->get($ripe_url);
 	if ($cached){
 		$self->log->trace('Using cached url ' . $ripe_url); 
+		$self->cache_stats->{hits}++;
 		foreach my $key (keys %$cached){
 			$ret->{$key} = $cached->{$key};
 		}
@@ -186,6 +243,7 @@ sub _lookup_ip_ripe {
 	
 	$self->cv->begin;
 	$self->log->trace('Getting ' . $ripe_url);
+	$self->cache_stats->{misses}++;
 	http_request GET => $ripe_url, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		my $whois;
@@ -216,6 +274,7 @@ sub _lookup_ip_ripe {
 				}
 			}
 			$self->log->trace( 'set cache for ' . $ripe_url );
+			
 			$self->cache->set($ripe_url, {
 				cc => $ret->{cc},
 				descr => $ret->{descr},
@@ -241,8 +300,20 @@ sub _lookup_org {
 	my $key = $1;
 	my $ret = $datum->{transforms}->{$Name}->{$field};
 	
-	if (my $cached = $self->cache->get($key)){
-		$self->log->trace('Using cached url ' . $org_url . ' with key ' . $key); 
+	if (my $cached = $self->cache->get($key, 
+		expire_if => sub {
+			my $obj = $_[0];
+			if ($obj->value and $obj->value->{cc}){
+				return 0;
+			}
+			else {
+				$self->log->trace('expiring ' . $key);
+				return 1;
+			}
+		}
+		)){
+		$self->log->trace('Using cached url ' . $org_url . ' with key ' . $key);
+		$self->cache_stats->{hits}++;
 		return $cached;
 	}
 	
@@ -250,29 +321,42 @@ sub _lookup_org {
 	$self->log->trace( 'getting ' . $org_url );
 	http_request GET => $org_url, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
-		my $whois = decode_json($body);
-		if ($whois->{org}->{'iso3166-1'}){
-			$ret->{cc} = $whois->{org}->{'iso3166-1'}->{code2}->{'$'};
-			$ret->{country} = $whois->{org}->{'iso3166-1'}->{name}->{'$'};
-		}
-		if ($whois->{org}->{'iso3166-2'}){
-			$ret->{state} = $whois->{org}->{'iso3166-2'}->{'$'};
-		}
-		if ($whois->{org}->{city}){
-			$ret->{city} = $whois->{org}->{city}->{'$'};
-		}
-		$self->log->trace( 'set cache for ' . $org_url . ' with key ' . $key);
-		my $data = { 
-			cc => $ret->{cc},
-			country => $ret->{country},
-			state => $ret->{state},
-			city => $ret->{city},
+		$self->log->trace('got body: ' . Dumper($body) . 'hdr: ' . Dumper($hdr));
+		eval {
+			my $whois = decode_json($body);
+			$self->log->trace('decoded whois: ' . Dumper($whois));
+			foreach my $key qw(org customer){
+				next unless $whois->{$key};
+				if ($whois->{$key}->{'iso3166-1'}){
+					$ret->{cc} = $whois->{$key}->{'iso3166-1'}->{code2}->{'$'};
+					$ret->{country} = $whois->{$key}->{'iso3166-1'}->{name}->{'$'};
+				}
+				if ($whois->{org}->{'iso3166-2'}){
+					$ret->{state} = $whois->{$key}->{'iso3166-2'}->{'$'};
+				}
+				if ($whois->{$key}->{city}){
+					$ret->{city} = $whois->{$key}->{city}->{'$'};
+				}
+			}
+			die('Invalid data for ' . $org_url . ', only got ' . Dumper($ret)) unless $ret->{country};
+			$self->log->trace( 'set cache for ' . $org_url . ' with key ' . $key);
+			$self->cache_stats->{misses}++;
+			my $data = { 
+				cc => $ret->{cc},
+				country => $ret->{country},
+				state => $ret->{state},
+				city => $ret->{city},
+			};
+			$self->log->trace('org cache data: ' . Dumper($data));
+			$self->cache->set($key, $data);
 		};
-		$self->cache->set($key, $data);
-		
+		if ($@){
+			$self->log->error($@);
+		}
 		$self->cv->end;
 		return;
 	};
+	$self->log->trace( 'sent ' . $org_url );
 }	
  
 1;

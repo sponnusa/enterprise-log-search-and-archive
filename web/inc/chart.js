@@ -14,12 +14,12 @@ YAHOO.ELSA.Chart.open_flash_chart_data = function(p_iId){
 }
 
 // Auto-graph given a graph type, title, and AoH of data
-YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p_callback, p_iWidth, p_iHeight, p_sBgColor){
-	if (typeof p_callback == 'undefined'){
-		p_callback = function(){};
+YAHOO.ELSA.Chart.Auto = function(p_oArgs){
+	if (typeof p_oArgs.callback == 'undefined'){
+		p_oArgs.callback = function(){};
 	}
-	YAHOO.ELSA.Chart.registeredCallbacks[p_oElContainerId] = p_callback;
-	logger.log('given container id: ' + p_oElContainerId);
+	YAHOO.ELSA.Chart.registeredCallbacks[p_oArgs.container] = p_oArgs.callback;
+	logger.log('given container id: ' + p_oArgs.container);
 	var id = YAHOO.ELSA.Charts.length;
 	this.id = id;
 	this.colorPalette = [
@@ -31,44 +31,44 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 		'#0000FF'
 	];
 	
-	this.type = p_sType;
+	this.type = p_oArgs.type;
 	// Scrub nulls
 	this.ymax = 0;
-	for (var i in p_oData){
+	for (var i in p_oArgs.data){
 		if (i.match(/^x/)){
 			continue;
 		}
 		var max = 0;
 		logger.log('i: ' + i);
-		for (var j = 0; j < p_oData[i].length; j++){
-			//logger.log('typeof:', typeof p_oData[i][j]);
-			if (p_oData[i][j] && typeof p_oData[i][j] === 'object'){
-				logger.log('p_oData[i][j]', p_oData[i][j]);
-				if (typeof p_oData[i][j]['val'] == 'undefined'){
-					for (var k in p_oData[i][j]){
-						logger.log('k: ' + k + ', data: ' + p_oData[i][j][k] + ', ymax: ' + this.ymax);
-						if (parseInt(p_oData[i][j][k]) > this.ymax){
-							this.ymax = parseInt(p_oData[i][j][k]);
+		for (var j = 0; j < p_oArgs.data[i].length; j++){
+			//logger.log('typeof:', typeof p_oArgs.data[i][j]);
+			if (p_oArgs.data[i][j] && typeof p_oArgs.data[i][j] === 'object'){
+				logger.log('p_oArgs.data[i][j]', p_oArgs.data[i][j]);
+				if (typeof p_oArgs.data[i][j]['val'] == 'undefined'){
+					for (var k in p_oArgs.data[i][j]){
+						logger.log('k: ' + k + ', data: ' + p_oArgs.data[i][j][k] + ', ymax: ' + this.ymax);
+						if (parseInt(p_oArgs.data[i][j][k]) > this.ymax){
+							this.ymax = parseInt(p_oArgs.data[i][j][k]);
 						}
 					}
 				}
 				else {
-					p_oData[i][j]['val'] = parseInt(p_oData[i][j]['val']);
-					if (this.ymax < p_oData[i][j]['val']){
-						this.ymax = p_oData[i][j]['val'];
+					p_oArgs.data[i][j]['val'] = parseInt(p_oArgs.data[i][j]['val']);
+					if (this.ymax < p_oArgs.data[i][j]['val']){
+						this.ymax = p_oArgs.data[i][j]['val'];
 					}
 				}
 			}
 			else {
-				var tmp = parseInt(p_oData[i][j]);
+				var tmp = parseInt(p_oArgs.data[i][j]);
 				if (tmp && typeof tmp != 'Object'){
-					p_oData[i][j] = tmp;
+					p_oArgs.data[i][j] = tmp;
 				}
 				else {
-					p_oData[i][j] = 0;
+					p_oArgs.data[i][j] = 0;
 				}
-				if (this.ymax < p_oData[i][j]){
-					this.ymax = p_oData[i][j];
+				if (this.ymax < p_oArgs.data[i][j]){
+					this.ymax = p_oArgs.data[i][j];
 				}
 			}
 		}
@@ -82,40 +82,40 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 	var aElements = [];
 	var iCounter = 0;
 	var iColorPaletteLength = this.colorPalette.length;
-	for (var key in p_oData){
+	for (var key in p_oArgs.data){
 		if (key == 'x'){
 			continue;
 		}
 		var aValues = [];
-		for (var i in p_oData[key]){
-			var val = p_oData[key][i];
+		for (var i in p_oArgs.data[key]){
+			var val = p_oArgs.data[key][i];
 			if (typeof val == 'object'){
 				var iSum = 0;
-				for (var j in p_oData[key][i]){
+				for (var j in p_oArgs.data[key][i]){
 					if (j == 'val'){
 						continue;
 					}
-					logger.log('iSum: ' + iSum + ', j: ' + j + ', val: ' + p_oData[key][i][j]);
-					iSum = iSum + parseInt(p_oData[key][i][j]);
+					logger.log('iSum: ' + iSum + ', j: ' + j + ', val: ' + p_oArgs.data[key][i][j]);
+					iSum = iSum + parseInt(p_oArgs.data[key][i][j]);
 				}
 				aValues.push({
 					top:iSum, 
-					label:p_oData.x[i], 
-					tip:key + ' ' + p_oData.x[i] + '<br>#val#', 
-					'on-click': 'function(){ YAHOO.ELSA.Chart.registeredCallbacks[\'' + p_oElContainerId + '\'](' + this.id + ', ' + i + ')}'
+					label:p_oArgs.data.x[i], 
+					tip:key + ' ' + p_oArgs.data.x[i] + '<br>#val#', 
+					'on-click': 'function(){ YAHOO.ELSA.Chart.registeredCallbacks[\'' + p_oArgs.container + '\'](' + this.id + ', ' + i + ')}'
 				});
 			}
 			else {
 				aValues.push({
 					top:val, 
-					label:p_oData.x[i], 
-					tip:key + ' ' + p_oData.x[i] + '<br>#val#', 
-					'on-click': 'function(){ YAHOO.ELSA.Chart.registeredCallbacks[\'' + p_oElContainerId + '\'](' + this.id + ', ' + i + ')}'
+					label:p_oArgs.data.x[i], 
+					tip:key + ' ' + p_oArgs.data.x[i] + '<br>#val#', 
+					'on-click': 'function(){ YAHOO.ELSA.Chart.registeredCallbacks[\'' + p_oArgs.container + '\'](' + this.id + ', ' + i + ')}'
 				});
 			}
 		}
 		aElements.push({
-			type:p_sType,
+			type:p_oArgs.type,
 			colour: this.colorPalette[((iColorPaletteLength - (iCounter % iColorPaletteLength)) - 1)],
 			text: key,
 			values: aValues
@@ -125,23 +125,23 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 	
 	// calculate label steps
 	var iXLabelSteps = 1;
-	if (p_oData.x.length > 10){
-		iXLabelSteps = parseInt(p_oData.x.length / 10);
+	if (p_oArgs.data.x.length > 10){
+		iXLabelSteps = parseInt(p_oArgs.data.x.length / 10);
 	}
 	var aLabels = [];
-	for (var i = 0; i < p_oData.x.length; i += iXLabelSteps){
-		aLabels.push(p_oData.x[i]);
+	for (var i = 0; i < p_oArgs.data.x.length; i += iXLabelSteps){
+		aLabels.push(p_oArgs.data.x[i]);
 	}
 	
 	var chartCfg = {
 		title: {
-			text:unescape(p_sTitle),
+			text:unescape(p_oArgs.title),
 			style:'{font-size:16px;}' 
 		},
 		elements: aElements,
 		x_axis:{
 			labels:{
-				labels:p_oData.x,
+				labels:p_oArgs.data.x,
 				rotate:330,
 				'visible-steps': iXLabelSteps
 			}
@@ -151,15 +151,15 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 			steps:(this.ymax / 10)
 		}
 	}
-	if (p_sBgColor){
-		chartCfg.bg_colour = p_sBgColor;
+	if (p_oArgs.bgColor){
+		chartCfg.bg_colour = p_oArgs.bgColor;
 	}
 	this.cfg = chartCfg;
 	
 	// create a div within the given container so we can append the "Save As..." link
-	var outerContainerDiv = YAHOO.util.Dom.get(p_oElContainerId);
+	var outerContainerDiv = YAHOO.util.Dom.get(p_oArgs.container);
 	var linkDiv = document.createElement('div');
-	linkDiv.id = p_oElContainerId + '_link';
+	linkDiv.id = p_oArgs.container + '_link';
 	var saveLink = document.createElement('a');
 	saveLink.setAttribute('href', '#');
 	saveLink.innerHTML = 'Save Chart As...';
@@ -169,7 +169,7 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 	outerContainerDiv.appendChild(linkDiv);
 	
 	var containerDiv = document.createElement('div');
-	containerDiv.id = p_oElContainerId + '_container';
+	containerDiv.id = p_oArgs.container + '_container';
 	outerContainerDiv.appendChild(containerDiv);
 	this.container = containerDiv.id;
 	
@@ -177,14 +177,19 @@ YAHOO.ELSA.Chart.Auto = function(p_oElContainerId, p_sType, p_sTitle, p_oData, p
 	logger.log('outerContainerDiv', outerContainerDiv);
 	try {
 		var iWidth = 500;
-		if (p_iWidth){
-			iWidth = p_iWidth;
+		if (p_oArgs.width){
+			iWidth = p_oArgs.width;
 		}
 		var iHeight = 300;
-		if (p_iHeight){
-			iHeight = p_iHeight;
+		if (p_oArgs.height){
+			iHeight = p_oArgs.height;
 		}
-		swfobject.embedSWF("inc/open-flash-chart.swf", this.container, iWidth, iHeight, 
+		var sSwf = 'inc/open-flash-chart.swf';
+		// Allow for the caller to specify where the relative path is
+		if (p_oArgs.includeDir){
+			sSwf = p_oArgs.includeDir + '/open-flash-chart.swf';
+		}
+		swfobject.embedSWF(sSwf, this.container, iWidth, iHeight, 
 			"9.0.0", "expressInstall.swf", 
 			{"get-data" : "YAHOO.ELSA.Chart.open_flash_chart_data", "id" : this.id }, {"wmode" : "opaque"} );
 	}
