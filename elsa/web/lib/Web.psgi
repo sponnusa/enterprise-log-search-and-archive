@@ -3,6 +3,7 @@ use strict;
 use Data::Dumper;
 use Plack::Builder;
 use Plack::App::File;
+use Plack::Builder::Conditionals;
 use FindBin;
 use lib $FindBin::Bin;
 
@@ -70,7 +71,7 @@ builder {
 	enable 'CrossOrigin', origins => '*', methods => '*', headers => '*';
 	enable 'Session', store => 'File';
 	unless ($api->conf->get('auth/method') eq 'none'){
-		enable 'Auth::Basic', authenticator => $auth, realm => $api->conf->get('auth/realm');
+		enable match_if all( path('!', '/favicon.ico'), path('!', qr!^/inc/!), path('!', qr!^/transform!) ), 'Auth::Basic', authenticator => $auth, realm => $api->conf->get('auth/realm');
 	}
 	
 	mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };

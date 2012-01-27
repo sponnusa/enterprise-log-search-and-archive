@@ -552,11 +552,11 @@ YAHOO.ELSA.Query = function(){
 			return this.validateMeta(p_sFQDNField, oMetas[p_sFQDNField]);
 		}
 		for (var i = 0; i < YAHOO.ELSA.formParams.fields.length; i++){
-			if (YAHOO.ELSA.formParams.fields[i].fqdn_field == p_sFQDNField){
+			if (YAHOO.ELSA.formParams.fields[i].fqdn_field && YAHOO.ELSA.formParams.fields[i].fqdn_field.toUpperCase() == p_sFQDNField.toUpperCase()){
 				oField = YAHOO.ELSA.formParams.fields[i];
 				break;
 			}
-			else if (YAHOO.ELSA.formParams.fields[i].value == p_sFQDNField){
+			else if (YAHOO.ELSA.formParams.fields[i].value && YAHOO.ELSA.formParams.fields[i].value.toUpperCase() == p_sFQDNField.toUpperCase()){
 				oField = YAHOO.ELSA.formParams.fields[i];
 				break;
 			}
@@ -750,7 +750,7 @@ YAHOO.ELSA.sendLocalChartData = function(p_iId, p_sField, p_sAggFunc){
 					var oRawChartData = YAHOO.lang.JSON.parse(p_oResponse.responseText);
 					logger.log('oRawChartData', oRawChartData);
 					var divId = 'chart';
-					var oChart = new YAHOO.ELSA.Chart.Auto(divId, 'line', p_sField, oRawChartData);
+					var oChart = new YAHOO.ELSA.Chart.Auto({ container:divId, type:'line', title:p_sField, data:oRawChartData});
 				}catch(e){
 					logger.log('Could not parse response for chart parameters because of an error: '+e);
 					return false;
@@ -1115,7 +1115,7 @@ YAHOO.ELSA.Results = function(){
 		else {
 			sTitle = p_sGroupBy;
 		}
-		var oChart = new YAHOO.ELSA.Chart.Auto(oChartEl.id, 'bar', sTitle, this.chartData, YAHOO.ELSA.addTermFromChart);
+		var oChart = new YAHOO.ELSA.Chart.Auto({container:oChartEl.id, type:'bar', title:sTitle, data:this.chartData, callback:YAHOO.ELSA.addTermFromChart});
 		
 		var formatValue = function(p_elCell, oRecord, oColumn, p_oData){
 			var a = document.createElement('a');
