@@ -19,7 +19,7 @@ use Sys::Hostname::FQDN;
 use String::CRC32;
 use CHI;
 use Time::HiRes qw(time);
-use Module::Pluggable require => 1, search_path => [ qw( Export Info ) ];
+use Module::Pluggable require => 1, search_path => [ qw( Export Info Transform ) ];
 use URI::Escape qw(uri_unescape);
 use Mail::Internet;
 use Email::LocalDelivery;
@@ -1324,12 +1324,12 @@ sub _get_node_info {
 	});
 	
 	foreach my $node (keys %$nodes){
-#		if (exists $nodes->{$node}->{error}){
-#			$self->add_warning('node ' . $node . ' had error ' . $nodes->{$node}->{error});
-#			delete $ret->{nodes}->{$node};
-#			#$ret->{nodes}->{$node}->{error} = $nodes->{$node}->{error};
-#			next;
-#		}
+		if (exists $nodes->{$node}->{error}){
+			$self->add_warning('node ' . $node . ' had error ' . $nodes->{$node}->{error});
+			delete $ret->{nodes}->{$node};
+			#$ret->{nodes}->{$node}->{error} = $nodes->{$node}->{error};
+			next;
+		}
 		$ret->{nodes}->{$node} = {
 			db => $nodes->{$node}->{db},
 			dbh => $nodes->{$node}->{dbh},
@@ -2288,18 +2288,20 @@ sub query {
 		$self->log->debug( "Decoded as : " . Dumper($decode) );
 		$args->{query_meta_params} = $decode->{query_meta_params};
 		$args->{query_string} = $decode->{query_string};
-		if ($args->{query_meta_params}->{groupby}){
-			$args->{groupby} = $args->{query_meta_params}->{groupby}
-		}
-		if ($args->{query_meta_params}->{timeout}){
-			$args->{timeout} = sprintf("%d", ($args->{query_meta_params}->{timeout} * 1000)); #time is in milleseconds
-		}
-		if ($args->{query_meta_params}->{archive_query}){
-			$args->{archive_query} = $args->{query_meta_params}->{archive_query}
-		}
 	}
-	$self->log->trace('args: ' . Dumper($args));
 	
+	if ($args->{query_meta_params}->{groupby}){
+		$args->{groupby} = $args->{query_meta_params}->{groupby}
+	}
+	if ($args->{query_meta_params}->{timeout}){
+		$args->{timeout} = sprintf("%d", ($args->{query_meta_params}->{timeout} * 1000)); #time is in milleseconds
+	}
+	if ($args->{query_meta_params}->{archive_query}){
+		$args->{archive_query} = $args->{query_meta_params}->{archive_query}
+	}
+	
+	$self->log->trace('args: ' . Dumper($args));
+		
 	my $ret = { query_string => $args->{query_string}, query_meta_params => $args->{query_meta_params} };	
 	
 	unless ($args->{query_string} ){
@@ -2424,6 +2426,53 @@ sub query {
 			$ret->{groupby} = $args->{groupby};
 		}
 		$sth->execute( $ret->{recordsReturned}, $ret->{totalTime}, $qid );
+	}
+	
+	# Apply transforms
+	if ($args->{transforms} and ref($ret->{results}) eq 'ARRAY' and scalar @{ $args->{transforms} }){
+		my $transform_args = { transforms => $args->{transforms}, results => [] };
+		$self->log->debug('$ret->{results} ' . Dumper($ret->{results}));
+		foreach my $row (@{ $ret->{results} }){
+			my $condensed_hash = {};
+			foreach my $field_hash (@{ $row->{_fields} }){
+				$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
+			}
+			push @{ $transform_args->{results} }, $condensed_hash;
+		}
+		
+		$self->transform($transform_args);
+		$self->log->debug('$transform_args' . Dumper($transform_args));
+		
+		if ($transform_args->{groupby}){
+			$ret->{groupby} = $transform_args->{groupby};
+			$ret->{results} = {};
+			foreach my $groupby (@{  $transform_args->{groupby} }){
+				$ret->{results}->{$groupby} = $transform_args->{results};
+			}
+		}
+		else {
+			# Now go back and insert the transforms
+			my @final;
+			for (my $i = 0; $i < scalar @{ $ret->{results} }; $i++){
+				# Some transforms can filter records out entirely by setting the __DELETE__ transform flag
+				next if $transform_args->{results}->[$i]->{transforms}->{__DELETE__};
+				foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
+					next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
+					foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
+						next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
+						foreach my $transform_key (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
+							push @{ $ret->{results}->[$i]->{_fields} }, { 
+								field => $transform_field . '.' . $transform_key, 
+								value => $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_key},
+								class => 'Transform.' . $transform,
+							};
+						}
+					}
+				}
+				push @final, $ret->{results}->[$i];
+			}
+			$ret->{results} = [ @final ];
+		}
 	}
 	
 	$ret->{errors} = $self->warnings;
@@ -2579,6 +2628,9 @@ sub _sphinx_query {
 				$ret->{$node}->{meta} = $result->{meta};
 				
 				$self->log->trace('$ret->{$node}->{meta}: ' . Dumper($ret->{$node}->{meta}));
+				if ($result->{meta}->{warning}){
+					$self->add_warning($result->{meta}->{warning});
+				}
 				
 				# Find what tables we need to query to resolve rows
 				my %tables;
@@ -2843,6 +2895,11 @@ sub _parse_query_string {
 	if ($args->{user_info}->{permissions}->{filter}){
 		$filtered_raw_query .= ' ' . $args->{user_info}->{permissions}->{filter};
 	}
+	
+	# Strip off any transforms and apply later
+	($filtered_raw_query, my @transforms) = split(/\s*\|\s+/, $filtered_raw_query);
+	$self->log->trace('query: ' . $filtered_raw_query . ', transforms: ' . join(' ', @transforms));
+	$args->{transforms} = [ @transforms ];
 	
 	# Check to see if the class was given in meta params
 	if ($args->{query_meta_params}->{class}){
@@ -3490,6 +3547,11 @@ sub _normalize_value {
 	my $class_id = shift;
 	my $value = shift;
 	my $field_order = shift;
+	
+	my $orig_value = $value;
+	$value =~ s/^\"//;
+	$value =~ s/\"$//;
+	
 	#$self->log->trace('args: ' . Dumper($args) . ' value: ' . $value . ' field_order: ' . $field_order);
 	
 	unless (defined $class_id and defined $value and defined $field_order){
@@ -3499,11 +3561,6 @@ sub _normalize_value {
 	
 	return $value unless $args->{node_info}->{field_conversions}->{ $class_id };
 	#$self->log->debug("normalizing for class_id $class_id with the following: " . Dumper($args->{node_info}->{field_conversions}->{ $class_id }));
-	
-	# Normalize if quoted
-	if ($value =~ /^["']([^"']+)["']$/){
-		$value = $1;
-	}
 	
 	if ($field_order == $Field_to_order->{host}){ #host is handled specially
 		my @ret;
@@ -3579,7 +3636,7 @@ sub _normalize_value {
 	else {
 		#apparently we don't know about any conversions
 		#$self->log->debug("No conversion for $value and class_id $class_id, field_order $field_order.");
-		return $value; 
+		return $orig_value; 
 	}
 }
 
@@ -3679,7 +3736,20 @@ sub _build_sphinx_match_str {
 		$not{$term} = 1;
 	}
 	
+	if (scalar keys %and){
+		$match_str .= ' (' . join(' ', sort keys %and) . ')';
+	}
+	if (scalar keys %or){
+		$match_str .= ' (' . join('|', sort keys %or) . ')';
+	}
+	if (scalar keys %not){
+		$match_str .= ' !(' . join('|', sort keys %not) . ')';
+	}
+	
+	my @class_match_strs;
 	foreach my $class_id (sort keys %{ $args->{distinct_classes} }){
+		(%and, %or, %not) = ();
+		my $class_match_str = '';
 		# First, the ANDs
 		foreach my $field (sort keys %{ $args->{field_terms}->{and}->{$class_id} }){
 			foreach my $value (@{ $args->{field_terms}->{and}->{$class_id}->{$field} }){
@@ -3700,18 +3770,23 @@ sub _build_sphinx_match_str {
 				$or{'(@' . $field . ' ' . $value . ')'} = 1;
 			}
 		}
+		
+		if (scalar keys %and){
+			$class_match_str .= ' (' . join(' ', sort keys %and) . ')';
+		}
+		if (scalar keys %or){
+			$class_match_str .= ' (' . join('|', sort keys %or) . ')';
+		}
+		if (scalar keys %not){
+			$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
+		}
+		push @class_match_strs, $class_match_str if $class_match_str;
 	}
 	
-	if (scalar keys %and){
-		$match_str .= ' (' . join(' ', sort keys %and) . ')';
-	}
-	if (scalar keys %or){
-		$match_str .= ' (' . join('|', sort keys %or) . ')';
-	}
-	if (scalar keys %not){
-		$match_str .= ' !(' . join('|', sort keys %not) . ')';
-	}
-		
+	if (@class_match_strs){
+		$match_str .= ' (' . join('|', @class_match_strs) . ')';
+	}	
+	
 	$self->log->trace('match str: ' . $match_str);		
 	
 	return $match_str;
@@ -3723,7 +3798,7 @@ sub _build_archive_match_str {
 	# Create the Sphinx Extended2 matching mode query string to be placed in MATCH()
 	
 	# No-field match str
-	my $match_str = '1=1';
+	my $match_str = '';
 	my (%and, %or, %not);
 	foreach my $term (keys %{ $args->{any_field_terms}->{and} }){
 		$and{'msg LIKE "%' . $term . '%"'} = 1;
@@ -3910,7 +3985,9 @@ sub _build_sphinx_query {
 	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier";
 	my $where;
 	if ($args->{archive_query}){
-		$where = $self->_build_archive_match_str($args) . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier;
+		my $match_str = $self->_build_archive_match_str($args);
+		$match_str = '1=1' unless $match_str;
+		$where = $match_str . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier;
 	}
 	else {
 		$where = 'MATCH(\'' . $self->_build_sphinx_match_str($args) .'\')';
@@ -4048,6 +4125,68 @@ sub export {
 	}
 }
 
+sub transform {
+	my ($self, $args) = @_;
+	
+	if ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{transforms} ) {
+		my $num_found = 0;
+		my $cache;
+		eval {
+			$cache = CHI->new(
+				driver => 'DBI', 
+				dbh => $self->db, 
+				create_table => 1,
+				table_prefix => 'cache_',
+				namespace => 'transforms',
+			);
+		};
+		if (@$ or not $cache){
+			$self->log->warn('Falling back to RawMemory for cache, consider installing CHI::Driver::DBI');
+			$cache = CHI->new(driver => 'RawMemory', datastore => {});
+		}
+		$self->log->debug('using cache ' . Dumper($cache));
+		foreach my $raw_transform (@{ $args->{transforms} }){
+			$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
+			my $transform = $1;
+			my @transform_args = $2 ? split(/\,/, $2) : ();
+			my $plugin_fqdn = 'Transform::' . $transform;
+			foreach my $plugin ($self->plugins()){
+				if (lc($plugin) eq lc($plugin_fqdn)){
+					$self->log->debug('loading plugin ' . $plugin);
+					eval {
+						my $plugin_object = $plugin->new(
+							conf => $self->conf, 
+							log => $self->log, 
+							cache => $cache,
+							data => $args->{results}, 
+							args => [ @transform_args ]);
+						$args->{results} = $plugin_object->data;
+						if ($plugin_object->groupby){
+							$args->{groupby} = [ $plugin_object->groupby ];
+						}
+						$num_found++;
+					};
+					if ($@){
+						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
+							. Dumper($args->{results}) . ' and args ' . Dumper(\@transform_args) . ': ' . $@);
+					}
+				}
+			}
+		}
+		
+		unless ($num_found){
+			$self->log->error("failed to find transforms " . Dumper($args->{transforms}) . ', only have transforms ' .
+				join(', ', $self->plugins()) . ' ' . Dumper($args));
+			return 0;
+		}
+		return 1;
+	}
+	else {
+		$self->log->error('Invalid args: ' . Dumper($args));
+		return 0;
+	}
+}
+
 sub run_schedule {
 	my ($self, $args) = @_;
 	
@@ -4056,8 +4195,6 @@ sub run_schedule {
 	}
 	
 	my ($query, $sth);
-	
-	my $cur_time = CORE::time();
 	
 	# Find the last run time from the bookmark table
 	$query = 'SELECT UNIX_TIMESTAMP(last_run) FROM schedule_bookmark';
@@ -4104,12 +4241,12 @@ sub run_schedule {
 		'FROM query_schedule t1' . "\n" .
 		'JOIN users ON (t1.uid=users.uid)' . "\n" .
 		'JOIN query_schedule_actions t2 ON (t1.action_id=t2.action_id)' . "\n" .
-		'WHERE ? BETWEEN start AND end AND enabled=1' . "\n" .
+		'WHERE start <= ? AND end >= ? AND enabled=1' . "\n" .
 		'AND UNIX_TIMESTAMP() - UNIX_TIMESTAMP(last_alert) > alert_threshold';  # we won't even run queries we know we won't alert on
 	$sth = $self->db->prepare($query);
 	
-	#my $cur_time = $form_params->{end_int};
-	$sth->execute($cur_time);
+	my $cur_time = $form_params->{end_int};
+	$sth->execute($cur_time, $cur_time);
 	
 	my $user_info_cache = {};
 	
@@ -4155,7 +4292,7 @@ sub run_schedule {
 		if (scalar @dates){
 			# Adjust the query time to avoid time that is potentially unindexed by offsetting by the schedule interval
 			my $query_params = $self->json->decode($row->{query});
-			$query_params->{query_meta_params}->{start} = 1 + ($last_run - $self->conf->get('schedule_interval')); # add a sec to avoid overlap
+			$query_params->{query_meta_params}->{start} = ($last_run - $self->conf->get('schedule_interval'));
 			$query_params->{query_meta_params}->{end} = ($cur_time - $self->conf->get('schedule_interval'));
 			$query_params->{query_string} = delete $query_params->{query_string};
 			$query_params->{query_schedule_id} = $row->{query_schedule_id};
@@ -4447,16 +4584,28 @@ sub _archive_query {
 			next;
 		}
 		
+		my $time_select_conversions = {
+			day => 'CAST(timestamp/86400 AS unsigned) AS day',
+			hour => 'CAST(timestamp/3600 AS unsigned) AS hour',
+			minute => 'CAST(timestamp/60 AS unsigned) AS minute',
+		};
+		
 		foreach my $table (@table_arr){
 			my $start = time();
 			foreach my $query (@{ $args->{queries} }){
 				# strip sphinx-specific attr_ prefix
-				$query->{where} =~ s/attr\_((?:i|s)\d)=\?/$1=\?/g; 
+				$query->{where} =~ s/attr\_((?:i|s)\d)([<>=]{1,2})\?/$1$2\?/g; 
 				my $search_query;
 				if ($query->{groupby}){
 					$query->{groupby} =~ s/attr\_((?:i|s)\d)/$1/g;
-					$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby} AS $query->{groupby_field}\n" .
-						"FROM $table main\n" .
+					if ($time_select_conversions->{ $query->{groupby_field} }){
+						my $groupby = $time_select_conversions->{ $query->{groupby_field} };
+						$search_query = "SELECT COUNT(*) AS count, class_id, $groupby\n";
+					}
+					else {
+						$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby} AS $query->{groupby_field}\n";
+					}
+					$search_query .= "FROM $table main\n" .
 						'WHERE ' . $query->{where} . "\nGROUP BY $query->{groupby_field}\n" . 'ORDER BY 1 DESC LIMIT ?,?';
 				}
 				else {
@@ -4561,20 +4710,19 @@ sub _archive_query {
 					my $field_infos = $self->_resolve($args, $groupby, $row->{$groupby}, '=');
 					my $field = (keys %{ $field_infos->{attrs}->{ $row->{class_id} } })[0];
 					$field =~ s/attr\_//;
-					unless ($field){
-						# Must have been a field not an attr
-						$field = (keys %{ $field_infos->{fields}->{ $row->{class_id} } })[0];
-					}
+					
 					my $key;
-					if (exists $Field_to_order->{ $field }){
+					if (exists $Time_values->{ $groupby }){
+						# We will resolve later
+						#$key = $groupby;
+						$key = (values %{ $field_infos->{attrs}->{0} })[0];
+					}
+					elsif (exists $Field_to_order->{ $field }){
 						# Resolve normally
 						$key = $self->_resolve_value($args, $row->{class_id}, 
 							$row->{$groupby}, $Field_to_order->{ $field });
 					}
-					elsif (exists $Time_values->{ $field }){
-						# We will resolve later
-						$key = $groupby;
-					}
+					
 					$agg{ $key } += $row->{count};	
 				}
 			}
@@ -4610,7 +4758,8 @@ sub _archive_query {
 						}
 					}
 				}
-				$args->{results} = [ @zero_filled ];
+				$args->{results}->{$groupby} = [ @zero_filled ];
+				$args->{recordsReturned} += scalar keys %agg;
 			}
 			else { 
 				# Sort these in descending value order

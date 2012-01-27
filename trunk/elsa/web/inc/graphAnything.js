@@ -76,7 +76,7 @@ var makeChart = function(p_oResponse){
 		var oRawChartData = YAHOO.lang.JSON.parse(p_oResponse.responseText);
 		logger.log('oRawChartData', oRawChartData);
 		var divId = 'chart';
-		var oChart = new YAHOO.ELSA.Chart.Auto(divId, lastRequest['type'], lastRequest['title'], oRawChartData);
+		var oChart = new YAHOO.ELSA.Chart.Auto({container:divId, type:lastRequest['type'], title:lastRequest['title'], data:oRawChartData});
 	}
 	else {
 		YAHOO.ELSA.Error('Did not receive form params');
