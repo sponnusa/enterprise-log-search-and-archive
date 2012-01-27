@@ -64,9 +64,24 @@ sub _query {
 	
 	$query = url_encode($query);
 	my $url = sprintf('http://%s/api/%s?apikey=%s&fmt=json', 
-		$self->conf->get('transforms/cif/server'), $query, $self->conf->get('transforms/cif/apikey'));
+		$self->conf->get('transforms/cif/server_ip'), $query, $self->conf->get('transforms/cif/apikey'));
 	
-	my $info = $self->cache->get($url);
+	my $info = $self->cache->get($url, expire_if => sub {
+		my $obj = $_[0];
+		eval {
+			my $data = decode_json($obj->value);
+			#$self->log->debug('data: ' . Dumper($data));
+			unless (scalar keys %{ $data->{data} }){
+				$self->log->debug('expiring ' . $url);
+				return 1;
+			}
+		};
+		if ($@){
+			$self->log->debug('expiring ' . $url);
+			return 1;
+		}
+		return 0;
+	});
 	if ($info){
 		$datum->{transforms}->{$Name}->{$key} = $info;
 		$self->cv->end;
@@ -74,14 +89,14 @@ sub _query {
 	}
 	
 	$self->log->debug('getting ' . $url);
-	http_request GET => $url, headers => { Accept => 'application/json' }, sub {
+	http_request GET => $url, headers => { Host => $self->conf->get('transforms/cif/server_name'), Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		my $data;
 		eval {
 			$data = decode_json($body);
 		};
 		if ($@){
-			$self->log->error($@ . ' body: ' . $body);
+			$self->log->error($@ . 'hdr: ' . Dumper($hdr) . ', url: ' . $url . ', body: ' . ($body ? $body : ''));
 			$self->cv->end;
 			return;
 		}

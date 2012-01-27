@@ -15,8 +15,8 @@ sub BUILDARGS {
 	my $class = shift;
 	##my $params = $class->SUPER::BUILDARGS(@_);
 	my %params = @_;
-	$params{field} = qr/$params{args}->[0]/ if defined $params{args}->[0];
-	$params{regex} = qr/$params{args}->[1]/ if defined $params{args}->[1];
+	$params{field} = qr/$params{args}->[0]/i if defined $params{args}->[0];
+	$params{regex} = qr/$params{args}->[1]/i if defined $params{args}->[1];
 	return \%params;
 }
 

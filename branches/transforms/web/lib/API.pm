@@ -1324,12 +1324,12 @@ sub _get_node_info {
 	});
 	
 	foreach my $node (keys %$nodes){
-#		if (exists $nodes->{$node}->{error}){
-#			$self->add_warning('node ' . $node . ' had error ' . $nodes->{$node}->{error});
-#			delete $ret->{nodes}->{$node};
-#			#$ret->{nodes}->{$node}->{error} = $nodes->{$node}->{error};
-#			next;
-#		}
+		if (exists $nodes->{$node}->{error}){
+			$self->add_warning('node ' . $node . ' had error ' . $nodes->{$node}->{error});
+			delete $ret->{nodes}->{$node};
+			#$ret->{nodes}->{$node}->{error} = $nodes->{$node}->{error};
+			next;
+		}
 		$ret->{nodes}->{$node} = {
 			db => $nodes->{$node}->{db},
 			dbh => $nodes->{$node}->{dbh},
@@ -2301,7 +2301,7 @@ sub query {
 	}
 	
 	$self->log->trace('args: ' . Dumper($args));
-	
+		
 	my $ret = { query_string => $args->{query_string}, query_meta_params => $args->{query_meta_params} };	
 	
 	unless ($args->{query_string} ){
@@ -2429,7 +2429,7 @@ sub query {
 	}
 	
 	# Apply transforms
-	if ($args->{transforms} and scalar @{ $args->{transforms} }){
+	if ($args->{transforms} and ref($ret->{results}) eq 'ARRAY' and scalar @{ $args->{transforms} }){
 		my $transform_args = { transforms => $args->{transforms}, results => [] };
 		$self->log->debug('$ret->{results} ' . Dumper($ret->{results}));
 		foreach my $row (@{ $ret->{results} }){
@@ -2628,6 +2628,9 @@ sub _sphinx_query {
 				$ret->{$node}->{meta} = $result->{meta};
 				
 				$self->log->trace('$ret->{$node}->{meta}: ' . Dumper($ret->{$node}->{meta}));
+				if ($result->{meta}->{warning}){
+					$self->add_warning($result->{meta}->{warning});
+				}
 				
 				# Find what tables we need to query to resolve rows
 				my %tables;
@@ -3544,6 +3547,11 @@ sub _normalize_value {
 	my $class_id = shift;
 	my $value = shift;
 	my $field_order = shift;
+	
+	my $orig_value = $value;
+	$value =~ s/^\"//;
+	$value =~ s/\"$//;
+	
 	#$self->log->trace('args: ' . Dumper($args) . ' value: ' . $value . ' field_order: ' . $field_order);
 	
 	unless (defined $class_id and defined $value and defined $field_order){
@@ -3628,7 +3636,7 @@ sub _normalize_value {
 	else {
 		#apparently we don't know about any conversions
 		#$self->log->debug("No conversion for $value and class_id $class_id, field_order $field_order.");
-		return $value; 
+		return $orig_value; 
 	}
 }
 
@@ -4167,7 +4175,7 @@ sub transform {
 		}
 		
 		unless ($num_found){
-			$self->log->error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
+			$self->log->error("failed to find transforms " . Dumper($args->{transforms}) . ', only have transforms ' .
 				join(', ', $self->plugins()) . ' ' . Dumper($args));
 			return 0;
 		}

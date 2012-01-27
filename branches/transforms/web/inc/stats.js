@@ -67,7 +67,7 @@ YAHOO.ELSA.Stats.getStats = function(p_iStart, p_iEnd){
 		var oChartContainer = document.createElement('div');
 		oChartContainer.id = 'user_queries_chart';
 		YAHOO.util.Dom.get('query_stats').appendChild(oChartContainer);
-		var oChart = new YAHOO.ELSA.Chart.Auto(oChartContainer.id, 'bar', 'Queries per User', oData);
+		var oChart = new YAHOO.ELSA.Chart.Auto({container:oChartContainer.id, type:'bar', title:'Queries per User', data:oData});
 		
 		// Averages
 		oData = p_oData.query_stats;
@@ -75,7 +75,7 @@ YAHOO.ELSA.Stats.getStats = function(p_iStart, p_iEnd){
 		var oChartContainer = document.createElement('div');
 		oChartContainer.id = 'general_stats_chart';
 		YAHOO.util.Dom.get('query_stats').appendChild(oChartContainer);
-		var oChart = new YAHOO.ELSA.Chart.Auto(oChartContainer.id, 'bar', 'Query Stats', oData);
+		var oChart = new YAHOO.ELSA.Chart.Auto({container:oChartContainer.id, type:'bar', title:'Query Stats', data:oData});
 	}
 	
 	var showNodeStats = function(p_oData){
@@ -90,7 +90,7 @@ YAHOO.ELSA.Stats.getStats = function(p_iStart, p_iEnd){
 			oChartContainer.id = 'stats_chart_' + sStat;
 			YAHOO.util.Dom.get('load_stats').appendChild(oChartContainer);
 			logger.log('oData', oData);
-			var oChart = new YAHOO.ELSA.Chart.Auto(oChartContainer.id, 'bar', 'Stats: ' + sStat, oData);
+			var oChart = new YAHOO.ELSA.Chart.Auto({container:oChartContainer.id, type:'bar', title:'Stats: ' + sStat, data:oData});
 		}
 	}
 }
