@@ -100,7 +100,6 @@ sub _query {
 			$self->cv->end;
 			return;
 		}
-		$self->cache->set($url, $body);
 				
 		if ($data and ref($data) eq 'HASH' and $data->{status} eq '200' and $data->{data}->{feed} and $data->{data}->{feed}->{entry}){
 			foreach my $entry ( @{ $data->{data}->{feed}->{entry}} ){
