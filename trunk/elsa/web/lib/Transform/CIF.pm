@@ -69,15 +69,15 @@ sub _query {
 	my $info = $self->cache->get($url, expire_if => sub {
 		my $obj = $_[0];
 		eval {
-			my $data = decode_json($obj->value);
+			my $data = $obj->value;
 			#$self->log->debug('data: ' . Dumper($data));
-			unless (scalar keys %{ $data->{data} }){
+			unless (scalar keys %{ $data }){
 				$self->log->debug('expiring ' . $url);
 				return 1;
 			}
 		};
 		if ($@){
-			$self->log->debug('expiring ' . $url);
+			$self->log->debug('error: ' . $@ . 'value: ' . Dumper($obj->value) . ', expiring ' . $url);
 			return 1;
 		}
 		return 0;
@@ -169,10 +169,21 @@ sub _query {
 					if ($entry->{Incident}->{Description}){
 						$cif_datum->{reason} = $entry->{Incident}->{Description};
 					}
-					$datum->{transforms}->{$Name}->{$key} = $cif_datum;
-					$self->cache->set($url, $cif_datum);
+					foreach my $cif_key (keys %$cif_datum){
+						$datum->{transforms}->{$Name}->{$key}->{$cif_key} ||= {};
+						$datum->{transforms}->{$Name}->{$key}->{$cif_key}->{ $cif_datum->{$cif_key} } = 1;
+					}
+					#$datum->{transforms}->{$Name}->{$key} = $cif_datum;
+					#$self->cache->set($url, $cif_datum);
 				}
 			}
+			my $final = {};
+			foreach my $cif_key (sort keys %{ $datum->{transforms}->{$Name}->{$key} }){
+				$final->{$cif_key} = join(' ', sort keys %{ $datum->{transforms}->{$Name}->{$key}->{$cif_key} });
+			}
+			$datum->{transforms}->{$Name}->{$key} = $final;
+					
+			$self->cache->set($url, $datum->{transforms}->{$Name}->{$key});
 		}
 		$self->cv->end;
 	};
