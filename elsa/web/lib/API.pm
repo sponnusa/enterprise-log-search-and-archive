@@ -996,9 +996,7 @@ sub get_stats {
 					KBytesPerSec => [],
 				},
 			};
-			
-			
-						
+									
 			$query = 'SELECT MIN(bytes) AS min_bytes, AVG(bytes) AS avg_bytes, MAX(bytes) AS max_bytes,' . "\n" .
 				'MIN(count) AS min_count, AVG(count) AS avg_count, MAX(count) AS max_count,' . "\n" .
 				'UNIX_TIMESTAMP(MAX(timestamp))-UNIX_TIMESTAMP(MIN(timestamp)) AS total_time, UNIX_TIMESTAMP(MIN(timestamp)) AS earliest' . "\n" .
@@ -1008,48 +1006,56 @@ sub get_stats {
 			unless ($stats->{nodes}->{$node}->{dbh}){
 				$self->log->warn('no dbh for node ' . $node . ':' . Dumper($stats->{nodes}->{$node}->{dbh}));
 			}
+			$self->log->trace('get stat ' . $item . ' for node ' . $node);
 			$stats->{nodes}->{$node}->{dbh}->query($query, sub {
 					my ($dbh, $rows, $rv) = @_;
-					$self->log->trace('got stat for node ' . $node . ': ' . Dumper($rows));
+					#$self->log->trace('got stat ' . $item . ' for node ' . $node . ': ' . Dumper($rows));
 					$load_stats->{$item}->{summary} = $rows->[0];
 					$cv->end;
+				
+					my $query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
+					$cv->begin;
+					$stats->{nodes}->{$node}->{dbh}->query($query, sub {
+						my ($dbh, $rows, $rv) = @_;
+						unless ($intervals and $load_stats->{$item}->{summary} and $load_stats->{$item}->{summary}->{total_time}){
+							$self->log->error('no stat for node ' . $node . ' and stat ' . $item);
+							$cv->end;
+							return;
+						}
+						#$self->log->trace('$load_stats->{$item}->{summary}: ' . Dumper($load_stats->{$item}->{summary}));
+						# arrange in the number of buckets requested
+						my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
+						unless ($bucket_size){
+							$self->log->error('no bucket size ' . $node . ' and stat ' . $item);
+							$cv->end;
+							return;
+						}
+						foreach my $row (@$rows){
+							my $ts = $row->{ts} - $load_stats->{$item}->{summary}->{earliest};
+							my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
+							# Sanity check the bucket because too large an index array can cause an OoM error
+							if ($bucket > $intervals){
+								die('Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals);
+							}
+							unless ($load_stats->{$item}->{data}->{x}->[$bucket]){
+								$load_stats->{$item}->{data}->{x}->[$bucket] = $row->{timestamp};
+							}
+							
+							unless ($load_stats->{$item}->{data}->{LogsPerSec}->[$bucket]){
+								$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] = 0;
+							}
+							$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] += ($row->{count} / $bucket_size);
+							
+							unless ($load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket]){
+								$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] = 0;
+							}
+							$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] += ($row->{bytes} / 1024 / $bucket_size);
+						}
+						$cv->end;
+					},
+					$item, $args->{start}, $args->{end});
 				},
 				$item, $args->{start}, $args->{end});
-			
-			$query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
-			$cv->begin;
-			$stats->{nodes}->{$node}->{dbh}->query($query, sub {
-					my ($dbh, $rows, $rv) = @_;
-					return unless $intervals;
-					# arrange in the number of buckets requested
-					my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
-					return unless $bucket_size;
-					foreach my $row (@$rows){
-						my $ts = $row->{ts} - $load_stats->{$item}->{summary}->{earliest};
-						my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
-						# Sanity check the bucket because too large an index array can cause an OoM error
-						if ($bucket > $intervals){
-							die('Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals);
-						}
-						unless ($load_stats->{$item}->{data}->{x}->[$bucket]){
-							$load_stats->{$item}->{data}->{x}->[$bucket] = $row->{timestamp};
-						}
-						
-						unless ($load_stats->{$item}->{data}->{LogsPerSec}->[$bucket]){
-							$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] = 0;
-						}
-						$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] += ($row->{count} / $bucket_size);
-						
-						unless ($load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket]){
-							$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] = 0;
-						}
-						$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] += ($row->{bytes} / 1024 / $bucket_size);
-					}
-					$cv->end;
-				},
-				$item, $args->{start}, $args->{end});
-			
-			
 		}
 		$cv->end;
 		$cv->recv;	
@@ -2503,7 +2509,7 @@ sub get_log_info {
 	
 	# Check to see if SIRT is available and include
 	if ($self->conf->get('sirt_url')){
-		push @$plugins, 'sendToSIRT';
+		unshift @$plugins, 'sendToSIRT';
 	}
 		
 	unless ($decode->{class} and $self->conf->get('plugins/' . $decode->{class})){
