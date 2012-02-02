@@ -526,10 +526,10 @@ centos_set_apache(){
 	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/httpd/conf.d/ZZelsa.conf &&
 	
 	# Verify that we can write to logs
-	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
-	echo "Enabling SELINUX policies for Apache..." &&
-	chcon --reference=/var/log/httpd/error_log -R $DATA_DIR &&
-	setsebool -P httpd_can_network_connect on &&
+	chown -R $WEB_USER "$DATA_DIR/elsa/log"
+	echo "Enabling SELINUX policies for Apache..."
+	chcon --reference=/var/log/httpd -R $DATA_DIR
+	setsebool -P httpd_can_network_connect on
 	service httpd restart
 	enable_service "httpd"
 	# Set firewall
