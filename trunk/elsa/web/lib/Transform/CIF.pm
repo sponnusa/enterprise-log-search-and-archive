@@ -63,8 +63,15 @@ sub _query {
 	$self->cv->begin;
 	
 	$query = url_encode($query);
+	my $hostname = $self->conf->get('transforms/cif/server_ip');
+	if ($self->conf->get('transforms/cif/base_url')){
+		$hostname = $self->conf->get('transforms/cif/base_url');
+	}
+	unless ($hostname){
+		die('server_ip nor base_url configured');
+	}
 	my $url = sprintf('http://%s/api/%s?apikey=%s&fmt=json', 
-		$self->conf->get('transforms/cif/server_ip'), $query, $self->conf->get('transforms/cif/apikey'));
+		$hostname, $query, $self->conf->get('transforms/cif/apikey'));
 	
 	my $info = $self->cache->get($url, expire_if => sub {
 		my $obj = $_[0];
@@ -89,7 +96,13 @@ sub _query {
 	}
 	
 	$self->log->debug('getting ' . $url);
-	http_request GET => $url, headers => { Host => $self->conf->get('transforms/cif/server_name'), Accept => 'application/json' }, sub {
+	my $headers = {
+		Accept => 'application/json',
+	};
+	if ($self->conf->get('transforms/cif/server_name')){
+		$headers->{Host} = $self->conf->get('transforms/cif/server_name');
+	}
+	http_request GET => $url, headers => $headers, sub {
 		my ($body, $hdr) = @_;
 		my $data;
 		eval {
