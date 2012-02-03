@@ -148,7 +148,6 @@ body {
 <script type="text/javascript" src="%3$s/inc/utilities.js" ></script>
 <script type="text/javascript" src="%3$s/inc/elsa.js" ></script>
 <script type="text/javascript" src="%3$s/inc/main.js" ></script>
-<script type="text/javascript" src="http://localhost:5000/inc/SIRT.js" ></script>
 <script type="text/Javascript">
 EOHTML
 ;
