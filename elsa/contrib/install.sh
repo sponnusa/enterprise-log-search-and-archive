@@ -530,6 +530,7 @@ centos_set_apache(){
 	echo "Enabling SELINUX policies for Apache..."
 	chcon --reference=/var/log/httpd -R $DATA_DIR
 	setsebool -P httpd_can_network_connect on
+	setsebool -P httpd_can_network_connect_db on
 	service httpd restart
 	enable_service "httpd"
 	# Set firewall
