@@ -7,6 +7,7 @@ use Plack::Session;
 use JSON -convert_blessed_universally;
 use URI::Escape qw(uri_unescape);
 use Encode;
+use MIME::Base64;
 use YUI;
 
 use API;
@@ -22,6 +23,7 @@ our %Modes = (
 	get_results => 1,
 	admin => 1,
 	transform => 2,
+	send_to => 1,
 );
 
 #sub BUILD {
@@ -49,6 +51,10 @@ sub call {
 			if ($user_info){
 				$self->session->set('user_info', $user_info);
 				$body = $self->$sub($req);
+				if (ref($body) and ref($body) eq 'HASH'){
+					$body = [encode_utf8($self->api->json->encode($body))];
+					$self->api->log->trace('returning body: ' . Dumper($body));
+				}
 			}
 			else {
 				$res->status(401);
@@ -108,10 +114,6 @@ sub index {
 
 sub _get_headers {
 	my $self = shift;
-#	my $dir = shift;
-#	unless ($dir){
-#		$dir = '';
-#	}
 	my $dir = $self->api->conf->get('email/base_url');
 	$dir =~ s/^https?\:\/\/[^\/]+\//\//; # strip off the URL to make $dir the URI
 	$dir = '';
@@ -146,6 +148,7 @@ body {
 <script type="text/javascript" src="%3$s/inc/utilities.js" ></script>
 <script type="text/javascript" src="%3$s/inc/elsa.js" ></script>
 <script type="text/javascript" src="%3$s/inc/main.js" ></script>
+<script type="text/javascript" src="http://localhost:5000/inc/SIRT.js" ></script>
 <script type="text/Javascript">
 EOHTML
 ;
@@ -350,8 +353,46 @@ sub transform {
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
 		eval {
+			$self->api->log->trace('args: ' . Dumper($args));
 			$args->{transforms} = $self->api->json->decode(uri_unescape($args->{transforms}));
+			$self->api->log->trace('transforms: ' . Dumper($args->{transforms}));
 			$args->{results} = $self->api->json->decode(uri_unescape(delete $args->{data}));
+			$self->api->log->debug( "Decoded $args as : " . Dumper($args) );
+		};
+		if ($@){
+			$self->api->log->error("invalid args, error: $@, args: " . Dumper($args));
+			return { error => 'Unable to build results object from args' };
+		}
+		
+		
+		
+		$self->api->transform($args);
+		my $results = $args->{results};
+		
+		$self->api->log->debug( "Got results: " . Dumper($results) );
+		
+		return { 
+			ret => $results, 
+			mime_type => 'application/javascript',
+		};
+	}
+	else {
+		$self->api->log->error('Invalid args: ' . Dumper($args));
+		return { error => 'Unable to build results object from args' };
+	}
+}
+
+sub send_to {
+	my $self = shift;
+	my $req = shift;
+	my $args = $req->parameters->as_hashref;
+	
+	if ( $args and ref($args) eq 'HASH' and $args->{data} ) {
+		eval {
+			my $data = $self->api->json->decode(uri_unescape(decode_base64($args->{data})));
+			$args->{user_info} = $self->session->get('user_info');
+			$args->{connectors} = $data->{connectors};
+			$args->{data} = delete $data->{data};
 			$self->api->log->debug( "Decoded $args as : " . Dumper($args) );
 		};
 		if ($@){
@@ -359,24 +400,11 @@ sub transform {
 			return 'Unable to build results object from args';
 		}
 		
-		$self->api->transform($args);
-		my $results = $args->{results};
-		foreach my $result (@$results){
-			foreach my $transform (keys %{ $result->{transforms} }){
-				next unless ref($result->{transforms}->{$transform}) eq 'HASH';
-				foreach my $transform_field (keys %{ $result->{transforms}->{$transform} }){
-					next unless ref($result->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
-					foreach my $transform_key (keys %{ $result->{transforms}->{$transform}->{$transform_field} }){
-						$result->{ join('.', $transform, $transform_field, $transform_key) } = 
-							$result->{transforms}->{$transform}->{$transform_field}->{$transform_key};
-					}
-				}
-			}		
-		}
-		$self->api->log->debug( "Got results: " . Dumper($results) );
+		my $result = $self->api->send_to($args);
+		$self->api->log->debug( "Got result: " . Dumper($result) );
 		
 		return { 
-			ret => $results, 
+			ret => $result, 
 			mime_type => 'application/javascript',
 		};
 	}

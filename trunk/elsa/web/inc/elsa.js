@@ -3208,14 +3208,22 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 	var aPluginMenuSources = [ ];
 	for (var i in p_oData.plugins){
 		var sPluginName = p_oData.plugins[i];
-		var onClick = function(){
-			
+		var aMatches = sPluginName.match(/^send_to_(.+)/);
+		if (aMatches && aMatches.length){
+			aPluginMenuSources.push({
+				text: 'Send to ' + aMatches[1],
+				onclick: { fn: YAHOO.ELSA.sendFromMenu, obj:[aMatches[1], p_oRecord] }
+			});
 		}
-		aPluginMenuSources.push({
-			text: sPluginName,
-			onclick: { fn: YAHOO.ELSA[sPluginName], obj:p_oRecord }
-		});
+		else {
+			aPluginMenuSources.push({
+				text: sPluginName,
+				onclick: { fn: YAHOO.ELSA[sPluginName], obj:p_oRecord }
+			});
+		}
 	}
+	var fnSort = function(a,b){ return a.text.charCodeAt(0) < b.text.charCodeAt(0) };
+	aPluginMenuSources.sort(fnSort);  // make alphabetical order
 	
 	var oPluginMenuButtonCfg = {
 		id: 'log_info_plugin_select_button',
@@ -3232,7 +3240,10 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 	YAHOO.ELSA.logInfoDialog.bringToTop();
 }
 
-YAHOO.ELSA.sendToSIRT = function(p_sType, p_aArgs, p_oRecord){
+YAHOO.ELSA.sendFromMenu = function(p_sType, p_aArgs, p_a){
+	var p_sPlugin = p_a[0];
+	logger.log('p_sPlugin ' + p_sPlugin);
+	var p_oRecord = p_a[1];
 	logger.log('p_oRecord', p_oRecord);
 	
 	if (!p_oRecord){
@@ -3245,7 +3256,12 @@ YAHOO.ELSA.sendToSIRT = function(p_sType, p_aArgs, p_oRecord){
 			if (oResponse.responseText){
 				var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
 				if (typeof oReturn === 'object'){
-					logger.log('attached ok');
+					if (oReturn.ret && oReturn.ret == 1){
+						logger.log('sent ok');
+					}
+					else {
+						YAHOO.ELSA.Error('Send failed');
+					}
 					YAHOO.ELSA.logInfoDialog.hide();
 				}
 				else {
@@ -3261,10 +3277,10 @@ YAHOO.ELSA.sendToSIRT = function(p_sType, p_aArgs, p_oRecord){
 		},
 		argument: [this]
 	};
-	var sPayload = YAHOO.lang.JSON.stringify(p_oRecord.getData());
+	var sPayload = YAHOO.lang.JSON.stringify({data:[p_oRecord.getData()], connectors:[p_sPlugin]});
 	sPayload.replace(/;/, '', 'g');
 	logger.log('sPayload: ' + sPayload);
-	var oConn = YAHOO.util.Connect.asyncRequest('POST', YAHOO.ELSA.SIRTUrl, callback, 'data=' + Base64.encode(sPayload));
+	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + Base64.encode(sPayload));
 }
 
 YAHOO.ELSA.openTicket = function(p_sType, p_aArgs, p_iQid){

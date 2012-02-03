@@ -20,6 +20,7 @@ sub BUILDARGS {
 
 sub BUILD {
 	my $self = shift;
+	$self->log->trace('data: ' . Dumper($self->data));
 	
 	my $sums = {};
 	foreach my $datum (@{ $self->data }){
@@ -32,8 +33,8 @@ sub BUILD {
 							$datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby };
 					}
 					else {
-						$self->log->debug('incrementing ' . $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } . ' from ' .
-							$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }); 
+						#$self->log->debug('incrementing ' . $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } . ' from ' .
+						#	$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }); 
 						$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }++;
 					}
 				}
@@ -52,6 +53,10 @@ sub BUILD {
 	foreach my $key (keys %$sums){
 		push @$ret, { '@groupby' => $key, intval => $sums->{$key}, '@count' => $sums->{$key} };
 	}
+	
+	# Sort
+	$ret = [ sort { $b->{intval} <=> $a->{intval} } @$ret ];
+	
 	$self->data($ret);
 	$self->log->debug('data: ' . Dumper($self->data));
 	

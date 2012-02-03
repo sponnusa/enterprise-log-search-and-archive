@@ -19,7 +19,7 @@ use Sys::Hostname::FQDN;
 use String::CRC32;
 use CHI;
 use Time::HiRes qw(time);
-use Module::Pluggable require => 1, search_path => [ qw( Export Info Transform ) ];
+use Module::Pluggable require => 1, search_path => [ qw( Export Info Transform Connector ) ];
 use URI::Escape qw(uri_unescape);
 use Mail::Internet;
 use Email::LocalDelivery;
@@ -394,9 +394,10 @@ sub get_user_info {
 			if ($self->conf->get('admin_groups')){
 				@admin_groups = @{ $self->conf->get('admin_groups') };
 			}
-			if ( grep { $user_info->{username} } @admin_groups ){
+			if ( grep { $group eq $_ } @admin_groups ){
 				$self->log->debug( 'user ' . $user_info->{username} . ' is an admin');
 				$user_info->{is_admin} = 1;
+				last;
 			}
 		}
 		$user_info->{email} = $username . '@localhost';
@@ -1008,54 +1009,54 @@ sub get_stats {
 			}
 			$self->log->trace('get stat ' . $item . ' for node ' . $node);
 			$stats->{nodes}->{$node}->{dbh}->query($query, sub {
+				my ($dbh, $rows, $rv) = @_;
+				#$self->log->trace('got stat ' . $item . ' for node ' . $node . ': ' . Dumper($rows));
+				$load_stats->{$item}->{summary} = $rows->[0];
+				$cv->end;
+			
+				my $query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
+				$cv->begin;
+				$stats->{nodes}->{$node}->{dbh}->query($query, sub {
 					my ($dbh, $rows, $rv) = @_;
-					#$self->log->trace('got stat ' . $item . ' for node ' . $node . ': ' . Dumper($rows));
-					$load_stats->{$item}->{summary} = $rows->[0];
-					$cv->end;
-				
-					my $query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
-					$cv->begin;
-					$stats->{nodes}->{$node}->{dbh}->query($query, sub {
-						my ($dbh, $rows, $rv) = @_;
-						unless ($intervals and $load_stats->{$item}->{summary} and $load_stats->{$item}->{summary}->{total_time}){
-							$self->log->error('no stat for node ' . $node . ' and stat ' . $item);
-							$cv->end;
-							return;
-						}
-						#$self->log->trace('$load_stats->{$item}->{summary}: ' . Dumper($load_stats->{$item}->{summary}));
-						# arrange in the number of buckets requested
-						my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
-						unless ($bucket_size){
-							$self->log->error('no bucket size ' . $node . ' and stat ' . $item);
-							$cv->end;
-							return;
-						}
-						foreach my $row (@$rows){
-							my $ts = $row->{ts} - $load_stats->{$item}->{summary}->{earliest};
-							my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
-							# Sanity check the bucket because too large an index array can cause an OoM error
-							if ($bucket > $intervals){
-								die('Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals);
-							}
-							unless ($load_stats->{$item}->{data}->{x}->[$bucket]){
-								$load_stats->{$item}->{data}->{x}->[$bucket] = $row->{timestamp};
-							}
-							
-							unless ($load_stats->{$item}->{data}->{LogsPerSec}->[$bucket]){
-								$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] = 0;
-							}
-							$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] += ($row->{count} / $bucket_size);
-							
-							unless ($load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket]){
-								$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] = 0;
-							}
-							$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] += ($row->{bytes} / 1024 / $bucket_size);
-						}
+					unless ($intervals and $load_stats->{$item}->{summary} and $load_stats->{$item}->{summary}->{total_time}){
+						$self->log->error('no stat for node ' . $node . ' and stat ' . $item);
 						$cv->end;
-					},
-					$item, $args->{start}, $args->{end});
+						return;
+					}
+					#$self->log->trace('$load_stats->{$item}->{summary}: ' . Dumper($load_stats->{$item}->{summary}));
+					# arrange in the number of buckets requested
+					my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
+					unless ($bucket_size){
+						$self->log->error('no bucket size ' . $node . ' and stat ' . $item);
+						$cv->end;
+						return;
+					}
+					foreach my $row (@$rows){
+						my $ts = $row->{ts} - $load_stats->{$item}->{summary}->{earliest};
+						my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
+						# Sanity check the bucket because too large an index array can cause an OoM error
+						if ($bucket > $intervals){
+							die('Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals);
+						}
+						unless ($load_stats->{$item}->{data}->{x}->[$bucket]){
+							$load_stats->{$item}->{data}->{x}->[$bucket] = $row->{timestamp};
+						}
+						
+						unless ($load_stats->{$item}->{data}->{LogsPerSec}->[$bucket]){
+							$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] = 0;
+						}
+						$load_stats->{$item}->{data}->{LogsPerSec}->[$bucket] += ($row->{count} / $bucket_size);
+						
+						unless ($load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket]){
+							$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] = 0;
+						}
+						$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] += ($row->{bytes} / 1024 / $bucket_size);
+					}
+					$cv->end;
 				},
 				$item, $args->{start}, $args->{end});
+			},
+			$item, $args->{start}, $args->{end});
 		}
 		$cv->end;
 		$cv->recv;	
@@ -2436,49 +2437,9 @@ sub query {
 	
 	# Apply transforms
 	if ($args->{transforms} and ref($ret->{results}) eq 'ARRAY' and scalar @{ $args->{transforms} }){
-		my $transform_args = { transforms => $args->{transforms}, results => [] };
-		$self->log->debug('$ret->{results} ' . Dumper($ret->{results}));
-		foreach my $row (@{ $ret->{results} }){
-			my $condensed_hash = {};
-			foreach my $field_hash (@{ $row->{_fields} }){
-				$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
-			}
-			push @{ $transform_args->{results} }, $condensed_hash;
-		}
-		
-		$self->transform($transform_args);
-		$self->log->debug('$transform_args' . Dumper($transform_args));
-		
-		if ($transform_args->{groupby}){
-			$ret->{groupby} = $transform_args->{groupby};
-			$ret->{results} = {};
-			foreach my $groupby (@{  $transform_args->{groupby} }){
-				$ret->{results}->{$groupby} = $transform_args->{results};
-			}
-		}
-		else {
-			# Now go back and insert the transforms
-			my @final;
-			for (my $i = 0; $i < scalar @{ $ret->{results} }; $i++){
-				# Some transforms can filter records out entirely by setting the __DELETE__ transform flag
-				next if $transform_args->{results}->[$i]->{transforms}->{__DELETE__};
-				foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
-					next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
-					foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
-						next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
-						foreach my $transform_key (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
-							push @{ $ret->{results}->[$i]->{_fields} }, { 
-								field => $transform_field . '.' . $transform_key, 
-								value => $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_key},
-								class => 'Transform.' . $transform,
-							};
-						}
-					}
-				}
-				push @final, $ret->{results}->[$i];
-			}
-			$ret->{results} = [ @final ];
-		}
+		$self->transform($args);
+		$ret->{results} = $args->{results};
+		$ret->{groupby} = $args->{groupby} if $args->{groupby};
 	}
 	
 	$ret->{errors} = $self->warnings;
@@ -2507,9 +2468,11 @@ sub get_log_info {
 	my $data;
 	my $plugins = [];
 	
-	# Check to see if SIRT is available and include
-	if ($self->conf->get('sirt_url')){
-		unshift @$plugins, 'sendToSIRT';
+	# Check to see if any connectors (external apps) are available and include
+	if ($self->conf->get('connectors')){
+		foreach my $conn (keys %{ $self->conf->get('connectors') }){
+			unshift @$plugins, 'send_to_' . $conn;
+		}
 	}
 		
 	unless ($decode->{class} and $self->conf->get('plugins/' . $decode->{class})){
@@ -4135,6 +4098,16 @@ sub transform {
 	my ($self, $args) = @_;
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{transforms} ) {
+		my $transform_args = { transforms => $args->{transforms}, results => [] };
+		foreach my $row (@{ $args->{results} }){
+			my $condensed_hash = {};
+			foreach my $field_hash (@{ $row->{_fields} }){
+				$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
+			}
+			push @{ $transform_args->{results} }, $condensed_hash;
+		}
+		$self->log->debug('$transform_args' . Dumper($transform_args));
+		
 		my $num_found = 0;
 		my $cache;
 		eval {
@@ -4151,7 +4124,7 @@ sub transform {
 			$cache = CHI->new(driver => 'RawMemory', datastore => {});
 		}
 		$self->log->debug('using cache ' . Dumper($cache));
-		foreach my $raw_transform (@{ $args->{transforms} }){
+		foreach my $raw_transform (@{ $transform_args->{transforms} }){
 			$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
 			my $transform = $1;
 			my @transform_args = $2 ? split(/\,/, $2) : ();
@@ -4164,17 +4137,17 @@ sub transform {
 							conf => $self->conf, 
 							log => $self->log, 
 							cache => $cache,
-							data => $args->{results}, 
+							data => $transform_args->{results}, 
 							args => [ @transform_args ]);
-						$args->{results} = $plugin_object->data;
+						$transform_args->{results} = $plugin_object->data;
 						if ($plugin_object->groupby){
-							$args->{groupby} = [ $plugin_object->groupby ];
+							$transform_args->{groupby} = [ $plugin_object->groupby ];
 						}
 						$num_found++;
 					};
 					if ($@){
 						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
-							. Dumper($args->{results}) . ' and args ' . Dumper(\@transform_args) . ': ' . $@);
+							. Dumper($transform_args->{results}) . ' and args ' . Dumper(\@transform_args) . ': ' . $@);
 					}
 				}
 			}
@@ -4185,6 +4158,38 @@ sub transform {
 				join(', ', $self->plugins()) . ' ' . Dumper($args));
 			return 0;
 		}
+		
+		if ($transform_args->{groupby}){
+			$args->{groupby} = $transform_args->{groupby};
+			$args->{results} = {};
+			foreach my $groupby (@{  $transform_args->{groupby} }){
+				$args->{results}->{$groupby} = $transform_args->{results};
+			}
+		}
+		else {
+			# Now go back and insert the transforms
+			my @final;
+			for (my $i = 0; $i < scalar @{ $args->{results} }; $i++){
+				# Some transforms can filter records out entirely by setting the __DELETE__ transform flag
+				next if $transform_args->{results}->[$i]->{transforms}->{__DELETE__};
+				foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
+					next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
+					foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
+						next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
+						foreach my $transform_key (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
+							push @{ $args->{results}->[$i]->{_fields} }, { 
+								field => $transform_field . '.' . $transform_key, 
+								value => $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_key},
+								class => 'Transform.' . $transform,
+							};
+						}
+					}
+				}
+				push @final, $args->{results}->[$i];
+			}
+			$args->{results} = [ @final ];
+		}
+		
 		return 1;
 	}
 	else {
@@ -4192,6 +4197,50 @@ sub transform {
 		return 0;
 	}
 }
+
+sub send_to {
+	my ($self, $args) = @_;
+	
+	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{connectors} ) {
+		my $num_found = 0;
+		foreach my $raw (@{ $args->{connectors} }){
+			$raw =~ /(\w+)\(?([^\)]+)?\)?/;
+			my $connector = $1;
+			my @connector_args = $2 ? split(/\,/, $2) : ();
+			my $plugin_fqdn = 'Connector::' . $connector;
+			foreach my $plugin ($self->plugins()){
+				if (lc($plugin) eq lc($plugin_fqdn)){
+					$self->log->debug('loading plugin ' . $plugin);
+					eval {
+						my $plugin_object = $plugin->new(
+							api => $self,
+							user_info => $args->{user_info},
+							data => $args->{data}, 
+							args => [ @connector_args ]);
+						$args->{results} = $plugin_object->data;
+						$num_found++;
+					};
+					if ($@){
+						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
+							. Dumper($args->{results}) . ' and args ' . Dumper(\@connector_args) . ': ' . $@);
+					}
+				}
+			}
+		}
+		
+		unless ($num_found){
+			$self->log->error("failed to find connectors " . Dumper($args->{destinatinos}) . ', only have connectors ' .
+				join(', ', $self->plugins()) . ' ' . Dumper($args));
+			return 0;
+		}
+		return 1;
+	}
+	else {
+		$self->log->error('Invalid args: ' . Dumper($args));
+		return 0;
+	}
+}
+
 
 sub run_schedule {
 	my ($self, $args) = @_;

@@ -10,6 +10,7 @@ use lib $FindBin::Bin;
 use API;
 use Web;
 use Web::Query;
+use Web::Dashboard;
 
 my $config_file = '/usr/local/elsa/etc/elsa.conf';
 if ($ENV{ELSA_CONF}){
@@ -33,6 +34,7 @@ if (lc($api->conf->get('auth/method')) eq 'ldap' and $api->conf->get('ldap')){
 elsif ($api->conf->get('auth/method') eq 'local'){
 	require Authen::Simple::PAM;
 	$auth = Authen::Simple::PAM->new(
+		service => 'sshd',
 		log => $api->log,
 	);
 }
@@ -76,6 +78,7 @@ builder {
 	
 	mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
 	mount '/Query' => Web::Query->new(api => $api)->to_app;
+	mount '/dashboard' => Web::Dashboard->new(api => $api)->to_app;
 	mount '/' => Web->new(api => $api)->to_app;
 };
 
