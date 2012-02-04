@@ -14,6 +14,8 @@ our $Name = 'CIF';
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 has 'cache' => (is => 'rw', isa => 'Object', required => 1);
 has 'cv' => (is => 'rw', isa => 'Object');
+has 'known_subnets' => (is => 'rw', isa => 'HashRef');
+has 'known_orgs' => (is => 'rw', isa => 'HashRef');
 
 #sub BUILDARGS {
 #	my $class = shift;
@@ -33,6 +35,13 @@ sub BUILD {
 	}
 	else {
 		$keys = { srcip => 1, dstip => 1 };
+	}
+	
+	if ($self->conf->get('transforms/whois/known_subnets')){
+		$self->known_subnets($self->conf->get('transforms/whois/known_subnets'));
+	}
+	if ($self->conf->get('transforms/whois/known_orgs')){
+		$self->known_orgs($self->conf->get('transforms/whois/known_orgs'));
 	}	
 	
 	foreach my $datum (@{ $self->data }){
@@ -54,24 +63,50 @@ sub BUILD {
 	return $self;
 }
 
+sub _check_local {
+	my $self = shift;
+	my $ip = shift;
+	my $ip_int = unpack('N*', inet_aton($ip));
+	
+	return unless $ip_int and $self->known_subnets and $self->known_orgs;
+	
+	foreach my $start (keys %{ $self->known_subnets }){
+		if (unpack('N*', inet_aton($start)) <= $ip_int 
+			and unpack('N*', inet_aton($self->known_subnets->{$start}->{end})) >= $ip_int){
+			$self->log->trace('using local org');
+			return 1;
+		}
+	}
+}
+
 sub _query {
 	my $self = shift;
 	my $datum = shift;
 	my $key = shift;
 	my $query = shift;
 	
+	if ($self->_check_local($query)){
+		$datum->{transforms}->{$Name}->{$key} = {};
+		return;
+	}
+	
 	$self->cv->begin;
 	
 	$query = url_encode($query);
-	my $hostname = $self->conf->get('transforms/cif/server_ip');
-	if ($self->conf->get('transforms/cif/base_url')){
-		$hostname = $self->conf->get('transforms/cif/base_url');
+	my $url;
+	if ($self->conf->get('transforms/cif/server_ip')){
+		$url = sprintf('http://%s/api/%s?apikey=%s&fmt=json', 
+			$self->conf->get('transforms/cif/server_ip'), $query, 
+			$self->conf->get('transforms/cif/apikey'));
 	}
-	unless ($hostname){
+	elsif ($self->conf->get('transforms/cif/base_url')){
+		$url = sprintf('%s/api/%s?apikey=%s&fmt=json', 
+			$self->conf->get('transforms/cif/base_url'), $query, 
+			$self->conf->get('transforms/cif/apikey'));
+	}
+	else {
 		die('server_ip nor base_url configured');
 	}
-	my $url = sprintf('http://%s/api/%s?apikey=%s&fmt=json', 
-		$hostname, $query, $self->conf->get('transforms/cif/apikey'));
 	
 	my $info = $self->cache->get($url, expire_if => sub {
 		my $obj = $_[0];
