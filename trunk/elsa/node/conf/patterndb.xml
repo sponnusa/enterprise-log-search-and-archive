@@ -93,6 +93,7 @@
 		<rules>
 			<rule provider="DET" class='4' id='4'>
 				<patterns>
+					<pattern>@NUMBER:i0:@: @ESTRING::.@ Client IP address: @IPv4:s0::@</pattern>
 					<pattern>@NUMBER:i0:@: @ESTRING:s0::@</pattern>
 					<pattern>@NUMBER:i0:@: @ANYSTRING::@</pattern>
 				</patterns>
