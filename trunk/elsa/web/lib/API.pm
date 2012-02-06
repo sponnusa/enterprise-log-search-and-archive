@@ -3262,17 +3262,28 @@ sub _parse_query_term {
 	my $self = shift;
 	my $args = shift;
 	my $terms = shift;
+	my $given_operator = shift;
 	
 	$self->log->debug('terms: ' . Dumper($terms));
 			
 	foreach my $operator (keys %{$terms}){
+		my $effective_operator = $operator;
+		if ($given_operator){
+			if ($given_operator eq '-' and ($effective_operator eq '' or $effective_operator eq '+')){
+				$effective_operator = '-'; # invert the AND or OR
+			}
+			elsif ($given_operator eq '+' and $effective_operator eq '-'){
+				$effective_operator = '-';
+			}
+
+		}
 		my $arr = $terms->{$operator};
 		foreach my $term_hash (@{$arr}){
 			next unless defined $term_hash->{value};
 			
 			# Recursively handle parenthetical directives
 			if (ref($term_hash->{value}) eq 'HASH'){
-				$self->_parse_query_term($args, $term_hash->{value});
+				$self->_parse_query_term($args, $term_hash->{value}, $operator);
 				next;
 			}
 			
@@ -3334,14 +3345,14 @@ sub _parse_query_term {
 					die("Unknown class $term_hash->{value}");
 				}
 				
-				if ($operator eq '-'){
+				if ($effective_operator eq '-'){
 					# We're explicitly removing this class
 					$args->{excluded_classes}->{ $class } = 1;
 				}
 				else {
 					$args->{given_classes}->{ $class } = 1;
 				}
-				$self->log->debug("Set operator $operator for given class " . $term_hash->{value});		
+				$self->log->debug("Set operator $effective_operator for given class " . $term_hash->{value});		
 				next;
 			}
 			elsif ($term_hash->{field} eq 'groupby'){
@@ -3358,7 +3369,7 @@ sub _parse_query_term {
 			}
 			elsif ($term_hash->{field} eq 'node'){
 				if ($term_hash->{value} =~ /^[\w\.]+$/){
-					if ($operator eq '-'){
+					if ($effective_operator eq '-'){
 						$args->{excluded_nodes} ||= {};
 						$args->{excluded_nodes}->{ $term_hash->{value} } = 1;
 					}
@@ -3373,16 +3384,16 @@ sub _parse_query_term {
 			my $boolean = 'or';
 				
 			# Reverse if necessary
-			if ($operator eq '-' and $term_hash->{op} eq '!='){
+			if ($effective_operator eq '-' and $term_hash->{op} eq '!='){
 				$boolean = 'and';
 			}
-			elsif ($operator eq '-' and $term_hash->{op} eq '='){
+			elsif ($effective_operator eq '-' and $term_hash->{op} eq '='){
 				$boolean = 'not';
 			}
-			elsif ($operator eq '+'){
+			elsif ($effective_operator eq '+'){
 				$boolean = 'and';
 			}
-			elsif ($operator eq '-'){
+			elsif ($effective_operator eq '-'){
 				$boolean = 'not';
 			}
 			
