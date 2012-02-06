@@ -3283,7 +3283,7 @@ sub _parse_query_term {
 			
 			# Recursively handle parenthetical directives
 			if (ref($term_hash->{value}) eq 'HASH'){
-				$self->_parse_query_term($args, $term_hash->{value}, $operator);
+				$self->_parse_query_term($args, $term_hash->{value}, $effective_operator);
 				next;
 			}
 			
