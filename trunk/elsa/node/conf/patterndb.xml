@@ -520,4 +520,55 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="fortinet_url" id='21'>
+		<pattern>kernel</pattern>
+		<rules>
+			<rule provider="ELSA" class='21' id='21'>
+				<patterns>
+					<pattern>date=@ESTRING:: @time=@ESTRING:: @devname=@ESTRING:: @device_id=@ESTRING:: @log_id=@ESTRING:: @subtype=@ESTRING:: @type=webfilter pri=@ESTRING:: @vd=@ESTRING:: @policyid=@ESTRING:: @identidx=@ESTRING:: @serial=@ESTRING:: @user=@ESTRING:s0: @group=@ESTRING:s1: @src=@IPv4:i0:@ sport=@ESTRING:i1: @src_port=@ESTRING:: @src_int=@ESTRING:: @dst=@IPv4:i2:@ dport=@ESTRING:i3: @dst_port=@ESTRING:: @dst_int=@ESTRING:: @service=@ESTRING:s2: @hostname=@ESTRING:s3: @profiletype=@ESTRING:: @profile=@ESTRING:: @status=@ESTRING:s4: @req_type=@ESTRING:: @url=@ESTRING:s5: @method=@ESTRING:: @class=@ESTRING:: @cat=@ESTRING:i4: @cat_desc=@QSTRING::""@ carrier_ep=@ESTRING:: @msg=@QSTRING::""@ class_desc=@ESTRING:: @profilegroup=</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="kernel">date=2012-02-10 time=11:27:01 devname=CUSTID01-SITEID-FW device_id=FG100C999999999 log_id=13312 subtype=ftgd_allow type=webfilter pri=notice vd=VDOM policyid=44 identidx=1 serial=369298248 user=USER group=AD/GROUP src=10.1.2.3 sport=2163 src_port=2163 src_int=INT dst=4.3.2.1 dport=80 dst_port=80 dst_int=WAN service=http hostname=col.stb.s-msn.com profiletype=Webfilter_Profile profile=PROFILE status=passthrough req_type=referral url=/i/79/65F987C952BDA0E84AE52464ADD59.jpg method=domain class=0 cat=41 cat_desc="Search Engines and Portals" carrier_ep=N/A msg="URL belongs to an allowed category in policy" class_desc=N/A profilegroup=N/A</test_message>
+						<test_values>
+							<test_value name="i0">10.1.2.3</test_value>
+							<test_value name="i1">2163</test_value>
+							<test_value name="i2">4.3.2.1</test_value>
+							<test_value name="i3">80</test_value>
+							<test_value name="s0">USER</test_value>
+							<test_value name="s1">AD/GROUP</test_value>
+							<test_value name="s2">http</test_value>
+							<test_value name="s3">col.stb.s-msn.com</test_value>
+							<test_value name="s4">passthrough</test_value>
+							<test_value name="s5">/i/79/65F987C952BDA0E84AE52464ADD59.jpg</test_value>
+							<test_value name="i4">41</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="fortinet_traffic" id='22'>
+		<pattern>kernel</pattern>
+		<rules>
+			<rule provider="ELSA" class='22' id='22'>
+				<patterns>
+					<pattern>date=@ESTRING:: @time=@ESTRING:: @devname=@ESTRING:: @device_id=@ESTRING:: @log_id=@ESTRING:: @subtype=@ESTRING:: @type=traffic pri=@ESTRING:: @vd=@ESTRING:: @dir_disp=@ESTRING:: @tran_disp=@ESTRING:: @src=@IPv4:i0:@ srcname=@ESTRING:: @src_port=@NUMBER:i1:@ dst=@IPv4:i2:@ dstname=@ESTRING:: @dst_port=@NUMBER:i3:@ tran_ip=@ESTRING:: @tran_port=@ESTRING:: @service=@ESTRING:: @proto=@NUMBER:i4@ app_type=@ESTRING:: @duration=@NUMBER:i5@ rule=@ESTRING:: @policyid=@ESTRING:: @identidx=@ESTRING:: @sent=@ESTRING:: @rcvd=@ESTRING:: @shaper_drop_sent=@ESTRING:: @shaper_drop_rcvd=@ESTRING:: @perip_drop=@ESTRING:: @sent_pkt=@ESTRING:: @rcvd_pkt=@ESTRING:: @src_int=@ESTRING:: @dst_int=@ESTRING:: @SN=@ESTRING:: @app=@ESTRING:: @app_cat=@ESTRING:: @carrier_ep=@ESTRING:: @vpn=@ESTRING:: @status=@ESTRING:: @user=@ESTRING:: @group=@ESTRING:: @shaper_sent_name=@ESTRING:: @shaper_rcvd_name=@ESTRING:: @perip_name</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="kernel">date=2012-02-10 time=11:27:01 devname=CUSTID01-SITEID-FW device_id=FGT80C9999999999 log_id=2 subtype=allowed type=traffic pri=notice vd=VDOM dir_disp=org tran_disp=snat src=10.1.2.3 srcname=10.1.2.3 src_port=53624 dst=4.3.2.2 dstname=4.3.2.2 dst_port=80 tran_ip=5.4.3.2 tran_port=49648 service=80/tcp proto=6 app_type=N/A duration=120 rule=49 policyid=49 identidx=0 sent=1221 rcvd=2062 shaper_drop_sent=0 shaper_drop_rcvd=0 perip_drop=0 sent_pkt=7 rcvd_pkt=6 src_int=INT dst_int=WAN SN=16349534 app=N/A app_cat=N/A carrier_ep=N/A vpn=N/A status=accept user=N/A group=N/A shaper_sent_name=N/A shaper_rcvd_name=N/A perip_name=N/A</test_message>
+						<test_values>
+							<test_value name="i0">10.1.2.3</test_value>
+							<test_value name="i1">53624</test_value>
+							<test_value name="i2">4.3.2.2</test_value>
+							<test_value name="i3">80</test_value>
+							<test_value name="i4">6</test_value>
+							<test_value name="i5">120</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
