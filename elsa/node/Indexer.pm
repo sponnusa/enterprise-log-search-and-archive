@@ -888,13 +888,12 @@ sub _create_table {
 	};
 	if ($@){
 		my $e = $@;
-		if ($e->sql_error =~ /Duplicate entry/){
+		if ($e =~ /Duplicate entry/){
 			# This is fine
-			$e->caught();
 			return $needed_table;
 		}
 		else {
-			$e->throw(); # whatever it is, it's not cool
+			die($e); # whatever it is, it's not cool
 		}
 		
 	}
