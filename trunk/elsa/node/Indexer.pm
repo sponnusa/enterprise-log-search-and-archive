@@ -871,7 +871,7 @@ sub _create_table {
 		$query = "INSERT INTO tables (table_name, start, end, min_id, max_id, table_type_id)\n" .
 			"VALUES( ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), ?, ?, (SELECT id FROM table_types WHERE table_type=?) )";
 		$sth = $self->db->prepare($query);
-		$sth->execute( $needed_table, $args->{start}, $args->{end}, $current_max_id + 1, $current_max_id + 1, $args->{table_type});
+		$sth->execute( $needed_table, ($args->{start} ? $args->{start} : CORE::time()), ($args->{end} ? $args->{end} : CORE::time()), $current_max_id + 1, $current_max_id + 1, $args->{table_type});
 		my $id = $self->db->{mysql_insertid};
 		$self->log->debug(sprintf("Created table id %d with start %s, end %s, first_id %lu, last_id %lu", 
 			$id, _epoch2iso($args->{start}), _epoch2iso($args->{end}), $args->{first_id}, $args->{last_id} ));	
