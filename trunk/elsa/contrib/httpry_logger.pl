@@ -270,19 +270,38 @@ sub emit {
 	$req->{user_agent} =~ s/[^a-zA-Z0-9\`\~\!\@\#\$\%\^\&\*\(\)\-\_\=\+\,\;\:\[\]\{\}\.\?\/\<\>\ \'\"]/\\\\/g;
 	
 	if ($Logger or $File){
-		my $msg = join($Delimiter,
-			#$req->{timestamp}, 
-			$source_ip, 
-			$dest_ip,
-			$req->{method},
-			$req->{host}, 
-			$req->{request_uri},
-			$req->{referer},
-			$req->{user_agent},
-			$req->{domains},
-			$resp->{status_code},
-			$resp->{content_length},
-			$country_code);
+		my $msg;
+		if ($Config->get('log/include_cookie')){
+			$msg = join($Delimiter,
+				#$req->{timestamp}, 
+				$source_ip, 
+				$dest_ip,
+				$req->{method},
+				$req->{host}, 
+				$req->{request_uri},
+				$req->{referer},
+				$req->{user_agent},
+				$req->{domains},
+				$resp->{status_code},
+				$resp->{content_length},
+				$country_code,
+				$req->{cookie});
+		}
+		else {
+			$msg = join($Delimiter,
+				#$req->{timestamp}, 
+				$source_ip, 
+				$dest_ip,
+				$req->{method},
+				$req->{host}, 
+				$req->{request_uri},
+				$req->{referer},
+				$req->{user_agent},
+				$req->{domains},
+				$resp->{status_code},
+				$resp->{content_length},
+				$country_code);
+		}
 		
 		if ($Opts{d}){
 			print $msg . "\n";
@@ -395,7 +414,7 @@ EOT
 		"host": "syslog.example.com",
 		"port": 514,
 		"from_host": "httpry.example.com",
-		"program": "httpry"
+		"program": "url"
 	},
 	"db": {
 		"dsn": "dbi:mysql:host=localhost:database=test",
