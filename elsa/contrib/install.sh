@@ -429,6 +429,7 @@ freebsd_get_web_packages(){
 	
 	enable_service "apache2" &&
 	service apache2 start
+	pgrep httpd
 		
 	return $?
 }	
