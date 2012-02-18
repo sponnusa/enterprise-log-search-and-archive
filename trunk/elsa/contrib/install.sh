@@ -97,7 +97,7 @@ ubuntu_get_node_packages(){
 }
 
 freebsd_get_node_packages(){
-	pkg_add -Fr subversion wget curl mysql55-server perl syslog-ng p5-App-cpanminus &&
+	pkg_add -Fr subversion wget curl mysql55-server perl syslog-ng3 p5-App-cpanminus &&
 	enable_service "mysql" &&
 	service mysql-server start &&
 	disable_service "syslogd" &&
