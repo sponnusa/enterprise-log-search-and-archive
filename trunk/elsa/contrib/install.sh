@@ -115,6 +115,7 @@ freebsd_get_node_packages(){
 	enable_service "syslog-ng" &&
 	cp /usr/local/etc/syslog-ng.conf.dist /usr/local/etc/syslog-ng.conf &&
 	service syslog-ng start
+	pgrep syslog-ng
 	
 	return $?
 }	
