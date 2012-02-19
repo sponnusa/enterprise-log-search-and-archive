@@ -224,6 +224,8 @@ build_node_perl(){
 	
 	# Now cpanm is available to install the rest
 	cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::MemInfo Sys::Info
+	# Do it all again, as occasionally strange and one-time download errors occur
+	cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::MemInfo Sys::Info
 	
 	return $?
 }
