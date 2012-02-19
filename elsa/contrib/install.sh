@@ -270,7 +270,7 @@ build_sphinx(){
 	./configure --enable-id64 "--prefix=$BASE_DIR/sphinx" && make && make install &&
 	mkdir -p $BASE_DIR/etc &&
 	touch "$BASE_DIR/etc/sphinx_stopwords.txt"
-	if [ "$DISTRO" == "freebsd" ]; then
+	if [ "$DISTRO" = "freebsd" ]; then
 		cp $BASE_DIR/elsa/contrib/searchd.freebsd $INIT_DIR/searchd
 	else
 		cp $BASE_DIR/elsa/contrib/searchd $INIT_DIR
