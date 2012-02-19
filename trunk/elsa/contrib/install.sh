@@ -282,7 +282,8 @@ build_sphinx(){
 build_syslogng(){
 	# we already installed on FreeBSD
 	if [ "$DISTRO" = "freebsd" ]; then
-		if [ \! -f /usr/local/etc/elsa_syslog-ng.conf ]; then
+		grep "elsa_syslog-ng.conf" /usr/local/etc/syslog-ng.conf
+		if [ $? -eq 1 ]; then
 			# Copy the syslog-ng.conf
 			echo "Creating elsa_syslog-ng.conf"
 			cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "/usr/local/etc/elsa_syslog-ng.conf" &&
