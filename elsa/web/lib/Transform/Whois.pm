@@ -27,10 +27,10 @@ sub BUILD {
 		$datum->{transforms}->{$Name} = {};
 		
 		$self->cv(AnyEvent->condvar);
-		my $w = AnyEvent->timer (after => 10, cb => sub {
-	      $self->log->error('TIMEOUT ' . Dumper($self->cv));
-	      $self->cv->send;
-	   });
+#		my $w = AnyEvent->timer (after => 10, cb => sub {
+#	      $self->log->error('TIMEOUT ' . Dumper($datum) . "\n" . Dumper($self->cv));
+#	      $self->cv->send;
+#	   });
 	   
 		$self->cv->begin;
 		
@@ -43,7 +43,7 @@ sub BUILD {
 		
 		$self->cv->end;
 		$self->cv->recv;
-		undef $w;
+#		undef $w;
 		
 		foreach my $key qw(srcip dstip){
 			if ($datum->{transforms}->{$Name}->{$key} and $datum->{transforms}->{$Name}->{$key}->{is_local}){
@@ -99,6 +99,7 @@ sub _lookup {
 		if ($_[0]->value->{name} or $_[0]->value->{ripe_ip}){
 			return 0;
 		}
+		$self->cv->end;
 		return 1;
 	});
 	if ($ip_info and $ip_info->{name}){

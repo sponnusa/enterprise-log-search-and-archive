@@ -45,17 +45,6 @@ CREATE TABLE query_log (
 	KEY (timestamp)
 ) ENGINE=InnoDB;
 
-CREATE TABLE actions (
-	action_id tinyint UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
-	action varchar(255) NOT NULL
-) ENGINE=InnoDB;	
-
-CREATE TABLE query_schedule_actions (
-	action_id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-	action VARCHAR(64) NOT NULL,
-	action_subroutine VARCHAR(8000) NOT NULL
-) ENGINE=InnoDB;
-
 CREATE TABLE query_schedule (
 	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
 	uid INT UNSIGNED NOT NULL,
@@ -64,17 +53,12 @@ CREATE TABLE query_schedule (
 	start INT UNSIGNED NOT NULL DEFAULT 0,
 	end INT UNSIGNED NOT NULL DEFAULT 0,
 	enabled BOOLEAN NOT NULL DEFAULT 1,
-	action_id TINYINT UNSIGNED NOT NULL,
-	action_params VARCHAR(8000),
+	connector VARCHAR(255),
+	params VARCHAR(8000),
 	last_alert TIMESTAMP,
 	alert_threshold INT UNSIGNED NOT NULL DEFAULT 0,
-	FOREIGN KEY (uid) REFERENCES users (uid) ON UPDATE CASCADE,
-	FOREIGN KEY (action_id) REFERENCES query_schedule_actions (action_id) ON UPDATE CASCADE
+	FOREIGN KEY (uid) REFERENCES users (uid) ON UPDATE CASCADE
 ) ENGINE=InnoDB;
-
-INSERT INTO query_schedule_actions (action_id, action, action_subroutine) VALUES (1, "Save", "_save_results");
-INSERT INTO query_schedule_actions (action_id, action, action_subroutine) VALUES (2, "Email", "_alert");
-INSERT INTO query_schedule_actions (action_id, action, action_subroutine) VALUES (3, "Open Ticket", "_open_ticket");
 
 CREATE TABLE saved_results (
 	qid INT UNSIGNED NOT NULL PRIMARY KEY,

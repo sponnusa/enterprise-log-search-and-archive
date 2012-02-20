@@ -8,6 +8,7 @@ use Encode;
 use Module::Pluggable require => 1, search_path => [qw(Dashboard)];
 use JSON;
 use Plack::Middleware::Auth::Basic;
+use Date::Manip;
 
 sub call {
 	my ($self, $env) = @_;
@@ -40,9 +41,20 @@ sub call {
 		if (exists $time_units->{ $arg }){
 			$args->{groupby} = $time_units->{ $arg }->{groupby};
 			$args->{start_time} = (time() - ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
+			$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
 			last;
 		}
 	}
+	
+	if (exists $args->{start}){
+		$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
+		$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+	}
+	if (exists $args->{end}){
+		$args->{end_time} = UnixDate(ParseDate(delete $args->{end}), '%s');
+		$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+	}
+		
 	my $config = $self->api->conf->get('dashboards/' . $dashboard_name);
 	foreach my $key (keys %$config){
 		$args->{$key} = $config->{$key};
@@ -92,13 +104,14 @@ sub index {
 sub _get_index_body {
 	my $self = shift;
 	my $data = shift;
+	#TODO sort data
 	my $HTML = '<script>YAHOO.ELSA.queryResults = ' . encode_json($data) . "; YAHOO.ELSA.includeDir = '../inc';</script>\n";
 	$HTML .= <<'EOHTML'
 <script>YAHOO.util.Event.addListener(window, "load", function(){
 	YAHOO.ELSA.initLogger();
 	var iAlarm = 20000;
 	var sBgcolor = false;
-	//hours= 
+	
 	for (var i in YAHOO.ELSA.queryResults){
 		var sDescription = YAHOO.ELSA.queryResults[i][0];
 		var sGroupby = YAHOO.ELSA.queryResults[i][2];

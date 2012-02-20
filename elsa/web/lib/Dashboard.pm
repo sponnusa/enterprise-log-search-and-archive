@@ -15,7 +15,7 @@ sub _get_data {
 	
 	foreach my $query (@{ $self->queries }){
 		my $result = $self->api->query($query);
-		push @{ $self->data }, [$query->{query_meta_params}->{comment}, $result, $query->{query_meta_params}->{groupby}->[0]];
+		push @{ $self->data }, [$query->{query_meta_params}->{comment}, $result, $query->{groupby}->[0]];
 	}
 	
 	return $self->data;

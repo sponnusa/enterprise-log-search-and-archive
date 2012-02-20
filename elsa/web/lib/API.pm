@@ -405,7 +405,7 @@ sub get_user_info {
 	elsif (lc($self->conf->get('auth/method')) eq 'db'){
 		die('No admin groups listed in admin_groups') unless $self->conf->get('admin_groups');
 		my ($query, $sth);
-		$query = 'SELECT groupname FROM groups t1 JOIN users_groups_map t2 ON (t1.uid=t2.uid) JOIN users t3 ON (t2.uid=t3.uid) WHERE t3.username=?';
+		$query = 'SELECT groupname FROM groups t1 JOIN users_groups_map t2 ON (t1.gid=t2.gid) JOIN users t3 ON (t2.uid=t3.uid) WHERE t3.username=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($username);
 		while (my $row = $sth->fetchrow_hashref){
@@ -413,12 +413,30 @@ sub get_user_info {
 		}
 		# Is the group this user is a member of a designated admin group?
 		foreach my $group (@{ $user_info->{groups} }){
-			if ( $self->conf->get('admin_groups')->{ $group } ){
-				$self->log->debug( 'user ' . $username . ' is a member of admin group ' . $group );
+			my @admin_groups = qw(root admin);
+			if ($self->conf->get('admin_groups')){
+				@admin_groups = @{ $self->conf->get('admin_groups') };
+			}
+			if ( grep { $group eq $_ } @admin_groups ){
+				$self->log->debug( 'user ' . $user_info->{username} . ' is an admin');
 				$user_info->{is_admin} = 1;
+				last;
 			}
 		}
-		$user_info->{email} = $username . '@localhost'; #TODO allow putting in an email somewhere for db auth
+		
+		if ($self->conf->get('auth_db/email_statement')){
+			$query = $self->conf->get('auth_db/email_statement');
+			my $dbh = DBI->connect($self->conf->get('auth_db/dsn'), $self->conf->get('auth_db/username'), $self->conf->get('auth_db/password'), { RaiseError => 1 });
+			my $sth = $dbh->prepare($query);
+			$sth->execute($username);
+			my $row = $sth->fetchrow_arrayref;
+			if ($row){
+				$user_info->{email} = $row->[0];
+			}
+		}
+		else {
+			$user_info->{email} = $username . '@localhost';
+		}
 	}
 	else {
 		$self->log->error('No auth_method');
@@ -1060,7 +1078,6 @@ sub get_stats {
 		}
 		$cv->end;
 		$cv->recv;	
-		$self->log->trace('here');
 		$stats->{nodes}->{$node} = $load_stats;
 	}
 	
@@ -1119,55 +1136,6 @@ sub _get_nodes {
 	return \%nodes;
 }
 
-sub old_get_nodes {
-	my $self = shift;
-	my %nodes;
-	my $node_conf = $self->conf->get('nodes');
-	
-	my $cv = AnyEvent->condvar;
-	$cv->begin(sub { shift->send; });
-	foreach my $node (keys %$node_conf){
-		$cv->begin;
-		my $db_name = 'syslog';
-		if ($node_conf->{$node}->{db}){
-			$db_name = $node_conf->{$node}->{db};
-		}
-		$nodes{$node} = { db => $db_name };
-		$nodes{$node}->{dbh} = AnyEvent::DBI->new('dbi:mysql:database=' . $db_name . ';host=' . $node, 
-			$node_conf->{$node}->{username}, $node_conf->{$node}->{password}, 
-			mysql_connect_timeout => $Db_timeout,
-			PrintError => 0,
-			mysql_multi_statements => 1, 
-			on_error => sub {
-				my ($dbh, $filename, $line, $fatal) = @_;
-				my $err = $@;
-				chomp($err);
-				$err .= ': ' . $filename . ' ' . $line;
-				$self->log->error($err);
-				$nodes{$node}->{error} = $err;
-			},
-			on_connect => sub {
-				my ($dbh, $success) = @_;
-				if ($success){
-					$self->log->trace('connected to ' . $node);
-					$cv->end;
-				}
-				else {
-					my $err = 'unable to connect to ' . $node . ': ' . $@;
-					$self->log->error($err);
-					$nodes{$node}->{error} = $err;
-					delete $nodes{$node}->{dbh};
-					$cv->end;
-				}
-			});	
-	}
-	$cv->end;
-	$cv->recv;
-		
-	return \%nodes;
-}
-
-
 sub _get_sphinx_nodes {
 	my $self = shift;
 	my $args = shift;
@@ -1218,103 +1186,6 @@ sub _get_sphinx_nodes {
 	return \%nodes;
 }
 
-sub old_get_sphinx_nodes {
-	my $self = shift;
-	my $args = shift;
-	my %nodes;
-	my $node_conf = $self->conf->get('nodes');
-	
-	my $cv = AnyEvent->condvar;
-	
-	$cv->begin(sub { shift->send });
-	foreach my $node (keys %$node_conf){
-		if ($args->{given_nodes}){
-			next unless $args->{given_nodes}->{$node};
-		}
-		if ($args->{excluded_nodes}){
-			next if $args->{excluded_nodes}->{$node};
-		}
-		my $db_name = 'syslog';
-		if ($node_conf->{$node}->{db}){
-			$db_name = $node_conf->{$node}->{db};
-		}
-		my $sphinx_port = 3307;
-		if ($node_conf->{$node}->{sphinx_port}){
-			$sphinx_port = $node_conf->{$node}->{sphinx_port};
-		}
-		$nodes{$node} = { db => $db_name };
-								
-		$cv->begin;
-		$nodes{$node}->{dbh} = AnyEvent::DBI->new('dbi:mysql:database=' . $db_name . ';host=' . $node, 
-			$node_conf->{$node}->{username}, $node_conf->{$node}->{password}, 
-			PrintError => 0, 
-			mysql_connect_timeout => $Db_timeout,
-			mysql_multi_statements => 1, 
-			on_error => sub {
-				my ($dbh, $filename, $line, $fatal) = @_;
-				my $err = $@;
-				chomp($err);
-				$err .= ': ' . $filename . ' ' . $line;
-				$self->log->error($err);
-				$nodes{$node}->{error} = $err;
-				$self->last_error($err);
-			},
-			on_connect => sub {
-				my ($dbh, $success) = @_;
-				if ($success){
-					$self->log->trace('connected to ' . $node);
-					$cv->end;
-				}
-				else {
-					my $err = 'unable to connect to ' . $node . ': ' . $@;
-					$self->log->error($err);
-					$nodes{$node}->{error} = $err;
-					delete $nodes{$node}->{dbh};
-					$cv->end;
-				}
-		});
-		
-		$self->log->trace('connecting to sphinx on node ' . $node);
-		
-		$cv->begin;
-		$nodes{$node}->{sphinx} = AnyEvent::DBI->new('dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef, 
-			PrintError => 0, 
-			mysql_connect_timeout => $Db_timeout,
-			mysql_multi_statements => 1, 
-			mysql_bind_type_guessing => 1, 
-			on_error => sub {
-				my ($dbh, $filename, $line, $fatal) = @_;
-				my $err = $@;
-				chomp($err);
-				$err .= ': ' . $filename . ' ' . $line;
-				$self->log->error($err);
-				$nodes{$node}->{error} = $err;
-				$self->last_error($err);
-			},
-			on_connect => sub {
-				my ($dbh, $success) = @_;
-				if ($success){
-					$self->log->trace('connected to ' . $node);
-					$cv->end;
-				}
-				else {
-					my $err = 'unable to connect to ' . $node . ': ' . $@;
-					$self->log->error($err);
-					$nodes{$node}->{error} = $err;
-					delete $nodes{$node}->{dbh};
-					$cv->end;
-				}
-			});
-		
-	}
-	$cv->end;
-	
-	$cv->recv;
-	
-	return \%nodes;
-}
-
-
 sub _get_node_info {
 	my $self = shift;
 	my ($query, $sth);
@@ -1344,7 +1215,9 @@ sub _get_node_info {
 		
 		
 		# Get indexes
-		$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records FROM %s.v_indexes ORDER BY start', 
+		$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, 
+		UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records 
+		FROM %s.v_indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) ORDER BY start', 
 			$nodes->{$node}->{db});
 		$cv->begin;
 		$self->log->trace($query);
@@ -1595,21 +1468,23 @@ sub get_form_params {
 		{'value' => 'ALL', 'text' => 'ALL', 'class_id' => 0 }, 
 		{'value' => 'NONE', 'text' => 'NONE', 'class_id' => 1 };
 	
-	$form_params->{schedule_actions} = $self->get_schedule_actions();
+	$form_params->{schedule_actions} = $self->_get_schedule_actions();
 	
 	return $form_params;
 }
 
-sub get_schedule_actions {
+sub _get_schedule_actions {
 	my ($self, $args) = @_;
 	
-	my ($query, $sth);
-	$query = 'SELECT action_id, action FROM query_schedule_actions';
-	$sth = $self->db->prepare($query);
-	$sth->execute();
 	my @ret;
-	while (my $row = $sth->fetchrow_hashref){
-		push @ret, $row;
+	foreach my $plugin ($self->plugins()){
+		if ($plugin =~ /^Connector::(\w+)/){
+			#push @ret, $1;
+			#my $class_desc = $plugin . "::Description";
+			my $desc = $plugin->description;
+			$self->log->debug('plugin: ' . $plugin . ', desc: ' . "$desc");
+			push @ret, { action => $1, description => $desc };
+		}
 	}
 	return \@ret;
 }
@@ -1642,10 +1517,9 @@ sub get_scheduled_queries {
 	$sth->execute($args->{user_info}->{uid});
 	my $row = $sth->fetchrow_hashref;
 	my $totalRecords = $row->{totalRecords};
-	
-	$query = 'SELECT t1.id, query, frequency, start, end, action, action_params, enabled, UNIX_TIMESTAMP(last_alert) As last_alert, alert_threshold' . "\n" .
+
+	$query = 'SELECT t1.id, query, frequency, start, end, connector, params, enabled, UNIX_TIMESTAMP(last_alert) As last_alert, alert_threshold' . "\n" .
 		'FROM query_schedule t1' . "\n" .
-		'JOIN query_schedule_actions t2 ON (t1.action_id=t2.action_id)' . "\n" .
 		'WHERE uid=?' . "\n" .
 		'ORDER BY t1.id DESC' . "\n" .
 		'LIMIT ?,?';
@@ -1674,7 +1548,7 @@ sub _epoch2iso {
 sub schedule_query {
 	my ($self, $args) = @_;
 	
-	foreach my $item qw(qid days time_unit action_id){	
+	foreach my $item qw(qid days time_unit connector){	
 		unless (defined $args->{$item}){
 			$self->_error('Invalid args, missing arg: ' . $item);
 			return;
@@ -1682,23 +1556,23 @@ sub schedule_query {
 	}
 	
 	# Make sure these params are ints
-	foreach my $item qw(qid days time_unit count action_id){
+	foreach my $item qw(qid days time_unit count){
 		next unless $args->{$item};
 		$args->{$item} = sprintf('%d', $args->{$item});
 	}
 	$args->{uid} = sprintf('%d', $args->{user_info}->{uid});
 	
-	my %standard_vars = map { $_ => 1 } qw(uid qid days time_unit count action_id threshold_count threshold_time_unit);
-	my $schedule_query_params = { action_params => {} };
+	my %standard_vars = map { $_ => 1 } qw(uid qid days time_unit count connector threshold_count threshold_time_unit);
+	my $schedule_query_params = { params => {} };
 	foreach my $item (keys %{$args}){
 		if ($standard_vars{$item}){
 			$schedule_query_params->{$item} = $args->{$item};
 		}
 		else {
-			$schedule_query_params->{action_params}->{$item} = $args->{$item};
+			$schedule_query_params->{params}->{$item} = $args->{$item};
 		}
 	}
-	$schedule_query_params->{action_params} = $self->json->encode($schedule_query_params->{action_params});
+	$schedule_query_params->{params} = $self->json->encode($schedule_query_params->{params});
 		
 	my @frequency;
 	for (my $i = 1; $i <= 7; $i++){
@@ -1713,7 +1587,7 @@ sub schedule_query {
 	$self->log->debug('freq_str: ' . $freq_str);
 	
 	my ($query, $sth);
-	$query = 'INSERT INTO query_schedule (uid, query, frequency, start, end, action_id, action_params, last_alert, alert_threshold) VALUES (?, ' . "\n" .
+	$query = 'INSERT INTO query_schedule (uid, query, frequency, start, end, connector, params, last_alert, alert_threshold) VALUES (?, ' . "\n" .
 		'(SELECT query FROM query_log WHERE qid=?), ?, ?, ?, ?, ?, "1970-01-01 00:00:00", ?)';
 	$sth = $self->db->prepare($query);
 	my $days = $schedule_query_params->{days};
@@ -1733,7 +1607,7 @@ sub schedule_query {
 		$alert_threshold = $time_unit_map->{ $schedule_query_params->{threshold_time_unit} } * $schedule_query_params->{threshold_count};
 	}
 	$sth->execute($schedule_query_params->{uid}, $schedule_query_params->{qid}, $freq_str, time(), (86400 * $days) + time(), 
-		$schedule_query_params->{action_id}, $schedule_query_params->{action_params}, $alert_threshold);
+		$schedule_query_params->{connector}, $schedule_query_params->{params}, $alert_threshold);
 	my $ok = $sth->rows;
 	
 	return $ok;
@@ -1798,7 +1672,7 @@ sub update_scheduled_query {
 		return;
 	}
 	my $attr_map = {};
-	foreach my $item qw(query frequency start end action action_params enabled alert_threshold){
+	foreach my $item qw(query frequency start end connector params enabled alert_threshold){
 		$attr_map->{$item} = $item;
 	}
 	my ($query, $sth);
@@ -1817,12 +1691,6 @@ sub update_scheduled_query {
 			$args->{$given_arg} = UnixDate($args->{$given_arg}, '%s');
 		}
 		
-		# Convert action to action_id
-		if ($given_arg eq 'action'){
-			$given_arg = 'action_id';
-			$args->{'action_id'} = delete $args->{'action'};
-		}
-		
 		$self->log->debug('given_arg: ' . $given_arg . ': ' . $args->{$given_arg});
 		$query = sprintf('UPDATE query_schedule SET %s=? WHERE id=?', $given_arg);
 		$sth = $self->db->prepare($query);
@@ -1836,6 +1704,11 @@ sub update_scheduled_query {
 sub save_results {
 	my ($self, $args) = @_;
 	$self->log->debug(Dumper($args));
+	
+	if (defined $args->{qid}){ # came from another Perl program, not the web, so no need to de-JSON
+		return $self->_save_results($args);
+	}
+	
 	my $comments = $args->{comments};
 	eval {
 		$args = $self->json->decode($args->{results});
@@ -2385,7 +2258,7 @@ sub query {
 		}
 		
 		$self->_parse_query_string($args);
-		
+				
 		# Find highlights to inform the web client
 		my $highlights = {};	
 		foreach my $boolean qw(and or){
@@ -2596,7 +2469,7 @@ sub _sphinx_query {
 				$ret->{$node}->{sphinx_rows} = $rows;
 				$ret->{$node}->{meta} = $result->{meta};
 				
-				$self->log->trace('$ret->{$node}->{meta}: ' . Dumper($ret->{$node}->{meta}));
+				#$self->log->trace('$ret->{$node}->{meta}: ' . Dumper($ret->{$node}->{meta}));
 				if ($result->{meta}->{warning}){
 					$self->add_warning($result->{meta}->{warning});
 				}
@@ -2660,6 +2533,8 @@ sub _sphinx_query {
 					$cv->end; #end sphinx query	
 				}
 				else {
+					$self->add_warning('No MySQL tables found for search hits.');
+					$self->log->error('No tables found for result. tables: ' . Dumper($args->{node_info}->{nodes}->{$node}->{tables}));
 					$cv->end; #end sphinx query
 				}
 			}, @sphinx_values);
@@ -3870,7 +3745,7 @@ sub _build_sphinx_query {
 	my %ranges;
 	foreach my $boolean qw(and or not){
 		foreach my $op (sort keys %{ $args->{attr_terms}->{$boolean} }){
-			next if $op eq '=';
+			next unless $op =~ /\<\>/;
 			foreach my $field (sort keys %{ $args->{attr_terms}->{$boolean}->{$op} }){
 				foreach my $class_id (sort keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field} }){
 					next unless $args->{distinct_classes}->{$class_id} or $class_id eq 0;
@@ -4226,8 +4101,13 @@ sub send_to {
 						my $plugin_object = $plugin->new(
 							api => $self,
 							user_info => $args->{user_info},
-							data => $args->{data}, 
-							args => [ @connector_args ]);
+							data => $args->{data},
+							query => $args->{query},
+							args => [ @connector_args ],
+							query_schedule_id => $args->{query_schedule_id},
+							qid => $args->{qid},
+							comments => $args->{comments},
+							);
 						$args->{results} = $plugin_object->data;
 						$num_found++;
 					};
@@ -4240,7 +4120,7 @@ sub send_to {
 		}
 		
 		unless ($num_found){
-			$self->log->error("failed to find connectors " . Dumper($args->{destinatinos}) . ', only have connectors ' .
+			$self->log->error("failed to find connectors " . Dumper($args->{connectors}) . ', only have connectors ' .
 				join(', ', $self->plugins()) . ' ' . Dumper($args));
 			return 0;
 		}
@@ -4293,7 +4173,7 @@ sub run_schedule {
 		my $body = 'The alert set for query ' . $decode->{query_string} . ' has expired and has been disabled.  ' .
 			'If you wish to continue receiving this query, please log into ELSA, enable the query, and set a new expiration date.';
 		
-		$self->_send_email({headers => $headers, body => $body});
+		$self->send_email({headers => $headers, body => $body});
 	}
 	if (scalar @ids){
 		$self->log->info('Expiring query schedule for ids ' . join(',', @ids));
@@ -4303,12 +4183,12 @@ sub run_schedule {
 	}
 	
 	# Run schedule	
-	$query = 'SELECT t1.id AS query_schedule_id, username, t1.uid, query, frequency, start, end, action_subroutine, action_params' . "\n" .
+	$query = 'SELECT t1.id AS query_schedule_id, username, t1.uid, query, frequency, start, end, connector, params' . "\n" .
 		'FROM query_schedule t1' . "\n" .
 		'JOIN users ON (t1.uid=users.uid)' . "\n" .
-		'JOIN query_schedule_actions t2 ON (t1.action_id=t2.action_id)' . "\n" .
 		'WHERE start <= ? AND end >= ? AND enabled=1' . "\n" .
 		'AND UNIX_TIMESTAMP() - UNIX_TIMESTAMP(last_alert) > alert_threshold';  # we won't even run queries we know we won't alert on
+	
 	$sth = $self->db->prepare($query);
 	
 	my $cur_time = $form_params->{end_int};
@@ -4377,21 +4257,17 @@ sub run_schedule {
 			$counter++;
 			
 			# Take given action
-			unless ($self->can($row->{action_subroutine})){
-				$self->log->error('Invalid alert action: ' . $row->{action_subroutine});
-				next;
-			}
-			
 			if ($results and $results->{recordsReturned}){
-				my $action_params = $self->json->decode($row->{action_params});
+				my $action_params = $self->json->decode($row->{params});
 				$action_params->{comments} = 'Scheduled Query ' . $row->{query_schedule_id};
 				$action_params->{query_schedule_id} = $row->{query_schedule_id};
-				$action_params->{query} = $query_params;
-				$action_params->{results} = $results;
+				$action_params->{query} = { query_string => $query_params->{query_string}, query_meta_params => $query_params->{query_meta_params} };
+				$action_params->{data} = $results;
 				$action_params->{qid} = $results->{qid};
-				$self->log->debug('executing action ' . $row->{action_subroutine} . ' with params ' . Dumper($action_params));
-				my $sub = $row->{action_subroutine};
-				$self->$sub($action_params);
+				$action_params->{user_info} = $query_params->{user_info};
+				$action_params->{connectors} = [ $row->{connector} ];
+				$self->log->debug('executing action ' . $row->{connector} . ' with params ' . Dumper($action_params));
+				$self->send_to($action_params);
 			}
 		}
 	}
@@ -4409,7 +4285,7 @@ sub run_schedule {
 	return $counter;
 }
 
-sub _send_email {
+sub send_email {
 	my ($self, $args) = @_;
 	
 	# Send the email
@@ -4439,88 +4315,6 @@ sub _send_email {
 	}
 }
 
-
-sub _open_ticket {
-	my ($self, $args) = @_;
-	$self->log->debug('got results to create ticket on: ' . Dumper($args));
-	unless (ref($args) eq 'HASH' 
-		and $args->{results}){
-		$self->log->info('No results for query');
-		return 0;
-	}
-	
-	unless ($self->conf->get('ticketing/email')){
-		$self->log->error('No ticketing config setup.');
-		return;
-	}
-	
-	my $headers = {
-		To => $self->conf->get('ticketing/email'),
-		From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
-		Subject => $self->conf->get('email/subject') ? $self->conf->get('email/subject') : 'system',
-	};
-	my $body = sprintf($self->conf->get('ticketing/template'), $args->{query}->{query_string},
-		sprintf('%s/get_results?qid=%d&hash=%s', 
-			$self->conf->get('email/base_url') ? $self->conf->get('email/base_url') : 'http://localhost',
-			$args->{qid},
-			$self->_get_hash($args->{qid}),
-		)
-	);
-	
-	$self->_send_email({ headers => $headers, body => $body });
-}
-
-sub _alert {
-	my ($self, $args) = @_;
-	$self->log->debug('got results to alert on: ' . Dumper($args->{results}));
-		
-	unless (ref($args) eq 'HASH' 
-		and $args->{results}->{results} 
-		and ref($args->{results}->{results}) eq 'ARRAY'
-		and scalar @{ $args->{results}->{results} }){
-		$self->log->info('No results for query');
-		return 0;
-	}
-	
-	my $headers = {
-		To => $args->{query}->{user_info}->{email},
-		From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
-		Subject => $self->conf->get('email/subject') ? $self->conf->get('email/subject') : 'system',
-	};
-	my $body = sprintf('%d results for query %s', $args->{results}->{recordsReturned}, $args->{query}->{query_string}) .
-		"\r\n" . sprintf('%s/get_results?qid=%d&hash=%s', 
-			$self->conf->get('email/base_url') ? $self->conf->get('email/base_url') : 'http://localhost',
-			$args->{results}->{qid},
-			$self->_get_hash($args->{results}->{qid}),
-	);
-	
-	my ($query, $sth);
-	$query = 'SELECT UNIX_TIMESTAMP(last_alert) AS last_alert, alert_threshold FROM query_schedule WHERE id=?';
-	$sth = $self->db->prepare($query);
-	$sth->execute($args->{query_schedule_id});
-	my $row = $sth->fetchrow_hashref;
-	if ((time() - $row->{last_alert}) < $row->{alert_threshold}){
-		$self->log->warn('Not alerting because last alert was at ' . (scalar localtime($row->{last_alert})) 
-			. ' and threshold is at ' . $row->{alert_threshold} . ' seconds.' );
-		return;
-	}
-	else {
-		$query = 'UPDATE query_schedule SET last_alert=NOW() WHERE id=?';
-		$sth = $self->db->prepare($query);
-		$sth->execute($args->{query_schedule_id});
-	}
-	
-	$self->_send_email({ headers => $headers, body => $body});
-	
-	# Save the results
-	$self->_save_results({
-		meta_info => { groupby => $args->{groupby} },
-		qid => $args->{results}->{qid}, 
-		results => $args->{results}->{results}, 
-		comments => 'Scheduled Query ' . $args->{query_schedule_id} 
-	});
-}
-
 sub _batch_notify {
 	my ($self, $args) = @_;
 	#$self->log->trace('got results for batch: ' . Dumper($args));
@@ -4538,7 +4332,7 @@ sub _batch_notify {
 			$self->_get_hash($args->{qid}),
 	);
 	
-	$self->_send_email({ headers => $headers, body => $body});
+	$self->send_email({ headers => $headers, body => $body});
 }
 
 sub run_archive_queries {
