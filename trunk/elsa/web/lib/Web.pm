@@ -165,11 +165,6 @@ EOHTML
 		if ($self->api->conf->get('pcap_url')){
 			$HTML .= 'YAHOO.ELSA.pcapUrl = "' . $self->api->conf->get('pcap_url') . '"' . "\n";
 		}
-		
-		# Set SIRT URL if applicable
-		if ($self->api->conf->get('sirt_url')){
-			$HTML .= 'YAHOO.ELSA.SIRTUrl = "' . $self->api->conf->get('sirt_url') . '"' . "\n";
-		}
 	}
 	
 	# Set form params

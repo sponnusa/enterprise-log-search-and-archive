@@ -352,6 +352,10 @@ set_node_mysql(){
 	return $?
 }
 
+update_node_mysql(){
+	echo "Updating MySQL..."
+}
+
 init_elsa(){
 	# Copy elsa.conf to /etc/
 	cat "$BASE_DIR/elsa/node/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_node.conf &&
@@ -371,6 +375,13 @@ init_elsa(){
 	# Sleep to allow ELSA to initialize and validate its directory
 	echo "Sleeping for 60 seconds to allow ELSA to init..."
 	sleep 60
+	return $?
+}
+
+restart_elsa(){
+	service syslog-ng restart
+	service searchd restart
+	pgrep -f "elsa.pl" && pgrep searchd
 	return $?
 }
 
@@ -477,6 +488,15 @@ set_web_mysql(){
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"@\"%\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "source $BASE_DIR/elsa/web/conf/meta_db_schema.mysql"
 	return $?
+}
+
+update_web_mysql(){
+	echo "Updating web MySQL..."
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP COLUMN action_params"
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP FOREIGN KEY `query_schedule_ibfk_2`"
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP COLUMN action_id"
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN connector VARCHAR(255)"
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN params VARCHAR(8000)"
 }
 
 mk_web_dirs(){
@@ -607,12 +627,20 @@ if [ "$INSTALL" = "node" ]; then
 		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "build_node_perl" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa"; do
 			exec_func $FUNCTION
 		done
+	elif [ "$OP" = "update" ]; then
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "build_node_perl" "update_node_mysql" "restart_elsa"; do
+			exec_func $FUNCTION
+		done
 	else
 		exec_func $OP
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
 		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_elsa" "build_web_perl" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron"; do
+			exec_func $FUNCTION
+		done
+	elif [ "$OP" = "update" ]; then
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_elsa" "build_web_perl" "update_web_mysql"; do
 			exec_func $FUNCTION
 		done
 	else

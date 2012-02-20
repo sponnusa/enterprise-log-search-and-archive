@@ -980,19 +980,20 @@ YAHOO.ELSA.Results = function(){
 	
 	this.createDataTable = function(p_oResults, p_oElContainer){
 		var oFields = [
-			{ key:"id", parser:parseInt },
-			{ key:"timestamp", parser:YAHOO.util.DataSourceBase.parseDate },
-			{ key:"host", parser:YAHOO.util.DataSourceBase.parseString },
-			{ key:"class", parser:YAHOO.util.DataSourceBase.parseString },
-			{ key:"program", parser:YAHOO.util.DataSourceBase.parseString },
-			{ key:"_fields"/*, parser:this.fieldParser*/ },
-			{ key:"msg", parser: escapeHTML }
+			{ key:'id', parser:parseInt },
+			{ key:'node' }, // not displayed
+			{ key:'timestamp', parser:YAHOO.util.DataSourceBase.parseDate },
+			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
+			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
+			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString },
+			{ key:'_fields' },
+			{ key:'msg', parser: escapeHTML }
 		];
 		
 		var oColumns = [
-			{ key:'info', label:"", sortable:true, formatter:this.formatInfoButton },
-			{ key:"timestamp", label:"Timestamp", sortable:true, editor:"date", formatter:this.formatDate },
-			{ key:"_fields", label:"Fields", sortable:true, formatter:this.formatFields } //parser adds highlights
+			{ key:'info', label:'', sortable:true, formatter:this.formatInfoButton },
+			{ key:'timestamp', label:'Timestamp', sortable:true, editor:'date', formatter:this.formatDate },
+			{ key:'_fields', label:'Fields', sortable:true, formatter:this.formatFields } //parser adds highlights
 		];
 		
 		// DataSource instance
@@ -1000,12 +1001,12 @@ YAHOO.ELSA.Results = function(){
 	    this.dataSource.maxCacheEntries = 4; //cache these
 	    this.dataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
 	    this.dataSource.responseSchema = {
-	        resultsList: "results",
+	        resultsList: 'results',
 	        fields: oFields,
 	        metaFields: {
-	            totalRecords: "totalRecords", // Access to value in the server response
-	            recordsReturned: "recordsReturned",
-	            startIndex: "startIndex"
+	            totalRecords: 'totalRecords', // Access to value in the server response
+	            recordsReturned: 'recordsReturned',
+	            startIndex: 'startIndex'
 	        }
 	    };
 	    
@@ -1013,8 +1014,8 @@ YAHOO.ELSA.Results = function(){
 	        pageLinks          : 10,
 	        rowsPerPage        : 15,
 	        rowsPerPageOptions : [15,50,100],
-	        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
-	        pageReportTemplate : "<strong>Records: {totalRecords} / " + this.dataSource.liveData.totalRecords + " </strong> "
+	        template           : '{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}',
+	        pageReportTemplate : '<strong>Records: {totalRecords} / ' + this.dataSource.liveData.totalRecords + ' </strong> '
 	        	+ this.dataSource.liveData.totalTime + ' ms '
 	    });
 	    
@@ -1708,21 +1709,12 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		oEl.setStyle('float', 'left');
 		headerContainerDiv.appendChild(buttonContainerDiv);
 		
-		var aCheckedMenuItems = [];
-		if (typeof YAHOO.ELSA.IsAdmin != 'undefined'){
-			aCheckedMenuItems = [
-				{text:'Get Pcap', value:'getPcap', onclick:{ fn:YAHOO.ELSA.getPcap, obj:this}}
-			];
-		}
-		
 		//	Create an array of YAHOO.widget.MenuItem configuration properties
 		var oMenuSources = [ 
 			{text:'Save Results...', value:'saveResults', onclick: { fn: YAHOO.ELSA.saveResults, obj:this.id }},
 			{text:'Export Results...', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportResults, obj:this.id }},
 			{text:'Schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}},
-			{text:'Alert...', value:'alert', onclick:{	fn:YAHOO.ELSA.createAlert, obj:this.results.qid}},
-			{text:'Open Ticket...', value:'open_ticket', onclick:{ fn:YAHOO.ELSA.openTicket, obj:this.results.qid}},
-			{text:'Checked', submenu: {id: 'checked_menu_' + this.id, itemdata:aCheckedMenuItems }}
+			{text:'Alert...', value:'alert', onclick:{	fn:YAHOO.ELSA.createAlert, obj:this.results.qid}}
 		];
 		
 		var oMenuButtonCfg = {
@@ -2110,14 +2102,43 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 			name: 'interval_select_button',
 			menu: oIntervalMenuSources
 		};
-		
-		var action_id = 0;
-		for (var i in YAHOO.ELSA.formParams.schedule_actions){
-			if (YAHOO.ELSA.formParams.schedule_actions[i].action === 'Save'){
-				action_id = YAHOO.ELSA.formParams.schedule_actions[i].action_id;
-				break;
+	
+		var sConnectorButtonId = 'connector_select_button';
+		var onConnectorMenuItemClick = function(p_sType, p_aArgs, p_oItem){
+			var sText = p_oItem.cfg.getProperty("text");
+			// Set the label of the button to be our selection
+			var oConnectorButton = YAHOO.widget.Button.getButton(sConnectorButtonId);
+			oConnectorButton.set('label', sText);
+			var oFormEl = YAHOO.util.Dom.get('interval_select_form');
+			var oInputEl = YAHOO.util.Dom.get('schedule_input_connector');
+			if (oInputEl){
+				oInputEl.setAttribute('value', p_oItem.value);
+			}
+			else {
+				var oInputEl = document.createElement('input');
+				oInputEl.id = 'schedule_input_connector';
+				oInputEl.setAttribute('type', 'hidden');
+				oInputEl.setAttribute('name', 'connector');
+				oInputEl.setAttribute('value', p_oItem.value);
+				oFormEl.appendChild(oInputEl);
 			}
 		}
+
+		var aConnectorMenu = [];
+		for (var i in YAHOO.ELSA.formParams.schedule_actions){
+			aConnectorMenu.push({
+				text:YAHOO.ELSA.formParams.schedule_actions[i].description, 
+				value:YAHOO.ELSA.formParams.schedule_actions[i].action,
+				onclick: { fn: onConnectorMenuItemClick } 
+			});
+		}
+		var oConnectorMenuButtonCfg = {
+			id: sConnectorButtonId,
+			type: 'menu',
+			label: 'Connector',
+			name: sConnectorButtonId,
+			menu: aConnectorMenu
+		};
 		
 		var oFormGridCfg = {
 			form_attrs:{
@@ -2128,7 +2149,8 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 			grid: [
 				[ {type:'text', args:'Run every'}, {type:'input', args:{id:'schedule_input_interval_count', name:'count', size:2}}, {type:'widget', className:'Button', args:oIntervalMenuButtonCfg} ],
 				[ {type:'text', args:'Days to run'},  {type:'input', args:{id:'schedule_input_start_date', name:'days', value:7, size:2}}, {type:'text', args:'(enter 0 for forever)'} ],
-				[ {type:'input', args:{type:'hidden', id:'schedule_input_qid', name:'qid', value:p_iQid}}, {type:'input', args:{type:'hidden', id:'schedule_input_action', name:'action_id', value:action_id}} ]
+				[ {type:'text', args:'Send to'}, {type:'widget', className:'Button', args:oConnectorMenuButtonCfg} ],
+				[ {type:'input', args:{type:'hidden', id:'schedule_input_qid', name:'qid', value:p_iQid}}/*, {type:'input', args:{type:'hidden', id:'schedule_input_action', name:'action_id', value:action_id}}*/ ]
 			]
 		};
 		YAHOO.ELSA.scheduleQueryDialog.setHeader('Schedule');
@@ -2522,7 +2544,7 @@ YAHOO.ELSA.getQuerySchedule = function(){
 		YAHOO.ELSA.getQuerySchedule.dataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
 		YAHOO.ELSA.getQuerySchedule.dataSource.responseSchema = {
 			resultsList: 'results',
-			fields: ['id', 'query', 'frequency', 'start', 'end', 'action', 'action_params', 'enabled', 'last_alert', 'alert_threshold' ],
+			fields: ['id', 'query', 'frequency', 'start', 'end', 'connector', 'params', 'enabled', 'last_alert', 'alert_threshold' ],
 			metaFields: {
 				totalRecords: 'totalRecords',
 				recordsReturned: 'recordsReturned'
@@ -2604,25 +2626,12 @@ YAHOO.ELSA.getQuerySchedule = function(){
 			}
 		};
 		
-		var aActions = [];
-		for (var i = 0; i < YAHOO.ELSA.formParams.schedule_actions.length; i++){
-			aActions.push({ label: YAHOO.ELSA.formParams.schedule_actions[i]['action'], value: YAHOO.ELSA.formParams.schedule_actions[i]['action_id'] } );
+		var formatConnector = function(elLiner, oRecord, oColumn, oData){
+			logger.log('connector data:', oData);
+			logger.log('column', oColumn);
+			logger.log('record', oRecord);
+			elLiner.innerHTML = oData;
 		}
-		var formatActions = function(elLiner, oRecord, oColumn, oData){
-			// we will accept either the string label or an int
-			var p_i = parseInt(oData);
-			if (!p_i){
-				elLiner.innerHTML = oData;
-			}
-			else {
-				for (var i = 0; i < aActions.length; i++){
-					if (aActions[i]['value'] == p_i){
-						elLiner.innerHTML = aActions[i]['label'];
-					}
-				}
-			}
-		};
-		
 		var formatThreshold = function(elLiner, oRecord, oColumn, oData){
 			var p_i = parseInt(oData);
 			logger.log('oData', oData);
@@ -2753,6 +2762,14 @@ YAHOO.ELSA.getQuerySchedule = function(){
 			}
 		}
 		
+		var aConnectors = [];
+		for (var i in YAHOO.ELSA.formParams.schedule_actions){
+			aConnectors.push({
+				label: YAHOO.ELSA.formParams.schedule_actions[i].description,
+				value: YAHOO.ELSA.formParams.schedule_actions[i].action
+			});
+		}
+		
 		YAHOO.ELSA.getQuerySchedule.panel.renderEvent.subscribe(function(){
 			var myColumnDefs = [
 				{ key:'menu', label:'Action', formatter:formatMenu },
@@ -2761,7 +2778,7 @@ YAHOO.ELSA.getQuerySchedule = function(){
 				{ key:'frequency', label:'Interval', formatter:formatInterval, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aIntervalValues}) },
 				{ key:'start', label:'Starts On', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true, editor: new YAHOO.widget.DateCellEditor({asyncSubmitter:asyncSubmitter}) },
 				{ key:'end', label:'Ends On', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true, editor: new YAHOO.widget.DateCellEditor({asyncSubmitter:asyncSubmitter}) },
-				{ key:'action', label:'Action', formatter:formatActions, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aActions}) },
+				{ key:'connector', label:'Action', formatter:formatConnector, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aConnectors}) },
 				{ key:'enabled', label:'Enabled', formatter:formatEnabled, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aEnabledValues}) },
 				{ key:'last_alert', label:'Last Alert', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true },
 				{ key:'alert_threshold', label:'Alert Threshold', formatter:formatThreshold, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter, validator:YAHOO.ELSA.getQuerySchedule.cellEditorValidatorInt}) }

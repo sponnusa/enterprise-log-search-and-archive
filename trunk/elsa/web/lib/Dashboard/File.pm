@@ -12,14 +12,20 @@ sub BUILD {
 	while (<FH>){
 		chomp;
 		my ($description, $query_string) = split(/\,/, $_);
+		my $query_meta_params = {
+			start => $self->start_time,
+			end => $self->end_time,
+			comment => $description,
+		};
+		if ($self->groupby){
+			$self->api->log->trace('swapping query_string groupby for ' . $self->groupby);
+			$query_string =~ s/groupby[:=][\w\_]+//;
+			$query_meta_params->{groupby} = [$self->groupby];
+		}
+		
 		push @{ $self->queries }, {
 			query_string => $query_string,
-			query_meta_params => {
-				start => $self->start_time,
-				end => $self->end_time,
-				groupby => [$self->groupby],
-				comment => $description,
-			},
+			query_meta_params => $query_meta_params,
 			user_info => $self->user_info,
 		};
 	}

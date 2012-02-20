@@ -3,13 +3,18 @@ use Moose;
 use Data::Dumper;
 use AnyEvent::HTTP;
 use MIME::Base64;
+use Digest::MD5;
+use URI::Escape;
 extends 'Connector';
+
+our $Description = 'Send to SIRT';
+sub description { return $Description }
 
 sub BUILD {
 	my $self = shift;
 	
 	$self->api->log->trace('posting to url ' . $self->api->conf->get('connectors/sirt/url'));
-	my $post_str = 'data=' . encode_base64($self->api->json->encode( $self->data ));
+	my $post_str = 'data=' . uri_escape(encode_base64($self->api->json->encode( { data => $self->data->{results}, query => $self->query } )));
 	$post_str .= '&username=' . $self->user_info->{username};
 	#$self->api->log->trace('post_str: ' . $post_str);
 	my $cv = AnyEvent->condvar;
@@ -19,7 +24,10 @@ sub BUILD {
 		headers => { 'Content-type' => 'application/x-www-form-urlencoded' }, 
 		sub {
 			my ($body, $hdr) = @_;
-			$self->api->log->trace('body: ' . Dumper($body));
+			if ($!){
+				$self->api->log->error('error: ' . $!);
+			}
+			#$self->api->log->trace('body: ' . Dumper($body));
 			$cv->send;
 		}
 	);
