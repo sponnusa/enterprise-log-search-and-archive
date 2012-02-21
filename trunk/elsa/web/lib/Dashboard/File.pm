@@ -17,12 +17,13 @@ sub BUILD {
 			end => $self->end_time,
 			comment => $description,
 		};
-		if ($self->groupby){
-			$self->api->log->trace('swapping query_string groupby for ' . $self->groupby);
-			$query_string =~ s/groupby[:=][\w\_]+//;
-			$query_meta_params->{groupby} = [$self->groupby];
-		}
 		
+		my $groupby = $self->groupby;
+		if ($query_string =~ /groupby[:=]([\w\_]+)/){
+			$groupby = $1;
+		}
+		$query_meta_params->{groupby} = [$groupby];
+				
 		push @{ $self->queries }, {
 			query_string => $query_string,
 			query_meta_params => $query_meta_params,
