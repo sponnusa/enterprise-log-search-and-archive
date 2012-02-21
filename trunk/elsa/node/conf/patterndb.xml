@@ -597,4 +597,78 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="palo_alto_url" id='24'>
+		<rules>
+			<rule provider="ELSA" class='24' id='24'>
+				<patterns>
+					<pattern>@NUMBER::@:@NUMBER::@ @NUMBER::@,@NUMBER::@/@NUMBER::@/@NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@,@NUMBER::@,@ESTRING::,@url,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING::,@@ESTRING:s2:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@1@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@"@ESTRING:s3:/@@ESTRING:s4:"@,(@NUMBER::@),@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s5:,@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="">46:31 1,2012/02/21 09:46:31,002501000259,THREAT,url,0,2012/02/21 09:46:31,192.168.1.1,208.71.123.129,0.0.0.0,0.0.0.0,USERS-Network-AllowAll-to-EXT,domain\joeschmo,,web-browsing,vsys1,Users,External,ethernet1/3,ethernet1/5,forward-syslog-to-elsa,2012/02/2109:46:30,156730,1,50836,80,0,0,0x8000,tcp,alert,"network.realmedia.com/RealMedia/ads/adstream_sx.ads/newsinc_ap_video_us/preroll/vast/sx/ss/a/@x75",(9999),All,informational,client-to-server,19630699,0x0,United States,United States,0,text/xml</test_message>
+						<test_values>
+							<test_value name="i0">192.168.1.1</test_value>
+							<test_value name="i1">208.71.123.129</test_value>
+							<test_value name="s0">USERS-Network-AllowAll-to-EXT</test_value>
+							<test_value name="s1">domain\joeschmo</test_value>
+							<test_value name="s2">web-browsing</test_value>
+							<test_value name="i2">156730</test_value>
+							<test_value name="s3">network.realmedia.com</test_value>
+							<test_value name="s4">RealMedia/ads/adstream_sx.ads/newsinc_ap_video_us/preroll/vast/sx/ss/a/@x75</test_value>
+							<test_value name="s5">United States</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="palo_alto_traffic" id='25'>
+		<rules>
+			<rule provider="ELSA" class='25' id='25'>
+				<patterns>
+					<pattern>@NUMBER::@:@NUMBER::@ @NUMBER::@,@NUMBER::@/@NUMBER::@/@NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@,@NUMBER::@,TRAFFIC,end,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@@ESTRING:i3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i4:,@@ESTRING::,@@ESTRING:i5:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s4:,@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="">46:31 1,2012/02/21 09:46:31,002501000259,TRAFFIC,end,0,2012/02/21 09:46:31,10.10.10.10,192.168.1.1,0.0.0.0,0.0.0.0,ALL-http-https-to-BASTION,,,web-browsing,vsys1,External,Bastion,ethernet1/5,ethernet1/2,forward-syslog-to-elsa,2012/02/21 09:46:30,632179,1,4074,80,0,0,0x0,tcp,allow,2986,1493,1493,19,2012/02/21 09:45:57,31,not-resolved,0,453403179,0x0,United States,United States,0,10,9</test_message>
+						<test_values>
+							<test_value name="i0">10.10.10.10</test_value>
+							<test_value name="i1">192.168.1.1</test_value>
+							<test_value name="s0">External</test_value>
+							<test_value name="s1">Bastion</test_value>
+							<test_value name="s2">ethernet1/5</test_value>
+							<test_value name="s3">ethernet1/2</test_value>
+							<test_value name="i2">4074</test_value>
+							<test_value name="i3">80</test_value>
+							<test_value name="i4">tcp</test_value>
+							<test_value name="i5">2986</test_value>
+							<test_value name="s4">United States</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="ossec" id='26'>
+		<rules>
+			<rule provider="ELSA" class='4' id='26'>
+				<patterns>
+					<pattern>@NUMBER::@@ESTRING::(@@ESTRING::)@ @IPv4:pdb_extracted_sourceip:@->WinEvtLog WinEvtLog: @ESTRING:pdb_extracted_program::@ AUDIT_@ESTRING::(@@ESTRING:i0:)@</pattern>
+					<values>
+						<value name="PROGRAM">$pdb_extracted_program</value>
+					</values>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="">2012 Feb 20 09:04:41 (serverb) 123.123.40.23->WinEvtLog WinEvtLog: Security: AUDIT_SUCCESS(4769): Microsoft-Windows-Security-Auditing: bgreen@DOM1.A.COM: DOM1.A.COM: serverb.dom1.a.com: A Kerberos service ticket was requested. Account Information:  Account Name: bgreen@DOM1.A.COM  Account Domain:  DOM1.A.COM  Logon GUID: {CBB22EBF-4367-CB43-E5AC-2A8C13FD9641}  Service Information:  Service Name:  SERVERC$  Service ID: S-1-5-21-117536760-2556423787-3220343774-160533  Network Information:Client Address:  ::ffff:123.123.39.33  Client Port:  62513  Additional Information:  Ticket Options:  0x40810000  Ticket Encryption Type: 0x12  Failure Code:  0x0  Transited Services: -  This event is generated every time access is requested to a resource such as a computer or a Windows service.  The service name indicates the resource to which access was requested.</test_message>
+						<test_values>
+							<test_value name="i0">4769</test_value>
+							<test_value name="PROGRAM">Security</test_value>
+							<test_value name="pdb_extracted_sourceip">123.123.40.23</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
