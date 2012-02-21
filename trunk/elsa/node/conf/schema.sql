@@ -33,6 +33,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(19, "BRO_HTTP", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(21, "FORTINET_URL", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(22, "FORTINET_TRAFFIC", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(23, "CHECKPOINT", 0);*/
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -114,6 +115,11 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("excerpt", "string"
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("expiration", "int", "NUMBER");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("group", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("status", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("number", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("interface", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("origin", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("action", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("message_info", "string", "QSTRING");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -269,6 +275,17 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FORTINET_TRAFFIC"), (SELECT id FROM fields WHERE field="dstport"), 8);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FORTINET_TRAFFIC"), (SELECT id FROM fields WHERE field="proto"), 9);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FORTINET_TRAFFIC"), (SELECT id FROM fields WHERE field="conn_duration"), 10);*/
+
+/*INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="number"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="srcip"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="proto"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="interface"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="origin"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="type"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="action"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CHECKPOINT"), (SELECT id FROM fields WHERE field="service"), 15);*/
+
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,

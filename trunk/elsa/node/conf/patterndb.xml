@@ -571,4 +571,30 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="checkpoint_deny" id='23'>
+		<rules>
+			<rule provider="ELSA" class='23' id='23'>
+				<patterns>
+					<pattern>@QSTRING:i0:""@ @QSTRING::""@ @QSTRING::""@ @QSTRING:s0:""@ @QSTRING:s1:""@ @QSTRING:s2:""@ @QSTRING:s3:""@ @QSTRING:s4:""@ @QSTRING::""@ @QSTRING:i1:""@ @QSTRING:i2:""@ @QSTRING:i3:""@ @QSTRING::""@ @QSTRING::""@ @QSTRING::""@ @QSTRING::""@ "message_info: @ESTRING:s5:"@ @QSTRING::""@ @QSTRING::""@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="">"1" "12Feb2012" "23:59:04" "bond0.30" "FW-INT-CHCKPNT1" "Log" "Drop" "ntp-udp" "ntp-udp" "192.168.1.210" "10.133.3.10" "udp" "" "" "" "" "message_info: Address spoofing" "VPN-1 Power/UTM" "" ""</test_message>
+						<test_values>
+							<test_value name="i0">1</test_value>
+							<test_value name="s0">bond0.30</test_value>
+							<test_value name="s1">FW-INT-CHCKPNT1</test_value>
+							<test_value name="s2">Log</test_value>
+							<test_value name="s3">Drop</test_value>
+							<test_value name="s4">ntp-udp</test_value>
+							<test_value name="i1">192.168.1.210</test_value>
+							<test_value name="i2">10.133.3.10</test_value>
+							<test_value name="i3">udp</test_value>
+							<test_value name="s5">Address spoofing</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
