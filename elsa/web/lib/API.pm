@@ -2532,9 +2532,13 @@ sub _sphinx_query {
 						@table_query_values);
 					$cv->end; #end sphinx query	
 				}
-				else {
+				elsif (@$rows) {
 					$self->add_warning('No MySQL tables found for search hits.');
 					$self->log->error('No tables found for result. tables: ' . Dumper($args->{node_info}->{nodes}->{$node}->{tables}));
+					$cv->end; #end sphinx query
+				}
+				else {
+					# No results
 					$cv->end; #end sphinx query
 				}
 			}, @sphinx_values);
