@@ -593,7 +593,7 @@ set_cron(){
 		return 0;
 	fi
 	
-	echo "* * * * * perl $BASE_DIR/elsa/web/cron.pl -c /etc/elsa_web.conf 2>&1 > /dev/null" >> $CRONTAB_DIR/root &&
+	echo "* * * * * perl $BASE_DIR/elsa/web/cron.pl -c /etc/elsa_web.conf > /dev/null 2>&1" >> $CRONTAB_DIR/root &&
 	chmod 600 $CRONTAB_DIR/root &&
 	service $CRON_SERVICE restart
 	return $?
