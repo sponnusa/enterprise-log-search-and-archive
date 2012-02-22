@@ -602,6 +602,9 @@
 			<rule provider="ELSA" class='24' id='24'>
 				<patterns>
 					<pattern>@NUMBER::@:@NUMBER::@,@NUMBER::@,@ESTRING::,@url,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING::,@@ESTRING:s2:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@1@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@"@ESTRING:s3:/@@ESTRING:s4:"@,(@NUMBER::@),@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s5:,@</pattern>
+					<values>
+						<value name="s4">/$s4</value>
+					</values>
 				</patterns>
 				<examples>
 					<example>
@@ -614,7 +617,7 @@
 							<test_value name="s2">web-browsing</test_value>
 							<test_value name="i2">156730</test_value>
 							<test_value name="s3">network.realmedia.com</test_value>
-							<test_value name="s4">RealMedia/ads/adstream_sx.ads/newsinc_ap_video_us/preroll/vast/sx/ss/a/@x75</test_value>
+							<test_value name="s4">/RealMedia/ads/adstream_sx.ads/newsinc_ap_video_us/preroll/vast/sx/ss/a/@x75</test_value>
 							<test_value name="s5">United States</test_value>
 						</test_values>
 					</example>
@@ -626,7 +629,7 @@
 		<rules>
 			<rule provider="ELSA" class='25' id='25'>
 				<patterns>
-					<pattern>@NUMBER::@:@NUMBER::@,@NUMBER::@,TRAFFIC,end,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@@ESTRING:i3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i4:,@@ESTRING::,@@ESTRING:i5:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s4:,@</pattern>
+					<pattern>@NUMBER::@:@NUMBER::@,@NUMBER::@,TRAFFIC,@ESTRING:s5:,@@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@@ESTRING:i3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i4:,@@ESTRING::,@@ESTRING:i5:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s4:,@</pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -643,6 +646,7 @@
 							<test_value name="i4">tcp</test_value>
 							<test_value name="i5">2986</test_value>
 							<test_value name="s4">United States</test_value>
+							<test_value name="s5">end</test_value>
 						</test_values>
 					</example>
 				</examples>
