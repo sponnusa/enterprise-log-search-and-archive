@@ -136,7 +136,7 @@
 						<test_value name="PROGRAM">dhcplog</test_value>
 					</example>
 					<example>
-						<test_message program="genericlog">11,11/16/10,12:25:04,Renew,x.x.x.x,hostname,macaddr,</test_message>
+						<test_message program="GenericLog">11,11/16/10,12:25:04,Renew,x.x.x.x,hostname,macaddr,</test_message>
 						<test_value name="i0">0</test_value>
 						<test_value name="s0">dhcplog</test_value>
 						<test_value name="PROGRAM">dhcplog</test_value>
@@ -456,12 +456,12 @@
 					 request_body_interrupted        response_body_len       response_body_interrupted       status_code     
 					 status_msg      filename        tags    username        password        proxied mime_type
        md5     extraction_file-->
-					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING::|@@ESTRING::|@@ESTRING:i5:|@@ESTRING:i4:|@@ESTRING::|@@ANYSTRING::@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING::|@@ESTRING::|@@ESTRING:i5:|@@ESTRING:i4:|@@ESTRING::|@</pattern>
 					<!--ts      uid     id.orig_h       id.orig_p       id.resp_h       id.resp_p       trans_depth     method  
 					  host    uri     referrer        user_agent      request_body_len        response_body_len       status_code     
 					  status_msg      info_code       info_msg        filename        tags    username        password        
 					  proxied mime_type       md5     extraction_file-->
-					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING::|@@ESTRING:i5:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING::|@@ANYSTRING@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING:i5:|@</pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -500,11 +500,11 @@
 				<patterns>
 					<!--ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	service	duration	orig_bytes	resp_bytes	
 					conn_state	local_orig	missed_bytes	history	orig_pkts	orig_ip_bytes	resp_pkts	resp_ip_bytes-->
-					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@@ANYSTRING::@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@</pattern>
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="bro_conn">1319824864.447838|g6XHk1uplZc|10.0.0.0|19427|80.175.58.76|tcp|...</test_message>
+						<test_message program="bro_conn">1319824864.447838|g6XHk1uplZc|10.0.0.0|19427|80.175.58.76|80|tcp|...</test_message>
 						<!-- srcip -->
 						<test_value name="i0">10.0.0.0</test_value>
 						<!-- srcport -->
@@ -601,11 +601,11 @@
 		<rules>
 			<rule provider="ELSA" class='24' id='24'>
 				<patterns>
-					<pattern>@NUMBER::@:@NUMBER::@ @NUMBER::@,@NUMBER::@/@NUMBER::@/@NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@,@NUMBER::@,@ESTRING::,@url,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING::,@@ESTRING:s2:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@1@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@"@ESTRING:s3:/@@ESTRING:s4:"@,(@NUMBER::@),@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s5:,@</pattern>
+					<pattern>@NUMBER::@:@NUMBER::@,@NUMBER::@,@ESTRING::,@url,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING::,@@ESTRING:s2:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@1@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@"@ESTRING:s3:/@@ESTRING:s4:"@,(@NUMBER::@),@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s5:,@</pattern>
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="">46:31 1,2012/02/21 09:46:31,002501000259,THREAT,url,0,2012/02/21 09:46:31,192.168.1.1,208.71.123.129,0.0.0.0,0.0.0.0,USERS-Network-AllowAll-to-EXT,domain\joeschmo,,web-browsing,vsys1,Users,External,ethernet1/3,ethernet1/5,forward-syslog-to-elsa,2012/02/2109:46:30,156730,1,50836,80,0,0,0x8000,tcp,alert,"network.realmedia.com/RealMedia/ads/adstream_sx.ads/newsinc_ap_video_us/preroll/vast/sx/ss/a/@x75",(9999),All,informational,client-to-server,19630699,0x0,United States,United States,0,text/xml</test_message>
+						<test_message program="">46:31,002501000259,THREAT,url,0,2012/02/21 09:46:31,192.168.1.1,208.71.123.129,0.0.0.0,0.0.0.0,USERS-Network-AllowAll-to-EXT,domain\joeschmo,,web-browsing,vsys1,Users,External,ethernet1/3,ethernet1/5,forward-syslog-to-elsa,2012/02/2109:46:30,156730,1,50836,80,0,0,0x8000,tcp,alert,"network.realmedia.com/RealMedia/ads/adstream_sx.ads/newsinc_ap_video_us/preroll/vast/sx/ss/a/@x75",(9999),All,informational,client-to-server,19630699,0x0,United States,United States,0,text/xml</test_message>
 						<test_values>
 							<test_value name="i0">192.168.1.1</test_value>
 							<test_value name="i1">208.71.123.129</test_value>
@@ -626,11 +626,11 @@
 		<rules>
 			<rule provider="ELSA" class='25' id='25'>
 				<patterns>
-					<pattern>@NUMBER::@:@NUMBER::@ @NUMBER::@,@NUMBER::@/@NUMBER::@/@NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@,@NUMBER::@,TRAFFIC,end,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@@ESTRING:i3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i4:,@@ESTRING::,@@ESTRING:i5:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s4:,@</pattern>
+					<pattern>@NUMBER::@:@NUMBER::@,@NUMBER::@,TRAFFIC,end,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@@ESTRING:i3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i4:,@@ESTRING::,@@ESTRING:i5:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s4:,@</pattern>
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="">46:31 1,2012/02/21 09:46:31,002501000259,TRAFFIC,end,0,2012/02/21 09:46:31,10.10.10.10,192.168.1.1,0.0.0.0,0.0.0.0,ALL-http-https-to-BASTION,,,web-browsing,vsys1,External,Bastion,ethernet1/5,ethernet1/2,forward-syslog-to-elsa,2012/02/21 09:46:30,632179,1,4074,80,0,0,0x0,tcp,allow,2986,1493,1493,19,2012/02/21 09:45:57,31,not-resolved,0,453403179,0x0,United States,United States,0,10,9</test_message>
+						<test_message program="">46:31,002501000259,TRAFFIC,end,0,2012/02/21 09:46:31,10.10.10.10,192.168.1.1,0.0.0.0,0.0.0.0,ALL-http-https-to-BASTION,,,web-browsing,vsys1,External,Bastion,ethernet1/5,ethernet1/2,forward-syslog-to-elsa,2012/02/21 09:46:30,632179,1,4074,80,0,0,0x0,tcp,allow,2986,1493,1493,19,2012/02/21 09:45:57,31,not-resolved,0,453403179,0x0,United States,United States,0,10,9</test_message>
 						<test_values>
 							<test_value name="i0">10.10.10.10</test_value>
 							<test_value name="i1">192.168.1.1</test_value>
