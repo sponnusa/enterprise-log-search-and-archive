@@ -285,6 +285,9 @@ sub _parse_line {
 	my $raw_line = shift;
 		
 	chomp($raw_line);
+	
+	# Escape any backslashes
+	$raw_line =~ s/\\/\\\\/g;
 		
 	my @line = split(/\t/, $raw_line);
 	
@@ -338,9 +341,6 @@ sub _parse_line {
 #		$Log->debug("ALL NUMBER PROG: " . $line[FIELD_PROGRAM] . ", raw_line: $raw_line");
 		$line[FIELD_PROGRAM] = 'unknown';
 	}
-	
-	# Escape any backslashes in MSG
-	$line[FIELD_MSG] =~ s/\\/\\\\/g;
 	
 	# Normalize program name to be all lowercase
 	$line[FIELD_PROGRAM] = lc($line[FIELD_PROGRAM]);
