@@ -1548,7 +1548,7 @@ sub _epoch2iso {
 sub schedule_query {
 	my ($self, $args) = @_;
 	
-	foreach my $item qw(qid days time_unit connector){	
+	foreach my $item qw(qid days time_unit){	
 		unless (defined $args->{$item}){
 			$self->_error('Invalid args, missing arg: ' . $item);
 			return;
@@ -3654,7 +3654,7 @@ sub _build_sphinx_match_str {
 sub _build_archive_match_str {
 	my ($self, $args) = @_;
 
-	# Create the Sphinx Extended2 matching mode query string to be placed in MATCH()
+	# Create the SQL LIKE clause
 	
 	# No-field match str
 	my $match_str = '';
@@ -4117,7 +4117,7 @@ sub send_to {
 					};
 					if ($@){
 						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
-							. Dumper($args->{results}) . ' and args ' . Dumper(\@connector_args) . ': ' . $@);
+							. Dumper($args->{data}) . ' and args ' . Dumper(\@connector_args) . ': ' . $@);
 					}
 				}
 			}
@@ -4262,16 +4262,27 @@ sub run_schedule {
 			
 			# Take given action
 			if ($results and $results->{recordsReturned}){
-				my $action_params = $self->json->decode($row->{params});
-				$action_params->{comments} = 'Scheduled Query ' . $row->{query_schedule_id};
-				$action_params->{query_schedule_id} = $row->{query_schedule_id};
-				$action_params->{query} = { query_string => $query_params->{query_string}, query_meta_params => $query_params->{query_meta_params} };
-				$action_params->{data} = $results;
-				$action_params->{qid} = $results->{qid};
-				$action_params->{user_info} = $query_params->{user_info};
-				$action_params->{connectors} = [ $row->{connector} ];
-				$self->log->debug('executing action ' . $row->{connector} . ' with params ' . Dumper($action_params));
-				$self->send_to($action_params);
+				if ($row->{connector}){
+					my $action_params = $self->json->decode($row->{params});
+					$action_params->{comments} = 'Scheduled Query ' . $row->{query_schedule_id};
+					$action_params->{query_schedule_id} = $row->{query_schedule_id};
+					$action_params->{query} = { query_string => $query_params->{query_string}, query_meta_params => $query_params->{query_meta_params} };
+					$action_params->{data} = $results;
+					$action_params->{qid} = $results->{qid};
+					$action_params->{user_info} = $query_params->{user_info};
+					$action_params->{connectors} = [ $row->{connector} ];
+					$self->log->debug('executing action ' . $row->{connector} . ' with params ' . Dumper($action_params));
+					$self->send_to($action_params);
+				}
+				else {
+					# Just save the results
+					$self->api->save_results({
+						meta_info => { groupby => $query_params->{query_meta_params}->{groupby} },
+						qid => $results->{qid}, 
+						results => $results, 
+						comments => 'Scheduled Query ' . $row->{query_schedule_id},
+					});
+				}
 			}
 		}
 	}
