@@ -1305,6 +1305,7 @@ YAHOO.ELSA.Form.prototype.appendItem = function(p_oEl, p_oArgs){
 		p_oEl.appendChild(oTextNode);;
 	}
 	else if (p_oArgs.type == 'widget') {
+		logger.log('p_oArgs', p_oArgs);
 		if (typeof p_oArgs.args.container == 'undefined'){
 			/* Set the container for the Button to be this td element */
 			p_oArgs.args.container = p_oEl;
@@ -1318,9 +1319,16 @@ YAHOO.ELSA.Form.prototype.appendItem = function(p_oEl, p_oArgs){
 			p_oArgs.callback(p_oArgs, form_part, p_oEl);
 		}
 		// register with overlay manager if a menu
-		if (sClassName === 'Menu'){
-			YAHOO.ELSA.overlayManager.register(form_part);
-		}
+//		if (sClassName === 'Menu'){
+//			YAHOO.ELSA.overlayManager.register(form_part);
+//		}
+		
+//		if (p_oArgs.args.type === 'menu'){
+//			if (p_oArgs.args.setDefault){
+//				logger.log('form_part', form_part);
+//				form_part.getMenu().setInitialSelection();
+//			}
+//		}
 		//YUI does the appendChild() for us in the widget construction so we don't have to...
 	}
 	else if (p_oArgs.type == 'input'){
@@ -1713,8 +1721,7 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		var oMenuSources = [ 
 			{text:'Save Results...', value:'saveResults', onclick: { fn: YAHOO.ELSA.saveResults, obj:this.id }},
 			{text:'Export Results...', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportResults, obj:this.id }},
-			{text:'Schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}},
-			{text:'Alert...', value:'alert', onclick:{	fn:YAHOO.ELSA.createAlert, obj:this.results.qid}}
+			{text:'Alert or schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}}
 		];
 		
 		var oMenuButtonCfg = {
@@ -1919,26 +1926,10 @@ YAHOO.ELSA.getPreviousQueries = function(){
 			// Create menu for our menu button
 			var oButtonMenuCfg = [
 				{ 
-					text: 'Schedule', 
+					text: 'Alert or schedule', 
 					value: 'schedule', 
 					onclick:{
 						fn: YAHOO.ELSA.scheduleQuery,
-						obj: oRecord.getData().qid
-					}
-				},
-				{ 
-					text: 'Alert', 
-					value: 'alert', 
-					onclick:{
-						fn: YAHOO.ELSA.createAlert,
-						obj: oRecord.getData().qid
-					}
-				},
-				{ 
-					text: 'Open Ticket', 
-					value: 'open_ticket', 
-					onclick:{
-						fn: YAHOO.ELSA.openTicket,
 						obj: oRecord.getData().qid
 					}
 				}
@@ -2017,157 +2008,165 @@ YAHOO.ELSA.getPreviousQueries = function(){
 	YAHOO.ELSA.previousQueriesPanel.show();
 };
 
-YAHOO.ELSA.deleteScheduledQuery = function(p_sType, p_aArgs, p_iQid){
-	
-};
-
 YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
+	var handleSubmit = function(){
+		this.submit();
+	};
+	var handleCancel = function(){
+		this.hide();
+	};
+	var oPanel = new YAHOO.ELSA.Panel('schedule_query', {
+		buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
+			{ text:"Cancel", handler:handleCancel } ]
+	});
 	
-	if (!YAHOO.ELSA.scheduleQueryDialog){
-		var handleSubmit = function(){
-			this.submit();
-		};
-		var handleCancel = function(){
-			this.hide();
-		};
-		var oPanel = new YAHOO.ELSA.Panel('schedule_query', {
-			buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
-				{ text:"Cancel", handler:handleCancel } ]
-		});
-		YAHOO.ELSA.scheduleQueryDialog = oPanel.panel;
-		var handleSuccess = function(p_oResponse){
-			var response = YAHOO.lang.JSON.parse(p_oResponse.responseText);
-			if (response['error']){
-				YAHOO.ELSA.Error(response['error']);
-			}
-			else {
-				YAHOO.ELSA.getQuerySchedule();
-				logger.log('successful submission');
-			}
-		};
-		YAHOO.ELSA.scheduleQueryDialog.callback = {
-			success: handleSuccess,
-			failure: YAHOO.ELSA.Error
-		};
-		YAHOO.ELSA.scheduleQueryDialog.validate = function(){
-			if (!this.getData().count || !parseInt(this.getData().count)){
-				YAHOO.ELSA.Error('Need a valid integer as an interval');
-				return false;
-			}
-			if (!this.getData().time_unit || !parseInt(this.getData().time_unit)){
-				YAHOO.ELSA.Error('Please select a time unit');
-				return false;
-			}
-			if (!(parseInt(this.getData().days) >= 0)){
-				YAHOO.ELSA.Error('Please enter a valid number of days to run for.');
-				return false;
-			}
-			return true;
+	var handleSuccess = function(p_oResponse){
+		var response = YAHOO.lang.JSON.parse(p_oResponse.responseText);
+		if (response['error']){
+			YAHOO.ELSA.Error(response['error']);
 		}
-	
-		var onIntervalMenuItemClick = function(p_sType, p_aArgs, p_oItem){
-			var sText = p_oItem.cfg.getProperty("text");
-			// Set the label of the button to be our selection
-			var oIntervalButton = YAHOO.widget.Button.getButton('interval_select_button');
-			oIntervalButton.set('label', sText);
-			var oFormEl = YAHOO.util.Dom.get('interval_select_form');
-			var oInputEl = YAHOO.util.Dom.get('schedule_input_interval_unit');
-			if (oInputEl){
-				oInputEl.setAttribute('value', p_oItem.value);
-			}
-			else {
-				var oInputEl = document.createElement('input');
-				oInputEl.id = 'schedule_input_interval_unit';
-				oInputEl.setAttribute('type', 'hidden');
-				oInputEl.setAttribute('name', 'time_unit');
-				oInputEl.setAttribute('value', p_oItem.value);
-				oFormEl.appendChild(oInputEl);
-			}
+		else {
+			YAHOO.ELSA.getQuerySchedule();
+			logger.log('successful submission');
 		}
-		
-		//	Create an array of YAHOO.widget.MenuItem configuration properties
-		var oIntervalMenuSources = [ 
-			{text:'Minute', value:'6', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Hour', value:'5', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Day', value:'4', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Week', value:'3', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Month', value:'2', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Year', value:'1', onclick: { fn: onIntervalMenuItemClick }}
-		];
-		
-		var oIntervalMenuButtonCfg = {
-			id: 'interval_select_button',
-			type: 'menu',
-			label: 'Time Unit',
-			name: 'interval_select_button',
-			menu: oIntervalMenuSources
-		};
-	
-		var sConnectorButtonId = 'connector_select_button';
-		var onConnectorMenuItemClick = function(p_sType, p_aArgs, p_oItem){
-			var sText = p_oItem.cfg.getProperty("text");
-			// Set the label of the button to be our selection
-			var oConnectorButton = YAHOO.widget.Button.getButton(sConnectorButtonId);
-			oConnectorButton.set('label', sText);
-			var oFormEl = YAHOO.util.Dom.get('interval_select_form');
-			var oInputEl = YAHOO.util.Dom.get('schedule_input_connector');
-			if (oInputEl){
-				oInputEl.setAttribute('value', p_oItem.value);
-			}
-			else {
-				var oInputEl = document.createElement('input');
-				oInputEl.id = 'schedule_input_connector';
-				oInputEl.setAttribute('type', 'hidden');
-				oInputEl.setAttribute('name', 'connector');
-				oInputEl.setAttribute('value', p_oItem.value);
-				oFormEl.appendChild(oInputEl);
-			}
+	};
+	oPanel.panel.callback = {
+		success: handleSuccess,
+		failure: YAHOO.ELSA.Error
+	};
+	oPanel.panel.validate = function(){
+		if (!this.getData().count || !parseInt(this.getData().count)){
+			YAHOO.ELSA.Error('Need a valid integer as an interval');
+			return false;
 		}
+		if (!this.getData().time_unit || !parseInt(this.getData().time_unit)){
+			YAHOO.ELSA.Error('Please select a time unit');
+			return false;
+		}
+		if (!(parseInt(this.getData().days) >= 0)){
+			YAHOO.ELSA.Error('Please enter a valid number of days to run for.');
+			return false;
+		}
+		return true;
+	}
 
-		var aConnectorMenu = [];
-		for (var i in YAHOO.ELSA.formParams.schedule_actions){
-			aConnectorMenu.push({
-				text:YAHOO.ELSA.formParams.schedule_actions[i].description, 
-				value:YAHOO.ELSA.formParams.schedule_actions[i].action,
-				onclick: { fn: onConnectorMenuItemClick } 
-			});
+	var onIntervalMenuItemClick = function(p_sType, p_aArgs, p_oItem){
+		var sText = p_oItem.cfg.getProperty("text");
+		// Set the label of the button to be our selection
+		var oIntervalButton = YAHOO.widget.Button.getButton('interval_select_button');
+		oIntervalButton.set('label', sText);
+		var oFormEl = YAHOO.util.Dom.get('interval_select_form');
+		var oInputEl = YAHOO.util.Dom.get('schedule_input_interval_unit');
+		if (oInputEl){
+			oInputEl.setAttribute('value', p_oItem.value);
 		}
-		var oConnectorMenuButtonCfg = {
-			id: sConnectorButtonId,
-			type: 'menu',
-			label: 'Connector',
-			name: sConnectorButtonId,
-			menu: aConnectorMenu
-		};
-		
-		var oFormGridCfg = {
-			form_attrs:{
-				action: 'Query/schedule_query',
-				method: 'POST',
-				id: 'interval_select_form'
-			},
-			grid: [
-				[ {type:'text', args:'Run every'}, {type:'input', args:{id:'schedule_input_interval_count', name:'count', size:2}}, {type:'widget', className:'Button', args:oIntervalMenuButtonCfg} ],
-				[ {type:'text', args:'Days to run'},  {type:'input', args:{id:'schedule_input_start_date', name:'days', value:7, size:2}}, {type:'text', args:'(enter 0 for forever)'} ],
-				[ {type:'text', args:'Send to'}, {type:'widget', className:'Button', args:oConnectorMenuButtonCfg} ],
-				[ {type:'input', args:{type:'hidden', id:'schedule_input_qid', name:'qid', value:p_iQid}}/*, {type:'input', args:{type:'hidden', id:'schedule_input_action', name:'action_id', value:action_id}}*/ ]
-			]
-		};
-		YAHOO.ELSA.scheduleQueryDialog.setHeader('Schedule');
-		YAHOO.ELSA.scheduleQueryDialog.setBody('');
-		// We need to do the initial render to auto-generate the form so we can hand that object to YAHOO.ELSA.Form
-		YAHOO.ELSA.scheduleQueryDialog.render();
-		
-		// Now build a new form using the element auto-generated by widget.Dialog
-		var oForm = new YAHOO.ELSA.Form(YAHOO.ELSA.scheduleQueryDialog.form, oFormGridCfg);
-	}
-	else {
-		// update with the given qid
-		YAHOO.util.Dom.get('schedule_input_qid').value = p_iQid;
+		else {
+			var oInputEl = document.createElement('input');
+			oInputEl.id = 'schedule_input_interval_unit';
+			oInputEl.setAttribute('type', 'hidden');
+			oInputEl.setAttribute('name', 'time_unit');
+			oInputEl.setAttribute('value', p_oItem.value);
+			oFormEl.appendChild(oInputEl);
+		}
 	}
 	
-	YAHOO.ELSA.scheduleQueryDialog.show();
-	YAHOO.ELSA.scheduleQueryDialog.bringToTop();
+	//	Create an array of YAHOO.widget.MenuItem configuration properties
+	var oIntervalMenuSources = [ 
+		{text:'Minute', value:'6', onclick: { fn: onIntervalMenuItemClick }},
+		{text:'Hour', value:'5', onclick: { fn: onIntervalMenuItemClick }},
+		{text:'Day', value:'4', onclick: { fn: onIntervalMenuItemClick }},
+		{text:'Week', value:'3', onclick: { fn: onIntervalMenuItemClick }},
+		{text:'Month', value:'2', onclick: { fn: onIntervalMenuItemClick }},
+		{text:'Year', value:'1', onclick: { fn: onIntervalMenuItemClick }}
+	];
+	
+	var oIntervalMenuButtonCfg = {
+		id: 'interval_select_button',
+		type: 'menu',
+		label: 'Minute',
+		name: 'interval_select_button',
+		menu: oIntervalMenuSources
+	};
+
+	var sConnectorButtonId = 'connector_select_button';
+	var onConnectorMenuItemClick = function(p_sType, p_aArgs, p_oItem){
+		var sText = p_oItem.cfg.getProperty("text");
+		// Set the label of the button to be our selection
+		var oConnectorButton = YAHOO.widget.Button.getButton(sConnectorButtonId);
+		oConnectorButton.set('label', sText);
+		var oFormEl = YAHOO.util.Dom.get('interval_select_form');
+		var oInputEl = YAHOO.util.Dom.get('schedule_input_connector');
+		if (oInputEl){
+			oInputEl.setAttribute('value', p_oItem.value);
+		}
+		else {
+			var oInputEl = document.createElement('input');
+			oInputEl.id = 'schedule_input_connector';
+			oInputEl.setAttribute('type', 'hidden');
+			oInputEl.setAttribute('name', 'connector');
+			oInputEl.setAttribute('value', p_oItem.value);
+			oFormEl.appendChild(oInputEl);
+		}
+	}
+
+	var aConnectorMenu = [
+		{ text:'Save report', value:'', onclick: { fn: onConnectorMenuItemClick } }
+	];
+	for (var i in YAHOO.ELSA.formParams.schedule_actions){
+		aConnectorMenu.push({
+			text:YAHOO.ELSA.formParams.schedule_actions[i].description, 
+			value:YAHOO.ELSA.formParams.schedule_actions[i].action,
+			onclick: { fn: onConnectorMenuItemClick } 
+		});
+	}
+	var oConnectorMenuButtonCfg = {
+		id: sConnectorButtonId,
+		type: 'menu',
+		label: 'Send email',
+		name: sConnectorButtonId,
+		menu: aConnectorMenu
+	};
+	
+	var oFormGridCfg = {
+		form_attrs:{
+			action: 'Query/schedule_query',
+			method: 'POST',
+			id: 'interval_select_form'
+		},
+		grid: [
+			[ {type:'text', args:'Run every'}, {type:'input', args:{id:'schedule_input_interval_count', name:'count', size:2, value:1}}, {type:'widget', className:'Button', args:oIntervalMenuButtonCfg} ],
+			[ {type:'text', args:'Days to run'},  {type:'input', args:{id:'schedule_input_start_date', name:'days', value:7, size:2}}, {type:'text', args:'(enter 0 for forever)'} ],
+			[ {type:'text', args:'Action'}, {type:'widget', className:'Button', args:oConnectorMenuButtonCfg} ],
+			[ {type:'input', args:{type:'hidden', id:'schedule_input_qid', name:'qid', value:p_iQid}} ]
+		]
+	};
+	oPanel.panel.setHeader('Schedule or Alert');
+	oPanel.panel.setBody('');
+	// We need to do the initial render to auto-generate the form so we can hand that object to YAHOO.ELSA.Form
+	oPanel.panel.render();
+	
+	// Now build a new form using the element auto-generated by widget.Dialog
+	var oForm = new YAHOO.ELSA.Form(oPanel.panel.form, oFormGridCfg);
+	
+	// Set some default values
+	var oFormEl = YAHOO.util.Dom.get('interval_select_form');
+	
+	var oInputEl = document.createElement('input');
+	oInputEl.id = 'schedule_input_interval_unit';
+	oInputEl.setAttribute('type', 'hidden');
+	oInputEl.setAttribute('name', 'time_unit');
+	oInputEl.setAttribute('value', 6);
+	oFormEl.appendChild(oInputEl);
+	
+	oInputEl = document.createElement('input');
+	oInputEl.id = 'schedule_input_connector';
+	oInputEl.setAttribute('type', 'hidden');
+	oInputEl.setAttribute('name', 'connector');
+	oInputEl.setAttribute('value', 'Email');
+	oFormEl.appendChild(oInputEl);
+	
+	oPanel.panel.show();
+	oPanel.panel.bringToTop();
 }
 
 YAHOO.ELSA.saveResults = function(p_sType, p_aArgs, p_iId){
@@ -2398,26 +2397,10 @@ YAHOO.ELSA.getSavedQueries = function(){
 					}
 				},
 				{ 
-					text: 'Schedule', 
+					text: 'Alert or schedule', 
 					value: 'schedule', 
 					onclick:{
 						fn: YAHOO.ELSA.scheduleQuery,
-						obj: oRecord.getData().qid
-					}
-				},
-				{ 
-					text: 'Alert', 
-					value: 'alert', 
-					onclick:{
-						fn: YAHOO.ELSA.createAlert,
-						obj: oRecord.getData().qid
-					}
-				},
-				{ 
-					text: 'Open Ticket', 
-					value: 'open_ticket', 
-					onclick:{
-						fn: YAHOO.ELSA.openTicket,
 						obj: oRecord.getData().qid
 					}
 				},
@@ -2762,7 +2745,9 @@ YAHOO.ELSA.getQuerySchedule = function(){
 			}
 		}
 		
-		var aConnectors = [];
+		var aConnectors = [
+			{ label:'Save report (no action)', value:'' }
+		];
 		for (var i in YAHOO.ELSA.formParams.schedule_actions){
 			aConnectors.push({
 				label: YAHOO.ELSA.formParams.schedule_actions[i].description,
@@ -2844,163 +2829,6 @@ YAHOO.ELSA.formatDateFromUnixTime = function(p_elCell, oRecord, oColumn, p_oData
 YAHOO.ELSA.getSavedResult = function(p_sType, p_aArgs, p_iQid){
 	var oSavedResults = new YAHOO.ELSA.Results.Tabbed.Saved(YAHOO.ELSA.tabView, p_iQid);
 };
-
-YAHOO.ELSA.createAlert = function(p_sType, p_aArgs, p_iQid){
-	if (!YAHOO.ELSA.createAlertDialog){
-		var action_id = 0;
-		for (var i in YAHOO.ELSA.formParams.schedule_actions){
-			if (YAHOO.ELSA.formParams.schedule_actions[i].action === 'Email'){
-				action_id = YAHOO.ELSA.formParams.schedule_actions[i].action_id;
-				break;
-			}
-		}
-		
-		var handleSubmit = function(){
-			this.submit();
-		};
-		var handleCancel = function(){
-			this.hide();
-		};
-		var handleSuccess = function(p_oResponse){
-			var response = YAHOO.lang.JSON.parse(p_oResponse.responseText);
-			if (response['error']){
-				YAHOO.ELSA.Error(response['error']);
-			}
-			else {
-				YAHOO.ELSA.getQuerySchedule();
-				logger.log('successful submission');
-			}
-		};
-		
-		var oPanel = new YAHOO.ELSA.Panel('create_alert', {
-			underlay: 'none',
-			buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
-				{ text:"Cancel", handler:handleCancel } ]
-		});
-		YAHOO.ELSA.createAlertDialog = oPanel.panel;
-		
-		YAHOO.ELSA.createAlertDialog.callback = {
-			success: handleSuccess,
-			failure: YAHOO.ELSA.Error
-		};
-		YAHOO.ELSA.createAlertDialog.validate = function(){
-			if (!this.getData().threshold_count || !parseInt(this.getData().threshold_count)){
-				YAHOO.ELSA.Error('Need a valid integer as an interval');
-				return false;
-			}
-			if (!this.getData().threshold_time_unit || !parseInt(this.getData().threshold_time_unit)){
-				YAHOO.ELSA.Error('Please select a time unit');
-				return false;
-			}
-			return true;
-		}
-	
-		//	"click" event handler for each item in the Button's menu
-		var onIntervalMenuItemClick = function(p_sType, p_aArgs, p_oItem){
-			var oIntervalButton = YAHOO.widget.Button.getButton('create_alert_interval_select_button');
-			var sText = p_oItem.cfg.getProperty("text");
-			// Set the label of the button to be our selection
-			oIntervalButton.set('label', sText);
-			var oInputEl = YAHOO.util.Dom.get('create_alert_input_interval_unit');
-			if (oInputEl){
-				oInputEl.setAttribute('value', p_oItem.value);
-			}
-			else {
-				oInputEl = document.createElement('input');
-				oInputEl.id = 'create_alert_input_interval_unit';
-				oInputEl.setAttribute('type', 'hidden');
-				oInputEl.setAttribute('name', 'threshold_time_unit');
-				oInputEl.setAttribute('value', p_oItem.value);
-				oFormEl.appendChild(oInputEl);
-			}
-		}
-		
-		//	Create an array of YAHOO.widget.MenuItem configuration properties
-		var aIntervalMenuSources = [ 
-			{text:'Minutes', value:'6', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Hours', value:'5', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Days', value:'4', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Weeks', value:'3', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Months', value:'2', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Years', value:'1', onclick: { fn: onIntervalMenuItemClick }}
-		];
-		
-		var oIntervalMenuButtonCfg = {
-			id: 'create_alert_interval_select_button',
-			type: 'menu',
-			label: 'Time Unit',
-			name: 'create_alert_interval_select_button',
-			menu: aIntervalMenuSources
-		};
-		
-		var oFormGridCfg = {
-			form_attrs:{
-				action: 'Query/schedule_query',
-				method: 'POST',
-				id: 'create_alert_form'
-			},
-			grid: [
-				[ {type:'text', args:'Alert no more than once every '}, {type:'input', args:{id:'create_alert_input_interval_count', name:'threshold_count', size:2}}, {type:'widget', className:'Button', args:oIntervalMenuButtonCfg} ],
-				[ {type:'input', args:{type:'hidden', id:'create_alert_input_qid', name:'qid', value:p_iQid}} ]
-			]
-		};
-		YAHOO.ELSA.createAlertDialog.setHeader('Create Alert');
-		YAHOO.ELSA.createAlertDialog.setBody('');
-		// We need to do the initial render to auto-generate the form so we can hand that object to YAHOO.ELSA.Form
-		YAHOO.ELSA.createAlertDialog.render();
-		
-		// Now build a new form using the element auto-generated by widget.Dialog
-		var oForm = new YAHOO.ELSA.Form(YAHOO.ELSA.createAlertDialog.form, oFormGridCfg);
-		// Static hidden form values
-		var oFormEl = YAHOO.util.Dom.get('create_alert_form');
-		var oDaysEl = YAHOO.util.Dom.get('create_alert_input_days');
-		if (!oDaysEl){
-			oDaysEl = document.createElement('input');
-			oDaysEl.id = 'create_alert_input_days';
-			oDaysEl.setAttribute('type', 'hidden');
-			oDaysEl.setAttribute('name', 'days');
-			oDaysEl.setAttribute('value', 0);
-			oFormEl.appendChild(oDaysEl);
-		}
-		
-		var oActionIDEl = YAHOO.util.Dom.get('create_alert_action_id');
-		if (!oActionIDEl){
-			oActionIDEl = document.createElement('input');
-			oActionIDEl.id = 'create_alert_action_id';
-			oActionIDEl.setAttribute('type', 'hidden');
-			oActionIDEl.setAttribute('name', 'action_id');
-			oActionIDEl.setAttribute('value', action_id);
-			oFormEl.appendChild(oActionIDEl);
-		}
-		
-		var oTimeUnitEl = YAHOO.util.Dom.get('create_alert_time_unit');
-		if (!oTimeUnitEl){
-			oTimeUnitEl = document.createElement('input');
-			oTimeUnitEl.id = 'create_alert_time_unit';
-			oTimeUnitEl.setAttribute('type', 'hidden');
-			oTimeUnitEl.setAttribute('name', 'time_unit');
-			oTimeUnitEl.setAttribute('value', 6);
-			oFormEl.appendChild(oTimeUnitEl);
-		}
-		
-		var oCountEl = YAHOO.util.Dom.get('create_alert_count');
-		if (!oCountEl){
-			oCountEl = document.createElement('input');
-			oCountEl.id = 'open_ticket_count';
-			oCountEl.setAttribute('type', 'hidden');
-			oCountEl.setAttribute('name', 'count');
-			oCountEl.setAttribute('value', 6);
-			oFormEl.appendChild(oCountEl);
-		}
-	}
-	else {
-		// update with the given qid
-		YAHOO.util.Dom.get('create_alert_input_qid').value = p_iQid;
-	}
-	
-	YAHOO.ELSA.createAlertDialog.show();
-	YAHOO.ELSA.createAlertDialog.bringToTop();
-}
 
 YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	logger.log('p_oRecord', p_oRecord);
@@ -3298,206 +3126,6 @@ YAHOO.ELSA.sendFromMenu = function(p_sType, p_aArgs, p_a){
 	sPayload.replace(/;/, '', 'g');
 	logger.log('sPayload: ' + sPayload);
 	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + Base64.encode(sPayload));
-}
-
-YAHOO.ELSA.openTicket = function(p_sType, p_aArgs, p_iQid){
-	if (!YAHOO.ELSA.openTicketDialog){
-		var action_id = 0;
-		for (var i in YAHOO.ELSA.formParams.schedule_actions){
-			if (YAHOO.ELSA.formParams.schedule_actions[i].action === 'Open Ticket'){
-				action_id = YAHOO.ELSA.formParams.schedule_actions[i].action_id;
-				break;
-			}
-		}
-		
-		var handleSubmit = function(){
-			this.submit();
-		};
-		var handleCancel = function(){
-			this.hide();
-		};
-		var handleSuccess = function(p_oResponse){
-			var response = YAHOO.lang.JSON.parse(p_oResponse.responseText);
-			if (response['error']){
-				YAHOO.ELSA.Error(response['error']);
-			}
-			else {
-				YAHOO.ELSA.getQuerySchedule();
-				logger.log('successful submission');
-			}
-		};
-		var oPanel = new YAHOO.ELSA.Panel('open_ticket', {
-			buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
-				{ text:"Cancel", handler:handleCancel } ]
-		});
-		YAHOO.ELSA.openTicketDialog = oPanel.panel;
-		YAHOO.ELSA.openTicketDialog.callback = {
-			success: handleSuccess,
-			failure: YAHOO.ELSA.Error
-		};
-		YAHOO.ELSA.openTicketDialog.validate = function(){
-			if (!this.getData().threshold_count || !parseInt(this.getData().threshold_count)){
-				YAHOO.ELSA.Error('Need a valid integer as an interval');
-				return false;
-			}
-			if (!this.getData().threshold_time_unit || !parseInt(this.getData().threshold_time_unit)){
-				YAHOO.ELSA.Error('Please select a time unit');
-				return false;
-			}
-			if (!this.getData().assignment){
-				YAHOO.ELSA.Error('Please enter a valid assignment group.');
-				return false;
-			}
-			if (!this.getData().priority){
-				YAHOO.ELSA.Error('Please enter a valid priority.');
-				return false;
-			}
-			return true;
-		}
-	
-		//	"click" event handler for each item in the Button's menu
-		var onIntervalMenuItemClick = function(p_sType, p_aArgs, p_oItem){
-			var oIntervalButton = YAHOO.widget.Button.getButton('open_ticket_interval_select_button');
-			var sText = p_oItem.cfg.getProperty("text");
-			// Set the label of the button to be our selection
-			oIntervalButton.set('label', sText);
-			var oInputEl = YAHOO.util.Dom.get('open_ticket_input_interval_unit');
-			if (oInputEl){
-				oInputEl.setAttribute('value', p_oItem.value);
-			}
-			else {
-				oInputEl = document.createElement('input');
-				oInputEl.id = 'open_ticket_input_interval_unit';
-				oInputEl.setAttribute('type', 'hidden');
-				oInputEl.setAttribute('name', 'threshold_time_unit');
-				oInputEl.setAttribute('value', p_oItem.value);
-				oFormEl.appendChild(oInputEl);
-			}
-		}
-		
-		//	Create an array of YAHOO.widget.MenuItem configuration properties
-		var aIntervalMenuSources = [ 
-			{text:'Minutes', value:'6', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Hours', value:'5', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Days', value:'4', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Weeks', value:'3', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Months', value:'2', onclick: { fn: onIntervalMenuItemClick }},
-			{text:'Years', value:'1', onclick: { fn: onIntervalMenuItemClick }}
-		];
-		
-		var oIntervalMenuButtonCfg = {
-			id: 'open_ticket_interval_select_button',
-			type: 'menu',
-			label: 'Time Unit',
-			name: 'open_ticket_interval_select_button',
-			menu: aIntervalMenuSources
-		};
-		
-		var onPriorityMenuItemClick = function(p_sType, p_aArgs, p_oItem){
-			var sText = p_oItem.cfg.getProperty("text");
-			// Set the label of the button to be our selection
-			var oPriorityButton = YAHOO.widget.Button.getButton('open_ticket_priority_button');
-			oPriorityButton.set('label', sText);
-			var oInputEl = YAHOO.util.Dom.get('open_ticket_priority_input_action');
-			if (oInputEl){
-				oInputEl.setAttribute('value', p_oItem.value);
-			}
-			else {
-				var oInputEl = document.createElement('input');
-				oInputEl.id = 'open_ticket_priority_input_action';
-				oInputEl.setAttribute('type', 'hidden');
-				oInputEl.setAttribute('name', 'priority');
-				oInputEl.setAttribute('value', p_oItem.value);
-				oFormEl.appendChild(oInputEl);
-			}
-		}
-		
-		var aPriorityMenuItems = [];
-		for (var i in YAHOO.ELSA.formParams.priority_codes){
-			aPriorityMenuItems.push({
-				text: YAHOO.ELSA.formParams.priority_codes[i],
-				value: YAHOO.ELSA.formParams.priority_codes[i],
-				onclick: { fn: onPriorityMenuItemClick }
-			});
-		}
-		
-		var oPriorityMenuButtonCfg = {
-			id: 'open_ticket_priority_button',
-			name: 'open_ticket_priority_button',
-			type: 'menu',
-			label: 'Priority',
-			menu: aPriorityMenuItems
-		};
-		
-		var oFormGridCfg = {
-			form_attrs:{
-				action: 'Query/schedule_query',
-				method: 'POST',
-				id: 'open_ticket_form'
-			},
-			grid: [
-				[ {type:'text', args:'Create no more than one ticket every '}, {type:'input', args:{id:'open_ticket_input_interval_count', name:'threshold_count', size:2}}, {type:'widget', className:'Button', args:oIntervalMenuButtonCfg} ],
-				//[ {type:'text', args:'Assignment group'}, { type:'input', args:{id:'open_ticket_assignment', name:'assignment', size:20}/*, callback:assignmentCallback*/} ],
-				[ {type:'text', args:'Priority'},  {type:'widget', className:'Button', args:oPriorityMenuButtonCfg} ],
-				[ {type:'input', args:{type:'hidden', id:'open_ticket_input_qid', name:'qid', value:p_iQid}} ]
-			]
-		};
-		YAHOO.ELSA.openTicketDialog.setHeader('Open Ticket');
-		YAHOO.ELSA.openTicketDialog.setBody('');
-		// We need to do the initial render to auto-generate the form so we can hand that object to YAHOO.ELSA.Form
-		YAHOO.ELSA.openTicketDialog.render();
-		
-		// Now build a new form using the element auto-generated by widget.Dialog
-		var oForm = new YAHOO.ELSA.Form(YAHOO.ELSA.openTicketDialog.form, oFormGridCfg);
-		// Static hidden form values
-		var oFormEl = YAHOO.util.Dom.get('open_ticket_form');
-		var oDaysEl = YAHOO.util.Dom.get('open_ticket_input_days');
-		if (!oDaysEl){
-			oDaysEl = document.createElement('input');
-			oDaysEl.id = 'open_ticket_input_days';
-			oDaysEl.setAttribute('type', 'hidden');
-			oDaysEl.setAttribute('name', 'days');
-			oDaysEl.setAttribute('value', 0);
-			oFormEl.appendChild(oDaysEl);
-		}
-		
-		var oActionIDEl = YAHOO.util.Dom.get('open_ticket_action_id');
-		if (!oActionIDEl){
-			oActionIDEl = document.createElement('input');
-			oActionIDEl.id = 'open_ticket_action_id';
-			oActionIDEl.setAttribute('type', 'hidden');
-			oActionIDEl.setAttribute('name', 'action_id');
-			oActionIDEl.setAttribute('value', action_id);
-			oFormEl.appendChild(oActionIDEl);
-		}
-		
-		var oTimeUnitEl = YAHOO.util.Dom.get('open_ticket_time_unit');
-		if (!oTimeUnitEl){
-			oTimeUnitEl = document.createElement('input');
-			oTimeUnitEl.id = 'open_ticket_time_unit';
-			oTimeUnitEl.setAttribute('type', 'hidden');
-			oTimeUnitEl.setAttribute('name', 'time_unit');
-			oTimeUnitEl.setAttribute('value', 6);
-			oFormEl.appendChild(oTimeUnitEl);
-		}
-		
-		var oCountEl = YAHOO.util.Dom.get('open_ticket_count');
-		if (!oCountEl){
-			oCountEl = document.createElement('input');
-			oCountEl.id = 'open_ticket_count';
-			oCountEl.setAttribute('type', 'hidden');
-			oCountEl.setAttribute('name', 'count');
-			oCountEl.setAttribute('value', 6);
-			oFormEl.appendChild(oCountEl);
-		}
-	}
-	else {
-		// update with the given qid
-		YAHOO.util.Dom.get('open_ticket_input_qid').value = p_iQid;
-	}
-	
-	YAHOO.ELSA.openTicketDialog.show();
-	YAHOO.ELSA.openTicketDialog.bringToTop();
 }
 
 YAHOO.ELSA.ip2long = function(ip) {
