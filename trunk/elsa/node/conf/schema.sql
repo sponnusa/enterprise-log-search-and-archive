@@ -131,7 +131,8 @@ CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
 	class_id SMALLINT UNSIGNED NOT NULL,
 	field_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
-	PRIMARY KEY (field_id, class_id, field_order),
+	PRIMARY KEY (field_id, class_id),
+	UNIQUE KEY (class_id, field_order),
 	FOREIGN KEY (field_id) REFERENCES fields (id) ON UPDATE CASCADE ON DELETE CASCADE,
 	FOREIGN KEY (class_id) REFERENCES classes (id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
