@@ -11,6 +11,18 @@
 # by Vladimir Fedorkov Mar 1, 2006, info@astellar.com
 # public domain
 
+### BEGIN INIT INFO
+# Provides:          searchd for sphinx
+# Required-Start:    $syslog $remote_fs
+# Should-Start: $time ypbind sendmail mysql mysql-server mysqld
+# Required-Stop:     $syslog $remote_fs
+# Should-Stop: $time ypbind sendmail
+# Default-Start:     3 5
+# Default-Stop:      0 1 2 6
+# Short-Description: searchd daemon for sphinx search
+# Description:       Starts the Sphinx searchd daemon
+### END INIT INFO
+
 BASE_PATH=/usr/local/sphinx
 CONFIG_FILE=/usr/local/etc/sphinx.conf
 PID_FILE=/var/run/searchd.pid
@@ -56,6 +68,11 @@ start)
 
 stop)
 	do_stop
+	;;
+
+force-reload)
+	echo -n "Reload service $prog"
+	killproc -HUP $prog
 	;;
 
 *)
