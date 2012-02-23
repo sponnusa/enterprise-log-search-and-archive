@@ -222,12 +222,18 @@ build_node_perl(){
 		cpanm -n Sys::Info
 	fi
 	
+	RETVAL=0
 	# Now cpanm is available to install the rest
-	cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::MemInfo Sys::Info
-	# Do it all again, as occasionally strange and one-time download errors occur
-	cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::MemInfo Sys::Info
+	for RETRY in 1 2 3; do
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::MemInfo Sys::Info
+		RETVAL=$?
+		if [ "$RETVAL" = 0 ]; then
+			break;
+		fi
+		echo "Retry $RETRY"
+	done
 	
-	return $?
+	return $RETVAL
 }
 
 enable_service(){
@@ -467,11 +473,20 @@ build_web_perl(){
 	fi
 		
 	# Now cpanm is available to install the rest
+	RETVAL=0
+	# Now cpanm is available to install the rest
+	for RETRY in 1 2 3; do
+		# PAM requires some user input for testing, and we don't want that
+		cpanm -n Authen::PAM &&
+		cpanm Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute
+		RETVAL=$?
+		if [ "$RETVAL" = 0 ]; then
+			break;
+		fi
+		echo "Retry $RETRY"
+	done
 	
-	# PAM requires some user input for testing, and we don't want that
-	cpanm -n Authen::PAM &&
-	cpanm Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute
-	return $?
+	return $RETVAL
 }
 
 set_web_mysql(){
@@ -626,11 +641,11 @@ exec_func(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "build_node_perl" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "build_node_perl" "update_node_mysql" "restart_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "update_node_mysql" "restart_elsa"; do
 			exec_func $FUNCTION
 		done
 	else
@@ -638,11 +653,11 @@ if [ "$INSTALL" = "node" ]; then
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_elsa" "build_web_perl" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_elsa" "build_web_perl" "update_web_mysql"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql"; do
 			exec_func $FUNCTION
 		done
 	else
