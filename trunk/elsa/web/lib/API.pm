@@ -641,20 +641,13 @@ sub get_saved_result {
 		$self->_error('No saved results for qid ' . $args->{qid} . ' found.');
 		return;
 	}
-	my $results = {};
-	$results->{totalTime} = $row->{milliseconds};
-	my $saved_query = $self->json->decode($row->{query});
-	foreach my $item qw(query_string query_meta_params){
-		$results->{$item} = $saved_query->{$item};
-	}
 	
 	$query = 'SELECT data FROM saved_results_data WHERE qid=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid});
 	$row = $sth->fetchrow_hashref;
-	$results->{results} = $self->json->decode($row->{data});
-	
-	return $results;
+
+	return $self->json->decode($row->{data});
 }
 
 sub _get_hash {
@@ -4263,7 +4256,16 @@ sub run_schedule {
 			# Take given action
 			if ($results and $results->{recordsReturned}){
 				if ($row->{connector}){
-					my $action_params = $self->json->decode($row->{params});
+					my $action_params = {};
+					if ($row->{params}){
+						eval {
+							$action_params = $self->json->decode($row->{params});
+						};
+						if ($@){
+							$self->log->error('JSON error: ' . $@ . ' for params: ' . Dumper($row->{params}));
+							next;
+						}
+					}
 					$action_params->{comments} = 'Scheduled Query ' . $row->{query_schedule_id};
 					$action_params->{query_schedule_id} = $row->{query_schedule_id};
 					$action_params->{query} = { query_string => $query_params->{query_string}, query_meta_params => $query_params->{query_meta_params} };

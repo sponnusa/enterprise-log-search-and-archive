@@ -907,7 +907,7 @@ YAHOO.ELSA.Results = function(){
 	};
 	
 	this.formatInfoButton = function(p_elCell, p_oRecord, p_oColumn, p_oData){
-		//logger.log('oRecord.getData()', oRecord.getData());
+		//logger.log('p_oRecord.getData()', p_oRecord.getData());
 		try {
 			var oA = document.createElement('a');
 			oA.href = '#';
@@ -1026,7 +1026,7 @@ YAHOO.ELSA.Results = function(){
 	    };
 	    
 	    try{
-	    	logger.log('About to create DT with ', "dt"+this.id, oColumns, this.dataSource, oTableCfg);
+	    	logger.log('About to create DT with ', "dt" + p_oElContainer, oColumns, this.dataSource, oTableCfg);
 	    	this.dataTable = new YAHOO.widget.DataTable(p_oElContainer, oColumns, this.dataSource, oTableCfg);
 	    	logger.log('datatable: ', this.dataTable);
 	  	 	YAHOO.util.Dom.removeClass(p_oElContainer, 'hiddenElement');
@@ -2049,25 +2049,19 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 		}
 		return true;
 	}
+	
+	var sFormId = 'interval_select_form';
 
+	var sIntervalSelectButtonId = 'interval_select_button';
+	var sIntervalSelectId = 'schedule_input_interval_unit';
 	var onIntervalMenuItemClick = function(p_sType, p_aArgs, p_oItem){
 		var sText = p_oItem.cfg.getProperty("text");
 		// Set the label of the button to be our selection
-		var oIntervalButton = YAHOO.widget.Button.getButton('interval_select_button');
+		var oIntervalButton = YAHOO.widget.Button.getButton(sIntervalSelectButtonId);
 		oIntervalButton.set('label', sText);
-		var oFormEl = YAHOO.util.Dom.get('interval_select_form');
-		var oInputEl = YAHOO.util.Dom.get('schedule_input_interval_unit');
-		if (oInputEl){
-			oInputEl.setAttribute('value', p_oItem.value);
-		}
-		else {
-			var oInputEl = document.createElement('input');
-			oInputEl.id = 'schedule_input_interval_unit';
-			oInputEl.setAttribute('type', 'hidden');
-			oInputEl.setAttribute('name', 'time_unit');
-			oInputEl.setAttribute('value', p_oItem.value);
-			oFormEl.appendChild(oInputEl);
-		}
+		var oFormEl = YAHOO.util.Dom.get(sFormId);
+		var oInputEl = YAHOO.util.Dom.get(sIntervalSelectId);
+		oInputEl.setAttribute('value', p_oItem.value);
 	}
 	
 	//	Create an array of YAHOO.widget.MenuItem configuration properties
@@ -2081,32 +2075,23 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 	];
 	
 	var oIntervalMenuButtonCfg = {
-		id: 'interval_select_button',
+		id: sIntervalSelectButtonId,
 		type: 'menu',
 		label: 'Minute',
-		name: 'interval_select_button',
+		name: sIntervalSelectButtonId,
 		menu: oIntervalMenuSources
 	};
 
 	var sConnectorButtonId = 'connector_select_button';
+	var sConnectorId = 'schedule_input_connector';
 	var onConnectorMenuItemClick = function(p_sType, p_aArgs, p_oItem){
 		var sText = p_oItem.cfg.getProperty("text");
 		// Set the label of the button to be our selection
 		var oConnectorButton = YAHOO.widget.Button.getButton(sConnectorButtonId);
 		oConnectorButton.set('label', sText);
-		var oFormEl = YAHOO.util.Dom.get('interval_select_form');
-		var oInputEl = YAHOO.util.Dom.get('schedule_input_connector');
-		if (oInputEl){
-			oInputEl.setAttribute('value', p_oItem.value);
-		}
-		else {
-			var oInputEl = document.createElement('input');
-			oInputEl.id = 'schedule_input_connector';
-			oInputEl.setAttribute('type', 'hidden');
-			oInputEl.setAttribute('name', 'connector');
-			oInputEl.setAttribute('value', p_oItem.value);
-			oFormEl.appendChild(oInputEl);
-		}
+		var oFormEl = YAHOO.util.Dom.get(sFormId);
+		var oInputEl = YAHOO.util.Dom.get(sConnectorId);
+		oInputEl.setAttribute('value', p_oItem.value);
 	}
 
 	var aConnectorMenu = [
@@ -2126,12 +2111,12 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 		name: sConnectorButtonId,
 		menu: aConnectorMenu
 	};
-	
+		
 	var oFormGridCfg = {
 		form_attrs:{
 			action: 'Query/schedule_query',
 			method: 'POST',
-			id: 'interval_select_form'
+			id: sFormId
 		},
 		grid: [
 			[ {type:'text', args:'Run every'}, {type:'input', args:{id:'schedule_input_interval_count', name:'count', size:2, value:1}}, {type:'widget', className:'Button', args:oIntervalMenuButtonCfg} ],
@@ -2149,17 +2134,17 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 	var oForm = new YAHOO.ELSA.Form(oPanel.panel.form, oFormGridCfg);
 	
 	// Set some default values
-	var oFormEl = YAHOO.util.Dom.get('interval_select_form');
+	var oFormEl = YAHOO.util.Dom.get(sFormId);
 	
 	var oInputEl = document.createElement('input');
-	oInputEl.id = 'schedule_input_interval_unit';
+	oInputEl.id = sIntervalSelectId;
 	oInputEl.setAttribute('type', 'hidden');
 	oInputEl.setAttribute('name', 'time_unit');
 	oInputEl.setAttribute('value', 6);
 	oFormEl.appendChild(oInputEl);
 	
 	oInputEl = document.createElement('input');
-	oInputEl.id = 'schedule_input_connector';
+	oInputEl.id = sConnectorId;
 	oInputEl.setAttribute('type', 'hidden');
 	oInputEl.setAttribute('name', 'connector');
 	oInputEl.setAttribute('value', 'Email');
