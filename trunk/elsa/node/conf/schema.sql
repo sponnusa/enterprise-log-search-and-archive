@@ -36,6 +36,9 @@ INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(23, "CHECKPOINT", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(24, "PALO_ALTO_URL", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(25, "PALO_ALTO_TRAFFIC", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(26, "BARRACUDA_SCAN", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(27, "BARRACUDA_RECV", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(28, "BARRACUDA_SEND", 0);*/
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -126,6 +129,10 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("rule", "string", "
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("country", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("src_zone", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("dst_zone", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("action_code", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("reason_code", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("reason_extra", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("response", "string", "QSTRING");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -315,6 +322,25 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="PALO_ALTO_TRAFFIC"), (SELECT id FROM fields WHERE field="o_int"), 14);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="PALO_ALTO_TRAFFIC"), (SELECT id FROM fields WHERE field="country"), 15);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="PALO_ALTO_TRAFFIC"), (SELECT id FROM fields WHERE field="category"), 16);*/
+
+/*INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SCAN"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SCAN"), (SELECT id FROM fields WHERE field="action_code"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SCAN"), (SELECT id FROM fields WHERE field="reason_code"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SCAN"), (SELECT id FROM fields WHERE field="to"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SCAN"), (SELECT id FROM fields WHERE field="from"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SCAN"), (SELECT id FROM fields WHERE field="reason_extra"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SCAN"), (SELECT id FROM fields WHERE field="subject"), 14);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_RECV"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_RECV"), (SELECT id FROM fields WHERE field="action_code"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_RECV"), (SELECT id FROM fields WHERE field="reason_code"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_RECV"), (SELECT id FROM fields WHERE field="to"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_RECV"), (SELECT id FROM fields WHERE field="from"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_RECV"), (SELECT id FROM fields WHERE field="reason_extra"), 13);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SEND"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SEND"), (SELECT id FROM fields WHERE field="action_code"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SEND"), (SELECT id FROM fields WHERE field="response"), 11);*/
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
