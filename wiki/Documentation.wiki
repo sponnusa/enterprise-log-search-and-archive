@@ -174,3 +174,91 @@ netstat -s | grep -i errors
 Look at the whole output of "netstat -s" for context if you see errors.
 
 It may also be a good idea to establish a log that you know should periodically occur.  Then do a query on the web interface and report on a time value, such as hour or day, and look for any fluctuations in that value that could indicate log loss.
+
+=Adding Parsers=
+In order to add parsers, you need to add patterns to the patterndb.xml file.  If you need to create new log classes and fields, it's not too hard, but right now there is no web interface (that's planned in the future).  You'll need to add classes to the "classes" table, fields to the "fields" table, then use the offsets listed under $Field_order in web/lib/API.pm to create the right entries in "fields_classes_map."  Other than those few database entries, adding the pattern and restarting syslog-ng and apache is all you have to do.  The new fields
+will show up in the web interface, etc.  If you can, try to create patterns which re-use existing classes and fields, then just dropping them into the patterndb.xml file will instantly make them parse correctly-no DB work or restarts needed.  I plan on making a blog post on how to do this soon, but let me know if you run into any troubles.  Here's an example to get you started:
+
+Example log 
+program: 
+{{{test_prog}}}
+message: 
+{{{source_ip 1.1.1.1 sent 50 bytes to destination_ip 2.2.2.2 from user joe}}}
+Pick a class_id greater than 10000 for your own custom classes.  Let's
+say this is the first one, so your new class_id will be 10000.
+What to insert into syslog database on log node:
+{{{
+INSERT INTO classes (class_id, class) VALUES (10000, "NEWCLASS");
+}}}
+Our fields will be conn_bytes, srcip, and dstip, which already exist
+in the "fields" table as well as "myuser" which we will create here
+for demonstration purposes:
+{{{
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("myuser",
+"string", "QSTRING");
+
+INSERT INTO fields_classes_map (field_id, class_id, field_order)
+VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
+field_id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (field_id, class_id, field_order)
+VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
+field_id FROM fields WHERE field="conn_bytes"), 6);
+INSERT INTO fields_classes_map (field_id, class_id, field_order)
+VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
+field_id FROM fields WHERE field="dstip"), 7);
+}}}
+Now the string field "myuser" at field_order 11, which maps to the
+first string column "s0":
+{{{
+INSERT INTO fields_classes_map (field_id, class_id, field_order)
+VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
+field_id FROM fields WHERE field="myuser"), 11);
+}}}
+5, 6, and 7 correspond to the first integer columns in the schema
+"i0," "i1," and "i2."  In the pattern below, we're extracting the data
+and calling it i0-i2 so that it goes into the log database correctly.
+The above SQL maps the names of these fields in the context of this
+class to those columns in the raw database when performing searches.
+
+Example pattern:
+{{{
+<ruleset name="does_not_matter" id='does_not_matter_either'>
+                <pattern>test_prog</pattern>
+                <rules>
+                        <rule provider="does_not_matter" class='21' id='21'>
+                                <patterns>
+                                        <pattern>source_ip @IPv4:i0:@ sent @ESTRING:i1: @bytes to destination_ip @IPv4:i2:@ from user @ANYSTRING:s0:@</pattern>
+                                </patterns>
+                                <examples>
+                                  <example>
+                                    <test_message program="test_prog">source_ip 1.1.1.1 sent 50 bytes to destination_ip 2.2.2.2 from user joe</test_mesage>
+                                    <!-- srcip -->
+                                    <test_value name="i0">1.1.1.1</test_value>
+                                    <!-- conn_bytes -->
+                                    <test_value name="i1">50</test_value>
+                                    <!-- dstip -->
+                                    <test_value name="i2">2.2.2.2</test_value>
+                                    <!-- myuser -->
+                                    <test_value name="s0">joe</test_value>
+                                  </example>
+                                </examples>
+                        </rule>
+                </rules>
+        </ruleset>
+}}}
+Add this in the patterndb.xml between the <patterndb></patterndb>
+elements.  You can test this on a log node using the
+/usr/local/syslog-ng/bin/pdbtool utility like so:
+{{{
+/usr/local/syslog-ng/bin/pdbtool test -p /usr/local/elsa/node/conf/patterndb.xml
+}}}
+This should print out all of the correct test values.  You can test it against example messages as well like this:
+{{{
+/usr/local/syslog-ng/bin/pdbtool match -p /usr/local/elsa/node/conf/patterndb.xml -P test_prog -M "source_ip 1.1.1.1 sent 50 bytes to destination_ip 2.2.2.2 from user joe"
+}}}
+
+After the patterndb.xml file and the database are updated, you will need to restart syslog-ng:
+{{{
+service syslog-ng restart
+}}}
+If you are already logged into ELSA, simply refreshing the page should make those new classes and fields available.
