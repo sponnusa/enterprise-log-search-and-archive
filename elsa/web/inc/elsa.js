@@ -529,6 +529,10 @@ YAHOO.ELSA.Query = function(){
 		);
 	}
 	
+	this.toObject = function(){
+		return { query_string: YAHOO.ELSA.currentQuery.stringifyTerms(), query_meta_params: YAHOO.ELSA.currentQuery.metas };
+	}
+	
 	this.validateTerm = function(p_sFQDNField, p_sValue){
 		logger.log('validating ' + p_sFQDNField + ':' + p_sValue);
 		var oField;
@@ -3107,7 +3111,7 @@ YAHOO.ELSA.sendFromMenu = function(p_sType, p_aArgs, p_a){
 		},
 		argument: [this]
 	};
-	var sPayload = YAHOO.lang.JSON.stringify({data:[p_oRecord.getData()], connectors:[p_sPlugin]});
+	var sPayload = YAHOO.lang.JSON.stringify({results:[p_oRecord.getData()], connectors:[p_sPlugin], query:YAHOO.ELSA.currentQuery.toObject()});
 	sPayload.replace(/;/, '', 'g');
 	logger.log('sPayload: ' + sPayload);
 	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + Base64.encode(sPayload));

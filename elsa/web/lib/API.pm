@@ -2302,7 +2302,8 @@ sub query {
 	}
 	
 	# Apply transforms
-	if ($args->{transforms} and ref($ret->{results}) eq 'ARRAY' and scalar @{ $args->{transforms} }){
+	#if ($args->{transforms} and ref($ret->{results}) eq 'ARRAY' and scalar @{ $args->{transforms} }){
+	if ($args->{transforms} and scalar @{ $args->{transforms} }){	
 		$self->transform($args);
 		$ret->{results} = $args->{results};
 		$ret->{groupby} = $args->{groupby} if $args->{groupby};
@@ -3742,9 +3743,9 @@ sub _build_sphinx_query {
 	my %ranges;
 	foreach my $boolean qw(and or not){
 		foreach my $op (sort keys %{ $args->{attr_terms}->{$boolean} }){
-			next unless $op =~ /\<\>/;
+			next unless $op =~ /\<|\>/;
 			foreach my $field (sort keys %{ $args->{attr_terms}->{$boolean}->{$op} }){
-				foreach my $class_id (sort keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field} }){
+				foreach my $class_id (sort keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field} }){		
 					next unless $args->{distinct_classes}->{$class_id} or $class_id eq 0;
 					foreach my $attr (sort keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id} }){
 						$ranges{$boolean} ||= {};
@@ -3786,7 +3787,7 @@ sub _build_sphinx_query {
 						}
 						unless ($max){
 							$max = 2**32;
-						}
+						}						
 						if ($class_id){
 							push @clause, '(class_id=? AND ' . $attr . $min_op . '? AND ' . $attr . $max_op . '?)';
 							push @{ $clauses{$boolean}->{vals} }, $class_id, $min, $max;
@@ -3982,14 +3983,25 @@ sub transform {
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{transforms} ) {
 		my $transform_args = { transforms => $args->{transforms}, results => [] };
-		foreach my $row (@{ $args->{results} }){
-			my $condensed_hash = {};
-			foreach my $field_hash (@{ $row->{_fields} }){
-				$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
+		if (ref($args->{results}) eq 'ARRAY'){
+			foreach my $row (@{ $args->{results} }){
+				my $condensed_hash = {};
+				foreach my $field_hash (@{ $row->{_fields} }){
+					$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
+				}
+				push @{ $transform_args->{results} }, $condensed_hash;
 			}
-			push @{ $transform_args->{results} }, $condensed_hash;
+			$self->log->debug('$transform_args' . Dumper($transform_args));
 		}
-		$self->log->debug('$transform_args' . Dumper($transform_args));
+		elsif (ref($args->{results}) eq 'HASH' and $args->{groupby}){
+			$transform_args->{groupby} = $args->{groupby};
+			foreach my $groupby (keys %{ $args->{results} }){
+				foreach my $datum (@{ $args->{results}->{$groupby} }){
+					push @{ $transform_args->{results} }, { $groupby => $datum->{'@groupby'} };
+				}
+			}
+			$self->log->trace('new results: ' . Dumper($transform_args->{results}));
+		}
 		
 		my $num_found = 0;
 		my $cache;
@@ -4042,7 +4054,27 @@ sub transform {
 			return 0;
 		}
 		
-		if ($transform_args->{groupby}){
+		if ($args->{groupby}){
+			foreach my $groupby (keys %{ $args->{results} }){
+				for (my $i = 0; $i < scalar @{ $args->{results}->{$groupby} }; $i++){ 
+					foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
+					next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
+						foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
+							next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
+							my $add_on_str = '';
+							foreach my $transform_data_attr (keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
+								$add_on_str .= ' ' . $transform_data_attr . '=' .  $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_data_attr};
+							}
+							$args->{results}->{$groupby}->[$i]->{'@groupby'} .= ' ' . $add_on_str;
+							$self->log->trace('$datum->{@groupby}: ' .  $args->{results}->{$groupby}->[$i]->{'@groupby'});
+						}
+					}
+				}
+				
+			}
+			
+		}
+		elsif ($transform_args->{groupby}){
 			$args->{groupby} = $transform_args->{groupby};
 			$args->{results} = {};
 			foreach my $groupby (@{  $transform_args->{groupby} }){
@@ -4084,7 +4116,7 @@ sub transform {
 sub send_to {
 	my ($self, $args) = @_;
 	
-	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{connectors} ) {
+	if ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{connectors} ) {
 		my $num_found = 0;
 		foreach my $raw (@{ $args->{connectors} }){
 			$raw =~ /(\w+)\(?([^\)]+)?\)?/;
@@ -4098,19 +4130,19 @@ sub send_to {
 						my $plugin_object = $plugin->new(
 							api => $self,
 							user_info => $args->{user_info},
-							data => $args->{data},
+							results => $args->{results},
 							query => $args->{query},
 							args => [ @connector_args ],
 							query_schedule_id => $args->{query_schedule_id},
 							qid => $args->{qid},
 							comments => $args->{comments},
 							);
-						$args->{results} = $plugin_object->data;
+						#$args->{results} = $plugin_object->data;
 						$num_found++;
 					};
 					if ($@){
 						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
-							. Dumper($args->{data}) . ' and args ' . Dumper(\@connector_args) . ': ' . $@);
+							. Dumper($args) . ' and args ' . Dumper(\@connector_args) . ': ' . $@);
 					}
 				}
 			}
@@ -4269,7 +4301,7 @@ sub run_schedule {
 					$action_params->{comments} = 'Scheduled Query ' . $row->{query_schedule_id};
 					$action_params->{query_schedule_id} = $row->{query_schedule_id};
 					$action_params->{query} = { query_string => $query_params->{query_string}, query_meta_params => $query_params->{query_meta_params} };
-					$action_params->{data} = $results;
+					$action_params->{results} = $results->{results};
 					$action_params->{qid} = $results->{qid};
 					$action_params->{user_info} = $query_params->{user_info};
 					$action_params->{connectors} = [ $row->{connector} ];
