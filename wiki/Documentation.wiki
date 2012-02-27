@@ -154,11 +154,14 @@ The best workaround is to query for host= where the host is a log host you know 
 
 There is a way to get around this if you have enough RAM.  If you edit /usr/local/elsa/node/Indexer.pm in the "get_sphinx_conf" subroutine and change the text under "permanent" from "docinfo = inline" to "docinfo = external" and rename the sphinx config file in the /etc/elsa_node.conf to something new, it will create a new sphinx config file at that location.  Then, you will need to re-index everything:
 {{{
+service syslog-ng stop
+# Edit Index.pm
 perl /usr/local/elsa/node/elsa.pl -c /etc/elsa_node.conf -on
 service searchd stop
 # (This next step could take a really long time if you have a lot of logs loaded already)
 /usr/local/sphinx/bin/indexer --rotate --all 
 service searchd start
+service syslog-ng start
 }}}
 
 However, this will only work if you have many gigs of RAM and not that many logs (less than a billion).  To get an idea of how much RAM would be required, you can sum these totals (assuming your Sphinx directory is /data/sphinx):
