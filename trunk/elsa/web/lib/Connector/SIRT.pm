@@ -14,7 +14,7 @@ sub BUILD {
 	my $self = shift;
 	
 	$self->api->log->trace('posting to url ' . $self->api->conf->get('connectors/sirt/url'));
-	my $post_str = 'data=' . uri_escape(encode_base64($self->api->json->encode( { data => $self->data->{results}, query => $self->query } )));
+	my $post_str = 'data=' . uri_escape(encode_base64($self->api->json->encode( { data => $self->results, query => $self->query } )));
 	$post_str .= '&username=' . $self->user_info->{username};
 	#$self->api->log->trace('post_str: ' . $post_str);
 	my $cv = AnyEvent->condvar;

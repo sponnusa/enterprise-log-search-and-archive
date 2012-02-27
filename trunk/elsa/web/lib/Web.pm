@@ -383,10 +383,11 @@ sub send_to {
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{data} ) {
 		eval {
-			my $data = $self->api->json->decode(uri_unescape(decode_base64($args->{data})));
+			my $json_args = $self->api->json->decode(uri_unescape(decode_base64($args->{data})));
 			$args->{user_info} = $self->session->get('user_info');
-			$args->{connectors} = $data->{connectors};
-			$args->{data} = delete $data->{data};
+			$args->{connectors} = $json_args->{connectors};
+			$args->{results} = delete $json_args->{results};
+			$args->{query} = delete $json_args->{query};
 			$self->api->log->debug( "Decoded $args as : " . Dumper($args) );
 		};
 		if ($@){
