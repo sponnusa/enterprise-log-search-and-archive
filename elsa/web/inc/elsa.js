@@ -796,6 +796,9 @@ YAHOO.ELSA.Results = function(){
 			if (oSelf.results.highlights){
 				//apply highlights
 				for (var sHighlight in oSelf.results.highlights){
+					sHighlight = sHighlight.replace(/^["']*/, '');
+					sHighlight = sHighlight.replace(/["']*$/, '');
+					logger.log('sHighlight '  + sHighlight);
 					var re = new RegExp('(' + sHighlight + ')', 'ig');
 					var aMatches = msg.match(re);
 					if (aMatches != null){
@@ -833,6 +836,8 @@ YAHOO.ELSA.Results = function(){
 				
 				if (oSelf.results.highlights){
 					for (var sHighlight in oSelf.results.highlights){
+						sHighlight = sHighlight.replace(/^["']*/, '');
+						sHighlight = sHighlight.replace(/["']*$/, '');
 						var re = new RegExp('(' + sHighlight + ')', 'ig');
 						//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
 						if (fieldHash['value_with_markup']){
