@@ -10,6 +10,8 @@ sub description { return $Description }
 has 'query_schedule_id' => (is => 'rw', isa => 'Num', required => 1);
 has 'qid' => (is => 'rw', isa => 'Num', required => 1);
 has 'records_returned' => (is => 'rw', isa => 'Num', required => 1);
+has 'query_string' => (is => 'rw', isa => 'Str', required => 1);
+has 'query_meta_params' => (is => 'rw', isa => 'HashRef', required => 1);
 
 sub BUILDARGS {
 	my $class = shift;
@@ -17,7 +19,11 @@ sub BUILDARGS {
 	
 	if (ref($params{results}) eq 'HASH' and $params{results}->{results}){
 		$params{records_returned} = $params{results}->{recordsReturned};
-		$params{results} = delete $params{results}->{results};
+		foreach my $attr qw(qid query_string query_meta_params){
+			if (exists $params{results}->{$attr}){
+				$params{$attr} = $params{results}->{$attr};
+			}
+		}
 	}
 	
 	return \%params;
@@ -27,7 +33,7 @@ sub BUILD {
 	my $self = shift;
 	$self->api->log->debug('got results to alert on: ' . Dumper($self->results));
 		
-	unless (scalar @{ $self->results }){
+	unless (scalar @{ $self->results->{results} }){
 		$self->api->log->info('No results for query');
 		return 0;
 	}
@@ -37,7 +43,7 @@ sub BUILD {
 		From => $self->api->conf->get('email/display_address') ? $self->api->conf->get('email/display_address') : 'system',
 		Subject => $self->api->conf->get('email/subject') ? $self->api->conf->get('email/subject') : 'system',
 	};
-	my $body = sprintf('%d results for query %s', $self->records_returned, $self->query->{query_string}) .
+	my $body = sprintf('%d results for query %s', $self->records_returned, $self->query_string) .
 		"\r\n" . sprintf('%s/get_results?qid=%d&hash=%s', 
 			$self->api->conf->get('email/base_url') ? $self->api->conf->get('email/base_url') : 'http://localhost',
 			$self->qid,
