@@ -287,3 +287,27 @@ After the patterndb.xml file and the database are updated, you will need to rest
 service syslog-ng restart
 }}}
 If you are already logged into ELSA, simply refreshing the page should make those new classes and fields available.
+
+=Transforms=
+ELSA has a powerful feature called transforms which allow you to pass the results of a query to a backend plugin.  The plugins that currently ship with ELSA include whois, dnsdb, and CIF (Collective Intelligence Framework).  There are also utility transforms filter, grep, and sum.
+==Syntax==
+Transforms are modeled after UNIX-style command pipes, like this:
+{{{
+site:www.google.com | whois | sum(descr)
+}}}
+This command finds all URL requests for site www.google.com, passes those results to the whois plugin which attaches new fields like org and description, and then passes those results to the sum transform which takes the argument "descr" indicating which field to sum.  The result is a graph of the unique "descr" field as provided by the whois plugin.
+
+Plugins take the syntactical form of:
+{{{
+query | plugin_1(arg1,arg2,argn) | plugin_n(arg1,arg2,argn)
+}}}
+
+==Current Plugins==
+The currently shipped plugins are:
+||Name||Args||Description||
+||whois|| ||ARIN and RIPE online databases to add network owner info||
+||dnsdb|| ||isc.dnsdb.org's database (if an api key is provided)||
+||cif|| ||Queries a local Collective Intelligence Framework server||
+||grep||regex on field, regex on value||Only passes results that match the test||
+||filter||regex on field, regex on value||Only passes results that do not match the test||
+||sum||field||Sums the total found for the given field||
