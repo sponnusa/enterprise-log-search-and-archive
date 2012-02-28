@@ -1725,7 +1725,7 @@ sub save_results {
 		return 0;
 	}
 	
-	$meta_info->{results} = $args->{results};
+	$meta_info->{results} = $args;
 	$meta_info->{comments} = $comments;
 	$meta_info->{qid} = $args->{qid};
 
@@ -4131,13 +4131,10 @@ sub send_to {
 							api => $self,
 							user_info => $args->{user_info},
 							results => $args->{results},
-							query => $args->{query},
 							args => [ @connector_args ],
 							query_schedule_id => $args->{query_schedule_id},
-							qid => $args->{qid},
 							comments => $args->{comments},
 							);
-						#$args->{results} = $plugin_object->data;
 						$num_found++;
 					};
 					if ($@){
@@ -4299,10 +4296,8 @@ sub run_schedule {
 						}
 					}
 					$action_params->{comments} = 'Scheduled Query ' . $row->{query_schedule_id};
+					$action_params->{results} = $results;
 					$action_params->{query_schedule_id} = $row->{query_schedule_id};
-					$action_params->{query} = { query_string => $query_params->{query_string}, query_meta_params => $query_params->{query_meta_params} };
-					$action_params->{results} = $results->{results};
-					$action_params->{qid} = $results->{qid};
 					$action_params->{user_info} = $query_params->{user_info};
 					$action_params->{connectors} = [ $row->{connector} ];
 					$self->log->debug('executing action ' . $row->{connector} . ' with params ' . Dumper($action_params));
@@ -4310,7 +4305,7 @@ sub run_schedule {
 				}
 				else {
 					# Just save the results
-					$self->api->save_results({
+					$self->save_results({
 						meta_info => { groupby => $query_params->{query_meta_params}->{groupby} },
 						qid => $results->{qid}, 
 						results => $results, 
