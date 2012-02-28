@@ -311,3 +311,20 @@ The currently shipped plugins are:
 ||grep||regex on field, regex on value||Only passes results that match the test||
 ||filter||regex on field, regex on value||Only passes results that do not match the test||
 ||sum||field||Sums the total found for the given field||
+
+=OSSEC Integration=
+ELSA can read logs from OSSEC, here's how:
+Edit /usr/local/syslog-ng/etc/syslog-ng.conf:
+{{{
+source s_ossec {
+  file("/OSSEC_BASE_DIR/ossec/logs/archives/archives.log" program_override('ossec-archive') follow_freq(1) flags(no-parse));
+}
+log {
+ source(s_ossec); destination(d_elsa);
+};
+}}}
+
+To enable archive output in OSSEC, add to ossec.conf file <global> section:
+{{{
+<logall>yes</logall>
+}}}
