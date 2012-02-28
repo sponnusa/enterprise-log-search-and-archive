@@ -70,7 +70,7 @@ sub BUILD {
 	
 	# Save the results
 	$self->api->save_results({
-		meta_info => { groupby => $self->query->{query_meta_params}->{groupby} },
+		meta_info => { groupby => $self->query_meta_params->{groupby} },
 		qid => $self->qid, 
 		results => $self->results, 
 		comments => 'Scheduled Query ' . $self->query_schedule_id
