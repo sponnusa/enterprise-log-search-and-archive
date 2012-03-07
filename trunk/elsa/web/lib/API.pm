@@ -1555,7 +1555,7 @@ sub schedule_query {
 	}
 	$args->{uid} = sprintf('%d', $args->{user_info}->{uid});
 	
-	my %standard_vars = map { $_ => 1 } qw(uid qid days time_unit count connector threshold_count threshold_time_unit);
+	my %standard_vars = map { $_ => 1 } qw(uid qid days time_unit count connector);
 	my $schedule_query_params = { params => {} };
 	foreach my $item (keys %{$args}){
 		if ($standard_vars{$item}){
@@ -1596,8 +1596,8 @@ sub schedule_query {
 		5 => (60 * 60),
 		6 => (60),
 	};
-	if ($schedule_query_params->{threshold_count} and $schedule_query_params->{threshold_time_unit}){
-		$alert_threshold = $time_unit_map->{ $schedule_query_params->{threshold_time_unit} } * $schedule_query_params->{threshold_count};
+	if ($schedule_query_params->{count} and $schedule_query_params->{time_unit}){
+		$alert_threshold = $time_unit_map->{ $schedule_query_params->{time_unit} } * $schedule_query_params->{count};
 	}
 	$sth->execute($schedule_query_params->{uid}, $schedule_query_params->{qid}, $freq_str, time(), (86400 * $days) + time(), 
 		$schedule_query_params->{connector}, $schedule_query_params->{params}, $alert_threshold);
@@ -2306,7 +2306,13 @@ sub query {
 	if ($args->{transforms} and scalar @{ $args->{transforms} }){	
 		$self->transform($args);
 		$ret->{results} = $args->{results};
-		$ret->{groupby} = $args->{groupby} if $args->{groupby};
+		if (ref($ret->{results}) eq 'HASH'){
+			$ret->{groupby} = $args->{groupby};
+		}
+		else {
+			delete $ret->{groupby};
+		}
+		#$ret->{groupby} = $args->{groupby} if $args->{groupby};
 	}
 	
 	$ret->{errors} = $self->warnings;
@@ -3163,26 +3169,6 @@ sub _parse_query_term {
 			# Escape any digit-dash-word combos (except for host or program)
 			$term_hash->{value} =~ s/(\d+)\-/$1\\\-/g unless ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
 			
-			if ($args->{archive_query}){
-				# Escape any special chars
-				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])/\\$1/g;
-			}
-			else {
-				# Get rid of any non-indexed chars
-				$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g;
-				# Escape any '@' or sphinx will error out thinking it's a field prefix
-				#$term_hash->{value} =~ s/\@/\\\@/g;
-				if ($term_hash->{value} =~ /\@/){
-					# need to quote
-					$term_hash->{value} = '"' . $term_hash->{value} . '"';
-				}
-				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
-				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
-					die('Integer search terms must be 15 or fewer digits, received ' 
-						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.');
-				}
-			}
-			
 			if ($term_hash->{field} eq 'start'){
 				# special case for start/end
 				$args->{start_int} = UnixDate($term_hash->{value}, "%s");
@@ -3253,6 +3239,27 @@ sub _parse_query_term {
 				}
 				next;
 			}
+			
+			if ($args->{archive_query}){
+				# Escape any special chars
+				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])/\\$1/g;
+			}
+			else {
+				# Get rid of any non-indexed chars
+				$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g unless ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
+				# Escape any '@' or sphinx will error out thinking it's a field prefix
+				#$term_hash->{value} =~ s/\@/\\\@/g;
+				if ($term_hash->{value} =~ /\@/){
+					# need to quote
+					$term_hash->{value} = '"' . $term_hash->{value} . '"';
+				}
+				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
+				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
+					die('Integer search terms must be 15 or fewer digits, received ' 
+						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.');
+				}
+			}
+			
 			
 			my $boolean = 'or';
 				
@@ -3479,7 +3486,7 @@ sub _normalize_value {
 	}
 	elsif ($Field_order_to_attr->{$field_order} eq 'program_id'){
 		$self->log->trace("Converting $value to attr");
-		$value =~ s/[^a-zA-Z0-9\_\-]/\_/g;
+		#$value =~ s/[^a-zA-Z0-9\_\-]/\_/g;
 		return crc32($value);
 	}
 	elsif ($Field_order_to_attr->{$field_order} =~ /^attr_s\d+$/){
@@ -3981,136 +3988,308 @@ sub export {
 sub transform {
 	my ($self, $args) = @_;
 	
-	if ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{transforms} ) {
-		my $transform_args = { transforms => $args->{transforms}, results => [] };
-		if (ref($args->{results}) eq 'ARRAY'){
-			foreach my $row (@{ $args->{results} }){
-				my $condensed_hash = {};
-				foreach my $field_hash (@{ $row->{_fields} }){
-					$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
-				}
-				push @{ $transform_args->{results} }, $condensed_hash;
+	unless ( $args and ref($args) eq 'HASH' and $args->{results} and $args->{transforms} ){
+		$self->log->error('Invalid args: ' . Dumper($args));
+		return 0;
+	}
+	
+	my $transform_args = { transforms => $args->{transforms}, results => [] };
+	if (ref($args->{results}) eq 'ARRAY'){
+		foreach my $row (@{ $args->{results} }){
+			my $condensed_hash = { id => $row->{id}, msg => $row->{msg} };
+			foreach my $field_hash (@{ $row->{_fields} }){
+				$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
 			}
-			$self->log->debug('$transform_args' . Dumper($transform_args));
+			push @{ $transform_args->{results} }, $condensed_hash;
 		}
-		elsif (ref($args->{results}) eq 'HASH' and $args->{groupby}){
-			$transform_args->{groupby} = $args->{groupby};
-			foreach my $groupby (keys %{ $args->{results} }){
-				foreach my $datum (@{ $args->{results}->{$groupby} }){
-					push @{ $transform_args->{results} }, { $groupby => $datum->{'@groupby'} };
-				}
+		#$self->log->debug('$transform_args' . Dumper($transform_args));
+	}
+	elsif (ref($args->{results}) eq 'HASH' and $args->{groupby}){
+		$transform_args->{groupby} = $args->{groupby};
+		foreach my $groupby (keys %{ $args->{results} }){
+			foreach my $datum (@{ $args->{results}->{$groupby} }){
+				push @{ $transform_args->{results} }, { $groupby => $datum->{'@groupby'} };
 			}
-			$self->log->trace('new results: ' . Dumper($transform_args->{results}));
 		}
+		$self->log->trace('new results: ' . Dumper($transform_args->{results}));
+	}
+	
+	my $num_found = 0;
+	my $cache;
+	eval {
+		$cache = CHI->new(
+			driver => 'DBI', 
+			dbh => $self->db, 
+			create_table => 1,
+			table_prefix => 'cache_',
+			namespace => 'transforms',
+		);
+	};
+	if (@$ or not $cache){
+		$self->log->warn('Falling back to RawMemory for cache, consider installing CHI::Driver::DBI');
+		$cache = CHI->new(driver => 'RawMemory', datastore => {});
+	}
+	$self->log->debug('using cache ' . Dumper($cache));
+	for (my $transform_counter = 0; $transform_counter < @{ $transform_args->{transforms} }; $transform_counter++){
+		my $raw_transform = $transform_args->{transforms}->[$transform_counter];
+		$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
+		my $transform = lc($1);
+		my @given_transform_args = $2 ? split(/\,/, $2) : ();
 		
-		my $num_found = 0;
-		my $cache;
-		eval {
-			$cache = CHI->new(
-				driver => 'DBI', 
-				dbh => $self->db, 
-				create_table => 1,
-				table_prefix => 'cache_',
-				namespace => 'transforms',
-			);
-		};
-		if (@$ or not $cache){
-			$self->log->warn('Falling back to RawMemory for cache, consider installing CHI::Driver::DBI');
-			$cache = CHI->new(driver => 'RawMemory', datastore => {});
+		if ($transform eq 'subsearch'){
+			if ($transform_args->{groupby}){
+				my $subsearch_args = { 
+					query_string => $given_transform_args[0], 
+					query_meta_params => $args->{query_meta_params},
+					user_info => $args->{user_info},
+				}; 
+				
+				# Add optional field
+				my $field = '';
+				if ($#given_transform_args > 1){
+					$field = $given_transform_args[1];
+				}
+				my @values;
+				$self->log->debug('attempting to subsearch result: ' . Dumper($transform_args->{results}));
+				if (ref($transform_args->{results}) eq 'ARRAY'){
+					foreach my $datum (@{ $transform_args->{results} }){
+						$self->log->debug('datum: ' . Dumper($datum) . ' values: ' . join(' ', (values %$datum)));
+						if ($field){
+							push @values, $field . ':' . (values %$datum)[0];
+						}
+						else {
+							push @values, values %$datum;
+						}
+					}
+				}
+				else {
+					# groupby
+					foreach my $groupby (keys %{ $transform_args->{results} }){
+						foreach my $datum (@{ $transform_args->{results}->{$groupby} }){
+							my $value;
+							if (exists $datum->{'@groupby'}){
+								$value = $datum->{'@groupby'};
+							}
+							else {
+								$value = $datum->{$groupby};
+							}
+							if ($field){
+								push @values, $field . ':' . $value;
+							}
+							else {
+								push @values, $value;
+							}
+						}
+					}
+				}
+				
+				$self->log->debug('values: ' . Dumper(\@values));
+				unless (scalar @values){
+					$self->log->error('no values from transform_args: ' . Dumper($transform_args));
+					$self->add_warning('Transform ' . $transform_args->{transforms}->[$transform_counter - 1] . ' eliminated all values');
+					last;
+				}
+				
+				$subsearch_args->{query_string} .= ' +' . $field . '(' . join(' ', @values) . ')';
+				delete $subsearch_args->{query_meta_params}->{class};
+				delete $subsearch_args->{query_meta_params}->{groupby}; #groupby will be parsed from query_string
+				$self->log->debug('subsearch_args: ' . Dumper($subsearch_args));
+				my $subsearch = $self->query($subsearch_args);
+				$args->{results} = $transform_args->{results} = $subsearch->{results};
+				if ($subsearch->{groupby}){
+					$args->{groupby} = $transform_args->{groupby} = $subsearch->{groupby};
+				}
+				else {
+					delete $transform_args->{groupby};
+					delete $args->{groupby};
+				}
+				$self->log->debug('groupby ' . Dumper($args->{groupby}));
+				$self->log->debug('got subsearch results: ' . Dumper($transform_args->{results}));
+				$num_found++;
+				
+				if (ref($args->{results}) eq 'ARRAY'){
+					$transform_args->{results} = [];
+					foreach my $row (@{ $args->{results} }){
+						my $condensed_hash = { id => $row->{id}, msg => $row->{msg} };
+						foreach my $field_hash (@{ $row->{_fields} }){
+							$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
+						}
+						push @{ $transform_args->{results} }, $condensed_hash;
+					}
+				}
+				elsif ($transform_counter == ((scalar @{ $transform_args->{transforms} }) - 1) and ref($args->{results}) eq 'HASH' and $args->{groupby}){
+					$self->log->trace('subsearch is final transform, returning hash results instead of array results');
+					$transform_args->{results} = $args->{results};
+					$transform_args->{groupby} = $args->{groupby};
+				}
+				elsif (ref($args->{results}) eq 'HASH' and $args->{groupby}){
+					$transform_args->{results} = [];
+					$transform_args->{groupby} = $args->{groupby};
+					foreach my $groupby (keys %{ $args->{results} }){
+						foreach my $datum (@{ $args->{results}->{$groupby} }){
+							push @{ $transform_args->{results} }, { $groupby => $datum->{'@groupby'} };
+						}
+					}
+				}
+				$self->log->trace('new results after subsearch: ' . Dumper($transform_args->{results}));
+			}
+			else {
+				$self->add_warning('cannot subsearch without a report or groupby field');
+			}
 		}
-		$self->log->debug('using cache ' . Dumper($cache));
-		foreach my $raw_transform (@{ $transform_args->{transforms} }){
-			$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
-			my $transform = $1;
-			my @transform_args = $2 ? split(/\,/, $2) : ();
+		else {
 			my $plugin_fqdn = 'Transform::' . $transform;
 			foreach my $plugin ($self->plugins()){
 				if (lc($plugin) eq lc($plugin_fqdn)){
 					$self->log->debug('loading plugin ' . $plugin);
 					eval {
+						my $data_to_transform = $transform_args->{results};
+						if ($transform_args->{groupby} and ref($transform_args->{results}) eq 'HASH'){
+							foreach my $groupby (@{ $transform_args->{groupby} }){
+								$data_to_transform = $transform_args->{results}->{$groupby};
+							}
+						}
 						my $plugin_object = $plugin->new(
+							query_string => $args->{query_string},
+							query_meta_params => $args->{query_meta_params},
 							conf => $self->conf, 
 							log => $self->log, 
 							cache => $cache,
-							data => $transform_args->{results}, 
-							args => [ @transform_args ]);
+							data => $data_to_transform, #$transform_args->{results}, 
+							args => [ @given_transform_args ]);
 						$transform_args->{results} = $plugin_object->data;
+						
+						$self->log->debug('transform_args groupby: ' . Dumper($transform_args->{groupby}));
 						if ($plugin_object->groupby){
 							$transform_args->{groupby} = [ $plugin_object->groupby ];
+							$transform_args->{results} = { $plugin_object->groupby => $plugin_object->data };
 						}
+						elsif ($transform_args->{groupby}){
+							foreach my $groupby (@{ $transform_args->{groupby} }){
+								$transform_args->{results} = { $groupby => $plugin_object->data };
+							}
+						}
+						
 						$num_found++;
 					};
 					if ($@){
 						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
-							. Dumper($transform_args->{results}) . ' and args ' . Dumper(\@transform_args) . ': ' . $@);
+							. Dumper($transform_args->{results}) . ' and args ' . Dumper(\@given_transform_args) . ': ' . $@);
 					}
+					last;
 				}
 			}
 		}
-		
-		unless ($num_found){
-			$self->log->error("failed to find transforms " . Dumper($args->{transforms}) . ', only have transforms ' .
-				join(', ', $self->plugins()) . ' ' . Dumper($args));
-			return 0;
+	}
+	
+	unless ($num_found){
+		$self->log->error("failed to find transforms " . Dumper($args->{transforms}) . ', only have transforms ' .
+			join(', ', $self->plugins()) . ' ' . Dumper($args));
+		return 0;
+	}
+
+	# Could come as an array from subsearch, need to make it a hash to be compatible
+	if ($args->{groupby} and ref($transform_args->{results}) eq 'ARRAY'){
+		my $new_transform_results = {};
+		foreach my $groupby (keys %{ $args->{results} }){
+			$new_transform_results->{$groupby} = [];
+			foreach my $row (@{ $transform_args->{results} }){
+				push @{ $new_transform_results->{$groupby} }, { '@groupby' => $row->{$groupby}, '@count' => $row->{count} };
+			}
 		}
+		$transform_args->{results} = $new_transform_results;
+	}				
+				
+	#$self->log->debug('$transform_args->{results}: ' . Dumper($transform_args->{results}));
 		
-		if ($args->{groupby}){
+	if ($args->{groupby}){
+		if (ref($transform_args->{results}) eq 'ARRAY'){
 			foreach my $groupby (keys %{ $args->{results} }){
-				for (my $i = 0; $i < scalar @{ $args->{results}->{$groupby} }; $i++){ 
-					foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
-					next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
-						foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
-							next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
+				my @groupby_results;
+				for (my $i = 0; $i < scalar @{ $transform_args->{results}->{$groupby} }; $i++){
+					foreach my $transform (sort keys %{ $transform_args->{results}->{$groupby}->[$i]->{transforms} }){
+						next unless ref($transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform}) eq 'HASH';
+						foreach my $transform_field (sort keys %{ $transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform} }){
+							next unless ref($transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
 							my $add_on_str = '';
-							foreach my $transform_data_attr (keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
-								$add_on_str .= ' ' . $transform_data_attr . '=' .  $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_data_attr};
+							foreach my $transform_data_attr (keys %{ $transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform}->{$transform_field} }){
+								$add_on_str .= ' ' . $transform_data_attr . '=' .  $transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_data_attr};
 							}
-							$args->{results}->{$groupby}->[$i]->{'@groupby'} .= ' ' . $add_on_str;
-							$self->log->trace('$datum->{@groupby}: ' .  $args->{results}->{$groupby}->[$i]->{'@groupby'});
+							push @groupby_results, { '@groupby' => ($transform_args->{results}->{$groupby}->[$i]->{$groupby} . ' ' . $add_on_str) };
+							#$args->{results}->{$groupby}->[$i]->{'@groupby'} .= ' ' . $add_on_str;
+							#$self->log->trace('$datum->{@groupby}: ' .  $args->{results}->{$groupby}->[$i]->{'@groupby'});
 						}
 					}
 				}
-				
+				$args->{results}->{$groupby} = [ @groupby_results ];
 			}
-			
 		}
-		elsif ($transform_args->{groupby}){
-			$args->{groupby} = $transform_args->{groupby};
-			$args->{results} = {};
-			foreach my $groupby (@{  $transform_args->{groupby} }){
+		#$self->log->debug('args->{results}: ' . Dumper($args->{results}));
+	}
+	elsif ($transform_args->{groupby}){
+		$args->{groupby} = $transform_args->{groupby};
+		$args->{results} = {};
+		foreach my $groupby (@{  $transform_args->{groupby} }){
+			if (ref($transform_args->{results}) eq 'HASH'){
+				$args->{results}->{$groupby} = $transform_args->{results}->{$groupby};
+			}
+			else {
 				$args->{results}->{$groupby} = $transform_args->{results};
 			}
 		}
-		else {
-			# Now go back and insert the transforms
-			my @final;
-			for (my $i = 0; $i < scalar @{ $args->{results} }; $i++){
-				# Some transforms can filter records out entirely by setting the __DELETE__ transform flag
-				next if $transform_args->{results}->[$i]->{transforms}->{__DELETE__};
-				foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
-					next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
-					foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
-						next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
-						foreach my $transform_key (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
-							push @{ $args->{results}->[$i]->{_fields} }, { 
-								field => $transform_field . '.' . $transform_key, 
-								value => $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_key},
-								class => 'Transform.' . $transform,
-							};
-						}
-					}
-				}
-				push @final, $args->{results}->[$i];
-			}
-			$args->{results} = [ @final ];
-		}
-		
-		return 1;
+		#$self->log->trace('set args->{groupby} to ' . Dumper($args->{groupby}));
+		#$self->log->trace('set args->{results} to ' . Dumper($args->{results}));
 	}
 	else {
-		$self->log->error('Invalid args: ' . Dumper($args));
-		return 0;
+		# Now go back and insert the transforms
+		my @final;
+		for (my $i = 0; $i < scalar @{ $transform_args->{results} }; $i++){
+			for (my $j = 0; $j < scalar @{ $args->{results } }; $j++){
+				if ($args->{results}->[$j]->{id} eq $transform_args->{results}->[$i]->{id}){
+					foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
+						next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
+						foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
+							if (ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+								foreach my $transform_key (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
+									my $value = $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_key};
+									if (ref($value) eq 'ARRAY'){
+										foreach my $value_str (@$value){
+											push @{ $args->{results}->[$j]->{_fields} }, { 
+												field => $transform_field . '.' . $transform_key, 
+												value => $value_str, 
+												class => 'Transform.' . $transform,
+											};
+										}
+									}
+									else {			
+										push @{ $args->{results}->[$j]->{_fields} }, { 
+											field => $transform_field . '.' . $transform_key, 
+											value => $value,
+											class => 'Transform.' . $transform,
+										};
+									}
+								}
+							}
+#							elsif (ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'){
+#								foreach my $transform_value (@{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
+#									push @{ $args->{results}->[$j]->{_fields} }, { 
+#										field => $transform . '.' . $transform_field, 
+#										value => $transform_value,
+#										class => 'Transform.' . $transform,
+#									};
+#								}
+#							}
+						}
+					}
+					push @final, $args->{results}->[$j];
+					last;
+				}
+			}
+		}	
+
+		$args->{results} = [ @final ];
 	}
+	return 1;
 }
 
 sub send_to {

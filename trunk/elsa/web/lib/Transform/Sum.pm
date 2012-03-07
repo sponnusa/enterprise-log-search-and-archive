@@ -27,15 +27,27 @@ sub BUILD {
 		foreach my $transform (keys %{ $datum->{transforms} }){
 			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
 			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
-				if (exists $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }){
-					if ($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } =~ /^\d+$/){
-						$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } } += 
-							$datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby };
-					}
-					else {
-						#$self->log->debug('incrementing ' . $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } . ' from ' .
-						#	$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }); 
-						$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }++;
+				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+					if (exists $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }){
+						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }) eq 'ARRAY'){
+							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }){
+								if ($value =~ /^\d+$/){
+									$sums->{ $value } += $value;
+								}
+								else {
+									$sums->{ $value }++;
+								}
+							}
+						}
+						else {
+							if ($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } =~ /^\d+$/){
+								$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } } += 
+									$datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby };
+							}
+							else {
+								$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }++;
+							}
+						}
 					}
 				}
 			}

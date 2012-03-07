@@ -24,29 +24,45 @@ sub BUILD {
 	my $self = shift;
 	$self->log->debug('field: ' . Dumper($self->field));
 	$self->log->debug('regex: ' . Dumper($self->regex));
+	$self->log->debug('begin with data: ' . Dumper($self->data));
 	
 	DATUM_LOOP: foreach my $datum (@{ $self->data }){
 		foreach my $transform (keys %{ $datum->{transforms} }){
 			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
 			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
-				next unless ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
-				foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
-					next unless ($transform_field . '.' . $key) =~ $self->field;
-					#$self->log->trace('passed field ' . $transform_field . '.' . $key);
-					if ($datum->{transforms}->{$transform}->{$transform_field}->{$key} =~ $self->regex){
-						#$self->log->trace('passed value ' . $datum->{transforms}->{$transform}->{$transform_field}->{$key});
-						$datum->{transforms}->{$Name} = '__KEEP__';
-						next DATUM_LOOP;
+				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+					foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
+						next unless ($transform_field . '.' . $key) =~ $self->field;
+						#$self->log->trace('passed field ' . $transform_field . '.' . $key);
+						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
+							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{$key} }){
+								if ($value =~ $self->regex){
+									#$self->log->trace('passed value ' . $value);
+									$datum->{transforms}->{$Name} = '__KEEP__';
+									next DATUM_LOOP;
+								}
+							}
+						}
+						else {
+							if ($datum->{transforms}->{$transform}->{$transform_field}->{$key} =~ $self->regex){
+								#$self->log->trace('passed value ' . $datum->{transforms}->{$transform}->{$transform_field}->{$key});
+								$datum->{transforms}->{$Name} = '__KEEP__';
+								next DATUM_LOOP;
+							}
+						}
 					}
 				}
 			}
 		}
 	}
-	foreach my $datum (@{ $self->data }){
-		unless (exists $datum->{transforms}->{$Name}){
-			$datum->{transforms}->{'__DELETE__'} = 1;
+
+	my $count = scalar @{ $self->data };
+	for (my $i = 0; $i < $count; $i++){
+		unless (exists $self->data->[$i]->{transforms}->{$Name}){
+			splice(@{ $self->data }, $i, 1);
+			$count--;
+			$i--;
 		}
-		delete $datum->{transforms}->{$Name};
 	}
 	
 	$self->log->debug('data: ' . Dumper($self->data));
