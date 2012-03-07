@@ -26,12 +26,7 @@ sub BUILD {
 	foreach my $datum (@{ $self->data }){
 		$datum->{transforms}->{$Name} = {};
 		
-		$self->cv(AnyEvent->condvar);
-#		my $w = AnyEvent->timer (after => 10, cb => sub {
-#	      $self->log->error('TIMEOUT ' . Dumper($datum) . "\n" . Dumper($self->cv));
-#	      $self->cv->send;
-#	   });
-	   
+		$self->cv(AnyEvent->condvar); 
 		$self->cv->begin;
 		
 		foreach my $key (keys %{ $datum }){
@@ -43,16 +38,12 @@ sub BUILD {
 		
 		$self->cv->end;
 		$self->cv->recv;
-#		undef $w;
 		
 		foreach my $key qw(srcip dstip){
 			if ($datum->{transforms}->{$Name}->{$key} and $datum->{transforms}->{$Name}->{$key}->{is_local}){
 				my $deleted = delete $datum->{transforms}->{$Name}->{$key};
 				$datum->{transforms}->{$Name}->{$key}->{customer} = $deleted->{customer};
-#				$self->log->debug('transform: ' . Dumper($datum->{transforms}->{$Name}->{$key}));
-#				foreach my $field (keys %{ $datum->{transforms}->{$Name}->{$key} }){
-#						$datum->{$field} = $datum->{transforms}->{$Name}->{$key}->{$field};
-#				}
+				#$self->log->debug('transform: ' . Dumper($datum->{transforms}->{$Name}->{$key}));
 				last;
 			}
 		}

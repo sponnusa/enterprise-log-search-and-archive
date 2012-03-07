@@ -27,15 +27,35 @@ sub BUILD {
 		foreach my $transform (keys %{ $datum->{transforms} }){
 			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
 			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
-				next unless ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
-				foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
-					next unless $key =~ $self->field;
-					if ($datum->{transforms}->{$transform}->{$transform_field}->{$key} =~ $self->regex){
-						$datum->{transforms}->{'__DELETE__'} = 1;
-						next DATUM_LOOP;
+				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+					foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
+						next unless $key =~ $self->field;
+						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
+							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{$key} }){
+								if ($value =~ $self->regex){
+									$datum->{transforms}->{'__DELETE__'} = 1;
+									next DATUM_LOOP;
+								}	
+							}
+						}
+						else {
+							if ($datum->{transforms}->{$transform}->{$transform_field}->{$key} =~ $self->regex){
+								$datum->{transforms}->{'__DELETE__'} = 1;
+								next DATUM_LOOP;
+							}
+						}
 					}
 				}
 			}
+		}
+	}
+	
+	my $count = scalar @{ $self->data };
+	for (my $i = 0; $i < $count; $i++){
+		if (exists $self->data->[$i]->{transforms}->{__DELETE__}){
+			splice(@{ $self->data }, $i, 1);
+			$count--;
+			$i--;
 		}
 	}
 	

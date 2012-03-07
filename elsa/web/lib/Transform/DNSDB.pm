@@ -32,7 +32,7 @@ sub BUILD {
 		}
 	}
 	else {
-		$keys = { srcip => 1, dstip => 1 };
+		$keys = { srcip => 1, dstip => 1, site => 1 };
 	}	
 	
 	foreach my $datum (@{ $self->data }){
@@ -90,10 +90,10 @@ sub _query {
 				$bailiwick =~ /^[\w\.]+$/;
 				push @$info, $bailiwick;
 			}
-			#$datum->{transforms}->{$Name}->{$key} = [ map { 'hostname' => $_ }, @$info ];
-			$info = { 'hostnames' => join(' ', @$info) };
-			$datum->{transforms}->{$Name}->{$key} = $info;
-			$self->cache->set($url, $info);
+			$datum->{transforms}->{$Name}->{$key} = { hostname => $info };
+			#$info = { 'hostnames' => join(' ', @$info) };
+			#$datum->{transforms}->{$Name}->{$key} = $info;
+			$self->cache->set($url, { hostname => $info });
 			$self->cv->end;
 		};
 	}

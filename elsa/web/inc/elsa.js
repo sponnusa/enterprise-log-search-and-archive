@@ -2805,6 +2805,432 @@ YAHOO.ELSA.getQuerySchedule = function(){
 	YAHOO.ELSA.getQuerySchedule.panel.show();
 };
 
+YAHOO.ELSA.Dashboard = function(p_oData){
+	this.data = p_oData;
+	if (this.data.id){
+		this.id = this.data.id;
+	}
+	else {
+		this.create();
+	}
+	
+	this.create = function(){
+		var callback = {
+			success: function(oResponse){
+				oSelf = oResponse.argument[0];
+				if (oResponse.responseText){
+					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+					if (typeof oReturn === 'object'){
+						if (oReturn['error']){
+							YAHOO.ELSA.Error(oReturn['error']);
+						}
+						else {
+							logger.log('created successfully, return:',oReturn);
+							
+						}
+					}
+					else {
+						logger.log(oReturn);
+						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
+					}
+				}
+				else {
+					YAHOO.ELSA.Error('No response text');
+				}
+			},
+			failure: function(oResponse){
+				YAHOO.ELSA.Error('Error saving result.');
+				return [ false, ''];
+			},
+			argument: [this]
+		};
+		var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/create_dashboard', callback,
+			'args=' + Base64.encode(YAHOO.lang.JSON.stringify(this.data)));
+	}
+	
+	this.set = function(p_sProperty, p_oNewValue, p_fnCallback){
+		this[p_sProperty] = p_oNewValue; // set
+		
+		// sync to server
+		var callback = {
+			success: function(oResponse){
+				oSelf = oResponse.argument[0];
+				if (oResponse.responseText){
+					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+					if (typeof oReturn === 'object'){
+						if (oReturn['error']){
+							YAHOO.ELSA.Error(oReturn['error']);
+							p_fnCallback();
+						}
+						else {
+							logger.log('updated successfully, return:',oReturn);
+							for (var arg in oReturn){
+								p_fnCallback(true, oReturn[arg]);
+							}
+						}
+					}
+					else {
+						logger.log(oReturn);
+						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
+						p_fnCallback();
+					}
+				}
+				else {
+					YAHOO.ELSA.Error('No response text');
+					p_fnCallback();
+				}
+			},
+			failure: function(oResponse){
+				YAHOO.ELSA.Error('Error saving result.');
+				return [ false, ''];
+			},
+			argument: [this]
+		};
+		var str = this[p_sProperty];
+		if (typeof str == 'object'){
+			str = YAHOO.lang.JSON.stringify(str);
+		}
+		var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/update_dashboard', callback,
+			'id=' + this.id + '&' +  p_sProperty + '=' + str);
+	};
+	
+	this.remove = function(){
+		var removeCallback = {
+			success: function(oResponse){
+				oSelf = oResponse.argument[0];
+				if (oResponse.responseText){
+					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+					if (typeof oReturn === 'object'){
+						if (oReturn['error']){
+							YAHOO.ELSA.Error(oReturn['error']);
+						}
+						else {
+							logger.log('deleted query ' + oSelf.id);
+							// find the row in the data table and delete it
+							oSelf.data.dataTable.deleteRow(oSelf.data.recordSetId);
+						}
+					}
+					else {
+						logger.log(oReturn);
+						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
+					}
+				}
+				else {
+					YAHOO.ELSA.Error('No response text');
+				}
+			},
+			failure: function(oResponse){ YAHOO.ELSA.Error('Error deleting scheduled query ' + this.scheduleId); },
+			argument: [this]
+		};
+		var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/delete_dashboard', removeCallback,
+			'id=' + this.id);
+	}
+	
+}
+
+YAHOO.ELSA.getDashboards = function(){
+	
+	var deleteDashboard = function(p_sType, p_aArgs, p_a){
+		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
+		var oData = p_oRecord.getData();
+		oData.dataTable = p_oDataTable;
+		oDashboard = new YAHOO.ELSA.Dashboard(oData);
+		oDashboard.remove();
+	};
+	var formatMenu = function(elLiner, oRecord, oColumn, oData){
+		// Create menu for our menu button
+		var oButtonMenuCfg = [
+			{ 
+				text: 'Delete', 
+				value: 'delete', 
+				onclick:{
+					fn: deleteScheduledQuery,
+					obj: [oRecord,this]
+				}
+			}
+		];
+		
+		var oButton = new YAHOO.widget.Button(
+			{
+				type:'menu', 
+				label:'Actions',
+				menu: oButtonMenuCfg,
+				container: elLiner
+			});
+	};
+	var oDataSource = new YAHOO.util.DataSource('Query/get_dashboards?');
+	oDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
+	oDataSource.responseSchema = {
+		resultsList: 'results',
+		fields: ['id', 'description', 'query', 'meta' ],
+		metaFields: {
+			totalRecords: 'totalRecords',
+			recordsReturned: 'recordsReturned'
+		}
+	};
+	
+	
+	var oPanel = new YAHOO.ELSA.Panel('Dashboards');
+		
+	var makeFrequency = function(p_i){
+		var ret = [];
+		for (var i = 1; i <=7; i++){
+			if (i == p_i){
+				ret.push(1);
+			}
+			else {
+				ret.push(0);
+			}
+		}
+		return ret.join(':');
+	};
+	
+	var aIntervalValues = [
+		{ label:'Year', value: makeFrequency(1) },
+		{ label:'Month', value: makeFrequency(2) },
+		{ label:'Week', value: makeFrequency(3) },
+		{ label:'Day', value: makeFrequency(4) },
+		{ label:'Hour', value: makeFrequency(5) },
+		{ label:'Minute', value: makeFrequency(6) },
+		{ label:'Second', value: makeFrequency(7) }
+	];
+	
+	var formatInterval = function(elLiner, oRecord, oColumn, oData){
+		var aTimeUnits = oData.split(':');
+		
+		for (var i = 0; i < aTimeUnits.length; i++){
+			if (aTimeUnits[i] == 1){
+				elLiner.innerHTML = aIntervalValues[i]['label'];
+				logger.log('setting interval: ' + aIntervalValues[i]['label']);
+			}
+		}
+	};
+	
+	var aEnabledValues = [
+		{ label: 'Disabled', value: 0 },
+		{ label: 'Enabled', value: 1 }
+	];
+	
+	var formatEnabled = function(elLiner, oRecord, oColumn, oData){
+		var i = parseInt(oData);
+		if (!i){
+			i = 0;
+		}
+		elLiner.innerHTML = aEnabledValues[i]['label'];
+	};
+	
+	var formatQuery  = function(elLiner, oRecord, oColumn, oData){
+		try {
+			oParsed = YAHOO.lang.JSON.parse(oData);
+			elLiner.innerHTML = oParsed['query_string'];
+		}
+		catch (e){
+			logger.log(e);
+			elLiner.innerHTML = '';
+		}
+	};
+	
+	var formatConnector = function(elLiner, oRecord, oColumn, oData){
+		logger.log('connector data:', oData);
+		logger.log('column', oColumn);
+		logger.log('record', oRecord);
+		elLiner.innerHTML = oData;
+	}
+	var formatThreshold = function(elLiner, oRecord, oColumn, oData){
+		var p_i = parseInt(oData);
+		logger.log('oData', oData);
+		logger.log('oColumn', oColumn);
+		logger.log('oRecord', oRecord);
+		if (!p_i){
+			elLiner.innerHTML = oData;
+		}
+		else {
+			if (p_i >= 86400){
+				elLiner.innerHTML = (p_i / 86400) + ' days';
+			}
+			else if (p_i >= 3600){
+				elLiner.innerHTML = (p_i / 3600) + ' hours';
+			}
+			else if (p_i >= 60){
+				elLiner.innerHTML = (p_i / 60) + ' minutes';
+			}
+			else {
+				elLiner.innerHTML = p_i + ' seconds';	
+			}
+		}
+	}
+	
+	YAHOO.ELSA.getQuerySchedule.panel.setHeader('Scheduled Queries');
+	
+	var asyncSubmitter = function(p_fnCallback, p_oNewValue){
+		// called in the scope of the editor
+		logger.log('editor this: ', this);
+		logger.log('p_oNewValue:', p_oNewValue);
+		
+		var oRecord = this.getRecord(),
+			oColumn = this.getColumn(),
+			sOldValue = this.value,
+			oDatatable = this.getDataTable();
+		logger.log('column:', oColumn);
+		
+		var oQuery = new YAHOO.ELSA.Query.Scheduled(oRecord);
+		logger.log('oQuery:', oQuery);
+		oQuery.set(oColumn.field, p_oNewValue); //will call the asyncSubmitterCallback
+	};
+	
+	YAHOO.ELSA.getQuerySchedule.asyncSubmitterCallback = function(p_bSuccess, p_oNewValue){
+		logger.log('arguments:', arguments);
+		logger.log('callback p_bSuccess', p_bSuccess);
+		logger.log('callback p_oNewValue:', p_oNewValue);
+		if (p_bSuccess){
+			logger.log('setting ' + YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().getColumn().field + ' to ' + p_oNewValue);
+			YAHOO.ELSA.getQuerySchedule.dataTable.updateCell(
+				YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().getRecord(),
+				YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().getColumn(),
+				p_oNewValue
+			);
+		}
+		YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().unblock();
+		YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().cancel(); //hides box
+	};
+	
+	// Set up editing flow
+	var highlightEditableCell = function(p_oArgs) {
+		var elCell = p_oArgs.target;
+		if(YAHOO.util.Dom.hasClass(elCell, "yui-dt-editable")) {
+			this.highlightCell(elCell);
+		}
+	};
+	
+	YAHOO.ELSA.getQuerySchedule.cellEditorValidatorInt = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
+		return parseInt(p_sInputValue);
+	};
+	
+	YAHOO.ELSA.getQuerySchedule.cellEditorValidatorJSON = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
+		try {
+			return YAHOO.lang.JSON.parse(p_sInputValue);
+		}
+		catch (e){
+			YAHOO.ELSA.Error(e);
+			return p_sCurrentValue;
+		}
+	};
+	
+	YAHOO.ELSA.getQuerySchedule.cellEditorValidatorQuery = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
+		var oQueryParams;
+		try {
+			oQueryParams = YAHOO.lang.JSON.parse(p_sInputValue);
+		}
+		catch (e){
+			YAHOO.ELSA.Error(e);
+			return;
+		}
+		logger.log('query_string:', typeof oQueryParams['query_string']);
+		if (!oQueryParams['query_string'] || typeof oQueryParams['query_meta_params'] != 'object'){
+			YAHOO.ELSA.Error('Need query_string and query_meta_params in obj');
+			return;
+		}
+		return oQueryParams;
+	};
+	
+	YAHOO.ELSA.getQuerySchedule.onEventShowCellEditor = function(p_oArgs){
+		logger.log('p_oArgs', p_oArgs);
+		this.onEventShowCellEditor(p_oArgs);
+		logger.log('YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor():',YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor());
+		// increase the size of the textbox, if we have one
+		if (YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor() && YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().textbox){				
+			YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().textbox.setAttribute('size', 20);
+			YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().textbox.removeAttribute('style');
+			// create key listener for the submit
+			var enterKeyListener = new YAHOO.util.KeyListener(
+					YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().textbox,
+					{ keys: 13 },
+					{ 	fn: function(eName, p_aArgs){
+							var oEvent = p_aArgs[1];
+							// Make sure we don't submit the form
+							YAHOO.util.Event.stopEvent(oEvent);
+							var tgt=(oEvent.target ? oEvent.target : 
+								(oEvent.srcElement ? oEvent.srcElement : null)); 
+							try{
+								tgt.blur();
+							}
+							catch(e){}
+							var op = '=';
+							YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().save();
+						},
+						scope: YAHOO.ELSA,
+						correctScope: false
+					}
+			);
+			enterKeyListener.enable();
+		}
+	}
+	
+	var aConnectors = [
+		{ label:'Save report (no action)', value:'' }
+	];
+	for (var i in YAHOO.ELSA.formParams.schedule_actions){
+		aConnectors.push({
+			label: YAHOO.ELSA.formParams.schedule_actions[i].description,
+			value: YAHOO.ELSA.formParams.schedule_actions[i].action
+		});
+	}
+	
+	YAHOO.ELSA.getQuerySchedule.panel.renderEvent.subscribe(function(){
+		var myColumnDefs = [
+			{ key:'menu', label:'Action', formatter:formatMenu },
+			{ key:"id", label:"ID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
+			{ key:"query", label:"Query", formatter:formatQuery, sortable:true, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter, validator:YAHOO.ELSA.getQuerySchedule.cellEditorValidatorQuery}) },
+			{ key:'frequency', label:'Interval', formatter:formatInterval, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aIntervalValues}) },
+			{ key:'start', label:'Starts On', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true, editor: new YAHOO.widget.DateCellEditor({asyncSubmitter:asyncSubmitter}) },
+			{ key:'end', label:'Ends On', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true, editor: new YAHOO.widget.DateCellEditor({asyncSubmitter:asyncSubmitter}) },
+			{ key:'connector', label:'Action', formatter:formatConnector, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aConnectors}) },
+			{ key:'enabled', label:'Enabled', formatter:formatEnabled, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aEnabledValues}) },
+			{ key:'last_alert', label:'Last Alert', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true },
+			{ key:'alert_threshold', label:'Alert Threshold', formatter:formatThreshold, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter, validator:YAHOO.ELSA.getQuerySchedule.cellEditorValidatorInt}) }
+		];
+		var oPaginator = new YAHOO.widget.Paginator({
+		    pageLinks          : 10,
+	        rowsPerPage        : 5,
+	        rowsPerPageOptions : [5,20],
+	        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
+	        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
+	    });
+	    
+	    var oDataTableCfg = {
+	    	initialRequest: 'startIndex=0&results=5',
+	    	initialLoad: true,
+	    	dynamicData: true,
+	    	sortedBy : {key:"id", dir:YAHOO.widget.DataTable.CLASS_DESC},
+	    	paginator: oPaginator
+	    };
+	    var dtDiv = document.createElement('div');
+		dtDiv.id = 'saved_queries_dt';
+		document.body.appendChild(dtDiv);
+		YAHOO.ELSA.getQuerySchedule.dataTable = '';
+		try {	
+			YAHOO.ELSA.getQuerySchedule.dataTable = new YAHOO.widget.DataTable(dtDiv, 
+				myColumnDefs, YAHOO.ELSA.getQuerySchedule.dataSource, oDataTableCfg );
+			logger.log(YAHOO.ELSA.getQuerySchedule.dataSource);
+			logger.log(YAHOO.ELSA.getQuerySchedule.dataTable);
+			YAHOO.ELSA.getQuerySchedule.dataTable.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
+				oPayload.totalRecords = oResponse.meta.totalRecords;
+				return oPayload;
+			}
+			
+			YAHOO.ELSA.getQuerySchedule.dataTable.subscribe("cellClickEvent", 
+				YAHOO.ELSA.getQuerySchedule.onEventShowCellEditor);
+			YAHOO.ELSA.getQuerySchedule.panel.setBody(dtDiv);
+		}
+		catch (e){
+			logger.log('Error:', e);
+		}
+	});
+	
+	YAHOO.ELSA.getQuerySchedule.panel.render();
+	YAHOO.ELSA.getQuerySchedule.panel.show();
+};
+
 YAHOO.ELSA.formatDateFromUnixTime = function(p_elCell, oRecord, oColumn, p_oData)
 {
 	logger.log('p_oData', p_oData);
