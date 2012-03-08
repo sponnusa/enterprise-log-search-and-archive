@@ -498,7 +498,7 @@ set_web_mysql(){
 	fi
 	
 	# Install mysql schema
-	mysqladmin "-h$MYSQL_HOST" "-P$MYSQL_PORT" -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create elsa_web &&
+	mysqladmin "-h$MYSQL_HOST" "-P$MYSQL_PORT" -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create $MYSQL_DB &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"@\"localhost\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e "GRANT ALL ON $MYSQL_DB.* TO \"$MYSQL_USER\"@\"%\" IDENTIFIED BY \"$MYSQL_PASS\"" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "source $BASE_DIR/elsa/web/conf/meta_db_schema.mysql"
