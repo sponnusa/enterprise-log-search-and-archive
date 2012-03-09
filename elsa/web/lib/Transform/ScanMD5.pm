@@ -36,7 +36,7 @@ sub BUILD {
 			$self->log->debug('$md5s{$md5} ' . Dumper($md5s{$md5}));
 			foreach my $datum (@{ $self->data }){
 				$self->log->debug('datum: ' . Dumper($datum));
-				if (grep { $_ eq $datum->{id} } @{ $md5s{$md5}->{ids} } ){
+				if (grep { $_ eq $datum->{id} } @{ $md5s{$md5}->{ids} } and ref($md5s{$md5}->{results}) ){
 					if ($datum->{transforms}->{$Name}->{scan}){
 						foreach my $av_name (keys %{ $md5s{$md5}->{results} }){
 							$datum->{transforms}->{$Name}->{scan}->{$av_name} = $md5s{$md5}->{results}->{$av_name};
@@ -152,17 +152,17 @@ sub query {
 			if (ref($data) ne 'ARRAY'){
 				$data = [ $data ];
 			}
-			foreach my $datum (@$data){ 
+			foreach my $datum (@$data){
 				if ($datum->{positives}){
 					my $result = { results => {}, ids => $md5s->{ $datum->{resource} } };
 					foreach my $av_vendor (keys %{ $datum->{scans} }){
 						next unless $datum->{scans}->{$av_vendor}->{result};
 						$result->{results}->{$av_vendor} = $datum->{scans}->{$av_vendor}->{result};
 					}
-					$md5s->{ $datum->{resource} } = { ids => [ @resources], results => $result };
+					$md5s->{ $datum->{resource} } = $result;
 				}
 				else {
-					$md5s->{ $datum->{resource} } = { ids => [ @resources], results => undef };
+					$md5s->{ $datum->{resource} } = { ids => [], results => undef };
 				}
 			}
 		}
