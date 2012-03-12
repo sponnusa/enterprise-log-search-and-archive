@@ -580,11 +580,16 @@ YAHOO.ELSA.Query = function(){
 	
 	this.getInputRegex = function(p_oField){
 		if (p_oField['input_validation']){
-			switch (p_oField['input_validation']){
-				case 'IPv4':
-					return new RegExp(/^['"]?\d+\.\d+\.\d+\.\d+['"]?$/);
-				default:
-					YAHOO.ELSA.Error('Unknown input_validation: ' + p_oField['input_validation']);
+			if (p_oField['fqdn_field'] == 'ANY.host'){
+				return new RegExp(/^['"]?[a-zA-Z0-9\-\.]+['"]?$/);
+			}
+			else {
+				switch (p_oField['input_validation']){
+					case 'IPv4':
+						return new RegExp(/^['"]?\d+\.\d+\.\d+\.\d+['"]?$/);
+					default:
+						YAHOO.ELSA.Error('Unknown input_validation: ' + p_oField['input_validation']);
+				}
 			}
 		}
 		else {	
