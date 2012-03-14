@@ -646,8 +646,14 @@ sub get_saved_result {
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid});
 	$row = $sth->fetchrow_hashref;
-
-	return $self->json->decode($row->{data});
+	
+	my $data = $self->json->decode($row->{data});
+	if (ref($data) and ref($data) eq 'ARRAY'){
+		return { results => $data };
+	}
+	else {
+		return $data;
+	}
 }
 
 sub _get_hash {
@@ -4598,7 +4604,7 @@ sub run_archive_queries {
 		$self->_save_results({ 
 			qid => $row->{qid}, 
 			comments => 'archive query',
-			results => $args->{results},
+			results => $args,
 			meta_info => $args->{groupby} ? { groupby => $args->{groupby} } : {},
 		});
 		$self->_batch_notify($args);
