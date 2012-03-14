@@ -312,6 +312,29 @@ The currently shipped plugins are:
 ||filter||regex on field, regex on value||Only passes results that do not match the test||
 ||sum||field||Sums the total found for the given field||
 
+=Subsearches=
+Subsearches are a special kind of transform that is built-in to ELSA.  They are used to take the results of a groupby (report) query and concatenate those results as an OR onto a second query.  For example:
+{{{
+dstip:1.1.1.1 groupby:srcip | subsearch(dstip:2.2.2.2)
+}}}
+This query will find all source IP's that talked to 1.1.1.1 and then find any of those IP's which also talked to 2.2.2.2.  You can mix in other transforms as well:
+{{{
+dstip:1.1.1.1 groupby:srcip | subsearch(dstip:2.2.2.2) | whois | filter(cc,us)
+}}}
+This will find IP's which talked to both 1.1.1.1, 2.2.2.2, and are not in the US.
+
+Subsearches can be chained together arbitrarily:
+{{{
+dstip:1.1.1.1 groupby:srcip | subsearch(dstip:2.2.2.2 groupby:srcip) | subsearch(class:windows groupby:eventid)
+}}}
+This will find all unique Windows event ID's for hosts that talked to both 1.1.1.1 and 2.2.2.2.
+
+To make a field from the source groupby become a specific field in the subsearch, you can pass a second argument:
+{{{
+dstip:1.1.1.1 groupby:srcip | subsearch(dstip:2.2.2.2,srcip)
+}}}
+This will mandate that the subsearch uses srcip:host for each host found in the first query.
+
 =OSSEC Integration=
 ELSA can read logs from OSSEC, here's how:
 Edit /usr/local/syslog-ng/etc/syslog-ng.conf:
