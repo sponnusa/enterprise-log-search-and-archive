@@ -148,6 +148,24 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="Adiscon" id="4_adiscon">
+		<rule provider="ELSA" class='4' id='4'>
+			<pattern>@ESTRING::Event ID@: @NUMBER:i0:@ &lt;Data Name='TargetUserName'&gt;@ESTRING:s0:&lt;@</pattern>
+			<pattern>@ESTRING::Event ID@: @NUMBER:i0:@</pattern>
+			<examples>
+				<example>
+					<test_message program="">Mar  9 22:35:10 IU-MSSG-ADSDC01.domain Event ID: 5157 &lt;Data Name='ProcessID'&gt;180&lt;/Data&gt;&lt;Data Name='Application'&gt;\device\harddiskvolume2\windows\system32\svchost.exe&lt;/Data&gt;&lt;Data Name='Direction'&gt;%14592&lt;/Data&gt;&lt;Data Name='SourceAddress'&gt;10.68.239.128&lt;/Data&gt;&lt;Data Name='SourcePort'&gt;500&lt;/Data&gt;&lt;Data Name='DestAddress'&gt;10.166.175.52&lt;/Data&gt;&lt;Data Name='DestPort'&gt;500&lt;/Data&gt;&lt;Data Name='Protocol'&gt;17&lt;/Data&gt;&lt;Data Name='FilterRTID'&gt;73486&lt;/Data&gt;&lt;Data Name='LayerName'&gt;%14610&lt;/Data&gt;&lt;Data Name='LayerRTID'&gt;44&lt;/Data&gt;&lt;Data Name='RemoteUserID'&gt;S-1-0-0&lt;/Data&gt;&lt;Data Name='RemoteMachineID'&gt;S-1-0-0&lt;/Data&gt;</test_message>
+					<test_value name="i0">5157</test_value>
+				</example>
+				<example>
+					<test_message program="">Mar  9 22:35:10 IU-MSSG-ADSDC04.domain Event ID: 4769 &lt;Data Name='TargetUserName'&gt;user@domain&lt;/Data&gt;&lt;Data Name='TargetDomainName'&gt;domain&lt;/Data&gt;&lt;Data Name='ServiceName'&gt;IU-MSSG-ADSDC04$&lt;/Data&gt;&lt;Data Name='ServiceSid'&gt;S-1-5-21-1085031214-1292428093-527237240-496356&lt;/Data&gt;&lt;Data Name='TicketOptions'&gt;0x40810000&lt;/Data&gt;&lt;Data Name='TicketEncryptionType'&gt;0x12&lt;/Data&gt;&lt;Data Name='IpAddress'&gt;::ffff:10.160.118.87&lt;/Data&gt;&lt;Data Name='IpPort'&gt;54144&lt;/Data&gt;&lt;Data Name='Status'&gt;0x0&lt;/Data&gt;&lt;Data Name='LogonGuid'&gt;{CD66EF59-4404-F056-C1CC-5E12BE6B978E}&lt;/Data&gt;&lt;Data Name='TransmittedServices'&gt;-&lt;/Data&gt;</test_message>
+					<test_value name="i0">4769</test_value>
+					<test_value name="s0">user@domain</test_value>
+				</example>
+					
+			</examples>
+		</rule>
+	</ruleset>
 	<ruleset name="url" id='7'>
 		<pattern>url</pattern>
 		<rules>
