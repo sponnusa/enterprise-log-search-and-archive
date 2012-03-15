@@ -1432,7 +1432,7 @@ YAHOO.ELSA.Query.Scheduled = function(p_oRecord){
 			str = YAHOO.lang.JSON.stringify(str);
 		}
 		var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/update_scheduled_query', callback,
-			'id=' + this.scheduleId + '&' +  p_sProperty + '=' + str);
+			'id=' + this.scheduleId + '&' +  p_sProperty + '=' + encodeURIComponent(str));
 	};
 	
 	this.remove = function(){

@@ -1682,6 +1682,10 @@ sub update_scheduled_query {
 			$self->_error('Invalid arg: ' . $given_arg);
 			return;
 		}
+		
+		# Decode
+		$args->{$given_arg} = uri_unescape($args->{$given_arg});
+		
 		# Chop quotes
 		$args->{$given_arg} =~ s/^['"](.+)['"]$/$1/;
 		
