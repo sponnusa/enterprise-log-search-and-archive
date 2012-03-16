@@ -72,7 +72,7 @@ fi
 centos_get_node_packages(){
 	# Install required packages
 	yum -y update
-	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ mysql-server mysql-libs mysql-devel pkg-config pcre-devel libcap-devel libnet-devel libopenssl-devel glib2-devel
+	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ mysql-server mysql-libs mysql-devel pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel
 	return $?
 }
 
