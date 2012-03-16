@@ -241,6 +241,20 @@ sub BUILD {
 		$Db_timeout = $self->conf->get('db/timeout');
 	}
 	
+	# setup dynamic (config based) plugins
+	if ($self->conf->get('transforms/database')){
+		foreach my $db_lookup_plugin (keys %{ $self->conf->get('transforms/database') }){
+			my $conf = $self->conf->get('transforms/database/' . $db_lookup_plugin);
+			my $alias = delete $conf->{alias};
+			my $metaclass = Moose::Meta::Class->create( 'Transform::' . $alias, 
+				superclasses => [ 'Transform::Database' ],
+			);
+			foreach my $attr (keys %$conf){
+				$metaclass->add_attribute($attr => (is => 'ro', default => sub { $conf->{$attr} } ) );
+			}
+		}
+	}
+	
 	# init plugins
 	$self->plugins();
 	
@@ -2489,7 +2503,7 @@ sub _sphinx_query {
 				ROW_LOOP: foreach my $row (@$rows){
 					foreach my $table_hash (@{ $args->{node_info}->{nodes}->{$node}->{tables}->{tables} }){
 						next unless $table_hash->{table_type} eq 'index';
-						if ($table_hash->{min_id} >= $row->{id} or $row->{id} <= $table_hash->{max_id}){
+						if ($table_hash->{min_id} <= $row->{id} and $row->{id} <= $table_hash->{max_id}){
 							$tables{ $table_hash->{table_name} } ||= [];
 							push @{ $tables{ $table_hash->{table_name} } }, $row->{id};
 							next ROW_LOOP;
@@ -2529,6 +2543,10 @@ sub _sphinx_query {
 								$self->add_warning($errstr);
 								$cv->end;
 								return;
+							}
+							elsif (not scalar @$rows){
+								$self->log->error('Did not get rows though we had Sphinx results! tables: ' 
+									. Dumper(\%tables)); 
 							}
 							$self->log->trace('node '. $node . ' got db rows: ' . (scalar @$rows));
 							foreach my $row (@$rows){
@@ -4006,7 +4024,7 @@ sub transform {
 	my $transform_args = { transforms => $args->{transforms}, results => [] };
 	if (ref($args->{results}) eq 'ARRAY'){
 		foreach my $row (@{ $args->{results} }){
-			my $condensed_hash = { id => $row->{id}, msg => $row->{msg} };
+			my $condensed_hash = { id => $row->{id}, msg => $row->{msg}, timestamp => UnixDate(ParseDate($row->{timestamp}), '%s') };
 			foreach my $field_hash (@{ $row->{_fields} }){
 				$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
 			}
@@ -4121,7 +4139,7 @@ sub transform {
 				if (ref($args->{results}) eq 'ARRAY'){
 					$transform_args->{results} = [];
 					foreach my $row (@{ $args->{results} }){
-						my $condensed_hash = { id => $row->{id}, msg => $row->{msg} };
+						my $condensed_hash = { id => $row->{id}, msg => $row->{msg}, timestamp => UnixDate(ParseDate($row->{timestamp}), '%s') };
 						foreach my $field_hash (@{ $row->{_fields} }){
 							$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
 						}
