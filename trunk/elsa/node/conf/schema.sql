@@ -39,6 +39,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(26, "BARRACUDA_SCAN", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(27, "BARRACUDA_RECV", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(28, "BARRACUDA_SEND", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(30, "EXCHANGE", 0);*/
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -133,6 +134,8 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("action_code", "int
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("reason_code", "int", "NUMBER");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("reason_extra", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("response", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("hub_server", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("mailbox_server", "string", "QSTRING");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -341,6 +344,13 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SEND"), (SELECT id FROM fields WHERE field="srcip"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SEND"), (SELECT id FROM fields WHERE field="action_code"), 6);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BARRACUDA_SEND"), (SELECT id FROM fields WHERE field="response"), 11);*/
+
+/*INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="EXCHANGE"), (SELECT id FROM fields WHERE field="hub_server"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="EXCHANGE"), (SELECT id FROM fields WHERE field="mailbox_server"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="EXCHANGE"), (SELECT id FROM fields WHERE field="from"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="EXCHANGE"), (SELECT id FROM fields WHERE field="to"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="EXCHANGE"), (SELECT id FROM fields WHERE field="subject"), 15);*/
+
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,

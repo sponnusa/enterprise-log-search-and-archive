@@ -753,4 +753,24 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name='Microsoft Exchange via Epilog' id='30'>
+		<patterns>exchmtlog</patterns>
+		<rules>
+			<rule provider='ELSA' class='30' id='30'>
+				<patterns>
+					<pattern>@ESTRING::,@@ESTRING::,@@ESTRING:s0:,@@ESTRING::,@@ESTRING:s1:,@@ESTRING::,@@ESTRING::,@STOREDRIVER,DELIVER,@NUMBER::@,@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s4:,@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="exchmtlog">2012-03-16T17:13:16.475Z,,servername,,casservername,,,STOREDRIVER,DELIVER,23065261,sender@some.org,recipient@other.org,,156558,1,,,TEST MESSAGE SUBJECT,sender@some.org,sender@some.org,2012-03-16T17:13:16.147Z</test_message>
+						<test_value name="s0">servername</test_value>
+						<test_value name="s1">casservername</test_value>
+						<test_value name="s2">sender@some.org</test_value>
+						<test_value name="s3">recipient@other.org</test_value>
+						<test_value name="s4">TEST MESSAGE SUBJECT</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
