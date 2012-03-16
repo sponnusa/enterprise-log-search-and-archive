@@ -250,7 +250,7 @@ sub BUILD {
 				superclasses => [ 'Transform::Database' ],
 			);
 			foreach my $attr (keys %$conf){
-				$metaclass->add_attribute($attr => (is => 'ro', default => sub { $conf->{$attr} } ) );
+				$metaclass->add_attribute($attr => (is => 'rw', default => sub { $conf->{$attr} } ) );
 			}
 		}
 	}
@@ -4204,6 +4204,7 @@ sub transform {
 					if ($@){
 						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
 							. Dumper($transform_args->{results}) . ' and args ' . Dumper(\@given_transform_args) . ': ' . $@);
+						$self->add_warning($@);
 					}
 					last;
 				}

@@ -30,6 +30,9 @@ sub BUILD {
 	
 	my $dbh = DBI->connect($self->dsn, $self->username, $self->password, { RaiseError => 1 });
 	my ($query, $sth);
+	if (scalar @{ $self->args }){
+		$self->fields($self->args);
+	}
 	$query = sprintf($self->query_template, join(', ', @{ $self->fields }));
 	$self->log->debug('query: ' . $query);
 	$sth = $dbh->prepare($query);
@@ -55,7 +58,7 @@ sub BUILD {
 			foreach my $row (@rows){
 				#$self->log->debug('row: ' . Dumper($row));
 				foreach my $key (keys %$row){
-					$datum->{transforms}->{$Name}->{$field}->{$key} = $row->{$key};
+					$datum->{transforms}->{$Name}->{$key} = $row->{$key};
 				}
 			} 
 		}
