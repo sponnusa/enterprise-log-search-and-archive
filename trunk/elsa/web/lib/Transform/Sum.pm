@@ -50,6 +50,17 @@ sub BUILD {
 						}
 					}
 				}
+				elsif (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY' 
+					and $transform_field eq $self->groupby){
+					foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field} }){
+						if ($value =~ /^\d+$/){
+							$sums->{ $value } += $value;
+						}
+						else {
+							$sums->{ $value }++;
+						}
+					}
+				}
 			}
 		}
 		if (exists $datum->{ $self->groupby } ){

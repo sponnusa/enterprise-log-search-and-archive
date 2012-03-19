@@ -23,11 +23,6 @@ has 'fields' => (is => 'rw', isa => 'ArrayRef', required => 1);
 sub BUILD {
 	my $self = shift;
 	
-	my @fields_for_placeholders;
-	foreach my $item (@{ $self->query_placeholders }){
-		push @fields_for_placeholders, $item;
-	}
-	
 	my $dbh = DBI->connect($self->dsn, $self->username, $self->password, { RaiseError => 1 });
 	my ($query, $sth);
 	if (scalar @{ $self->args }){
@@ -38,12 +33,12 @@ sub BUILD {
 	$sth = $dbh->prepare($query);
 		
 	foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = {};
+		$datum->{transforms}->{ $self->name } = {};
 		
 		my @placeholders;
-		foreach my $key (@fields_for_placeholders){
-			if ($datum->{$key}){
-				push @placeholders, $datum->{$key};
+		foreach my $col (@{ $self->query_placeholders }){
+			if ($datum->{$col}){
+				push @placeholders, $datum->{$col};
 			}
 		}
 		#$self->log->debug('placeholders: ' . Dumper(\@placeholders));
@@ -54,11 +49,13 @@ sub BUILD {
 		}
 		
 		foreach my $field (@{ $self->fields }){
-			$datum->{transforms}->{$Name}->{$field} = {};
+			$datum->{transforms}->{ $self->name }->{$field} = [];
 			foreach my $row (@rows){
 				#$self->log->debug('row: ' . Dumper($row));
 				foreach my $key (keys %$row){
-					$datum->{transforms}->{$Name}->{$key} = $row->{$key};
+					next unless $key eq $field and defined $row->{$key};
+					#$self->log->debug('got new transform field: ' . $key . ' with value ' . $row->{$key});
+					push @{ $datum->{transforms}->{ $self->name }->{$field} }, $row->{$key};
 				}
 			} 
 		}
