@@ -52,6 +52,15 @@ sub BUILD {
 						}
 					}
 				}
+				elsif (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'
+					and $transform_field =~ $self->field){
+					foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field} }){
+						if ($value =~ $self->regex){
+							$datum->{transforms}->{$Name}->{'__KEEP__'} = 1;
+							next DATUM_LOOP;
+						}	
+					}
+				}
 			}
 		}
 	}

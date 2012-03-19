@@ -252,6 +252,8 @@ sub BUILD {
 			foreach my $attr (keys %$conf){
 				$metaclass->add_attribute($attr => (is => 'rw', default => sub { $conf->{$attr} } ) );
 			}
+			# Set name
+			$metaclass->add_attribute('name' => (is => 'rw', default => $db_lookup_plugin ) );
 		}
 	}
 	
@@ -4239,23 +4241,33 @@ sub transform {
 			my @groupby_results;
 			if (ref($transform_args->{results}) eq 'HASH'){
 				for (my $i = 0; $i < scalar @{ $transform_args->{results}->{$groupby} }; $i++){
-					if (exists $transform_args->{results}->{$groupby}->[$i]->{transforms}){
-						foreach my $transform (sort keys %{ $transform_args->{results}->{$groupby}->[$i]->{transforms} }){
-							next unless ref($transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform}) eq 'HASH';
-							foreach my $transform_field (sort keys %{ $transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform} }){
-								next unless ref($transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH';
-								my $add_on_str = '';
-								foreach my $transform_data_attr (keys %{ $transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform}->{$transform_field} }){
-									$add_on_str .= ' ' . $transform_data_attr . '=' .  $transform_args->{results}->{$groupby}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_data_attr};
+					my $transform_row = $transform_args->{results}->{$groupby}->[$i];
+					if (exists $transform_row->{transforms}){
+						foreach my $transform (sort keys %{ $transform_row->{transforms} }){
+							next unless ref($transform_row->{transforms}->{$transform}) eq 'HASH';
+							my $arr_add_on_str = '';
+							foreach my $transform_field (sort keys %{ $transform_row->{transforms}->{$transform} }){
+								if (ref($transform_row->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+									my $add_on_str = '';
+									foreach my $transform_data_attr (keys %{ $transform_row->{transforms}->{$transform}->{$transform_field} }){
+										$add_on_str .= ' ' . $transform_data_attr . '=' .  $transform_row->{transforms}->{$transform}->{$transform_field}->{$transform_data_attr};
+									}
+									push @groupby_results, { '@count' => -1, '@groupby' => ($transform_row->{$groupby} . ' ' . $add_on_str) };
 								}
-								push @groupby_results, { '@count' => -1, '@groupby' => ($transform_args->{results}->{$groupby}->[$i]->{$groupby} . ' ' . $add_on_str) };
-								#$args->{results}->{$groupby}->[$i]->{'@groupby'} .= ' ' . $add_on_str;
-								#$self->log->trace('$datum->{@groupby}: ' .  $args->{results}->{$groupby}->[$i]->{'@groupby'});
+								# If it's an array, we want to concatenate all fields together.
+								elsif (ref($transform_row->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'){
+									foreach my $transform_value (@{ $transform_row->{transforms}->{$transform}->{$transform_field} }){
+										$arr_add_on_str .= ' ' . $transform_field . '=' .  $transform_value;
+									}
+								}
+							}
+							if ($arr_add_on_str ne ''){
+								push @groupby_results, { '@count' => -1, '@groupby' => ($transform_row->{$groupby} . ' ' . $arr_add_on_str) };
 							}
 						}
 					}
 					else {
-						push @groupby_results, $transform_args->{results}->{$groupby}->[$i];
+						push @groupby_results, $transform_row;
 					}
 				}
 			}
@@ -4285,17 +4297,19 @@ sub transform {
 		# Now go back and insert the transforms
 		my @final;
 		for (my $i = 0; $i < scalar @{ $transform_args->{results} }; $i++){
+			my $transform_row = $transform_args->{results}->[$i];
 			for (my $j = 0; $j < scalar @{ $args->{results } }; $j++){
-				if ($args->{results}->[$j]->{id} eq $transform_args->{results}->[$i]->{id}){
-					foreach my $transform (sort keys %{ $transform_args->{results}->[$i]->{transforms} }){
-						next unless ref($transform_args->{results}->[$i]->{transforms}->{$transform}) eq 'HASH';
-						foreach my $transform_field (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform} }){
-							if (ref($transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
-								foreach my $transform_key (sort keys %{ $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field} }){
-									my $value = $transform_args->{results}->[$i]->{transforms}->{$transform}->{$transform_field}->{$transform_key};
+				my $results_row = $args->{results}->[$j];
+				if ($results_row->{id} eq $transform_row->{id}){
+					foreach my $transform (sort keys %{ $transform_row->{transforms} }){
+						next unless ref($transform_row->{transforms}->{$transform}) eq 'HASH';
+						foreach my $transform_field (sort keys %{ $transform_row->{transforms}->{$transform} }){
+							if (ref($transform_row->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+								foreach my $transform_key (sort keys %{ $transform_row->{transforms}->{$transform}->{$transform_field} }){
+									my $value = $transform_row->{transforms}->{$transform}->{$transform_field}->{$transform_key};
 									if (ref($value) eq 'ARRAY'){
 										foreach my $value_str (@$value){
-											push @{ $args->{results}->[$j]->{_fields} }, { 
+											push @{ $results_row->{_fields} }, { 
 												field => $transform_field . '.' . $transform_key, 
 												value => $value_str, 
 												class => 'Transform.' . $transform,
@@ -4303,7 +4317,7 @@ sub transform {
 										}
 									}
 									else {			
-										push @{ $args->{results}->[$j]->{_fields} }, { 
+										push @{ $results_row->{_fields} }, { 
 											field => $transform_field . '.' . $transform_key, 
 											value => $value,
 											class => 'Transform.' . $transform,
@@ -4311,9 +4325,18 @@ sub transform {
 									}
 								}
 							}
+							elsif (ref($transform_row->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'){
+								foreach my $value (@{ $transform_row->{transforms}->{$transform}->{$transform_field} }){
+									push @{ $results_row->{_fields} }, { 
+											field => $transform . '.' . $transform_field, 
+											value => $value,
+											class => 'Transform.' . $transform,
+										};
+								}
+							}
 						}
 					}
-					push @final, $args->{results}->[$j];
+					push @final, $results_row;
 					last;
 				}
 			}
