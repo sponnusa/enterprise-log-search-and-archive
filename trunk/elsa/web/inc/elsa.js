@@ -431,7 +431,14 @@ YAHOO.ELSA.Query = function(){
 		logger.log('oEl', oEl);
 		var oQ = YAHOO.util.Dom.get('q');
 		if (p_sField){
-			if (this.validateTerm(p_sField, p_sValue)){
+			if (p_sField.match(/^Transform\./)){
+				var aMatches = p_sField.match(/^Transform\.([^\.]+)\.([^\.]+)\.([^\.]+)/);
+				var sTransform = aMatches[1];
+				var sLogField = aMatches[2];
+				var sTransformField = aMatches[3];
+				oQ.value += ' | grep(' + sTransformField + ',' + p_sValue + ')';
+			}
+			else if (this.validateTerm(p_sField, p_sValue)){
 				var aField = p_sField.split(/\./);
 				var sClass = aField[0];
 				var sField = aField[1];
@@ -535,6 +542,7 @@ YAHOO.ELSA.Query = function(){
 	
 	this.validateTerm = function(p_sFQDNField, p_sValue){
 		logger.log('validating ' + p_sFQDNField + ':' + p_sValue);
+		
 		var oField;
 		var oMetas = {
 			'class': 1,
