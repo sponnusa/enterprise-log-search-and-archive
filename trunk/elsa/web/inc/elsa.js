@@ -3301,7 +3301,6 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	var oPcapWindow = window.open(YAHOO.ELSA.pcapUrl + '/?' + sQuery);
 }
 
-
 YAHOO.ELSA.old_getPcap = function(p_sType, p_aArgs, p_oRecord){
 	logger.log('p_oRecord', p_oRecord);
 	
@@ -3555,7 +3554,7 @@ YAHOO.ELSA.sendFromMenu = function(p_sType, p_aArgs, p_a){
 		},
 		argument: [this]
 	};
-	var sPayload = YAHOO.lang.JSON.stringify({results:[p_oRecord.getData()], connectors:[p_sPlugin], query:YAHOO.ELSA.currentQuery.toObject()});
+	var sPayload = YAHOO.lang.JSON.stringify({results:{results:[p_oRecord.getData()]}, connectors:[p_sPlugin], query:YAHOO.ELSA.currentQuery.toObject()});
 	sPayload.replace(/;/, '', 'g');
 	logger.log('sPayload: ' + sPayload);
 	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + Base64.encode(sPayload));

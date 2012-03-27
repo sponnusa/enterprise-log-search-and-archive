@@ -4192,12 +4192,14 @@ sub transform {
 						
 						$self->log->debug('transform_args groupby: ' . Dumper($transform_args->{groupby}));
 						if ($plugin_object->groupby){
-							$transform_args->{groupby} = [ $plugin_object->groupby ];
+							$args->{groupby} = $transform_args->{groupby} = [ $plugin_object->groupby ];
 							$transform_args->{results} = { $plugin_object->groupby => $plugin_object->data };
+							$self->log->debug('set new groupby: ' . Dumper($transform_args->{groupby}));
 						}
 						elsif ($transform_args->{groupby}){
+							$transform_args->{results} = {};
 							foreach my $groupby (@{ $transform_args->{groupby} }){
-								$transform_args->{results} = { $groupby => $plugin_object->data };
+								 $transform_args->{results}->{$groupby} = $plugin_object->data;
 							}
 						}
 						
