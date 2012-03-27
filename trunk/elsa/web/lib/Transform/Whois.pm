@@ -7,6 +7,7 @@ use Socket;
 use JSON;
 extends 'Transform';
 our $Name = 'Whois';
+our $Timeout = 3; # We're going to need to fail quickly
 # Whois transform plugin
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 has 'cache' => (is => 'rw', isa => 'Object', required => 1);
@@ -131,7 +132,7 @@ sub _lookup {
 	
 	$self->log->debug( 'getting ' . $ip_url );
 	$self->cache_stats->{misses}++;
-	http_request GET => $ip_url, headers => { Accept => 'application/json' }, sub {
+	http_request GET => $ip_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		my $whois;
 		eval {
@@ -236,7 +237,7 @@ sub _lookup_ip_ripe {
 	$self->cv->begin;
 	$self->log->trace('Getting ' . $ripe_url);
 	$self->cache_stats->{misses}++;
-	http_request GET => $ripe_url, headers => { Accept => 'application/json' }, sub {
+	http_request GET => $ripe_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		my $whois;
 		eval {
@@ -306,12 +307,14 @@ sub _lookup_org {
 		)){
 		$self->log->trace('Using cached url ' . $org_url . ' with key ' . $key);
 		$self->cache_stats->{hits}++;
-		return $cached;
+		foreach my $key (keys %$cached){
+			$ret->{$key} = $cached->{$key};
+		}
 	}
 	
 	$self->cv->begin;
 	$self->log->trace( 'getting ' . $org_url );
-	http_request GET => $org_url, headers => { Accept => 'application/json' }, sub {
+	http_request GET => $org_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		$self->log->trace('got body: ' . Dumper($body) . 'hdr: ' . Dumper($hdr));
 		eval {
