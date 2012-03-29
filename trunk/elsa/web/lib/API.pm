@@ -3124,7 +3124,8 @@ sub _parse_query_string {
 	
 	$self->log->debug('query_term_count: ' . $query_term_count . ', num_added_terms: ' . $num_added_terms);
 	
-	unless ($query_term_count and $query_term_count > $num_added_terms){
+	#unless ($query_term_count and $query_term_count > $num_added_terms){
+	unless ($query_term_count){
 		die 'All query terms were stripped based on permissions or they were too common';
 	}
 	
@@ -3598,7 +3599,7 @@ sub _is_permitted {
 		return 1;
 	}
 	else {
-		foreach my $id (keys %{ $args->{meta_params}->{permissions}->{$attr} }){
+		foreach my $id (keys %{ $args->{user_info}->{permissions}->{$attr} }){
 			if ($id =~ /^(\d+)\-(\d+)$/){
 				my ($min, $max) = ($1, $2);
 				if ($min <= $attr_id and $attr_id <= $max){
@@ -3606,6 +3607,7 @@ sub _is_permitted {
 				}
 			}
 		}
+		$self->log->debug('failed when checking attr ' . $attr . ' attr_id ' . $attr_id . ' with ' . Dumper($args->{user_info}->{permissions}->{$attr}));
 		return 0;
 	}
 }
