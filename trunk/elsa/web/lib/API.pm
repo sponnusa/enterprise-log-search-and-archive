@@ -4314,7 +4314,25 @@ sub transform {
 					foreach my $transform (sort keys %{ $transform_row->{transforms} }){
 						next unless ref($transform_row->{transforms}->{$transform}) eq 'HASH';
 						foreach my $transform_field (sort keys %{ $transform_row->{transforms}->{$transform} }){
-							if (ref($transform_row->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+							if ($transform_field eq '__REPLACE__'){
+								foreach my $transform_key (sort keys %{ $transform_row->{transforms}->{$transform}->{$transform_field} }){
+									my $value = $transform_row->{$transform_key};
+									# Perform replacement on fields
+									foreach my $row_field_hash (@{ $results_row->{_fields} }){
+										if ($row_field_hash->{field} eq $transform_key){
+											$row_field_hash->{value} = $value;
+										}
+									}
+									# Perform replacement on attrs
+									foreach my $row_key (keys %{ $results_row }){
+										next if ref($results_row->{$row_key});
+										if ($row_key eq $transform_key){
+											$results_row->{$row_key} = $value;
+										}
+									}
+								}
+							}
+							elsif (ref($transform_row->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
 								foreach my $transform_key (sort keys %{ $transform_row->{transforms}->{$transform}->{$transform_field} }){
 									my $value = $transform_row->{transforms}->{$transform}->{$transform_field}->{$transform_key};
 									if (ref($value) eq 'ARRAY'){

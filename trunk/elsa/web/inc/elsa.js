@@ -3557,7 +3557,7 @@ YAHOO.ELSA.sendFromMenu = function(p_sType, p_aArgs, p_a){
 	var sPayload = YAHOO.lang.JSON.stringify({results:{results:[p_oRecord.getData()]}, connectors:[p_sPlugin], query:YAHOO.ELSA.currentQuery.toObject()});
 	sPayload.replace(/;/, '', 'g');
 	logger.log('sPayload: ' + sPayload);
-	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + Base64.encode(sPayload));
+	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + encodeURIComponent(Base64.encode(sPayload)));
 }
 
 YAHOO.ELSA.ip2long = function(ip) {
