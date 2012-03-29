@@ -1168,6 +1168,12 @@ sub _get_sphinx_nodes {
 		if ($node_conf->{$node}->{db}){
 			$db_name = $node_conf->{$node}->{db};
 		}
+		
+		my $mysql_port = 3306;
+		if ($node_conf->{$node}->{port}){
+			$mysql_port = $node_conf->{$node}->{port};
+		}
+				
 		my $sphinx_port = 3307;
 		if ($node_conf->{$node}->{sphinx_port}){
 			$sphinx_port = $node_conf->{$node}->{sphinx_port};
@@ -1175,7 +1181,7 @@ sub _get_sphinx_nodes {
 		$nodes{$node} = { db => $db_name };
 								
 		$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
-			'dbi:mysql:database=' . $db_name . ';host=' . $node, 
+			'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
 			$node_conf->{$node}->{username}, 
 			$node_conf->{$node}->{password}, 
 			{
