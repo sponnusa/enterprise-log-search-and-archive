@@ -1130,14 +1130,19 @@ sub _get_nodes {
 	my %nodes;
 	my $node_conf = $self->conf->get('nodes');
 	
+	my $mysql_port = 3306;
 	my $db_name = 'syslog';
 	foreach my $node (keys %$node_conf){
+		if ($node_conf->{$node}->{port}){
+			$mysql_port = $node_conf->{$node}->{port};
+		}
+		
 		if ($node_conf->{$node}->{db}){
 			$db_name = $node_conf->{$node}->{db};
 		}
 		$nodes{$node} = { db => $db_name };
 		$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
-			'dbi:mysql:database=' . $db_name . ';host=' . $node, 
+			'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
 			$node_conf->{$node}->{username}, 
 			$node_conf->{$node}->{password}, 
 			{
