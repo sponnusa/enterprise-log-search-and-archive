@@ -162,6 +162,9 @@ sub _create_sphinx_conf {
 sub _process_batch {
 	my $filename = shift;
 	
+	# Grab a fresh copy of class info in case there has been an update
+	$Class_info = _get_class_info();
+	
 	my $args = { run => 1 };
 	
 	my $fh = \*STDIN;
