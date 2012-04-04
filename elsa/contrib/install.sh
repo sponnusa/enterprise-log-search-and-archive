@@ -409,6 +409,22 @@ test_elsa(){
 	return $?
 }
 
+set_logrotate(){
+	if [ -d /etc/logrotate.d ]; then
+		echo "$DATA_DIR/elsa/log/*log {
+	size 100M
+	create 640 $WEB_USER root
+	rotate 4
+	missingok
+	notifempty
+	compress
+	maxage 60
+}" > /etc/logrotate.d/elsa
+	else
+		echo "WARNING: No /etc/logrotate.d directory not found, not installing ELSA utility log rotation"
+	fi
+}
+
 suse_get_web_packages(){
 	# Install required packages
 	zypper -n update &&
@@ -641,7 +657,7 @@ exec_func(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
@@ -653,7 +669,7 @@ if [ "$INSTALL" = "node" ]; then
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
