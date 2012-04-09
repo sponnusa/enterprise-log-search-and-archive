@@ -2736,8 +2736,8 @@ sub _get_field {
 	if ($field){
 		# We were given an FQDN, so there is only one class this can be
 		foreach my $field_hash (@{ $args->{node_info}->{fields} }){
-			if ($field_hash->{fqdn_field} eq $raw_field){
-				return { $args->{node_info}->{classes}->{$class} => $field_hash };
+			if (lc($field_hash->{fqdn_field}) eq lc($raw_field)){
+				return { $args->{node_info}->{classes}->{uc($class)} => $field_hash };
 			}
 		}
 	} 
@@ -2778,6 +2778,7 @@ sub _parse_query_string {
 	$args->{excluded_classes} = {};
 	$args->{distinct_classes} = {};
 	$args->{permitted_classes} = {};
+	$args->{groupby_classes} = {};
 	
 	# Attach the query filters for this user from permissions
 	my $filtered_raw_query = $raw_query;
@@ -2895,6 +2896,20 @@ sub _parse_query_string {
 	
 	# Adjust classes if necessary
 	$self->log->trace('given_classes before adjustments: ' . Dumper($args->{given_classes}));
+	
+	# Verify that all asked for classes are available in the groupby
+	if (scalar keys %{ $args->{given_classes} } and scalar keys %{ $args->{groupby_classes} } ){
+		foreach my $class_id (keys %{ $args->{given_classes} }){
+			unless ($args->{groupby_classes}->{$class_id}){
+				$self->log->trace('groupby class ' . $class_id . ' is a requested class_id');
+			}
+		}
+	}
+	# Otherwise we're just using the groupby classes
+	elsif (scalar keys %{ $args->{groupby_classes} }){
+		$args->{given_classes} = $args->{groupby_classes};
+	}
+	
 	if (scalar keys %{ $args->{given_classes} } == 1 and $args->{given_classes}->{0}){
 		$args->{distinct_classes} = $args->{permitted_classes};
 	}
@@ -2973,7 +2988,7 @@ sub _parse_query_string {
 				and scalar keys %{ $args->{attr_terms}->{or}->{0}->{$attr} })){
 				foreach my $id (keys %{ $args->{user_info}->{permissions}->{$attr} }){
 					$self->log->trace("Adding id $id to $attr based on permissions");
-					push @{ $args->{attr_terms}->{and}->{ $args->{user_info}->{permissions}->{$attr}->{$id} }->{0}->{$attr} }, $id;
+					push @{ $args->{attr_terms}->{and}->{0}->{ $args->{user_info}->{permissions}->{$attr}->{$id} }->{0}->{$attr} }, $id;
 					$num_added_terms++;
 				}
 			}
@@ -3009,9 +3024,9 @@ sub _parse_query_string {
 		my %deletion_candidates;
 		foreach my $op (keys %{ $args->{attr_terms}->{$boolean} }){
 			foreach my $field_name (keys %{ $args->{attr_terms}->{$boolean}->{$op} }){
-				foreach my $class_id (keys %{ $args->{attr_terms}->{$boolean}->{$field_name} }){
-					foreach my $attr (keys %{ $args->{attr_terms}->{$boolean}->{$field_name}->{$class_id} }){
-						foreach my $raw_value (@{ $args->{attr_terms}->{$boolean}->{$field_name}->{$class_id}->{$attr} }){
+				foreach my $class_id (keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+					foreach my $attr (keys %{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
+						foreach my $raw_value (@{ $args->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
 							my $col = $attr;
 							$col =~ s/^attr\_//;
 							my $resolved_value = $self->_resolve_value($args, $class_id, $raw_value, $Field_to_order->{$col});
@@ -3186,7 +3201,7 @@ sub _parse_query_term {
 	my $given_operator = shift;
 	
 	$self->log->debug('terms: ' . Dumper($terms));
-			
+	
 	foreach my $operator (keys %{$terms}){
 		my $effective_operator = $operator;
 		if ($given_operator){
@@ -3258,11 +3273,12 @@ sub _parse_query_term {
 			}
 			elsif ($term_hash->{field} eq 'groupby'){
 				my $field_infos = $self->_get_field($args, $term_hash->{value});
+				#$self->log->trace('$field_infos ' . Dumper($field_infos));
 				if ($field_infos or $term_hash->{value} eq 'node'){
 					$args->{groupby} ||= [];
 					push @{ $args->{groupby} }, lc($term_hash->{value});
 					foreach my $class_id (keys %$field_infos){
-						$args->{given_classes}->{$class_id} = 1;
+						$args->{groupby_classes}->{$class_id} = 1;
 					}
 					$self->log->trace("Set groupby " . Dumper($args->{groupby}));
 				}
@@ -3350,7 +3366,7 @@ sub _parse_query_term {
 #					$values->{fields}->{0}->{host} = unpack('N*', inet_aton($term_hash->{value}));
 #				}
 			
-				
+				# Set fields for searching
 				if ($term_hash->{op} !~ /[\<\>]/){ # ignore ranges
 					foreach my $class_id (keys %{ $values->{fields} }){
 						foreach my $real_field (keys %{ $values->{fields}->{$class_id} }){
@@ -3360,8 +3376,12 @@ sub _parse_query_term {
 						}	
 					}
 				}
+				
+				# Set attributes for searching
 				foreach my $class_id (keys %{ $values->{attrs} }){
-					if ($term_hash->{op} !~ /[\<\>]/ and not exists $args->{field_terms}->{$boolean}->{$class_id}){
+					# If not a range search, not already a field term, and not a class 0 attr, add text to any field search
+					if ($term_hash->{op} !~ /[\<\>]/ and not exists $args->{field_terms}->{$boolean}->{$class_id}
+						and lc($term_hash->{field}) ne 'country_code'){ # one-off for weird way country_code works
 						push @{ $args->{any_field_terms}->{$boolean} }, $term_hash->{value} if $class_id; #skip class 0
 					}
 					my $field_info = $self->_get_field($args, $term_hash->{field})->{$class_id};
@@ -3524,7 +3544,7 @@ sub _normalize_value {
 	elsif ($args->{node_info}->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
 		and $args->{node_info}->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
 		$self->log->trace("Converting $value to country_code");
-		return join('', unpack('c*', pack('A*', $value)));
+		return join('', unpack('c*', pack('A*', uc($value))));
 	}
 	elsif ($Field_order_to_attr->{$field_order} eq 'program_id'){
 		$self->log->trace("Converting $value to attr");
@@ -4257,7 +4277,7 @@ sub transform {
 			if (ref($transform_args->{results}) eq 'HASH'){
 				for (my $i = 0; $i < scalar @{ $transform_args->{results}->{$groupby} }; $i++){
 					my $transform_row = $transform_args->{results}->{$groupby}->[$i];
-					if (exists $transform_row->{transforms}){
+					if (exists $transform_row->{transforms} and scalar keys %{ $transform_row->{transforms} }){
 						foreach my $transform (sort keys %{ $transform_row->{transforms} }){
 							next unless ref($transform_row->{transforms}->{$transform}) eq 'HASH';
 							my $arr_add_on_str = '';
@@ -4288,6 +4308,12 @@ sub transform {
 			}
 			else {
 				$self->log->error('results for groupby must be HASH');
+				next;
+			}
+			#$self->log->debug('args results ' . Dumper($args->{results}));
+			if (ref($args->{results}) eq 'ARRAY'){
+				#$self->log->trace('converting results from ARRAY to HASH because we have a groupby');
+				$args->{results} = {};
 			}
 			$args->{results}->{$groupby} = [ @groupby_results ];		
 		}

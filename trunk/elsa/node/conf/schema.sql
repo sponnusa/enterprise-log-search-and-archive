@@ -136,6 +136,7 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("reason_extra", "st
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("response", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("hub_server", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("mailbox_server", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("time_taken", "int", "NUMBER");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -180,6 +181,7 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="URL"), (SELECT id FROM fields WHERE field="status_code"), 7);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="URL"), (SELECT id FROM fields WHERE field="content_length"), 8);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="URL"), (SELECT id FROM fields WHERE field="country_code"), 9);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="URL"), (SELECT id FROM fields WHERE field="time_taken"), 10);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="URL"), (SELECT id FROM fields WHERE field="method"), 11);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="URL"), (SELECT id FROM fields WHERE field="site"), 12);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="URL"), (SELECT id FROM fields WHERE field="uri"), 13);
