@@ -54,6 +54,9 @@ sub call {
 		$args->{end_time} = UnixDate(ParseDate(delete $args->{end}), '%s');
 		$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
 	}
+	else {
+		$args->{end_time} = time;
+	}
 		
 	my $config = $self->api->conf->get('dashboards/' . $dashboard_name);
 	foreach my $key (keys %$config){
@@ -74,7 +77,7 @@ sub call {
 		$self->api->freshen_db;
 	
 		$self->plugins();
-		$self->api->log->trace('creating dashboard from args: ' . Dumper($args));
+		#$self->api->log->trace('creating dashboard from args: ' . Dumper($args));
 		my $start_time = time();
 		$dashboard = $config->{package}->new($args);
 		$self->api->log->trace('created dashboard in ' . (time() - $start_time) . ' seconds');
