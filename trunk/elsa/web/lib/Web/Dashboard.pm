@@ -144,7 +144,7 @@ sub _get_index_body {
 			title:sDescription, 
 			data:oChartData, 
 			callback:function(){logger.log('null action');}, 
-			width:800, 
+			width:1000, 
 			height:300, 
 			bgColor:sBgcolor,
 			includeDir: YAHOO.ELSA.includeDir

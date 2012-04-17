@@ -176,7 +176,7 @@ YAHOO.ELSA.Chart.Auto = function(p_oArgs){
 	YAHOO.ELSA.Charts.push(this);
 	logger.log('outerContainerDiv', outerContainerDiv);
 	try {
-		var iWidth = 500;
+		var iWidth = 1000;
 		if (p_oArgs.width){
 			iWidth = p_oArgs.width;
 		}
