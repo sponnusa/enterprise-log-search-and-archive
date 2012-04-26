@@ -351,3 +351,26 @@ To enable archive output in OSSEC, add to ossec.conf file <global> section:
 {{{
 <logall>yes</logall>
 }}}
+
+=Bro Integration=
+For forwarding flat-file logs from Bro using syslog-ng, use the below configuration, which assumes that ELSA is the localhost (127.0.0.1):
+{{{
+source s_bro_conn { file("/usr/local/bro/logs/current/conn.log" flags(no-parse) program_override("bro_conn")); };
+source s_bro_http { file("/usr/local/bro/logs/current/http.log" flags(no-parse) program_override("bro_http")); };
+source s_bro_dns { file("/usr/local/bro/logs/current/dns.log" flags(no-parse) program_override("bro_dns")); };
+source s_bro_notice { file("/usr/local/bro/logs/current/notice.log" flags(no-parse) program_override("bro_notice")); };
+source s_bro_smtp { file("/usr/local/bro/logs/current/smtp.log" flags(no-parse) program_override("bro_smtp")); };
+source s_bro_smtp_entities { file("/usr/local/bro/logs/current/smtp_entities.log" flags(no-parse) program_override("bro_smtp_entities")); };
+source s_bro_ssl { file("/usr/local/bro/logs/current/ssl.log"
+flags(no-parse) program_override("bro_ssl")); };
+
+destination d_elsa { tcp("127.0.0.1" port(514)); };
+
+log { source(s_bro_conn); destination(d_elsa); };
+log { source(s_bro_http); destination(d_elsa); };
+log { source(s_bro_dns); destination(d_elsa); };
+log { source(s_bro_notice); destination(d_elsa); };
+log { source(s_bro_smtp); destination(d_elsa); };
+log { source(s_bro_smtp_entities); destination(d_elsa); };
+log { source(s_bro_ssl); destination(d_elsa); };
+}}}
