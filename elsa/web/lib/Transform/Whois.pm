@@ -310,6 +310,7 @@ sub _lookup_org {
 		foreach my $key (keys %$cached){
 			$ret->{$key} = $cached->{$key};
 		}
+		return;
 	}
 	
 	$self->cv->begin;
