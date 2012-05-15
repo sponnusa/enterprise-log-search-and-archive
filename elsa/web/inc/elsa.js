@@ -21,8 +21,8 @@ YAHOO.ELSA.Labels = {
 	index: 'Index',
 	archive: 'Archive',
 	index_analytics: 'Index Analytics (Map/Reduce)',
-	archive_analytics: 'Archive Analytics (Map/Reduce)',
-}
+	archive_analytics: 'Archive Analytics (Map/Reduce)'
+};
 YAHOO.ELSA.TimeTranslation = {
 	Days: [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ],
 	Months: [ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ]
