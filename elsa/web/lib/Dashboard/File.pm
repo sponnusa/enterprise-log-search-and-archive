@@ -27,7 +27,7 @@ sub BUILD {
 		push @{ $self->queries }, {
 			query_string => $query_string,
 			query_meta_params => $query_meta_params,
-			user_info => $self->user_info,
+			user => $self->user,
 		};
 	}
 	close(FH);	

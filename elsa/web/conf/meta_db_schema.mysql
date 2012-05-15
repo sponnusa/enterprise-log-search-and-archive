@@ -42,7 +42,8 @@ CREATE TABLE query_log (
 	milliseconds int UNSIGNED,
 	archive BOOLEAN NOT NULL DEFAULT 0,
 	FOREIGN KEY (uid) REFERENCES users (uid) ON UPDATE CASCADE,
-	KEY (timestamp)
+	KEY (timestamp),
+	KEY (archive)
 ) ENGINE=InnoDB;
 
 CREATE TABLE query_schedule (

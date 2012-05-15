@@ -2,7 +2,7 @@
 	<ruleset name="FWSM" id='2'>
 		<pattern>%FWSM</pattern>
 		<rules>
-			<rule provider="DET" class='2' id='2'>
+			<rule provider="ELSA" class='2' id='2'>
 				<patterns>
 					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
 					<pattern>Deny @ESTRING:: @@ESTRING:i0: @src @ESTRING:s0::@@IPv4:i1:@/@NUMBER:i2:@ dst @ESTRING:s1::@@IPv4:i3:@/@NUMBER:i4:@</pattern>
@@ -22,7 +22,7 @@
 					</example>
 				</examples>
 			</rule>
-			<rule provider="DET" class='3' id='3'>
+			<rule provider="ELSA" class='3' id='3'>
 				<patterns>
 					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
 				</patterns>
@@ -32,12 +32,12 @@
 	<ruleset name="ASA" id='2_ASA'>
 		<pattern>%ASA</pattern>
 		<rules>
-			<rule provider="DET" class='2' id='2'>
+			<rule provider="ELSA" class='2' id='2'>
 				<patterns>
 					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
 				</patterns>
 			</rule>
-			<rule provider="DET" class='3' id='3'>
+			<rule provider="ELSA" class='3' id='3'>
 				<patterns>
 					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
 				</patterns>
@@ -47,12 +47,12 @@
 	<ruleset name="PIX" id='2_PIX'>
 		<pattern>%PIX</pattern>
 		<rules>
-			<rule provider="DET" class='2' id='2'>
+			<rule provider="ELSA" class='2' id='2'>
 				<patterns>
 					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
 				</patterns>
 			</rule>
-			<rule provider="DET" class='3' id='3'>
+			<rule provider="ELSA" class='3' id='3'>
 				<patterns>
 					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
 				</patterns>
@@ -78,7 +78,7 @@
 	<ruleset name="Windows_Snare" id='4'>
 		<pattern>MSWinEventLog</pattern>
 		<rules>
-			<rule provider="DET" class='4' id='4'>
+			<rule provider="ELSA" class='4' id='4'>
 				<patterns>
 					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@	@ESTRING:i0:	@@ESTRING:s0:	@@ESTRING:s1:	@@ESTRING:s2:	@@ESTRING:s3:	@@ESTRING:s4:	@@ESTRING:s5:	@@ESTRING::	@@ESTRING::	@</pattern>
 					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@|@ESTRING:i0:|@@ESTRING:s0:|@@ESTRING::|@@ESTRING::|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@|Logon Failure:@ESTRING::	@Reason:		@ESTRING:s2:	@User Name:	@ESTRING:s1: @</pattern>
@@ -91,7 +91,7 @@
 	<ruleset name="Windows_evtsys" id='4'>
 		<!-- no program pattern -->
 		<rules>
-			<rule provider="DET" class='4' id='4'>
+			<rule provider="ELSA" class='4' id='4'>
 				<patterns>
 					<pattern>@NUMBER:i0:@: @ESTRING::.@ Client IP address: @IPv4:s0::@</pattern>
 					<pattern>@NUMBER:i0:@: @ESTRING:s0::@</pattern>
@@ -117,7 +117,7 @@
 	<ruleset name="Windows_dhcp" id='4_dhcp'>
 		<pattern>GenericLog</pattern>
 		<rules>
-			<rule provider="DET" class='4' id='4'>
+			<rule provider="ELSA" class='4' id='4'>
 				<patterns>
 					<pattern>@NUMBER::@,@ANYSTRING::@</pattern>
 					<values>
@@ -169,7 +169,7 @@
 	<ruleset name="url" id='7'>
 		<pattern>url</pattern>
 		<rules>
-			<rule provider="DET" class='7' id='7'>
+			<rule provider="ELSA" class='7' id='7'>
 				<patterns>
 					<!--<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s5:,@@ESTRING:s2:,@@ESTRING:s3:,@@STRING:s4: :/;,.-()@</pattern>-->
 					<!--<pattern>@IPv4:i0:@,@IPv4:i1:@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING:s4:|@@STRING:s5:,.-@</pattern>-->
@@ -243,7 +243,7 @@
 	<ruleset name="snort" id='8'>
 		<pattern>snort</pattern>
 		<rules>
-			<rule provider="DET" class='8' id='8'>
+			<rule provider="ELSA" class='8' id='8'>
 				<patterns>
 					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>
 					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:i1:{}@ @IPv4:i2:@ -> @IPv4:i4:@</pattern>

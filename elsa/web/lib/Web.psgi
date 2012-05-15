@@ -42,7 +42,7 @@ elsif ($api->conf->get('auth/method') eq 'none'){
 	# Inline a null authenticator
 	package Authen::Simple::Null;
 	use base qw(Authen::Simple::Adapter);
-	Authen::Simple::Null->_options({log => {
+	__PACKAGE__->options({log => {
 		type     => Params::Validate::OBJECT,
 		can      => [ qw[debug info error warn] ],
 		default  => Authen::Simple::Log->new,
@@ -61,15 +61,55 @@ elsif ($api->conf->get('auth/method') eq 'db'){
 		statement => $api->conf->get('auth_db/auth_statement') ? $api->conf->get('auth_db/auth_statement') : 'SELECT password FROM users WHERE username=?',
 	);
 }
+elsif ($api->conf->get('auth/method') eq 'security_onion'){
+	# Inline a Security Onion authenticator
+	package Authen::Simple::SecurityOnion;
+	use base qw(Authen::Simple::DBI);
+	sub check {
+		my ( $self, $username, $password ) = @_;
+
+		my ( $dsn, $dbh, $sth, $encrypted ) = ( $self->dsn, undef, undef, undef );
+
+		unless ( $dbh = DBI->connect_cached( $dsn, $self->username, $self->password, $self->attributes ) ) {
+			my $error = DBI->errstr;
+			$self->log->error( qq/Failed to connect to database using dsn '$dsn'. Reason: '$error'/ ) if $self->log;
+		}
+		
+		my $salt = substr($password, 0, 2);
+		my $query = 'SELECT username FROM user_info WHERE username=? AND password=SHA1(CONCAT(?,?))';
+		$sth = $dbh->prepare($query);
+		$sth->execute($username, $salt, $password);
+		my $row = $sth->fetchrow_arrayref;
+		if ($row){
+			return 1;
+		}
+
+		return 0;
+    }
+
+	package main;
+	$auth = Authen::Simple::SecurityOnion->new(
+		dsn => $api->conf->get('auth_db/dsn') ? $api->conf->get('auth_db/dsn') : $api->conf->get('meta_db/dsn'),
+		username =>	$api->conf->get('auth_db/username') ? $api->conf->get('auth_db/username') : $api->conf->get('meta_db/username'),
+		password => defined $api->conf->get('auth_db/password') ? $api->conf->get('auth_db/password') : $api->conf->get('meta_db/password'),
+		log => $api->log,
+		statement => ' ', #hardcoded in module above
+	);
+}
 else {
 	die('No auth method, please configure one!');
 }
-#warn 'serving from ' . $FindBin::Bin . '../';
+
+my $static_root = $FindBin::Bin . '/../';
+if (exists $ENV{DOCUMENT_ROOT}){
+	$static_root = $ENV{DOCUMENT_ROOT} . '/../';
+}
 
 builder {
 	$ENV{PATH_INFO} = $ENV{REQUEST_URI}; #mod_rewrite will mangle PATH_INFO, so we'll set this manually here in case it's being used
 	#enable 'ForwardedHeaders';
-	enable 'Static', path => qr{^/?inc/}, root => $FindBin::Bin . '/../';
+	enable 'NoMultipleSlashes';
+	enable 'Static', path => qr{^/?inc/}, root => $static_root;
 	enable 'CrossOrigin', origins => '*', methods => '*', headers => '*';
 	enable 'Session', store => 'File';
 	unless ($api->conf->get('auth/method') eq 'none'){

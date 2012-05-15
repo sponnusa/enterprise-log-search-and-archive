@@ -3,7 +3,7 @@ use Moose;
 
 # Base class for Transform plugins
 has 'api' => (is => 'rw', isa => 'Object', required => 1);
-has 'user_info' => (is => 'rw', isa => 'HashRef', required => 1);
+has 'user' => (is => 'rw', isa => 'User', required => 1);
 has 'queries' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] });
 has 'data' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] });
 has 'start_time' => (is => 'rw', isa => 'Int', required => 1, default => (time() - 86400*7));
@@ -15,7 +15,7 @@ sub _get_data {
 	
 	foreach my $query (@{ $self->queries }){
 		my $result = $self->api->query($query);
-		push @{ $self->data }, [$query->{query_meta_params}->{comment}, $result, $query->{groupby}->[0]];
+		push @{ $self->data }, [$query->{query_meta_params}->{comment}, $result->TO_JSON, $result->{groupby}->[0]];
 	}
 	
 	return $self->data;

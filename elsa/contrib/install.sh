@@ -97,7 +97,7 @@ ubuntu_get_node_packages(){
 }
 
 freebsd_get_node_packages(){
-	pkg_add -Fr subversion wget curl mysql55-server perl syslog-ng3 p5-App-cpanminus &&
+	pkg_add -Fr subversion wget curl mysql55-server perl syslog-ng p5-App-cpanminus &&
 	enable_service "mysql" &&
 	service mysql-server start &&
 	disable_service "syslogd" &&
@@ -112,8 +112,16 @@ freebsd_get_node_packages(){
 		pkg_add -r syslog-ng3
 	fi
 	
+	if [ \! -f /usr/local/etc/syslog-ng.conf ]; then
+		cp /usr/local/etc/syslog-ng.conf.dist /usr/local/etc/syslog-ng.conf
+	fi
+	if [ \! -f /usr/local/etc/elsa_syslog-ng.conf ]; then
+		# Copy the syslog-ng.conf
+		echo "Creating elsa_syslog-ng.conf"
+		cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "/usr/local/etc/elsa_syslog-ng.conf" &&
+		echo "@include \"elsa_syslog-ng.conf\"" >> /usr/local/etc/syslog-ng.conf
+	fi
 	enable_service "syslog-ng" &&
-	cp /usr/local/etc/syslog-ng.conf.dist /usr/local/etc/syslog-ng.conf &&
 	service syslog-ng start
 	pgrep syslog-ng
 	
@@ -494,7 +502,7 @@ build_web_perl(){
 	for RETRY in 1 2 3; do
 		# PAM requires some user input for testing, and we don't want that
 		cpanm -n Authen::PAM &&
-		cpanm Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute
+		cpanm Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -528,6 +536,7 @@ update_web_mysql(){
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP COLUMN action_id" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN connector VARCHAR(255)" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN params VARCHAR(8000)" > /dev/null 2>&1
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_log ADD KEY(archive)" > /dev/null 2>&1
 	# The above can all fail for perfectly fine reasons
 	return 0
 }

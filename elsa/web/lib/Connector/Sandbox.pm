@@ -2,9 +2,6 @@ package Connector::Sandbox;
 use Moose;
 use Data::Dumper;
 use AnyEvent::HTTP;
-use MIME::Base64;
-use Digest::MD5;
-use URI::Escape;
 use Date::Manip;
 extends 'Connector';
 
@@ -12,6 +9,7 @@ our $Timeout = 10;
 our $DefaultTimeOffset = 120;
 our $Description = 'Send to malware analysis sandbox';
 sub description { return $Description }
+sub admin_required { return 1 }
 
 sub BUILD {
 	my $self = shift;

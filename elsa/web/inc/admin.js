@@ -3,11 +3,43 @@ YAHOO.namespace('YAHOO.ELSA.Admin');
 YAHOO.ELSA.Admin.main = function(){
 	// Set viewMode for dev/prod
 	var oRegExp = new RegExp('\\Wview=(\\w+)');
-	var oMatches = oRegExp.exec(location.search);
-	if (oMatches){
-		YAHOO.ELSA.viewMode = oMatches[1];
+	var aMatches = oRegExp.exec(location.search);
+	if (aMatches){
+		YAHOO.ELSA.viewMode = aMatches[1];
 	}
-	YAHOO.ELSA.initLogger(); 
+	
+	aMatches = location.search.match(/search=(.+)/, 'i');
+	var sSearch = '';
+	if (aMatches){
+		sSearch = aMatches[1];
+	}
+	
+	YAHOO.ELSA.initLogger();
+	
+	// Create search form
+	var oTable = document.createElement('table');
+	oTable.id = 'search_form';
+	var oTr = document.createElement('tr');
+	oTable.appendChild(oTr);
+	
+	var oTd = document.createElement('td');
+	oTd.appendChild(document.createTextNode('Search Groups'));
+	oTr.appendChild(oTd);
+	
+	var oTd = document.createElement('td');
+	var oForm = document.createElement('form');
+	oForm.action = '?';
+	var oInput = document.createElement('input');
+	oInput.name = 'search';
+	oInput.value = sSearch;
+	oForm.appendChild(oInput);
+	var oSubmit = document.createElement('input');
+	oSubmit.type = 'submit';
+	oForm.appendChild(oSubmit);
+	oTd.appendChild(oForm);
+	oTr.appendChild(oTd);
+	YAHOO.util.Dom.get('permissions').appendChild(oTable);
+	
 	var load = function(oResponse){
 		logger.log('oResponse', oResponse);
 		YAHOO.ELSA.Admin.formParams = oResponse.form_params;
@@ -108,7 +140,7 @@ YAHOO.ELSA.Admin.main = function(){
 		}
 	}
 	
-	var request = YAHOO.util.Connect.asyncRequest('GET', 'Query/get_permissions',
+	var request = YAHOO.util.Connect.asyncRequest('GET', 'Query/get_permissions?search=' + sSearch,
 		{ 
 			success:function(oResponse){
 				if (oResponse.responseText){
@@ -165,6 +197,25 @@ YAHOO.ELSA.Admin.deleteExceptions = function(){
 					}
 					else if (oReturn){
 						logger.log('Successfully updated permissions');
+						
+						for (var i in YAHOO.ELSA.Admin.main.dataTable.getRecordSet().getRecords()){
+							i = parseInt(i);
+							for (var j in aToDelete){
+								if (YAHOO.ELSA.Admin.main.dataTable.getRecord(i).getData().gid == aToDelete[j].gid){
+									var oExceptions = YAHOO.ELSA.Admin.main.dataTable.getRecord(i).getData()._exceptions;
+									for (var sAttr in oExceptions){
+										for (var sAttrId in oExceptions[sAttr]){
+											logger.log('i ' + i + ', sAttr ' + sAttr + ', sAttrId ' + sAttrId + ', p_iAttrId ' + aToDelete[j].attr_id);
+											if (sAttrId == aToDelete[j].attr_id){
+												logger.log('deleting sAttr ' + sAttr + ' and sAttrId ' + sAttrId);
+												delete oExceptions[sAttr][sAttrId];
+											}
+										}
+									}
+								}
+							}
+						}
+						
 						// find the row in the datatable and delete it
 						//logger.log('aRecordSet', aRecordSet);
 						if (YAHOO.ELSA.Admin.main.permissionsDataTable){
@@ -213,84 +264,28 @@ YAHOO.ELSA.Admin.deleteExceptions = function(){
 		});
 }
 
-YAHOO.ELSA.Admin.deleteException = function(p_iGid, p_iAttrId){
-	var reqStr = 'Query/set_permissions_exception?action=delete&exception='
-	var argStr = YAHOO.lang.JSON.stringify({gid:p_iGid, attr_id:p_iAttrId});
-	reqStr += argStr;
-	var request = YAHOO.util.Connect.asyncRequest('GET', reqStr,
-		{ 
-			success:function(oResponse){
-				if (oResponse.responseText){
-					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
-					if (typeof oReturn === 'object' && oReturn['error']){
-						YAHOO.ELSA.Error(oReturn['error']);
-						return;
-					}
-					else if (oReturn){
-						logger.log('Successfully updated group ' + p_iGid);
-						// find the row in the datatable and delete it
-						//logger.log('aRecordSet', aRecordSet);
-						if (YAHOO.ELSA.Admin.main.permissionsDataTable){
-							for (var i in YAHOO.ELSA.Admin.main.permissionsDataTable.getRecordSet().getRecords()){
-								//logger.log('checking ', aRecordSet[i]);
-								//logger.log('for attr_id ' + p_iAttrId);
-								logger.log('i ' + i);
-								i = parseInt(i);
-								if (YAHOO.ELSA.Admin.main.permissionsDataTable.getRecord(i).getData().gid == p_iGid && YAHOO.ELSA.Admin.main.permissionsDataTable.getRecord(i).getData().attr_id == p_iAttrId){
-									logger.log('deleting record ' + i);
-									var sGroupName = YAHOO.ELSA.Admin.main.permissionsDataTable.getRecord(i).getData().groupname;
-									YAHOO.ELSA.Admin.main.permissionsDataTable.deleteRow(i);
-									
-									// update the main table cell to remove this link
-									if (!YAHOO.ELSA.Admin.main.permissionsDataTable.getRecordSet().getLength()){
-										for (var j in YAHOO.ELSA.Admin.main.dataTable.getRecordSet().getRecords()){
-											j = parseInt(j);
-											if (YAHOO.ELSA.Admin.main.dataTable.getRecord(j).getData().groupname == sGroupName){
-												var oRecord = YAHOO.ELSA.Admin.main.dataTable.getRecord(j);
-												YAHOO.util.Dom.get('permissions_exceptions_' + oRecord.getId()).innerHTML = '';
-												break;
-											}
-										}
-									}
-									break;
-								}	
-							}
-						}
-						//logger.log('aRecordSet', aRecordSet);
-					}
-					else {
-						logger.log(oReturn);
-						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
-					}
-				}
-				else {
-					YAHOO.ELSA.Error('No response text');
-				}
-				
-			}, 
-			failure:function(oResponse){ YAHOO.ELSA.Error('Failed to update ' + p_iGid); },
-			argument: [this]
-		});
-}
-
 YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 	YAHOO.ELSA.addExceptionRecordData = p_oRecordData; //why must we do this?  it doesn't seem to affect setting the panel header
 	var submit = function(p_oEvent){
 		logger.log('YAHOO.ELSA.addException.recordData', YAHOO.ELSA.addExceptionRecordData);
 		var args = oPanel.argsToSubmit;
-		for (var i in args){
-			logger.log('first i: ' + i + ', v:' + args[i]);
-		}
 		//tack on input field
 		if (YAHOO.util.Dom.get('add_exception_form_' + YAHOO.ELSA.addExceptionRecordData.gid + '_selected_host').value){
 			args.attr_id = YAHOO.util.Dom.get('add_exception_form_' + YAHOO.ELSA.addExceptionRecordData.gid + '_selected_host').value;
 			args.attr = 'host_id';
 		}
-		for (var i in args){
-			logger.log('last i: ' + i + ', v:' + args[i]);
+		else if (YAHOO.util.Dom.get('add_exception_form_' + YAHOO.ELSA.addExceptionRecordData.gid + '_selected_attr').value){
+			args.attr = YAHOO.util.Dom.get('add_exception_form_' + YAHOO.ELSA.addExceptionRecordData.gid + '_selected_attr').value;
+			args.text = args.attr_id = YAHOO.util.Dom.get('add_exception_form_' + YAHOO.ELSA.addExceptionRecordData.gid + '_selected_value').value;
 		}
-		var argStr = YAHOO.lang.JSON.stringify(args);
-		var reqStr = 'Query/set_permissions_exception?action=add&exception=' + argStr;
+		else if (YAHOO.util.Dom.get('add_exception_form_' + p_oRecordData.gid + '_string').value){
+			args.attr = 'filter';
+			args.text = args.attr_id = YAHOO.util.Dom.get('add_exception_form_' + YAHOO.ELSA.addExceptionRecordData.gid + '_string').value;
+		}
+				
+		var argStr = YAHOO.lang.JSON.stringify([args]);
+		//var reqStr = 'Query/set_permissions_exception?action=add&exception=' + argStr;
+		var reqStr = 'Query/set_permissions?action=add&permissions=' + argStr;
 		logger.log('this', this);
 		var request = YAHOO.util.Connect.asyncRequest('GET', reqStr,
 			{ 
@@ -324,6 +319,9 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 										logger.log('args', args);
 										var oData = oRecord.getData();
 										logger.log('oData', oData);
+										if (typeof(oData._exceptions[args.attr]) == 'undefined'){
+											oData._exceptions[args.attr] = {};
+										}
 										oData._exceptions[args.attr][args.text] = args.attr_id;
 										YAHOO.ELSA.Admin.main.dataTable.updateRow(i, oData);
 										// check to see if we need to update the displayed exceptions
@@ -438,36 +436,6 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 		label: 'Class'
 	}
 	
-//	// create the programs menu
-//	var aProgramMenuItems = [];
-//	for (var i in YAHOO.ELSA.Admin.formParams.programs){
-//		for (var j in YAHOO.ELSA.Admin.formParams.programs[i]){
-//			//is this currently a blacklist?
-//			var oMenuItem = {
-//				text: j,
-//				value: YAHOO.ELSA.Admin.formParams.programs[i][j], 
-//				onclick: { 
-//					fn: onMenuSelect,
-//					obj: { 
-//						gid: p_oRecordData.gid, 
-//						attr: 'program_id', 
-//						attr_id: YAHOO.ELSA.Admin.formParams.programs[i][j], 
-//						text: j
-//					}
-//				}
-//			}
-//			aProgramMenuItems.push(oMenuItem);
-//		}
-//	}
-//	logger.log('aProgramMenuItems', aProgramMenuItems);
-//	var oProgramMenuCfg = {
-//		type:'menu',
-//		id: 'add_exception_form_' + p_oRecordData.gid + '_selected_program',
-//		name: 'add_exception_form_' + p_oRecordData.gid + '_selected_program',
-//		menu: aProgramMenuItems,
-//		label: 'Program'
-//	}
-
 	// create the nodes menu
 	var aNodeMenuItems = [];
 	for (var i in YAHOO.ELSA.Admin.formParams.nodes){
@@ -500,13 +468,13 @@ YAHOO.ELSA.Admin.addException = function(p_oRecordData){
 		form_attrs:{
 			id: 'add_exception_form_' + p_oRecordData.gid,
 		},
-		grid: [[
-			{type:'widget', className:'Button', args:oClassMenuCfg},
-//			{type:'widget', className:'Button', args:oProgramMenuCfg},
-			{type:'widget', className:'Button', args:oNodeMenuCfg},
-			{type:'text', args:'Host'},
-			{type:'input', args:{id:'add_exception_form_' + p_oRecordData.gid + '_selected_host', size:35}}
-		]]
+		grid: [
+			[ {type:'text', args:'Allow a given class'}, {type:'widget', className:'Button', args:oClassMenuCfg} ],
+			[ {type:'text', args:'Allow a given node'}, {type:'widget', className:'Button', args:oNodeMenuCfg} ],
+			[ {type:'text', args:'Allow a given host'}, {type:'input', args:{id:'add_exception_form_' + p_oRecordData.gid + '_selected_host', size:35}} ],
+			[ {type:'text', args:'Arbitrary attr/value pair Attribute:'}, {type:'input', args:{id:'add_exception_form_' + p_oRecordData.gid + '_selected_attr', size:35} }, {type:'text', args:'Value:' }, {type:'input', args:{id:'add_exception_form_' + p_oRecordData.gid + '_selected_value', size:35} } ],
+			[ {type:'text', args:'Arbitrary string to add to each query:'}, {type:'input', args:{id:'add_exception_form_' + p_oRecordData.gid + '_string', size:35} } ]
+		]		
 	}
 	
 	var oForm = new YAHOO.ELSA.Form(oPanel.panel.form, oFormCfg);
@@ -590,81 +558,5 @@ YAHOO.ELSA.Admin.showExceptions = function(p_oData){
 	catch (e){
 		YAHOO.ELSA.Error(e);
 		return;
-	}
-}
-
-YAHOO.ELSA.Admin.old_getExceptions = function(p_iGid){
-	var request = YAHOO.util.Connect.asyncRequest('GET', 'Query/get_exceptions?gid=' + p_iGid,
-		{ 
-			success:function(oResponse){
-				if (oResponse.responseText){
-					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
-					if (typeof oReturn === 'object' && oReturn['error']){
-						YAHOO.ELSA.Error(oReturn['error']);
-						return;
-					}
-					else if (oReturn){
-						showExceptions(oReturn);
-					}
-					else {
-						logger.log(oReturn);
-						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
-					}
-				}
-				else {
-					YAHOO.ELSA.Error('No response text');
-				}
-				
-			}, 
-			failure:function(oResponse){
-				var oRequest = oResponse.argument[0];
-				YAHOO.ELSA.Error('Query failed!'); 
-				return false;
-			},
-			argument: [this]
-		}
-	);
-	
-	var showExceptions = function(p_oResults){
-		logger.log('p_oResults', p_oResults);
-		
-		try {
-			var dataSource = new YAHOO.util.DataSource(p_oResults);
-			dataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
-			dataSource.responseSchema = {
-				resultsList: 'results',
-				fields: ["groupname", 'gid', 'attr', 'attr_id', 'attr_value' ],
-				metaFields: {
-					totalRecords: 'totalRecords',
-					recordsReturned: 'recordsReturned'
-				}
-			};
-			var aColumnDefs = [
-				{ key:"groupname", label:"Group", sortable:true },
-				{ key:"attr", label:"Attribute Type", sortable:true },
-				{ key:'attr_value', label:'Attribute Value', sortable:true }
-			];
-			var oPaginator = new YAHOO.widget.Paginator({
-			    pageLinks          : 10,
-		        rowsPerPage        : 5,
-		        rowsPerPageOptions : [15,30,60],
-		        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink}",
-		        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
-		    });
-		    var oDataTableCfg = {
-		    	paginator: oPaginator
-		    };
-		    YAHOO.ELSA.Admin.main.permissionsDataTable = new YAHOO.widget.DataTable('get_permissions_exceptions_dt', 
-		    	aColumnDefs, dataSource, oDataTableCfg );
-			YAHOO.ELSA.Admin.main.permissionsDataTable.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
-				oPayload.totalRecords = oResponse.meta.totalRecords;
-				return oPayload;
-			}
-			YAHOO.ELSA.Admin.main.permissionsDataTable.render();
-		}
-		catch (e){
-			YAHOO.ELSA.Error(e);
-			return;
-		}
 	}
 }

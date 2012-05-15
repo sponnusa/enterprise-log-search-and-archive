@@ -35,6 +35,7 @@ sub BUILD {
 	DATUM_LOOP: foreach my $datum (@{ $self->data }){
 		foreach my $key (keys %$datum){
 			next if ref($datum->{$key});
+			next unless $key =~ $self->field;
 			$self->_check($datum, $datum->{$key}) and next DATUM_LOOP;
 		}
 		foreach my $transform (keys %{ $datum->{transforms} }){
