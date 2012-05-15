@@ -13,7 +13,13 @@ YAHOO.ELSA.main = function () {
 	
 	YAHOO.ELSA.currentQuery = new YAHOO.ELSA.Query();
 	
+	var sArchiveMenuButtonName = 'archive_menu_select_button';
+	var sGroupByMenuSelectButtonName = 'groupby_menu_select_button';
+	
 	var submitQuery = function(){
+		var oQuery = new YAHOO.ELSA.Query();
+		oQuery.queryString = cloneVar(YAHOO.ELSA.currentQuery.queryString);
+		oQuery.metas = cloneVar(YAHOO.ELSA.currentQuery.metas);
 		// apply the start/stop times
 		try {
 			var oStartTime, oEndTime;
@@ -24,11 +30,11 @@ YAHOO.ELSA.main = function () {
 					return;
 				}
 				else {
-					YAHOO.ELSA.currentQuery.addMeta('start', oStartTime);
+					oQuery.addMeta('start', oStartTime);
 				}
 			}
 			else {
-				YAHOO.ELSA.currentQuery.delMeta('start');
+				oQuery.delMeta('start');
 			}
 			if (YAHOO.util.Dom.get('end_time').value){
 				oEndTime = getDateFromISO(YAHOO.util.Dom.get('end_time').value)/1000;
@@ -37,19 +43,19 @@ YAHOO.ELSA.main = function () {
 					return;
 				}
 				else {
-					YAHOO.ELSA.currentQuery.addMeta('end', oEndTime);
+					oQuery.addMeta('end', oEndTime);
 				}
 			}
 			else {
-				YAHOO.ELSA.currentQuery.delMeta('end');
+				oQuery.delMeta('end');
 			}
 			if (oStartTime > oEndTime){
 				YAHOO.ELSA.Error('Start time greater than end time');
 				return;
 			}
-			logger.log('submitting query: ', YAHOO.ELSA.currentQuery);
+			logger.log('submitting query: ', oQuery);
 						
-			var oResults = new YAHOO.ELSA.Results.Tabbed.Live(YAHOO.ELSA.tabView, YAHOO.ELSA.currentQuery);
+			var oResults = new YAHOO.ELSA.Results.Tabbed.Live(YAHOO.ELSA.tabView, oQuery);
 			logger.log('got query results:', oResults);
 			YAHOO.ELSA.currentQuery.resetTerms();
 		} catch(e) { YAHOO.ELSA.Error(e); }
@@ -239,36 +245,19 @@ YAHOO.ELSA.main = function () {
 			var sText = p_oItem.fqdn_field;
 			var aClassVal = sText.split(/\./);
 			// Set the label of the button to be our selection
-			var oButton = YAHOO.widget.Button.getButton('groupby_menu_select_button');
+			var oButton = YAHOO.widget.Button.getButton(sGroupByMenuSelectButtonName);
 			oButton.set('label', sText);
 			logger.log('oButton:', oButton);
 			
 			// reset old values
 			YAHOO.ELSA.currentQuery.delMeta('groupby');
-			YAHOO.ELSA.currentQuery.delMeta('groups_only');
 			YAHOO.ELSA.currentQuery.delMeta('class');
 			YAHOO.ELSA.currentQuery.delMeta('limit');
 			
-			if (aClassVal[0] == 'any'){
-				//any class, always an INT field
-				YAHOO.ELSA.currentQuery.addMeta('class', 'any');
-				YAHOO.ELSA.currentQuery.addMeta('groupby', [aClassVal[1]]);
-				YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
+			if (aClassVal[0] != YAHOO.ELSA.Labels.noGroupBy){
+				YAHOO.ELSA.currentQuery.addMeta('groupby', [sText]);
 			}
-			else if (aClassVal[0] != YAHOO.ELSA.Labels.noGroupBy){ //clears
-				// Find type to determine if we can do this remotely or if it's a client-side group
-				var sFieldType = 'string';
-				for (var i in YAHOO.ELSA.formParams.fields){
-					if (YAHOO.ELSA.formParams.fields[i].fqdn_field === sText){
-						sFieldType = YAHOO.ELSA.formParams.fields[i].field_type;
-						break;
-					}
-				}
-				
-				YAHOO.ELSA.currentQuery.addMeta('class', aClassVal[0]);
-				YAHOO.ELSA.currentQuery.addMeta('groupby', [aClassVal[1]]);
-				YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
-			}
+			//else groupby is cleared by above delMetas
 		}
 		
 		var aUnclassedFields = ['Host', 'Class', 'Program', 'Day', 'Hour', 'Minute', 'Timestamp', 'Node'];
@@ -282,7 +271,8 @@ YAHOO.ELSA.main = function () {
 				onclick: { 
 					fn: onGroupBySelectionClick, 
 					obj: { 
-						fqdn_field: 'any' + '.' + sClass, 
+						fqdn_field: sClass, 
+						//fqdn_field: 'any' + '.' + sClass,
 						id: 'any' + '_' + sClass 
 					} 
 				}
@@ -329,34 +319,94 @@ YAHOO.ELSA.main = function () {
 		logger.log('aGroupByMenuItems', aGroupByMenuItems);
 		
 		var oGroupByMenuButtonCfg = {
-			id: 'groupby_menu_select_button',
+			id: sGroupByMenuSelectButtonName,
 			type: 'menu',
 			label: YAHOO.ELSA.Labels.defaultGroupBy,
-			name: 'groupby_menu_select_button',
+			name: sGroupByMenuSelectButtonName,
 			menu: aGroupByMenuItems
 		};
 		
-		var oArchiveButtonCfg = {
-			id: 'archive_button',
-			type: 'checkbox',
-			label: 'Index',
-			name: 'archive_button',
-			value: 'archive_query',
-			checked: false,
-			onclick: {
-				fn: function(p_oEvent){
-					logger.log('arguments', arguments);
-					if (p_oEvent.target.innerHTML == 'Index'){
-						YAHOO.ELSA.currentQuery.addMeta('archive_query', 1);
-						p_oEvent.target.innerHTML = 'Archive';
-					}
-					else {
-						YAHOO.ELSA.currentQuery.delMeta('archive_query');
-						p_oEvent.target.innerHTML = 'Index';
-					}
-				}
+		var onArchiveSelectionClick = function(p_sType, p_aArgs, p_oItem){
+			logger.log('p_oItem:', p_oItem);
+			var sText = p_oItem;
+			// Set the label of the button to be our selection
+			var oButton = YAHOO.widget.Button.getButton(sArchiveMenuButtonName);
+			oButton.set('label', sText);
+			logger.log('oButton:', oButton);
+			
+			if (sText == YAHOO.ELSA.Labels.index){
+				YAHOO.ELSA.currentQuery.delMeta('archive');
+				YAHOO.ELSA.currentQuery.delMeta('analytics');
+				YAHOO.ELSA.currentQuery.delMeta('connector');
+				YAHOO.ELSA.currentQuery.delMeta('connector_params');
+			}
+			else if (sText == YAHOO.ELSA.Labels.archive){
+				YAHOO.ELSA.currentQuery.addMeta('archive', 1);
+				YAHOO.ELSA.currentQuery.delMeta('analytics');
+				YAHOO.ELSA.currentQuery.delMeta('connector');
+				YAHOO.ELSA.currentQuery.delMeta('connector_params');
+			}
+			else if (sText == YAHOO.ELSA.Labels.index_analytics){
+				YAHOO.ELSA.currentQuery.delMeta('archive');
+				YAHOO.ELSA.currentQuery.addMeta('analytics', 1);
+				YAHOO.ELSA.showAddConnectorDialog();
+			}
+			else if (sText == YAHOO.ELSA.Labels.archive_analytics){
+				YAHOO.ELSA.currentQuery.addMeta('archive', 1);
+				YAHOO.ELSA.currentQuery.addMeta('analytics', 1);
+				YAHOO.ELSA.showAddConnectorDialog();
 			}
 		}
+		
+		var aArchiveButtonMenuItems = [
+			{
+				text: 'Index',
+				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.index }
+			},
+			{
+				text: 'Archive',
+				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.archive }
+			},
+			{
+				text: 'Index Analytics (Map/Reduce)',
+				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.index_analytics }
+			},
+			{
+				text: 'Archive Analytics (Map/Reduce)',
+				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.archive_analytics }
+			}
+		];
+		
+		var oArchiveButtonCfg = {
+			id: sArchiveMenuButtonName,
+			type: 'menu',
+			label: 'Index',
+			name: sArchiveMenuButtonName,
+			value: 'archive_query',
+			menu: aArchiveButtonMenuItems
+		}
+		
+//		var oArchiveButtonCfg = {
+//			id: 'archive_button',
+//			type: 'checkbox',
+//			label: 'Index',
+//			name: 'archive_button',
+//			value: 'archive_query',
+//			checked: false,
+//			onclick: {
+//				fn: function(p_oEvent){
+//					logger.log('arguments', arguments);
+//					if (p_oEvent.target.innerHTML == 'Index'){
+//						YAHOO.ELSA.currentQuery.addMeta('archive_query', 1);
+//						p_oEvent.target.innerHTML = 'Archive';
+//					}
+//					else {
+//						YAHOO.ELSA.currentQuery.delMeta('archive_query');
+//						p_oEvent.target.innerHTML = 'Index';
+//					}
+//				}
+//			}
+//		}
 		
 		/* Draw form */
 		
@@ -423,7 +473,7 @@ YAHOO.ELSA.main = function () {
 				
 		/* Have the enter key submit the form */
 		var enterKeyListener = new YAHOO.util.KeyListener(
-				document,
+				YAHOO.util.Dom.get('query_menu'),
 				{ keys: 13 },
 				{ 	fn: function(eName, eObj){ var tgt=(eObj[1].target ? eObj[1].target : (eObj[1].srcElement ? eObj[1].srcElement : null)); try{tgt.blur();}catch(e){} submitQuery();},
 					scope: YAHOO.ELSA,
@@ -529,20 +579,22 @@ YAHOO.ELSA.main = function () {
 		var oQuery;
 		if (iLocalResultId){
 			try {
+				//logger.log('localResults start: ' + YAHOO.ELSA.localResults[iLocalResultId].query.metas.start);
+				logger.log('sentquery start: ' + YAHOO.ELSA.localResults[iLocalResultId].sentQuery);
 				logger.log('local result: ', YAHOO.ELSA.localResults[iLocalResultId]);
-				if (typeof(YAHOO.ELSA.localResults[iLocalResultId].queryString) != 'undefined' &&
-					typeof(YAHOO.ELSA.localResults[iLocalResultId].query) != 'undefined' &&
-					typeof(YAHOO.ELSA.localResults[iLocalResultId].query.metas) != 'undefined'){
-					oQuery = { 
-						'query_string': YAHOO.ELSA.localResults[iLocalResultId].queryString,
-						'query_meta_params': YAHOO.ELSA.localResults[iLocalResultId].query.metas
-					};
-				}
-				else {
+//				if (typeof(YAHOO.ELSA.localResults[iLocalResultId].queryString) != 'undefined' &&
+//					typeof(YAHOO.ELSA.localResults[iLocalResultId].query) != 'undefined' &&
+//					typeof(YAHOO.ELSA.localResults[iLocalResultId].query.metas) != 'undefined'){
+//					oQuery = { 
+//						'query_string': YAHOO.ELSA.localResults[iLocalResultId].queryString,
+//						'query_meta_params': YAHOO.ELSA.localResults[iLocalResultId].query.metas
+//					};
+//				}
+//				else {
 					logger.log('parsing ' + YAHOO.ELSA.localResults[iLocalResultId].sentQuery);
 					oQuery = YAHOO.lang.JSON.parse(YAHOO.ELSA.localResults[iLocalResultId].sentQuery);
 					//oQuery = YAHOO.ELSA.localResults[iLocalResultId].results;
-				}
+//				}
 			}
 			catch (e){
 				logger.log('error getting query for results:', e);
@@ -555,8 +607,8 @@ YAHOO.ELSA.main = function () {
 			YAHOO.util.Dom.get('q').value = oQuery.query_string;
 			
 			//set the groupby button
-			var oGroupButton = YAHOO.widget.Button.getButton('groupby_menu_select_button');
-			var oArchiveButton = YAHOO.widget.Button.getButton('archive_button');
+			var oGroupButton = YAHOO.widget.Button.getButton(sGroupByMenuSelectButtonName);
+			var oArchiveButton = YAHOO.widget.Button.getButton(sArchiveMenuButtonName);
 			if (oQuery.query_meta_params){
 				YAHOO.ELSA.currentQuery.metas = oQuery.query_meta_params;
 				if (typeof(YAHOO.ELSA.currentQuery.metas.groupby) == 'undefined'){
@@ -569,12 +621,24 @@ YAHOO.ELSA.main = function () {
 				logger.log('current query: ' + YAHOO.lang.JSON.stringify(YAHOO.ELSA.currentQuery));
 				logger.log('type of class: ' + typeof YAHOO.ELSA.currentQuery.metas['class']);
 				logger.log('current groupby:', YAHOO.ELSA.currentQuery.metas.groupby);
-				if (YAHOO.ELSA.currentQuery.metas.groupby){
-					if (typeof YAHOO.ELSA.currentQuery.metas['class'] != 'undefined'){
-						oGroupButton.set('label', YAHOO.ELSA.currentQuery.metas['class'] + '.' + YAHOO.ELSA.currentQuery.metas.groupby);
+				logger.log('typeof current groupby:', typeof(YAHOO.ELSA.currentQuery.metas.groupby));
+				if (typeof(YAHOO.ELSA.currentQuery.metas.groupby) != 'undefined' &&
+					YAHOO.ELSA.currentQuery.metas.groupby.length){
+//					if (typeof YAHOO.ELSA.currentQuery.metas['class'] != 'undefined'){
+//						oGroupButton.set('label', YAHOO.ELSA.currentQuery.metas['class'] + '.' + YAHOO.ELSA.currentQuery.metas.groupby);
+//					}
+//					else {
+//						oGroupButton.set('label', 'any.' + YAHOO.ELSA.currentQuery.metas.groupby[0]);
+//					}
+					// Don't set the button if the query string has the groupby in it
+					var aMatches = YAHOO.ELSA.currentQuery.queryString.match(/\s*groupby[:=]([\w\.]+)\s*/, 'i');
+					if (aMatches != null && aMatches[1] == YAHOO.ELSA.currentQuery.metas.groupby[0]){
+						logger.log('groupby set via queryString');
+						// Clear metas.groupby[0] so that this doesn't get sent twice as it's represented in the queryString
+						YAHOO.ELSA.currentQuery.metas.groupby.splice(0,1);
 					}
 					else {
-						oGroupButton.set('label', 'any.' + YAHOO.ELSA.currentQuery.metas.groupby[0]);
+						oGroupButton.set('label', YAHOO.ELSA.currentQuery.metas.groupby[0]);
 					}
 				}
 				else {
@@ -584,22 +648,28 @@ YAHOO.ELSA.main = function () {
 				if (YAHOO.ELSA.currentQuery.metas.start){
 					YAHOO.util.Dom.get('start_time').value = getISODateTime(new Date(YAHOO.ELSA.currentQuery.metas.start * 1000));
 				}
+				else {
+					YAHOO.util.Dom.get('start_time').value = '';
+				}
 				if (YAHOO.ELSA.currentQuery.metas.end){
 					YAHOO.util.Dom.get('end_time').value = getISODateTime(new Date(YAHOO.ELSA.currentQuery.metas.end * 1000));
+				}
+				else {
+					YAHOO.util.Dom.get('end_time').value = '';
 				}
 				
 				//set the archive button
 				if (typeof(YAHOO.ELSA.currentQuery.metas.groupby) == 'undefined'){
 					// groupby could've been set in query text instead of data struct
 					if (typeof(YAHOO.ELSA.localResults[iLocalResultId].results.query_meta_params) != 'undefined' &&
-						typeof(YAHOO.ELSA.localResults[iLocalResultId].results.query_meta_params.archive_query) != 'undefined'){
-						YAHOO.ELSA.currentQuery.metas.archive_query = YAHOO.ELSA.localResults[iLocalResultId].results.query_meta_params.archive_query;
+						typeof(YAHOO.ELSA.localResults[iLocalResultId].results.query_meta_params.archive) != 'undefined'){
+						YAHOO.ELSA.currentQuery.metas.archive = YAHOO.ELSA.localResults[iLocalResultId].results.query_meta_params.archive;
 					}
 				}
 				logger.log('current query: ' + YAHOO.lang.JSON.stringify(YAHOO.ELSA.currentQuery));
 				logger.log('type of class: ' + typeof YAHOO.ELSA.currentQuery.metas['class']);
-				logger.log('current archive:', YAHOO.ELSA.currentQuery.metas.archive_query);
-				if (YAHOO.ELSA.currentQuery.metas.archive_query){
+				logger.log('current archive:', YAHOO.ELSA.currentQuery.metas.archive);
+				if (YAHOO.ELSA.currentQuery.metas.archive){
 					oArchiveButton.set('label', YAHOO.ELSA.Labels.archive);
 					oArchiveButton.set('checked', true);
 				}

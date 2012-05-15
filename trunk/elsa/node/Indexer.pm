@@ -1417,7 +1417,7 @@ searchd {
 		listen_backlog = 1000
         client_timeout = 300000
         log = %1\$s/searchd.log
-        max_children = 30
+        max_children = 128
         max_filter_values = 4096
         max_filters = 256
         max_matches = 1000

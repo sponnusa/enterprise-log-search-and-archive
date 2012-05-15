@@ -2,20 +2,125 @@ package Transform::CIF;
 use Moose;
 use Data::Dumper;
 use CHI;
-use AnyEvent::HTTP;
-use Socket;
-use JSON;
-use URL::Encode qw(url_encode);
-use Time::HiRes;
+use DBI qw(:sql_types);
+use Socket qw(inet_aton);
 extends 'Transform';
 
 our $Name = 'CIF';
+our $Timeout = 10;
+our $DefaultTimeOffset = 120;
+our $Description = 'Cross-reference CIF';
+sub description { return $Description }
+our $Fields = { map { $_ => 1 } qw(srcip dstip site hostname) };
 # Whois transform plugin
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 has 'cache' => (is => 'rw', isa => 'Object', required => 1);
-has 'cv' => (is => 'rw', isa => 'Object');
 has 'known_subnets' => (is => 'rw', isa => 'HashRef');
 has 'known_orgs' => (is => 'rw', isa => 'HashRef');
+
+sub BUILD {
+	my $self = shift;
+	
+	if ($self->conf->get('transforms/whois/known_subnets')){
+		$self->known_subnets($self->conf->get('transforms/whois/known_subnets'));
+	}
+	if ($self->conf->get('transforms/whois/known_orgs')){
+		$self->known_orgs($self->conf->get('transforms/whois/known_orgs'));
+	}
+		
+	my $cif = DBI->connect($self->conf->get('connectors/cif/dsn', '', ''), 
+		{ 
+			RaiseError => 1,
+			mysql_multi_statements => 1,
+			mysql_bind_type_guessing => 1, 
+		}) or die($DBI::errstr);
+	my ($query, $sth);
+	$query = 'SELECT * FROM url, domain WHERE MATCH(?)';
+	$sth = $cif->prepare($query);
+	$query = 'SELECT * FROM infrastructure WHERE MATCH(?) AND subnet_start <= ? AND subnet_end >= ?';
+	my $ip_sth = $cif->prepare($query);
+	
+	my $keys = {};
+	if (scalar @{ $self->args }){
+		foreach my $arg (@{ $self->args }){
+			$keys->{$arg} = 1;
+		}
+	}
+	else {
+		$keys = { srcip => 1, dstip => 1 };
+	}
+	
+	RECORD_LOOP: foreach my $datum (@{ $self->data }){
+		$datum->{transforms}->{$Name} = {};
+		foreach my $key (keys %{ $datum }){
+			if ($keys->{$key} and $Fields->{ $key }){
+				$datum->{transforms}->{$Name}->{$key} = {};
+				my $info = $self->cache->get($datum->{$key});
+				if ($info){
+					$datum->{transforms}->{$Name}->{$key} = $info;
+					#$self->log->trace('using cached value for ' . $datum->{$key});
+					next;
+				}
+				
+				my $row;
+				# Handle IP's
+				if ($datum->{$key} =~ /^(\d{1,3}\.\d{1,3}\.)\d{1,3}\.\d{1,3}$/){
+					next if $self->_check_local($datum->{$key});
+					$self->log->trace('checking ' . $datum->{$key});
+					my $first_octets = $1;
+					my $ip_int = unpack('N*', inet_aton($datum->{$key}));
+					$ip_sth->bind_param(1, '@address ' . $first_octets . '* @description -search @alternativeid -www.alexa.com @alternativeid -support.clean-mx.de');
+					$ip_sth->bind_param(2, $ip_int, SQL_INTEGER);
+					$ip_sth->bind_param(3, $ip_int, SQL_INTEGER);
+					$ip_sth->execute;
+					$row = $ip_sth->fetchrow_hashref;
+					if ($row){
+						foreach my $col (keys %$row){
+							$datum->{transforms}->{$Name}->{$key}->{$col} = $row->{$col};
+						}
+						$self->cache->set($datum->{$key}, $datum->{transforms}->{$Name}->{$key});
+						next RECORD_LOOP;
+					}
+				}
+				
+				$sth->execute($datum->{$key} . ' -@description search');
+				$row = $sth->fetchrow_hashref;
+			
+				unless ($row){
+					$self->cache->set($datum->{$key}, {});
+					next;
+				}
+				
+				foreach my $col (keys %$row){
+					$datum->{transforms}->{$Name}->{$key}->{$col} = $row->{$col};
+				}
+				$self->cache->set($datum->{$key}, $datum->{transforms}->{$Name}->{$key});
+				next RECORD_LOOP;
+			}
+		}
+	}
+	
+	return 1;
+}
+
+sub _check_local {
+	my $self = shift;
+	my $ip = shift;
+	my $ip_int = unpack('N*', inet_aton($ip));
+	
+	return unless $ip_int and $self->known_subnets and $self->known_orgs;
+	
+	foreach my $start (keys %{ $self->known_subnets }){
+		if (unpack('N*', inet_aton($start)) <= $ip_int 
+			and unpack('N*', inet_aton($self->known_subnets->{$start}->{end})) >= $ip_int){
+			return 1;
+		}
+	}
+}
+
+1;
+
+__END__
 
 #sub BUILDARGS {
 #	my $class = shift;

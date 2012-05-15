@@ -1,5 +1,12 @@
 YAHOO.namespace('YAHOO.ELSA');
 
+// Need to alter this method slightly so we can set custom sizes
+YAHOO.widget.TextareaCellEditor.prototype.move = function() {
+	this.textarea.style.width = this.width || this.getTdEl().offsetWidth + "px";
+	this.textarea.style.height = this.height || "3em";
+	YAHOO.widget.TextareaCellEditor.superclass.move.call(this);
+};
+
 YAHOO.ELSA.queryResultCounter = 0;
 YAHOO.ELSA.localResults = [];
 YAHOO.ELSA.viewMode = 'prod';
@@ -12,7 +19,9 @@ YAHOO.ELSA.Labels = {
 	noGroupBy: 'None',
 	defaultGroupBy: 'Report On',
 	index: 'Index',
-	archive: 'Archive'
+	archive: 'Archive',
+	index_analytics: 'Index Analytics (Map/Reduce)',
+	archive_analytics: 'Archive Analytics (Map/Reduce)',
 }
 YAHOO.ELSA.TimeTranslation = {
 	Days: [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ],
@@ -354,7 +363,7 @@ YAHOO.ELSA.Query = function(){
 //		return true;
 //	}
 	
-	this.results = new YAHOO.ELSA.Results();
+	//this.results = new YAHOO.ELSA.Results();
 	
 	this.booleanMap = {
 		'OR': '',
@@ -537,7 +546,7 @@ YAHOO.ELSA.Query = function(){
 	}
 	
 	this.toObject = function(){
-		return { query_string: YAHOO.ELSA.currentQuery.stringifyTerms(), query_meta_params: YAHOO.ELSA.currentQuery.metas };
+		return { query_string: YAHOO.ELSA.currentQuery.stringifyTerms(), query_meta_params: this.metas };
 	}
 	
 	this.validateTerm = function(p_sFQDNField, p_sValue){
@@ -632,7 +641,6 @@ YAHOO.ELSA.addTermFromChart = function(p_iChartId, p_iIndex){
 	var oData = YAHOO.ELSA.Charts[p_iChartId].cfg.elements[0].values[p_iIndex];
 	YAHOO.ELSA.currentQuery.delMeta('class');
 	YAHOO.ELSA.currentQuery.delMeta('groupby');
-	YAHOO.ELSA.currentQuery.delMeta('groups_only');
 	YAHOO.ELSA.currentQuery.delMeta('limit');
 	YAHOO.ELSA.addTermAndSubmit(sField, oData);
 }
@@ -658,7 +666,6 @@ YAHOO.ELSA.addTermAndSubmit = function(p_sField, p_oData){
 		YAHOO.ELSA.currentQuery.addTerm(p_sField, '"' + sData + '"', '=');
 		YAHOO.ELSA.currentQuery.delMeta('class');
 		YAHOO.ELSA.currentQuery.delMeta('groupby');
-		YAHOO.ELSA.currentQuery.delMeta('groups_only');
 		YAHOO.ELSA.currentQuery.delMeta('limit');
 		YAHOO.ELSA.currentQuery.submit();
 	} catch(e) { YAHOO.ELSA.Error(e); }
@@ -688,19 +695,16 @@ YAHOO.ELSA.groupData = function(p_iId, p_sClass, p_sField, p_sAggFunc){
 	// reset old values
 	YAHOO.ELSA.currentQuery.delMeta('class');
 	YAHOO.ELSA.currentQuery.delMeta('groupby');
-	YAHOO.ELSA.currentQuery.delMeta('groups_only');
 	YAHOO.ELSA.currentQuery.delMeta('class');
 	YAHOO.ELSA.currentQuery.delMeta('limit');
 	
 	if (!p_sClass){
-		YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
 		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
 	}
 	else if (p_sClass == 'any'){
 		//any class, always an INT field
 		YAHOO.ELSA.currentQuery.addMeta('class', 'any');
 		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
-		YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
 	}
 	else if (p_sClass != YAHOO.ELSA.Labels.noGroupBy){ //clears
 		// Find type to determine if we can do this remotely or if it's a client-side group
@@ -714,7 +718,6 @@ YAHOO.ELSA.groupData = function(p_iId, p_sClass, p_sField, p_sAggFunc){
 		
 		YAHOO.ELSA.currentQuery.addMeta('class', p_sClass);
 		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
-		YAHOO.ELSA.currentQuery.addMeta('groups_only', 1);
 	}
 	
 	// create new groupby results
@@ -1221,7 +1224,7 @@ YAHOO.ELSA.Results.Given = function(p_oResults){
 	oDiv.id = 'given_results';
 	YAHOO.util.Dom.get('logs').appendChild(oDiv);
 	
-	if (p_oResults.query_meta_params && p_oResults.query_meta_params.groups_only){
+	if (p_oResults.query_meta_params && p_oResults.query_meta_params.groupby){
 		for (var i in p_oResults.query_meta_params.groupby){
 			var sGroupBy = p_oResults.query_meta_params.groupby[i];
 			this.createGroupByDataTable(p_oResults.results[sGroupBy], sGroupBy, oDiv);
@@ -1645,16 +1648,22 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			oElClose.addClass('close');
 			var oLabelEl = this.tab.get('labelEl').getElementsByTagName('td')[0];
 			
-			if (this.results.batch_query){
+			if (this.results.qid){
+				this.qid = this.results.qid;
+			}
+			else {
+				YAHOO.ELSA.Error('no qid found in results');
+			}
+		
+			if (this.results.batch){
 				oLabelEl.innerHTML += ' [batched]';
 			}
 			else {
-				this.qid = this.results.qid;
 				oLabelEl.innerHTML += ' (' + this.results.totalRecords + ')';
 		    	if (p_oResults.query_string){ //saved result
 			    	this.sentQuery = YAHOO.lang.JSON.stringify({
-						query_string: p_oResults.query_string, 
-						query_meta_params: p_oResults.query_meta_params
+						query_string: this.results.query_string, 
+						query_meta_params: this.results.query_meta_params
 					});
 		    	}
 			}
@@ -1663,16 +1672,17 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			YAHOO.ELSA.Error('Error loading response' + e);
 		}
 		
-		if (this.results.batch_query){
+		if (this.results.batch){
 			var oEl = document.createElement('h3');
-			oEl.innerHTML = 'Query ' + this.results.batch_query + ' submitted.  You will receive an email with your results.<br>';
+			oEl.innerHTML = 'Query ' + this.qid + ' submitted.  ' +
+				this.results.batch_message + '<br>';
 			this.tab.get('contentEl').appendChild(oEl);
 			var aEl = document.createElement('a');
 			aEl.innerHTML = 'Cancel Query';
 			aEl.href = '#';
 			this.tab.get('contentEl').appendChild(aEl);
 			var oEl = new YAHOO.util.Element(aEl);
-			oEl.on('click', YAHOO.ELSA.cancelQuery, [this.results.batch_query], this);
+			oEl.on('click', YAHOO.ELSA.cancelQuery, [this.results.batch], this);
 		}
 		else if (this.results.groupby && this.results.groupby.length){
 			oLabelEl.innerHTML += ' [Grouped by ' + this.results.groupby.join(',') + ']';
@@ -1743,7 +1753,8 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		var oMenuSources = [ 
 			{text:'Save Results...', value:'saveResults', onclick: { fn: YAHOO.ELSA.saveResults, obj:this.id }},
 			{text:'Export Results...', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportResults, obj:this.id }},
-			{text:'Alert or schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}}
+			{text:'Alert or schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}},
+			{text:'Send to connector...', value:'sendToConnector', onclick:{ fn:YAHOO.ELSA.sendToConnector, obj:this.id}}
 		];
 		
 		var oMenuButtonCfg = {
@@ -1874,6 +1885,7 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 	}
 	
 	this.sentQuery = p_oQuery.toString(); //set this opaque string for later use
+	this.query = p_oQuery;
 	
 	/* Actually do the query */
 	//logger.log('query obj:', p_oQuery);
@@ -2305,6 +2317,219 @@ YAHOO.ELSA.exportResults = function(p_sType, p_aArgs, p_iId){
 	var oForm = new YAHOO.ELSA.Form(YAHOO.ELSA.exportResultsDialog.form, oFormGridCfg);
 	YAHOO.ELSA.exportResultsDialog.show();
 };
+
+YAHOO.ELSA.showAddConnectorDialog = function(p_sType, p_aArgs){
+	YAHOO.ELSA.showAddConnectorDialog.plugin = '';
+	
+	var handleSubmit = function(p_sType, p_oDialog){
+		logger.log('with method ' + YAHOO.ELSA.showAddConnectorDialog.plugin);
+		var aParams = YAHOO.util.Dom.get('add_connector_params').value.split(/\,/);
+		YAHOO.ELSA.currentQuery.addMeta('connector', YAHOO.ELSA.showAddConnectorDialog.plugin);
+		YAHOO.ELSA.currentQuery.addMeta('connector_params', aParams);
+		this.hide();
+	};
+	var handleCancel = function(){
+		this.hide();
+	};
+	var oPanel = new YAHOO.ELSA.Panel('add_connector', {
+		buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
+			{ text:"Cancel", handler:handleCancel } ]
+	});
+	
+	var oButton;
+	//	"click" event handler for each item in the Button's menu
+	var onMenuItemClick = function(p_sType, p_aArgs, p_oItem){
+		logger.log('click args: ', arguments);
+		var sText = p_oItem.cfg.getProperty("text");
+		// Set the label of the button to be our selection
+		oButton.set('label', sText);
+		YAHOO.ELSA.showAddConnectorDialog.plugin = p_oItem.value;
+	}
+	
+	//	Create an array of YAHOO.widget.MenuItem configuration properties
+	var oMenuSources = [];
+	for (var i in YAHOO.ELSA.formParams.schedule_actions){
+		oMenuSources.push({
+			label: YAHOO.ELSA.formParams.schedule_actions[i].description,
+			text: YAHOO.ELSA.formParams.schedule_actions[i].description,
+			value: YAHOO.ELSA.formParams.schedule_actions[i].action,
+			onclick: { fn: onMenuItemClick }
+		});
+	}
+	
+	var oMenuButtonCfg = {
+		type: 'menu',
+		label: 'Add connector...',
+		name: 'add_connector_select_button',
+		menu: oMenuSources
+	};
+	
+	var menuButtonCallback = function(p_oArgs, p_oWidget, p_oEl){
+		// Set this oButton since we apparently can't get it via parent.parent later in MenuItem
+		oButton = p_oWidget;
+	}
+	
+	var oFormGridCfg = {
+		form_attrs:{
+			id: 'add_connector_form'
+		},
+		grid: [
+			[ {type:'text', args:'Add connector'}, {type:'widget', className:'Button', args:oMenuButtonCfg, callback:menuButtonCallback} ],
+			[ {type:'text', args:'Params (optional)'}, {type:'input', args:{id:'add_connector_params', name:'add_connector_params', size:20}}]
+		]
+	};
+
+	// We need to do the initial render to auto-generate the form so we can hand that object to YAHOO.ELSA.Form
+	oPanel.panel.setHeader('Add Connector');
+	oPanel.panel.setBody('');
+	oPanel.panel.render();
+	
+	// Now build a new form using the element auto-generated by widget.Dialog
+	var oForm = new YAHOO.ELSA.Form(oPanel.panel.form, oFormGridCfg);
+	oPanel.panel.show();
+};
+
+YAHOO.ELSA.sendToConnector = function(p_sType, p_aArgs, p_iId){
+	logger.log('sendToConnector p_iId:', p_iId);
+	YAHOO.ELSA.sendToConnector.id = YAHOO.ELSA.getLocalResultIdFromQueryId(p_iId);
+	YAHOO.ELSA.sendToConnector.plugin = '';
+	
+	var handleSubmit = function(p_sType, p_oDialog){
+		logger.log('sending results for query.id ' + YAHOO.ELSA.sendToConnector.id + ' with method ' + YAHOO.ELSA.sendToConnector.plugin);
+		var aParams = YAHOO.util.Dom.get('send_to_params').value.split(/\,/);
+		YAHOO.ELSA.sendAll(oPanel.panel, YAHOO.ELSA.sendToConnector.plugin, aParams, YAHOO.ELSA.localResults[YAHOO.ELSA.sendToConnector.id].results.results);
+		this.hide();
+	};
+	var handleCancel = function(){
+		this.hide();
+	};
+	var oPanel = new YAHOO.ELSA.Panel('send_to_connector', {
+		buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
+			{ text:"Cancel", handler:handleCancel } ]
+	});
+	
+	var oButton;
+	//	"click" event handler for each item in the Button's menu
+	var onMenuItemClick = function(p_sType, p_aArgs, p_oItem){
+		logger.log('click args: ', arguments);
+		var sText = p_oItem.cfg.getProperty("text");
+		// Set the label of the button to be our selection
+		oButton.set('label', sText);
+		YAHOO.ELSA.sendToConnector.plugin = p_oItem.value;
+	}
+	
+	//	Create an array of YAHOO.widget.MenuItem configuration properties
+	var oMenuSources = [];
+	for (var i in YAHOO.ELSA.formParams.schedule_actions){
+		oMenuSources.push({
+			label: YAHOO.ELSA.formParams.schedule_actions[i].description,
+			text: YAHOO.ELSA.formParams.schedule_actions[i].description,
+			value: YAHOO.ELSA.formParams.schedule_actions[i].action,
+			onclick: { fn: onMenuItemClick }
+		});
+	}
+	
+	var oMenuButtonCfg = {
+		type: 'menu',
+		label: 'Send to connector...',
+		name: 'send_to_select_button',
+		menu: oMenuSources
+	};
+	
+	var menuButtonCallback = function(p_oArgs, p_oWidget, p_oEl){
+		// Set this oButton since we apparently can't get it via parent.parent later in MenuItem
+		oButton = p_oWidget;
+	}
+	
+	var oFormGridCfg = {
+		form_attrs:{
+			id: 'send_results_form'
+		},
+		grid: [
+			[ {type:'text', args:'Send to'}, {type:'widget', className:'Button', args:oMenuButtonCfg, callback:menuButtonCallback} ],
+			[ {type:'text', args:'Params (optional)'}, {type:'input', args:{id:'send_to_params', name:'send_to_params', size:20}}]
+		]
+	};
+
+	// We need to do the initial render to auto-generate the form so we can hand that object to YAHOO.ELSA.Form
+	oPanel.panel.setHeader('Send Results to Connector');
+	oPanel.panel.setBody('');
+	oPanel.panel.render();
+	
+	// Now build a new form using the element auto-generated by widget.Dialog
+	var oForm = new YAHOO.ELSA.Form(oPanel.panel.form, oFormGridCfg);
+	oPanel.panel.show();
+};
+
+YAHOO.ELSA.sendAll = function(p_oPanel, p_sConnector, p_aParams, p_aData){
+	var sConnector = p_sConnector + '(' + p_aParams.join(',') + ')';
+	logger.log('p_aData', p_aData);
+	
+	if (!p_aData){
+		YAHOO.ELSA.Error('Need a record.');
+		return;
+	}
+	var callback = {
+		success: function(oResponse){
+			oSelf = oResponse.argument[0];
+			if (oResponse.responseText){
+				var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+				if (typeof oReturn === 'object'){
+					if (oReturn.ret && oReturn.ret == 1){
+						logger.log('sent ok');
+					}
+					else if (oReturn.ret){
+						logger.log('sent ok');
+						YAHOO.ELSA.sendAll.win = window.open('about:blank');
+						YAHOO.ELSA.sendAll.win.document.body.innerText = oResponse.responseText;
+//						var oTable = document.createElement('table');
+//						var oTbody = document.createElement('tbody');
+//						var oTr, oTd;
+//						oTable.appendChild(oTbody);
+//						for (var i in oReturn.ret){
+//							for (var j in oReturn.ret[i].results){
+//								var oResult = oReturn.ret[i].results[j];
+//								for (var k in oResult){
+//									var oRow = oResult[k];
+//									oTr = document.createElement('tr');
+//									for (var m in oRow){
+//										oTd = document.createElement('td');
+//										oTd.innerHTML = m;
+//										oTr.appendChild(oTd);
+//										oTd = document.createElement('td');
+//										oTd.innerText = oRow[m];
+//										oTr.appendChild(oTd);
+//									}
+//									oTbody.appendChild(oTr);
+//								}
+//							}
+//						}
+						YAHOO.ELSA.sendAll.win.document.body.appendChild(oTable);
+					}
+					else {
+						logger.log('oReturn', oReturn);
+						YAHOO.ELSA.Error('Send failed');
+					}
+					p_oPanel.hide();
+				}
+				else {
+					logger.log(oReturn);
+				}
+			}
+			else {
+				logger.log(oReturn);
+			}
+		},
+		failure: function(oResponse){
+			return [ false, ''];
+		},
+		argument: [this]
+	};
+	var sPayload = YAHOO.lang.JSON.stringify({results:{results:p_aData}, connectors:[sConnector], query:YAHOO.ELSA.currentQuery.toObject()});
+	sPayload.replace(/;/, '', 'g');
+	logger.log('sPayload: ' + sPayload);
+	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + encodeURIComponent(Base64.encode(sPayload)));
+}
 
 YAHOO.ELSA.exportData = function(p_sType, p_aArgs, p_oData){
 	YAHOO.ELSA.exportData.data = p_oData;
@@ -2762,11 +2987,12 @@ YAHOO.ELSA.getQuerySchedule = function(){
 			});
 		}
 		
+		
 		YAHOO.ELSA.getQuerySchedule.panel.renderEvent.subscribe(function(){
 			var myColumnDefs = [
 				{ key:'menu', label:'Action', formatter:formatMenu },
 				{ key:"id", label:"ID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
-				{ key:"query", label:"Query", formatter:formatQuery, sortable:true, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter, validator:YAHOO.ELSA.getQuerySchedule.cellEditorValidatorQuery}) },
+				{ key:"query", label:"Query", formatter:formatQuery, sortable:true, editor: new YAHOO.widget.TextareaCellEditor({width:'500px', height:'8em', asyncSubmitter:asyncSubmitter, validator:YAHOO.ELSA.getQuerySchedule.cellEditorValidatorQuery}) },
 				{ key:'frequency', label:'Interval', formatter:formatInterval, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aIntervalValues}) },
 				{ key:'start', label:'Starts On', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true, editor: new YAHOO.widget.DateCellEditor({asyncSubmitter:asyncSubmitter}) },
 				{ key:'end', label:'Ends On', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true, editor: new YAHOO.widget.DateCellEditor({asyncSubmitter:asyncSubmitter}) },
@@ -3479,6 +3705,19 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 	oTd.appendChild(oDiv);
 	oTr.appendChild(oDiv);
 	
+	oTr = document.createElement('tr');
+	oTbody.appendChild(oTr);
+	
+	oTd = document.createElement('td');
+	oTd.appendChild(document.createTextNode('Plugin params (optional)'));
+	oTr.appendChild(oTd);
+	
+	var oInput = document.createElement('input');
+	oInput.name = 'params';
+	oInput.id = 'log_info_params';
+	oTd.appendChild(oInput);
+	oTr.appendChild(oTd);
+	
 	YAHOO.ELSA.logInfoDialog.body.appendChild(oTable);
 
 	//	Create an array of YAHOO.widget.MenuItem configuration properties
@@ -3518,7 +3757,8 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 }
 
 YAHOO.ELSA.sendFromMenu = function(p_sType, p_aArgs, p_a){
-	var p_sPlugin = p_a[0];
+	var sParams = '(' + YAHOO.util.Dom.get('log_info_params').value + ')';
+	var p_sPlugin = p_a[0] + sParams;
 	logger.log('p_sPlugin ' + p_sPlugin);
 	var p_oRecord = p_a[1];
 	logger.log('p_oRecord', p_oRecord);
@@ -3536,7 +3776,14 @@ YAHOO.ELSA.sendFromMenu = function(p_sType, p_aArgs, p_a){
 					if (oReturn.ret && oReturn.ret == 1){
 						logger.log('sent ok');
 					}
+					else if (oReturn.ret){
+						logger.log('sent ok');
+						YAHOO.ELSA.sendAll.win = window.open('about:blank');
+						YAHOO.ELSA.sendAll.win.document.body.innerText = oResponse.responseText;
+						YAHOO.ELSA.sendAll.win.document.body.appendChild(oTable);
+					}
 					else {
+						logger.log('oReturn', oReturn);
 						YAHOO.ELSA.Error('Send failed');
 					}
 					YAHOO.ELSA.logInfoDialog.hide();

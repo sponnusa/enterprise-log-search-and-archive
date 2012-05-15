@@ -32,11 +32,12 @@ sub BUILD {
 	my $self = shift;
 	$self->log->debug('field: ' . Dumper($self->field));
 	$self->log->debug('regex: ' . Dumper($self->regex));
-	$self->log->debug('begin with data: ' . Dumper($self->data));
+	#$self->log->debug('begin with data: ' . Dumper($self->data));
 	
 	DATUM_LOOP: foreach my $datum (@{ $self->data }){
 		foreach my $key (keys %$datum){
 			next if ref($datum->{$key});
+			next unless $key =~ $self->field;
 			$self->_check($datum, $datum->{$key}) and next DATUM_LOOP;
 		}
 		foreach my $transform (keys %{ $datum->{transforms} }){
@@ -44,7 +45,7 @@ sub BUILD {
 			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
 				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
 					foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
-						next unless ($transform_field . '.' . $key) =~ $self->field;
+						next unless ($transform . '. ' . $transform_field . '.' . $key) =~ $self->field;
 						#$self->log->trace('passed field ' . $transform_field . '.' . $key);
 						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
 							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{$key} }){
@@ -57,7 +58,8 @@ sub BUILD {
 					}
 				}
 				elsif (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'
-					and $transform_field =~ $self->field){
+					and $transform . '. ' . $transform_field =~ $self->field){
+					#$self->log->trace('passed field ' . $transform_field);
 					foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field} }){
 						$self->_check($datum, $value) and next DATUM_LOOP;	
 					}
@@ -78,7 +80,7 @@ sub BUILD {
 		}
 	}
 	
-	$self->log->debug('data: ' . Dumper($self->data));
+	$self->log->debug('final data: ' . Dumper($self->data));
 	
 	return $self;
 }
@@ -91,13 +93,13 @@ sub _check {
 	if ($self->operator){
 		my $test = $value . ' ' . $self->operator . ' ' . $self->regex;
 		if (eval($test)){
-			$self->log->trace('passed value ' . $value);
+			#$self->log->trace('passed value ' . $value);
 			$datum->{transforms}->{$Name} = '__KEEP__';
 			return 1;
 		}
 	}
 	elsif ($value =~ $self->regex){
-		$self->log->trace('passed value ' . $value);
+		#$self->log->trace('passed value ' . $value);
 		$datum->{transforms}->{$Name} = '__KEEP__';
 		return 1;
 	}

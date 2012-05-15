@@ -66,10 +66,10 @@ sub call {
 	
 	$args->{api} = $self->api;
 	if ($config->{auth} eq 'none'){
-		$args->{user_info} = $self->api->get_user_info('system');
+		$args->{user} = $self->api->get_user('system');
 	}
 	else {
-		$args->{user_info} = $self->api->get_user_info($req->user);
+		$args->{user} = $self->api->get_user($req->user);
 	}
 	
 	my $dashboard;
@@ -92,6 +92,7 @@ sub call {
 		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
 	}
 	else {
+		$self->api->log->debug('data: ' . Dumper($dashboard->data));
 		$res->body([$self->index($req, $dashboard->data)]);
 	}
 	$res->finalize();

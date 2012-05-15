@@ -15,6 +15,7 @@ use API;
 has 'mode' => (is => 'rw', isa => 'Str', required => 1, default => sub { return 'index' });
 has 'session' => (is => 'rw', isa => 'Object', required => 0);
 has 'api' => (is => 'rw', isa => 'Object', required => 1);
+has 'title' => (is => 'rw', isa => 'Str', required => 1, default => 'ELSA');
 
 our %Modes = (
 	index => 1,
@@ -26,12 +27,6 @@ our %Modes = (
 	send_to => 1,
 );
 
-#sub BUILD {
-#	my ($self, $params) = @_;
-#			
-#	return $self;
-#}
-
 sub call {
 	my ($self, $env) = @_;
     $self->session(Plack::Session->new($env));
@@ -40,18 +35,23 @@ sub call {
 	$res->content_type('text/html');
 	$res->header('Access-Control-Allow-Origin' => '*');
 	
+	$self->api->clear_warnings;
+	
 	my $body;
 	my $method = $self->_extract_method($req->request_uri);
 	$method ||= 'index';
 	$self->api->log->debug('method: ' . $method);
 	if (exists $Modes{ $method }){
-		my $sub = $method;
 		if ($Modes{ $method } == 1){
-			my $user_info = $self->api->get_user_info($req->user);
-			if ($user_info){
-				$self->session->set('user_info', $user_info);
-				$body = $self->$sub($req);
+			my $user = $self->api->get_user($req->user);
+			if ($user){
+				$self->session->set('user', $user->freeze);
+				$self->session->set('user_info', $user->TO_JSON);
+				$body = $self->$method($req);
 				if (ref($body) and ref($body) eq 'HASH'){
+					if ($self->api->has_warnings){
+						$body->{warnings} = $self->api->warnings;
+					}
 					$body = [encode_utf8($self->api->json->encode($body))];
 					$self->api->log->trace('returning body: ' . Dumper($body));
 				}
@@ -62,10 +62,9 @@ sub call {
 			}
 		}
 		elsif ($Modes{ $method } == 2){
-			#$body = $self->$sub($req);
 			my $ret;
 			eval {
-				$ret = $self->$sub($req);
+				$ret = $self->$method($req);
 				unless ($ret){
 					$ret = { error => $self->api->last_error };
 				}
@@ -109,6 +108,9 @@ sub _extract_method {
 sub index {
 	my $self = shift;
 	my $req = shift;
+	
+	$self->title('ELSA');
+	
 	return $self->_get_headers() . $self->_get_index_body();
 }
 
@@ -168,7 +170,8 @@ EOHTML
 	}
 	
 	# Set form params
-	my $form_params = $self->api->get_form_params;
+	my $user = $self->api->get_user($self->session->get('user_info')->{username});
+	my $form_params = $self->api->get_form_params($user);
 	if($form_params){
 		$HTML .= 'var formParams = ' . encode_json($form_params) . ';';
 	}
@@ -197,9 +200,10 @@ YAHOO.util.Event.throwErrors = true;
 	multipleInheritance = {};
 	
 </script>
-<title>ELSA</title>
 EOHTML
 ;
+
+	$HTML .= sprintf('<title>%s</title>', $self->title);
 	return $HTML;
 
 }
@@ -279,6 +283,8 @@ sub admin {
 	my $self = shift;
 	my $req = shift;
 	
+	$self->title('ELSA Permissions Management');
+	
 	my $args = $req->query_parameters->as_hashref;
 	$args->{uid} = $self->session->get('user_info')->{uid};
 	my $HTML = $self->_get_headers('..');
@@ -312,6 +318,8 @@ sub stats {
 	my $self = shift;
 	my $req = shift;
 	
+	$self->title('ELSA Stats');
+	
 	my $args = $req->query_parameters->as_hashref;
 	$args->{uid} = $self->session->get('user_info')->{uid};
 	my $HTML = $self->_get_headers('..');
@@ -344,6 +352,8 @@ sub transform {
 	my $self = shift;
 	my $req = shift;
 	my $args = $req->parameters->as_hashref;
+	
+	$self->title('ELSA Transform');
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
 		eval {
@@ -381,10 +391,12 @@ sub send_to {
 	my $req = shift;
 	my $args = $req->parameters->as_hashref;
 	
+	$self->title('ELSA Connector');
+	
 	if ( $args and ref($args) eq 'HASH' and $args->{data} ) {
 		eval {
 			my $json_args = $self->api->json->decode(uri_unescape(decode_base64($args->{data})));
-			$args->{user_info} = $self->session->get('user_info');
+			$args->{user} = $self->api->get_user($req->user);
 			$args->{connectors} = $json_args->{connectors};
 			$args->{results} = delete $json_args->{results};
 			$args->{query} = delete $json_args->{query};
@@ -395,11 +407,12 @@ sub send_to {
 			return 'Unable to build results object from args';
 		}
 		
-		my $result = $self->api->send_to($args);
-		$self->api->log->debug( "Got result: " . Dumper($result) );
+		my $results = $self->api->send_to($args);
+		$results = $args->{results} unless $results;
+		$self->api->log->debug( "Got results: " . Dumper($results) );
 		
 		return { 
-			ret => $result, 
+			ret => $results, 
 			mime_type => 'application/javascript',
 		};
 	}
