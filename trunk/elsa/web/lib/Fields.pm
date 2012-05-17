@@ -355,8 +355,6 @@ sub normalize_quoted_value {
 	my $self = shift;
 	my $value = shift;
 	
-	# Strip punctuation
-	$value =~ s/[^a-zA-Z0-9\.\@\s\-\_]/\ /g;
 	# Quoted integers don't work for some reason
 	if ($value =~ /^\d+$/){
 		return $value;

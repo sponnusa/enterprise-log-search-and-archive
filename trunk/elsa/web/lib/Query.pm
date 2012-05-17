@@ -780,6 +780,9 @@ sub _parse_query_term {
 					die('Integer search terms must be 15 or fewer digits, received ' 
 						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.');
 				}
+				if($term_hash->{quote}){
+					$term_hash->{value} = $self->normalize_quoted_value($term_hash->{value});
+				}
 			}
 			
 			
@@ -798,11 +801,7 @@ sub _parse_query_term {
 			elsif ($effective_operator eq '-'){
 				$boolean = 'not';
 			}
-			
-			if($term_hash->{quote}){
-				$term_hash->{value} = $self->normalize_quoted_value($term_hash->{value});
-			}	
-						
+									
 			# Process a field/value or attr/value
 			if ($term_hash->{field} and $term_hash->{value}){
 				
