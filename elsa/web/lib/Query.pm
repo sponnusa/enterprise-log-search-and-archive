@@ -151,6 +151,7 @@ sub BUILD {
 					$regex =~ s/^\s{2,}/\ /;
 					$regex =~ s/\s{2,}$/\ /;
 					$regex =~ s/\s/\./g;
+					$regex =~ s/\\{2,}/\\/g;
 					$highlights->{$regex} = 1;
 				}
 			}
@@ -160,6 +161,7 @@ sub BUILD {
 			$regex =~ s/^\s{2,}/\ /;
 			$regex =~ s/\s{2,}$/\ /;
 			$regex =~ s/\s/\./g;
+			$regex =~ s/\\{2,}/\\/g;
 			$highlights->{$regex} = 1;
 		}
 	}
@@ -689,7 +691,7 @@ sub _parse_query_term {
 			}
 			
 			# Escape any digit-dash-word combos (except for host or program)
-			$term_hash->{value} =~ s/(\d+)\-/$1\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
+			$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
 			
 			if ($term_hash->{field} eq 'start'){
 				# special case for start/end
