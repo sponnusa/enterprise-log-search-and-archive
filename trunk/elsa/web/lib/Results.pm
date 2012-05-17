@@ -169,7 +169,16 @@ with 'MooseX::Traits';
 
 # Object for storing query results
 has 'results' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} },
-	handles => { records_returned => 'count', all_groupbys => 'keys', groupby => 'get' });
+	handles => { all_groupbys => 'keys', groupby => 'get' });
+
+sub records_returned {
+	my $self = shift;
+	my $count = 0;
+	foreach my $groupby ($self->all_groupbys){
+		$count += scalar @{ $self->results->{$groupby} };
+	}
+	return $count;
+}
 
 sub add_result {
 	my $self = shift;

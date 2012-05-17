@@ -1496,7 +1496,7 @@ sub query {
 		if ($q->analytics or $q->archive){
 			# Find estimated query time
 			my $estimated_query_time = $self->_estimate_query_time($q);
-			$self->log->trace('Found estimated query time ' . $estimated_query_time);
+			$self->log->trace('Found estimated query time ' . $estimated_query_time . ' seconds.');
 			my $query_time_batch_threshold = 120;
 			if ($self->conf->get('query_time_batch_threshold')){
 				$query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
@@ -3434,10 +3434,10 @@ sub _archive_query {
 						$search_query = "SELECT COUNT(*) AS count, class_id, $groupby\n";
 					}
 					else {
-						$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby} AS $query->{groupby_field}\n";
+						$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby} AS \"$query->{groupby_field}\"\n";
 					}
 					$search_query .= "FROM $table main\n" .
-						'WHERE ' . $query->{where} . "\nGROUP BY $query->{groupby_field}\n" . 'ORDER BY 1 DESC LIMIT ?,?';
+						'WHERE ' . $query->{where} . "\nGROUP BY $query->{groupby}\n" . 'ORDER BY 1 DESC LIMIT ?,?';
 				}
 				else {
 					$search_query = "SELECT main.id,\n" .
@@ -3518,7 +3518,7 @@ sub _archive_query {
 		}
 	}
 	
-	my $total_records = 0;
+	#my $total_records = 0;
 	if ($q->has_groupby){
 		foreach my $groupby ($q->all_groupbys){
 			my %agg;
@@ -3531,20 +3531,26 @@ sub _archive_query {
 				
 				foreach my $row (@{ $ret->{$node}->{rows} }){
 					my $field_infos = $q->resolve($groupby, $row->{$groupby}, '=');
-					my $field = (keys %{ $field_infos->{attrs}->{ $row->{class_id} } })[0];
-					$field =~ s/attr\_//;
-					
+					my $attr = (keys %{ $field_infos->{attrs}->{ $row->{class_id} } })[0];
 					my $key;
-					if (exists $Fields::Time_values->{ $groupby }){
-						# We will resolve later
-						$key = (values %{ $field_infos->{attrs}->{0} })[0];
+					if ($attr){
+						$attr =~ s/attr\_//;
+						
+						if (exists $Fields::Time_values->{ $groupby }){
+							# We will resolve later
+							$key = (values %{ $field_infos->{attrs}->{0} })[0];
+						}
+						elsif (exists $Fields::Field_to_order->{ $attr }){
+							# Resolve normally
+							$key = $self->resolve_value($row->{class_id}, 
+								$row->{$groupby}, $attr);
+						}
 					}
-					elsif (exists $Fields::Field_to_order->{ $field }){
-						# Resolve normally
-						$key = $self->resolve_value($row->{class_id}, 
-							$row->{$groupby}, $field);
+					else {
+						my $field_order = $self->get_field($groupby)->{ $row->{class_id} }->{field_order};
+						$key = $self->resolve_value($row->{class_id}, $row->{$groupby}, $Fields::Field_order_to_field->{$field_order});
 					}
-					
+										
 					$agg{ $key } += $row->{count};	
 				}
 			}
@@ -3582,27 +3588,27 @@ sub _archive_query {
 				foreach (@zero_filled){
 					$q->results->add_result($groupby, $_);
 				}
-				$total_records += scalar keys %agg;
+				#$total_records += scalar keys %agg;
 			}
 			else { 
 				# Sort these in descending value order
 				my @tmp;
 				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
 					push @tmp, { intval => $agg{$key}, '@groupby' => $key, '@count' => $agg{$key} };
-					$total_records += $agg{$key};
+					#$total_records += $agg{$key};
 					last if scalar keys %agg > $limit;
 				}
 				foreach (@tmp){
 					$q->results->add_result($groupby, $_);
 				}
-				$total_records += scalar @tmp;
+				#$total_records += scalar @tmp;
 			}
-		}	
+		}
 	}
 	else {
 		my @tmp; # we need to sort chronologically
 		NODE_LOOP: foreach my $node (keys %$ret){
-			$total_records += scalar @{ $ret->{$node}->{rows} };
+			#$total_records += scalar @{ $ret->{$node}->{rows} };
 			foreach my $row (@{ $ret->{$node}->{rows} }){
 				$row->{_fields} = [
 						{ field => 'host', value => $row->{host}, class => 'any' },
