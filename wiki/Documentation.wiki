@@ -374,3 +374,6 @@ log { source(s_bro_smtp); destination(d_elsa); };
 log { source(s_bro_smtp_entities); destination(d_elsa); };
 log { source(s_bro_ssl); destination(d_elsa); };
 }}}
+
+=Calculating Disk Requirements=
+The basic rule of thumb is that ELSA will require about 50% more disk than flat log files.  This will provide archived and indexed logs.  Archive logs require about 10% of flat file logs, log indexes require 40-50% more disk than the flat files, so together, there is a roughly 50% overall penalty.
