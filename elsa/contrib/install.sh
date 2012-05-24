@@ -223,6 +223,10 @@ build_node_perl(){
 	# FreeBSD has trouble testing with the current version of ExtUtils
 	if [ "$DISTRO" = "freebsd" ]; then
 		cpanm -n ExtUtils::MakeMaker
+		# This can fail when installing via cpanm, so we'll have ports build it
+		cd /usr/ports/devel/p5-Sys-MemInfo && make install clean
+	else 
+		cpanm Sys::MemInfo
 	fi
 	
 	if [ "$DISTRO" = "centos" ]; then
@@ -233,7 +237,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::MemInfo Sys::Info
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -346,7 +350,7 @@ mk_node_dirs(){
 
 set_node_mysql(){
 	# Test to see if schema is already installed
-	mysql -uelsa -pbiglog syslog -e "select count(*) from programs"
+	mysql -uelsa -p$MYSQL_PASS syslog -e "select count(*) from programs"
 	if [ $? -eq 0 ]; then
 		echo "MySQL and schema already installed."
 		return 0;
@@ -355,13 +359,13 @@ set_node_mysql(){
 	# Install mysql schema
 	service $MYSQL_SERVICE_NAME start
 	mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog && mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog_data && 
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "elsa"@"%" IDENTIFIED BY "biglog"' &&
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "elsa"@"localhost" IDENTIFIED BY "biglog"' &&
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "biglog"'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "elsa"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "elsa"@"%" IDENTIFIED BY "'$MYSQL_PASS'"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "elsa"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "'$MYSQL_PASS'"'
 	
 	# Above could fail with db already exists, but this is the true test for success
-	mysql -uelsa -pbiglog syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql" &&
+	mysql -uelsa -p$MYSQL_PASS syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql" &&
 	enable_service "$MYSQL_SERVICE_NAME"
 	return $?
 }
@@ -460,7 +464,8 @@ centos_get_web_packages(){
 }
 
 freebsd_get_web_packages(){
-	pkg_add -vFr subversion curl mysql55-client perl ap20-mod_perl2 p5-App-cpanminus
+	cd /usr/ports/www/mod_perl2 && make install clean
+	pkg_add -vFr subversion curl mysql55-client perl p5-App-cpanminus
 	RET=$?
 	# pkg_add will return 6 when packages were already present
 	if [ "$RET" -ne 0 ] && [ "$RET" -ne 6 ]; then
@@ -530,7 +535,7 @@ set_web_mysql(){
 }
 
 update_web_mysql(){
-	echo "Updating web MySQL..."
+	echo "Updating web MySQL, please ignore any errors for this section..."
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP COLUMN action_params" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP FOREIGN KEY `query_schedule_ibfk_2`" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP COLUMN action_id" &&
@@ -538,6 +543,7 @@ update_web_mysql(){
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN params VARCHAR(8000)" > /dev/null 2>&1
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_log ADD KEY(archive)" > /dev/null 2>&1
 	# The above can all fail for perfectly fine reasons
+	echo "Finished updating MySQL"
 	return 0
 }
 
