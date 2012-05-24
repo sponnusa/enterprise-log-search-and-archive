@@ -217,7 +217,7 @@ build_node_perl(){
 	# Install required Perl modules
 	
 	if [ \! -f /usr/local/bin/cpanm ]; then
-		cd $TMP_DIR && curl -L http://cpanmin.us | perl - App::cpanminus
+		cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
 	fi
 	
 	# FreeBSD has trouble testing with the current version of ExtUtils
@@ -376,7 +376,7 @@ update_node_mysql(){
 
 init_elsa(){
 	# Copy elsa.conf to /etc/
-	cat "$BASE_DIR/elsa/node/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_node.conf &&
+	cat "$BASE_DIR/elsa/node/conf/elsa.conf" | sed -e "s/biglog/$MYSQL_PASS/g" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_node.conf &&
 	
 	# Run elsa.pl for initial creation of sphinx config
 	echo "" | perl "$BASE_DIR/elsa/node/elsa.pl" -on -c /etc/elsa_node.conf &&
@@ -488,7 +488,7 @@ build_web_perl(){
 	# Install required Perl modules
 	
 	if [ \! -f /usr/local/bin/cpanm ]; then
-		cd $TMP_DIR && curl -L http://cpanmin.us | perl - App::cpanminus
+		cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
 	fi
 	
 	# FreeBSD has trouble testing with the current version of ExtUtils
@@ -549,7 +549,7 @@ update_web_mysql(){
 
 mk_web_dirs(){
 	# Copy elsa.conf to /etc/
-	cat "$BASE_DIR/elsa/web/conf/elsa.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_web.conf
+	cat "$BASE_DIR/elsa/web/conf/elsa.conf" | sed -e "s/biglog/$MYSQL_PASS/g" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/elsa_web.conf
 	
 	# Make data directories on node
 	mkdir -p "$DATA_DIR/elsa/log" &&
