@@ -377,3 +377,5 @@ log { source(s_bro_ssl); destination(d_elsa); };
 
 =Calculating Disk Requirements=
 The basic rule of thumb is that ELSA will require about 50% more disk than flat log files.  This will provide archived and indexed logs.  Archive logs require about 10% of flat file logs, log indexes require 40-50% more disk than the flat files, so together, there is a roughly 50% overall penalty.
+
+To specify how much disk to use, see the config file entry for log_size_limit, which is the total limit ELSA will use.  Within that limit, the archive section's config value for "percentage" dictates what percentage of the overall log_size_limit will be used for archive, and the rest will be used for indexed logs.  If you do not wish to archive, set the percentage to zero and all space will be for the index, or vice versa.
