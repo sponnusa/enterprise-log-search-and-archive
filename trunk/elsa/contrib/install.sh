@@ -653,6 +653,10 @@ check_svn_proxy(){
 			echo "ERROR: Please set the proxy settings in /etc/subversion/servers before continuing"
 			return 1
 		fi
+		if [ "$https_proxy" == "" ]; then
+			echo "ERROR: Please set the $https_proxy environment variable"
+			return 1
+		fi
 	fi
 	return 0
 }
