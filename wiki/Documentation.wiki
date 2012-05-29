@@ -61,6 +61,15 @@ Most Linux distributions do not ship recent versions of Syslog-NG.  Therefore, t
 
 Archive tables typically compress at a 10:1 ratio, and therefore use only about 5% of the total space allocated to logs compared with the index tables and indexes themselves.  The index tables are necessary because Sphinx searches return only the ID's of the matching logs, not the logs themselves, therefore a primary key lookup is required to retrieve the raw log for display.  For this reason, archive tables alone are insufficient because they do not contain a primary key.
 
+==Hosting all files locally==
+If your ELSA web server will not have Internet access, you will need to host the Javascript for the web pages locally.  To do this, after installing:
+{{{
+cd /usr/local/elsa/web/inc
+wget "http://yuilibrary.com/downloads/yui2/yui_2.9.0.zip"
+unzip yui_2.9.0.zip
+}}}
+Edit the elsa_web.conf file and set yui/local to be "inc" and comment out "version" and "modifier."
+
 =Web Server=
 
 The web frontend is typically served with Apache, but the Plack Perl module allows for any web server to be used, including a standalone server called Starman which can be downloaded from CPAN.  Any implementation will still have all authentication features available because they are implemented in the underlying Perl.
