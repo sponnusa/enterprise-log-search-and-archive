@@ -76,9 +76,9 @@ elsif ($api->conf->get('auth/method') eq 'security_onion'){
 		}
 		
 		my $salt = substr($password, 0, 2);
-		my $query = 'SELECT username FROM user_info WHERE username=? AND password=SHA1(CONCAT(?,?))';
+		my $query = 'SELECT username FROM user_info WHERE username=? AND password=CONCAT(SUBSTRING(password, 1, 2), SHA1(CONCAT(?, SUBSTRING(password, 1, 2))))';
 		$sth = $dbh->prepare($query);
-		$sth->execute($username, $salt, $password);
+		$sth->execute($username, $password);
 		my $row = $sth->fetchrow_arrayref;
 		if ($row){
 			return 1;
