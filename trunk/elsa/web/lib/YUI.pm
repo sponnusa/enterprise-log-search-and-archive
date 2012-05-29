@@ -51,7 +51,24 @@ has 'ssl' => (is => 'rw', isa => 'Int', required => 1, default => 1);
 sub css {
 	my $self = shift;
 	if ($self->local){
-		return '<link rel="stylesheet" type="text/css" href="' . $self->local . 'yui' . '-' . $self->version . $self->modifier . '.css' . '">';
+		#return '<link rel="stylesheet" type="text/css" href="' . $self->local . 'yui' . '-' . $self->version . $self->modifier . '.css' . '">';
+		my $yui_css_base_template = '<link rel="stylesheet" type="text/css" href="%1$s/yui/build/%2$s/%2$s%3$s.css">' . "\n";
+		my $yui_css_base = '';
+		foreach my $yui_base_css_item (@{$self->base_css}){
+			# CSS only has -min modifier
+			my $modifier = '';
+			if ($self->modifier eq '-min'){
+				$modifier = '-min';
+			}
+			$yui_css_base .= sprintf($yui_css_base_template, $self->local, $yui_base_css_item, $modifier);
+		}
+		
+		my $yui_css_template = '<link rel="stylesheet" type="text/css" href="%1$s/yui/build/%2$s/assets/skins/sam/%2$s.css">' . "\n";
+		my $yui_css = '';
+		foreach my $yui_css_component (@{$self->css_components}){
+			$yui_css .= sprintf($yui_css_template, $self->local, $yui_css_component);
+		}
+		return $yui_css_base . "\n" . $yui_css;
 	}
 	elsif ($self->ssl){
 		my $yui_css_base_template = '<link rel="stylesheet" type="text/css" href="https://ajax.googleapis.com/ajax/libs/yui/%1$s/build/%2$s/%2$s%3$s.css">' . "\n";
@@ -91,7 +108,13 @@ sub css {
 sub js {
 	my $self = shift;
 	if ($self->local){
-		return '<script type="text/javascript" src="' . $self->local . 'yui' . '-' . $self->version . $self->modifier . '.js' . '"></script>';
+		#return '<script type="text/javascript" src="' . $self->local . 'yui' . '-' . $self->version . $self->modifier . '.js' . '"></script>';
+		my $yui_js_template = '<script type="text/javascript" src="%1$s/yui/build/%2$s/%2$s%3$s.js"></script>' . "\n";
+		my $yui_js = '';
+		foreach my $yui_component (@{$self->js_components}){
+			$yui_js .= sprintf($yui_js_template, $self->local, $yui_component, $self->modifier);
+		}
+		return $yui_js;
 	}
 	elsif ($self->ssl){
 		my $yui_js_template = '<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/yui/%1$s/build/%2$s/%2$s%3$s.js"></script>' . "\n";
