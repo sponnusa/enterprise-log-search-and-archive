@@ -126,6 +126,7 @@ sub rotate_logs {
 	
 	# Delete oldest logs as per our policy
 	$self->_oversize_log_rotate();
+	$self->_overtime_log_rotate();
 	
 	# Delete buffers that are finished
 	my ($query, $sth);
@@ -475,6 +476,60 @@ sub _oversize_log_rotate {
 		$self->log->info("Dropping index " . $entry->{id});
 		# _drop_indexes drops the table as necessary
 		$self->_drop_indexes($entry->{type}, [$entry->{id}]);
+	}
+			
+	return 1;
+}
+
+sub _overtime_log_rotate {
+	my $self = shift;
+	
+	my ($query, $sth);
+	
+	# Drop archive tables older than given number of days
+	if ($self->conf->get('archive/days')){
+		$self->_get_lock('directory');
+			
+		# Get our latest entry
+		$query = "SELECT table_name, start, end FROM tables WHERE start < DATE_SUB(NOW(), INTERVAL ? DAY) ORDER BY start ASC";
+		$sth = $self->db->prepare($query);
+		$sth->execute($self->conf->get('archive/days'));
+		
+		while (my $row = $sth->fetchrow_hashref){
+			my $full_table = $row->{table_name};
+			$self->log->info("Dropping table $full_table");
+			$query = sprintf("DROP TABLE %s", $full_table);
+			$self->db->do($query);
+			$query = 'DELETE FROM tables WHERE table_name=?';
+			my $del_sth = $self->db->prepare($query);
+			$del_sth->execute($full_table);
+		}
+		$self->_release_lock('directory');
+	}
+
+	
+	# Drop indexed data older than given number of days
+	if ($self->conf->get('sphinx/days')){
+		$self->_get_lock('directory');
+			
+		# Get our latest entry
+		$query = "SELECT id, first_id, last_id, type, table_type, table_name FROM v_directory\n" .
+			"WHERE table_type=\"index\" AND ISNULL(locked_by) AND start < DATE_SUB(NOW(), INTERVAL ? DAY)\n" .
+			"ORDER BY start ASC";
+		$sth = $self->db->prepare($query);
+		$sth->execute($self->conf->get('sphinx/days'));
+		
+		while (my $row = $sth->fetchrow_hashref){
+			$self->log->info("Dropping index " . $row->{id});
+			
+			$query = 'UPDATE indexes SET locked_by=? WHERE id=? AND type=?';
+			my $upd_sth = $self->db->prepare($query);
+			$upd_sth->execute($$, $row->{id}, $row->{type});
+			
+			# _drop_indexes drops the table as necessary
+			$self->_drop_indexes($row->{type}, [$row->{id}]);
+		}
+		$self->_release_lock('directory');
 	}
 			
 	return 1;
