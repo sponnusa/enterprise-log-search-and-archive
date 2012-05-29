@@ -771,7 +771,7 @@ sub _parse_query_term {
 				# Get rid of any non-indexed chars
 				$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g unless ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
 				# Escape any '@' or sphinx will error out thinking it's a field prefix
-				if ($term_hash->{value} =~ /\@/){
+				if ($term_hash->{value} =~ /\@/ and not $term_hash->{quote}){
 					# need to quote
 					$term_hash->{value} = '"' . $term_hash->{value} . '"';
 				}
