@@ -83,6 +83,8 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
  * Log_size_limit: Total size in bytes allowed for all logs and indexes.
  * Sphinx/perm_index_size: This setting must be tweaked so that perm_index_size number of logs come into the system before (num_indexes `*` sphinx/index_interval) seconds pass.
  * Archive/percentage: Percentage of log_size_limit reserved for archive.
+ * Archive/days: Max number of days to retain logs for in the archive
+ * Sphinx/days: Max number of days to retain logs for in the indexes
 ==Firewall Settings==
 ||Source||Destination||Port||
 ||Web Clients||Web Node||TCP 80/443||
@@ -222,20 +224,20 @@ for demonstration purposes:
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("myuser",
 "string", "QSTRING");
 
-INSERT INTO fields_classes_map (field_id, class_id, field_order)
+INSERT INTO fields_classes_map (class_id, field_id, field_order)
 VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
 field_id FROM fields WHERE field="srcip"), 5);
-INSERT INTO fields_classes_map (field_id, class_id, field_order)
+INSERT INTO fields_classes_map (class_id, field_id, field_order)
 VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
 field_id FROM fields WHERE field="conn_bytes"), 6);
-INSERT INTO fields_classes_map (field_id, class_id, field_order)
+INSERT INTO fields_classes_map (class_id, field_id, field_order)
 VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
 field_id FROM fields WHERE field="dstip"), 7);
 }}}
 Now the string field "myuser" at field_order 11, which maps to the
 first string column "s0":
 {{{
-INSERT INTO fields_classes_map (field_id, class_id, field_order)
+INSERT INTO fields_classes_map (class_id, field_id, field_order)
 VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
 field_id FROM fields WHERE field="myuser"), 11);
 }}}
