@@ -2284,7 +2284,8 @@ YAHOO.ELSA.exportResults = function(p_sType, p_aArgs, p_iId){
 		{text:'PDF', value:'PDF', onclick: { fn: onMenuItemClick }},
 		{text:'CSV', value:'CSV', onclick: { fn: onMenuItemClick }},
 		{text:'HTML', value:'HTML', onclick: { fn: onMenuItemClick }},
-		{text:'HTTP Request Tree', value:'HTTPRequestTree', onclick: { fn: onMenuItemClick }}
+		{text:'Google Earth', value:'KML', onclick: { fn: onMenuItemClick }}
+		//{text:'HTTP Request Tree', value:'HTTPRequestTree', onclick: { fn: onMenuItemClick }}
 	];
 	
 	var oMenuButtonCfg = {
