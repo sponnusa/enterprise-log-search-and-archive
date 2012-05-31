@@ -138,7 +138,7 @@ this-example.com
 me@example.com
 mal.form.ed-.ip.addr
 }}}
-Searches for 1.1 or example.com or ip.addr would all fail to find these terms.
+Searches for 1.1 or example.com or ip.addr would all fail to find these terms.  If you need to perform searches on partial keywords, you need to switch from an index query to an archive query by clicking the "Index" pull-down menu and choosing archive.  Keep in mind that archive searches are slow, so narrowing down a time period will help significantly.
 
 ==Search data flow==
 When the API issues the query, it is parsed and sent to Sphinx.  It then receives the log ID's that match and the API queries MySQL for those ID's:
