@@ -289,7 +289,8 @@ sub get_field {
 			text => uc($field), 
 			field_id => $Field_to_order->{$field},
 			class_id => $class, 
-			field_order => $Field_to_order->{$field}
+			field_order => $Field_to_order->{$field},
+			field_type => 'int',
 		};
 	}
 		
