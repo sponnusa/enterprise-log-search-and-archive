@@ -19,6 +19,7 @@ MYSQL_ROOT_PASS=""
 # These should be fine
 EVENTLOG_VER="0.2.12"
 SYSLOG_VER="3.2.4"
+GEOIP_DIR="/usr/local/share/GeoIP/"
 
 ########################################
 
@@ -500,14 +501,6 @@ build_web_perl(){
 		# No test because of a bug in the CentOS-specific distro detection
 		cpanm -n Sys::Info
 	fi
-	
-	if [ "$DISTRO" = "ubuntu" ]; then
-		# C API was installed already, proceed normally
-		cpanm Geo::IP
-	else
-		echo "Using slower pure-Perl GeoIP library, install Geo::IP for faster version" 
-		cpanm Geo::IP::PurePerl
-	fi
 		
 	# Now cpanm is available to install the rest
 	RETVAL=0
@@ -522,6 +515,26 @@ build_web_perl(){
 		fi
 		echo "Retry $RETRY"
 	done
+	
+	echo "Retrieving GeoIP databases..."
+	mkdir -p /usr/local/share/GeoIP &&
+	wget -O $TMP_DIR/GeoLiteCity.dat.gz "http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz" &&
+	gunzip $TMP_DIR/GeoLiteCity.dat.gz &&
+	cp $TMP_DIR/GeoLiteCity.dat $GEOIP_DIR/GeoIPCity.dat
+	wget -O $TMP_DIR/GeoIP.dat.gz "http://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz" &&
+	gunzip $TMP_DIR/GeoIP.dat.gz &&
+	cp $TMP_DIR/GeoIP.dat $GEOIP_DIR/ &&
+	echo "...done."
+	
+	if [ "$DISTRO" = "ubuntu" ]; then
+		# C API was installed already, proceed normally
+		cpanm Geo::IP
+	else
+		echo "Using slower pure-Perl GeoIP library, install GeoIP C library for faster version" 
+		wget -O $TMP_DIR/Geo-IP-1.40.tar.gz "http://search.cpan.org/CPAN/authors/id/B/BO/BORISZ/Geo-IP-1.40.tar.gz" &&
+		cd $TMP_DIR && tar xzvf Geo-IP-1.40.tar.gz && cd Geo-IP-1.40 &&
+		perl Makefile.PL PP=1 && make && make test && make install
+	fi
 	
 	return $RETVAL
 }
