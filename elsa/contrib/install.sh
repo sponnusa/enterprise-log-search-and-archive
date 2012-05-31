@@ -531,7 +531,7 @@ build_web_perl(){
 		cpanm Geo::IP
 	else
 		echo "Using slower pure-Perl GeoIP library, install GeoIP C library for faster version" 
-		wget -O $TMP_DIR/Geo-IP-1.40.tar.gz "http://search.cpan.org/CPAN/authors/id/B/BO/BORISZ/Geo-IP-1.40.tar.gz" &&
+		curl -L "http://search.cpan.org/CPAN/authors/id/B/BO/BORISZ/Geo-IP-1.40.tar.gz" > $TMP_DIR/Geo-IP-1.40.tar.gz &&
 		cd $TMP_DIR && tar xzvf Geo-IP-1.40.tar.gz && cd Geo-IP-1.40 &&
 		perl Makefile.PL PP=1 && make && make test && make install
 	fi
