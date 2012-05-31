@@ -27,6 +27,22 @@
 					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
 				</patterns>
 			</rule>
+			<rule provider="ELSA" class='7' id='7'>
+				<patterns>
+					<pattern>@IPv4:i0:@ Accessed URL @IPv4:i1:@:@ESTRING::/@/@ESTRING:s1:/@@ANYSTRING:s2:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%FWSM-5-304001">192.168.1.1 Accessed URL 10.0.0.0:http://www.example.com/wp-content/plugins/wp-spamfree/img/wpsf-img.php</test_message>
+						<test_values>
+							<test_value name="i0">192.168.1.1</test_value>
+							<test_value name="i1">10.0.0.0</test_value>
+							<test_value name="s1">www.example.com</test_value>
+							<test_value name="s2">wp-content/plugins/wp-spamfree/img/wpsf-img.php</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
 		</rules>
 	</ruleset>
 	<ruleset name="ASA" id='2_ASA'>
@@ -41,6 +57,22 @@
 				<patterns>
 					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
 				</patterns>
+			</rule>
+			<rule provider="ELSA" class='7' id='7'>
+				<patterns>
+					<pattern>@IPv4:i0:@ Accessed URL @IPv4:i1:@:@ESTRING::/@/@ESTRING:s1:/@@ANYSTRING:s2:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%ASA-5-304001">192.168.1.1 Accessed URL 10.0.0.0:http://www.example.com/wp-content/plugins/wp-spamfree/img/wpsf-img.php</test_message>
+						<test_values>
+							<test_value name="i0">192.168.1.1</test_value>
+							<test_value name="i1">10.0.0.0</test_value>
+							<test_value name="s1">www.example.com</test_value>
+							<test_value name="s2">wp-content/plugins/wp-spamfree/img/wpsf-img.php</test_value>
+						</test_values>
+					</example>
+				</examples>
 			</rule>
 		</rules>
 	</ruleset>
