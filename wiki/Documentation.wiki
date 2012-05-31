@@ -108,7 +108,7 @@ Log access is permitted by allowing certain groups either universal access (admi
 
 =Queries=
 
-Query syntax is loosely based on Google search syntax.  Terms are searched as whole keywords (no wildcards).  Searches may contain boolean operations specifying that a term is required using the plus sign, negating using the minus sign, or no sign indicating that it is an “OR.”  Parenthesis may be used to group terms.  Numeric fields, including hosts, may have greater than or less than (and equal to) operators combined with the boolean operators.  Queries can be very simple, like looking for any mention of an IP addres:
+Query syntax is loosely based on Google search syntax.  Terms are searched as whole keywords (no wildcards).  Searches may contain boolean operations specifying that a term is required using the plus sign, negating using the minus sign, or no sign indicating that it is an “OR.”  Parenthesis may be used to group terms.  Numeric fields, including hosts, may have greater than or less than (and equal to) operators combined with the boolean operators.  Queries can be very simple, like looking for any mention of an IP address:
 {{{
 10.0.20.1
 }}}
@@ -116,7 +116,7 @@ Or a website
 {{{
 site:www.google.com
 }}}
-Here is an example query for finding Symantec Anti-Virus alerts on Windows logs on ten hosts that does not contain the keyword “TrackingCookie:”
+Here is an example query for finding Symantec Anti-Virus alerts on Windows logs on ten hosts that does not contain the keyword “TrackingCookie”
 {{{
 +eventid:51 host>10.0.0.10 host<10.0.0.20 -TrackingCookie
 }}}
@@ -130,6 +130,17 @@ To see what hosts have had lockout events, one could run:
 }}}
 and choose the ANY.host field from the “Report On” menu.
 
+==Keywords==
+Keywords are the words indexed and available for searching.  Note that you cannot search for a partial keyword, it must be complete.  Also note that keywords are comprised of not only alpha-numeric words, but also hyphens, dots, and at-signs.  So, these are all complete keywords:
+{{{
+1.1.1.1
+this-example.com
+me@example.com
+mal.form.ed-.ip.addr
+}}}
+Searches for 1.1 or example.com or ip.addr would all fail to find these terms.
+
+==Search data flow==
 When the API issues the query, it is parsed and sent to Sphinx.  It then receives the log ID's that match and the API queries MySQL for those ID's:
 
 Query → Parse → Authorize → Log → Sphinx → MySQL → Aggregation → Presentation
