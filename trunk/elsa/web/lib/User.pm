@@ -257,6 +257,7 @@ sub _init_db {
 sub _init_security_onion {
 	my $self = shift;
 	$self->is_admin(1);
+	$self->email($self->conf->get('email/to') ? $self->conf->get('email/to') : 'root@localhost');
 }
 
 sub _create_user {
