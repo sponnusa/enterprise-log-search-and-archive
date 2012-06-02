@@ -25,7 +25,6 @@ use Results;
 use AsyncMysql;
 
 our $Max_limit = 1000;
-our $Node_info_cache_timeout = 10;
 our $Max_query_terms = 128;
 
 has 'ldap' => (is => 'rw', isa => 'Object', required => 0);
@@ -61,10 +60,6 @@ sub BUILD {
 	
 	# init plugins
 	$self->plugins();
-	
-	if (defined $self->conf->get('node_info_cache_timeout')){
-		$Node_info_cache_timeout = $self->conf->get('node_info_cache_timeout');
-	}
 	
 	return $self;
 }
@@ -419,7 +414,6 @@ sub _get_group_members {
 	return \@ret;
 }
 
-
 sub get_stats {
 	my ($self, $args) = @_;
 	my $user = $args->{user};
@@ -572,6 +566,7 @@ sub get_stats {
 	return $stats;
 }
 
+
 sub _get_nodes {
 	my $self = shift;
 	my $user = shift;
@@ -669,6 +664,10 @@ sub _get_node_info {
 	
 	my $nodes = $self->_get_nodes($user);
 	$self->log->trace('got nodes: ' . Dumper($nodes));
+	
+	unless (scalar keys %$nodes){
+		die('No nodes available');
+	}
 		
 	my $ret = { nodes => {} };
 	
@@ -1714,6 +1713,10 @@ sub _sphinx_query {
 			$self->log->warn($err_str);
 			delete $nodes->{$node};
 		}
+	}
+	
+	unless (scalar keys %$nodes){
+		die('No nodes available');
 	}
 	
 	# Get indexes from all nodes in parallel
@@ -3089,6 +3092,7 @@ sub send_to {
 				if ($@){
 					$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
 						. Dumper($q->results) . ' and args ' . Dumper(\@connector_args) . ': ' . $@);
+					return [ 'Error: ' . $@ ];
 				}
 			}
 		}
@@ -3465,6 +3469,7 @@ sub _archive_query {
 	}
 	
 	QUERY_LOOP: while ($queries_todo_count){
+		last unless scalar keys %queries;
 		my $cv = AnyEvent->condvar;
 		$cv->begin(sub {
 			$cv->send;
