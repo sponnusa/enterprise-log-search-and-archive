@@ -66,7 +66,7 @@ sub _query {
 		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rdata/ip/%s', $query);
 		
 		my $info = $self->cache->get($url);
-		if ($info){
+		if ($info and ref($info) eq 'HASH' and scalar keys %$info){
 			$datum->{transforms}->{$Name}->{$key} = $info;
 			$self->cv->end;
 			return;
