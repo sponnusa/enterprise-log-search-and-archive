@@ -2,6 +2,7 @@ package Indexer;
 use Moose;
 use Data::Dumper;
 use Date::Manip;
+use DBI;
 use Socket qw(inet_aton);
 use Time::HiRes qw(sleep time);
 use Fcntl qw(:flock);
