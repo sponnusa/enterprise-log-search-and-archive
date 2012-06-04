@@ -18,18 +18,32 @@ has 'known_orgs' => (is => 'rw', isa => 'HashRef');
 has 'field' => (is => 'rw', isa => 'Str');
 has 'restriction' => (is => 'rw', isa => 'Str', required => 1, default => 'need-to-know');
 has 'cif_description' => (is => 'rw', isa => 'Str', required => 1, default => 'infrastructure');
+has 'confidence' => (is => 'rw', isa => 'Num');
 
 sub BUILDARGS {
 	my $class = shift;
 	my %params = @_;
 	
 	if ($params{args} and ref($params{args}) eq 'ARRAY'){
-		my ($description, $field) = @{ $params{args} };
-		if ($field){
-			unless ($Fields->{$field}){
+		my ($description, $arg1, $arg2) = @{ $params{args} };
+		# Try to figure out which arg is confidence and which is field
+		if ($arg1 and $arg1 =~ /^\d+$/){
+			$params{confidence} = $arg1;
+			if ($arg2){
+				$params{field} = $arg2;
+			}
+		}
+		elsif ($arg1){
+			$params{field} = $arg1;
+			if ($arg2){
+				$params{confidence} = $arg2;
+			}
+		}
+			
+		if ($params{field}){
+			unless ($Fields->{$params{field}}){
 				die('Invalid field');
 			}
-			$params{field} = $field;
 		}
 		if ($description){
 			$params{cif_description} = $description;
@@ -48,12 +62,16 @@ sub BUILD {
 	if ($self->api->conf->get('transforms/whois/known_orgs')){
 		$self->known_orgs($self->api->conf->get('transforms/whois/known_orgs'));
 	}
+	
+	# given, from config, or default to 95
+	my $confidence = $self->confidence ? $self->confidence : $self->api->conf->get('connectors/cif/confidence') ? $self->api->conf->get('connectors/cif/confidence') : 95;
+	
 	my $info = { 
 		source => $self->api->conf->get('connectors/cif/source_name') ? $self->api->conf->get('connectors/cif/source_name') : 'ELSA',
 		description => $self->cif_description,
 		restriction => $self->restriction,
 		impact => $self->cif_description,
-		confidence => $self->api->conf->get('connectors/cif/confidence') ? $self->api->conf->get('connectors/cif/confidence') : 95,
+		confidence => $confidence,
 		severity => $self->api->conf->get('connectors/cif/severity') ? $self->api->conf->get('connectors/cif/severity') : 'high',
 	};
 	

@@ -2127,7 +2127,7 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 		var oInputEl = YAHOO.util.Dom.get(sConnectorId);
 		oInputEl.setAttribute('value', p_oItem.value);
 	}
-
+	
 	var aConnectorMenu = [
 		{ text:'Save report', value:'', onclick: { fn: onConnectorMenuItemClick } }
 	];
@@ -2156,6 +2156,7 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 			[ {type:'text', args:'Run every'}, {type:'input', args:{id:'schedule_input_interval_count', name:'count', size:2, value:1}}, {type:'widget', className:'Button', args:oIntervalMenuButtonCfg} ],
 			[ {type:'text', args:'Days to run'},  {type:'input', args:{id:'schedule_input_start_date', name:'days', value:7, size:2}}, {type:'text', args:'(enter 0 for forever)'} ],
 			[ {type:'text', args:'Action'}, {type:'widget', className:'Button', args:oConnectorMenuButtonCfg} ],
+			[ {type:'text', args:'Params (optional)'}, {type:'input', args:{id:'connector_params', name:'connector_params', size:20}}],
 			[ {type:'input', args:{type:'hidden', id:'schedule_input_qid', name:'qid', value:p_iQid}} ]
 		]
 	};
