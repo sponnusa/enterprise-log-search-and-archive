@@ -1033,7 +1033,7 @@ sub schedule_query {
 	}
 	$args->{uid} = sprintf('%d', $args->{user}->uid);
 	
-	my %standard_vars = map { $_ => 1 } qw(uid qid days time_unit count connector);
+	my %standard_vars = map { $_ => 1 } qw(uid qid days time_unit count connector connector_params);
 	my $schedule_query_params = { params => {} };
 	foreach my $item (keys %{$args}){
 		if ($standard_vars{$item}){
@@ -1044,6 +1044,13 @@ sub schedule_query {
 		}
 	}
 	$schedule_query_params->{params} = $self->json->encode($schedule_query_params->{params});
+	
+	# Add on the connector params and sanitize
+	my @connector_params = split(/,/, $schedule_query_params->{connector_params});
+	foreach (@connector_params){
+		$_ =~ s/[^a-zA-Z0-9\.\_\-\ ]//g;
+	}
+	$schedule_query_params->{connector} .= '(' . join(',', @connector_params) . ')';
 		
 	my @frequency;
 	for (my $i = 1; $i <= 7; $i++){
@@ -3216,7 +3223,6 @@ sub run_schedule {
 			$query_params->{meta_params} = delete $query_params->{query_meta_params};
 			$query_params->{meta_params}->{start} = ($last_run - $self->conf->get('schedule_interval'));
 			$query_params->{meta_params}->{end} = ($cur_time - $self->conf->get('schedule_interval'));
-			$query_params->{query_string} = delete $query_params->{query_string};
 			$query_params->{schedule_id} = $row->{query_schedule_id};
 			$query_params->{connectors} = [ $row->{connector} ];
 			$query_params->{system} = 1; # since the user did not init this, it's a system query
