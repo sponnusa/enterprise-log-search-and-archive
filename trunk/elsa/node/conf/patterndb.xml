@@ -30,6 +30,8 @@
 			<rule provider="ELSA" class='7' id='7'>
 				<patterns>
 					<pattern>@IPv4:i0:@ Accessed URL @IPv4:i1:@:@ESTRING::/@/@ESTRING:s1:/@@ANYSTRING:s2:@</pattern>
+					<pattern>@IPv4:i0:@ Accessed URL @IPv4:i1:@:@ESTRING::/@/@ESTRING:s1:/@</pattern>
+					<pattern>Access denied URL @ESTRING::/@/@ESTRING:s1:/@@ESTRING:s2: @SRC @IPv4:i0:@ DEST @IPv4:i1:@ on interface </pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -40,6 +42,15 @@
 							<test_value name="s1">www.example.com</test_value>
 							<test_value name="s2">wp-content/plugins/wp-spamfree/img/wpsf-img.php</test_value>
 						</test_values>
+					</example>
+					<example>
+						<test_message program="FWSM-5-304002">Access denied URL http://www.example.com/feedout/content SRC 192.168.1.1 DEST 72.246.55.49 on interface inside</test_message>
+							<test_values>
+								<test_value name="s1">www.example.com</test_value>
+								<test_value name="s2">feedout/content</test_value>
+								<test_value name="i0">192.168.1.1</test_value>
+								<test_value name="i1">72.246.55.49</test_value>
+							</test_values>
 					</example>
 				</examples>
 			</rule>
@@ -61,6 +72,8 @@
 			<rule provider="ELSA" class='7' id='7'>
 				<patterns>
 					<pattern>@IPv4:i0:@ Accessed URL @IPv4:i1:@:@ESTRING::/@/@ESTRING:s1:/@@ANYSTRING:s2:@</pattern>
+					<pattern>@IPv4:i0:@ Accessed URL @IPv4:i1:@:@ESTRING::/@/@ESTRING:s1:/@</pattern>
+					<pattern>Access denied URL @ESTRING::/@/@ESTRING:s1:/@@ESTRING:s2: @SRC @IPv4:i0:@ DEST @IPv4:i1:@ on interface </pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -71,6 +84,15 @@
 							<test_value name="s1">www.example.com</test_value>
 							<test_value name="s2">wp-content/plugins/wp-spamfree/img/wpsf-img.php</test_value>
 						</test_values>
+					</example>
+					<example>
+						<test_message program="ASA-5-304002">Access denied URL http://www.example.com/feedout/content SRC 192.168.1.1 DEST 72.246.55.49 on interface inside</test_message>
+							<test_values>
+								<test_value name="s1">www.example.com</test_value>
+								<test_value name="s2">feedout/content</test_value>
+								<test_value name="i0">192.168.1.1</test_value>
+								<test_value name="i1">72.246.55.49</test_value>
+							</test_values>
 					</example>
 				</examples>
 			</rule>
