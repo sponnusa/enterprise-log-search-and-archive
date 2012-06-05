@@ -304,6 +304,13 @@ sub set_permissions {
 	my ($query, $sth);
 	my $rows_updated = 0;
 	foreach my $perm (@{ $args->{permissions} }){
+		if ($perm->{attr} eq 'host_id' and $perm->{attr_id} !~ /^\d+$/){
+			$perm->{attr_id} = unpack('N*', inet_aton($perm->{attr_id}));
+		}
+		elsif ($perm->{attr} eq 'host_id' and $perm->{attr_id} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\-(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/){
+			$perm->{attr_id} = unpack('N*', inet_aton($1)) . '-' . unpack('N*', inet_aton($2));
+		}
+		
 		$self->log->info('Changing permissions: ' . join(', ', $args->{action}, $perm->{gid}, $perm->{attr}, $perm->{attr_id}));
 		if ($args->{action} eq 'add'){
 			if ($perm->{attr} eq 'filter'){
@@ -314,6 +321,8 @@ sub set_permissions {
 			else {
 				$query = 'INSERT INTO permissions (gid, attr, attr_id) VALUES (?,?,?)';
 				$sth = $self->db->prepare($query);
+				
+					
 				$sth->execute($perm->{gid}, $perm->{attr}, $perm->{attr_id});
 			}
 		}
