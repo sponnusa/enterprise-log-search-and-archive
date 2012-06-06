@@ -87,6 +87,13 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
  * Link_key: should be changed to something other than the default.  It is used to salt the auth hashes for permalinks.
  * Email: For alerts and archive query notifications, you need to setup the email server to use.
  * Meta_db: Should point to the database which stores the web management information.  This can reside on a node, but probably shouldn't.  The performance won't be much of a factor, so running this locally on the web server should be fine.
+ * Excluded_classes: If you want to remove some classes from the menus and searches altogether, configure the config entry for excluded_classes like this:
+{{{
+  "excluded_classes": {
+    "BRO_SSL": 1
+  },
+}}}
+
 ==elsa_node.conf:==
  * Database: Edit the connection settings for the local database, if non-default.
  * Log_size_limit: Total size in bytes allowed for all logs and indexes.
