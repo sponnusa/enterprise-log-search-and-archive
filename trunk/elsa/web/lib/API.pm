@@ -827,7 +827,17 @@ sub _get_node_info {
 	$ret->{start_max} = $start_max;
 	$self->log->trace('Found min ' . $min . ', max ' . $max);
 	
-	my $excluded_classes = $self->conf->get('excluded_classes') ? $self->conf->get('excluded_classes') : {}; 
+	# Resolve class names into class_id's for excluded classes
+	my $given_excluded_classes = $self->conf->get('excluded_classes') ? $self->conf->get('excluded_classes') : {};
+	my $excluded_classes = {};
+	foreach my $node (keys %{ $ret->{nodes} }){
+		foreach my $class_id (keys %{ $ret->{nodes}->{$node}->{classes} }){
+			if ($given_excluded_classes->{ lc($ret->{nodes}->{$node}->{classes}->{$class_id}) } or
+				$given_excluded_classes->{ uc($ret->{nodes}->{$node}->{classes}->{$class_id}) }){
+				$excluded_classes->{$class_id} = 1;
+			}
+		}
+	}
 	
 	# Find unique classes;
 	$ret->{classes} = {};
