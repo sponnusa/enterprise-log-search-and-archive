@@ -827,11 +827,14 @@ sub _get_node_info {
 	$ret->{start_max} = $start_max;
 	$self->log->trace('Found min ' . $min . ', max ' . $max);
 	
+	my $excluded_classes = $self->conf->get('excluded_classes') ? $self->conf->get('excluded_classes') : {}; 
+	
 	# Find unique classes;
 	$ret->{classes} = {};
 	$ret->{classes_by_id} = {};
 	foreach my $node (keys %{ $ret->{nodes} }){
 		foreach my $class_id (keys %{ $ret->{nodes}->{$node}->{classes} }){
+			next if $excluded_classes->{$class_id};
 			$ret->{classes_by_id}->{$class_id} = $ret->{nodes}->{$node}->{classes}->{$class_id};
 			$ret->{classes}->{ $ret->{nodes}->{$node}->{classes}->{$class_id} } = $class_id;
 		}
@@ -840,6 +843,7 @@ sub _get_node_info {
 	# Find unique fields
 	foreach my $node (keys %{ $ret->{nodes} }){
 		FIELD_LOOP: foreach my $field_hash (@{ $ret->{nodes}->{$node}->{fields} }){
+			next if $excluded_classes->{ $field_hash->{class_id} };
 			foreach my $already_have_hash (@{ $ret->{fields} }){
 				if ($field_hash->{fqdn_field} eq $already_have_hash->{fqdn_field}){
 					next FIELD_LOOP;
@@ -861,6 +865,7 @@ sub _get_node_info {
 		},
 	};
 	foreach my $field_hash (@{ $ret->{fields} }){
+		next if $excluded_classes->{ $field_hash->{class_id} };
 		$ret->{field_conversions}->{ $field_hash->{class_id} } ||= {};
 		if ($field_hash->{pattern_type} eq 'IPv4'){
 			$ret->{field_conversions}->{ $field_hash->{class_id} }->{IPv4} ||= {};
@@ -879,6 +884,7 @@ sub _get_node_info {
 	# Find fields by arranged by order
 	$ret->{fields_by_order} = {};
 	foreach my $field_hash (@{ $ret->{fields} }){
+		next if $excluded_classes->{ $field_hash->{class_id} };
 		$ret->{fields_by_order}->{ $field_hash->{class_id} } ||= {};
 		$ret->{fields_by_order}->{ $field_hash->{class_id} }->{ $field_hash->{field_order} } = $field_hash;
 	}
@@ -886,6 +892,7 @@ sub _get_node_info {
 	# Find fields by arranged by short field name
 	$ret->{fields_by_name} = {};
 	foreach my $field_hash (@{ $ret->{fields} }){
+		next if $excluded_classes->{ $field_hash->{class_id} };
 		$ret->{fields_by_name}->{ $field_hash->{value} } ||= [];
 		push @{ $ret->{fields_by_name}->{ $field_hash->{value} } }, $field_hash;
 	}
@@ -893,6 +900,7 @@ sub _get_node_info {
 	# Find fields by type
 	$ret->{fields_by_type} = {};
 	foreach my $field_hash (@{ $ret->{fields} }){
+		next if $excluded_classes->{ $field_hash->{class_id} };
 		$ret->{fields_by_type}->{ $field_hash->{field_type} } ||= {};
 		$ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } ||= [];
 		push @{ $ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } }, $field_hash;
@@ -3672,4 +3680,5 @@ sub cancel_query {
 	return { ok => 1 };
 }
 
+__PACKAGE__->meta->make_immutable;
 1;
