@@ -243,7 +243,7 @@ Pick a class_id greater than 10000 for your own custom classes.  Let's
 say this is the first one, so your new class_id will be 10000.
 What to insert into syslog database on log node:
 {{{
-INSERT INTO classes (class_id, class) VALUES (10000, "NEWCLASS");
+INSERT INTO classes (id, class) VALUES (10000, "NEWCLASS");
 }}}
 Our fields will be conn_bytes, srcip, and dstip, which already exist
 in the "fields" table as well as "myuser" which we will create here
