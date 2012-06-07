@@ -3301,7 +3301,7 @@ sub send_email {
 		);
 	}
 	else {
-		($ret) = Email::LocalDelivery->deliver($email->as_string);
+		($ret) = Email::LocalDelivery->deliver($email->as_string, $self->conf->get('logdir') . '/' . $self->conf->get('email/to'));
 	}
 	if ($ret){
 		$self->log->debug('done sending email');
