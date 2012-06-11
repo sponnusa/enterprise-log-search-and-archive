@@ -260,21 +260,21 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("myuser",
 "string", "QSTRING");
 
 INSERT INTO fields_classes_map (class_id, field_id, field_order)
-VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
-field_id FROM fields WHERE field="srcip"), 5);
+VALUES ((SELECT id FROM classes WHERE class="NEWCLASS"), (SELECT
+id FROM fields WHERE field="srcip"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order)
-VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
-field_id FROM fields WHERE field="conn_bytes"), 6);
+VALUES ((SELECT id FROM classes WHERE class="NEWCLASS"), (SELECT
+id FROM fields WHERE field="conn_bytes"), 6);
 INSERT INTO fields_classes_map (class_id, field_id, field_order)
-VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
-field_id FROM fields WHERE field="dstip"), 7);
+VALUES ((SELECT id FROM classes WHERE class="NEWCLASS"), (SELECT
+id FROM fields WHERE field="dstip"), 7);
 }}}
 Now the string field "myuser" at field_order 11, which maps to the
 first string column "s0":
 {{{
 INSERT INTO fields_classes_map (class_id, field_id, field_order)
-VALUES ((SELECT class_id FROM classes WHERE class="NEWCLASS"), (SELECT
-field_id FROM fields WHERE field="myuser"), 11);
+VALUES ((SELECT id FROM classes WHERE class="NEWCLASS"), (SELECT
+id FROM fields WHERE field="myuser"), 11);
 }}}
 5, 6, and 7 correspond to the first integer columns in the schema
 "i0," "i1," and "i2."  In the pattern below, we're extracting the data
