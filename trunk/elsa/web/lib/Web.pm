@@ -16,6 +16,7 @@ has 'mode' => (is => 'rw', isa => 'Str', required => 1, default => sub { return 
 has 'session' => (is => 'rw', isa => 'Object', required => 0);
 has 'api' => (is => 'rw', isa => 'Object', required => 1);
 has 'title' => (is => 'rw', isa => 'Str', required => 1, default => 'ELSA');
+has 'path_to_inc' => (is => 'rw', isa => 'Str', required => 1, default => '');
 
 our %Modes = (
 	index => 1,
@@ -116,9 +117,10 @@ sub index {
 
 sub _get_headers {
 	my $self = shift;
-	my $dir = $self->api->conf->get('email/base_url');
-	$dir =~ s/^https?\:\/\/[^\/]+\//\//; # strip off the URL to make $dir the URI
-	$dir = '';
+#	my $dir = $self->api->conf->get('email/base_url');
+#	$dir =~ s/^https?\:\/\/[^\/]+\//\//; # strip off the URL to make $dir the URI
+#	$dir = '';
+	my $dir = $self->path_to_inc;
 	my $HTML = <<'EOHTML'
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <html>
@@ -129,8 +131,8 @@ EOHTML
 #	my $yui_css = YUI::css_link();
 #	my $yui_js = YUI::js_link();
 	my $yui = new YUI(%{ $self->api->conf->get('yui') });
-	$HTML .= $yui->css();
-	$HTML .= $yui->js();
+	$HTML .= $yui->css($dir);
+	$HTML .= $yui->js($dir);
 
 	my $template = <<'EOHTML'
 <style type="text/css">
@@ -176,7 +178,7 @@ EOHTML
 		$HTML .= 'var formParams = ' . encode_json($form_params) . ';';
 	}
 	else {
-		$HTML .= q/YAHOO.ELSA.Error('Error contacting log server(s)');/;
+		$HTML .= q/alert('Error contacting log server(s)');/;
 	}
 	
 	$HTML .= <<'EOHTML'
