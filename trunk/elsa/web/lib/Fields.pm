@@ -140,13 +140,12 @@ sub resolve {
 		}
 		
 		my $field_order = $field_infos->{$class_id}->{field_order};
-		my $short_field_name = $field_infos->{$class_id}->{value};
 		# Check for string match and make that a term
-		if (exists $self->node_info->{fields_by_type}->{string}->{ $short_field_name } and
+		if ($field_infos->{$class_id}->{field_type} eq 'string' and
 			($operator eq '=' or $operator eq '-' or $operator eq '')){
 			$values{fields}->{$class_id}->{ $Field_order_to_field->{ $field_order } } = $raw_value;
 		}
-		elsif (exists $self->node_info->{fields_by_type}->{string}->{ $short_field_name }){
+		elsif ($field_infos->{$class_id}->{field_type} eq 'string'){
 			die('Invalid operator for string field');
 		}
 		elsif ($Field_order_to_attr->{ $field_order }){
