@@ -11,6 +11,13 @@ has 'watchers' => (is => 'rw', isa => 'HashRef', required => 1, default => sub {
 
 our $Retries = 3;
 
+sub BUILD {
+	my $self = shift;
+	# Validate connection
+	DBI->connect_cached(@{$self->db_args}) or die('cannot connect to ' . $self->db_args->[0]);
+	return $self;
+}
+
 sub query {
 	my $self = shift;
 	my $query = shift;
@@ -34,7 +41,7 @@ sub query {
 	}
 	unless ($dbh){
 		$self->log->error('Unable to make a connection after ' . $Retries . ' attempts');
-		$cb->(undef, $@, -1);
+		$cb->(undef, $@, 0);
 		return;
 	}
 		
@@ -63,7 +70,7 @@ sub query {
 	};
 	if ($@){
 		$self->log->error('Query: ' . $query . ' with values ' . join(',', @values) . ' got error ' . $@);
-		$cb->(undef, $@, -1);
+		$cb->(undef, $@, 0);
 	}
 }
 
@@ -90,7 +97,7 @@ sub multi_query {
 	}
 	unless ($dbh){
 		$self->log->error('Unable to make a connection after ' . $Retries . ' attempts');
-		$cb->(undef, $@, -1);
+		$cb->(undef, $@, 0);
 		return;
 	}
 		
@@ -121,7 +128,7 @@ sub multi_query {
 	};
 	if ($@){
 		$self->log->error('Query: ' . $query . ' with values ' . join(',', @values) . ' got error ' . $@);
-		$cb->(undef, $@, -1);
+		$cb->(undef, $@, 0);
 	}
 }
 
@@ -148,7 +155,7 @@ sub sphinx {
 	}
 	unless ($dbh){
 		$self->log->error('Unable to make a connection after ' . $Retries . ' attempts');
-		$cb->(undef, $@, -1);
+		$cb->(undef, $@, 0);
 		return;
 	}
 	
@@ -188,7 +195,7 @@ sub sphinx {
 	};
 	if ($@){
 		$self->log->error('Query: ' . $query . ' got error ' . $@);
-		$cb->(undef, $@, -1);
+		$cb->(undef, $@, 0);
 	}
 }
 

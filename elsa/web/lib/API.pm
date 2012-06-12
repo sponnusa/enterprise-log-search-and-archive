@@ -8,7 +8,6 @@ use Date::Manip;
 use AnyEvent;
 use DBI;
 use MIME::Base64;
-use URI::Escape;
 use Socket qw(inet_aton inet_ntoa);
 use CHI;
 use Time::HiRes qw(time);
@@ -593,17 +592,23 @@ sub _get_nodes {
 		if ($node_conf->{$node}->{db}){
 			$db_name = $node_conf->{$node}->{db};
 		}
-		$nodes{$node} = { db => $db_name };
-		$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
-			'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
-			$node_conf->{$node}->{username}, 
-			$node_conf->{$node}->{password}, 
-			{
-				mysql_connect_timeout => $self->db_timeout,
-				PrintError => 0,
-				mysql_multi_statements => 1,
-			}
-		]);
+		eval {
+			$nodes{$node} = { db => $db_name };
+			$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
+				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
+				$node_conf->{$node}->{username}, 
+				$node_conf->{$node}->{password}, 
+				{
+					mysql_connect_timeout => $self->db_timeout,
+					PrintError => 0,
+					mysql_multi_statements => 1,
+				}
+			]);
+		};
+		if ($@){
+			$self->add_warning($@);
+			delete $nodes{$node};
+		}
 	}
 		
 	return \%nodes;
@@ -637,30 +642,36 @@ sub _get_sphinx_nodes {
 		if ($node_conf->{$node}->{sphinx_port}){
 			$sphinx_port = $node_conf->{$node}->{sphinx_port};
 		}
-		$nodes{$node} = { db => $db_name };
-								
-		$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
-			'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
-			$node_conf->{$node}->{username}, 
-			$node_conf->{$node}->{password}, 
-			{
-				mysql_connect_timeout => $self->db_timeout,
-				PrintError => 0,
-				mysql_multi_statements => 1,
-			}
-		]);
-		
-		$self->log->trace('connecting to sphinx on node ' . $node);
-		
-		$nodes{$node}->{sphinx} = AsyncMysql->new(log => $self->log, db_args => [
-			'dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef,
-			{
-				mysql_connect_timeout => $self->db_timeout,
-				PrintError => 0,
-				mysql_multi_statements => 1,
-				mysql_bind_type_guessing => 1,
-			}
-		]);		
+		eval {
+			$nodes{$node} = { db => $db_name };
+									
+			$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
+				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
+				$node_conf->{$node}->{username}, 
+				$node_conf->{$node}->{password}, 
+				{
+					mysql_connect_timeout => $self->db_timeout,
+					PrintError => 0,
+					mysql_multi_statements => 1,
+				}
+			]);
+			
+			$self->log->trace('connecting to sphinx on node ' . $node);
+			
+			$nodes{$node}->{sphinx} = AsyncMysql->new(log => $self->log, db_args => [
+				'dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef,
+				{
+					mysql_connect_timeout => $self->db_timeout,
+					PrintError => 0,
+					mysql_multi_statements => 1,
+					mysql_bind_type_guessing => 1,
+				}
+			]);
+		};
+		if ($@){
+			$self->add_warning($@);
+			delete $nodes{$node};
+		}		
 	}
 	
 	return \%nodes;
@@ -701,7 +712,7 @@ sub _get_node_info {
 		# Get indexes
 		$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, 
 		UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records 
-		FROM %s.v_indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) ORDER BY start', 
+		FROM %s.v_indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime" ORDER BY start', 
 			$nodes->{$node}->{db});
 		$cv->begin;
 		$self->log->trace($query);
@@ -925,9 +936,15 @@ sub _get_node_info {
 
 sub get_form_params {
 	my ( $self, $user) = @_;
-		
-	$self->node_info($self->_get_node_info($user));
-	#$self->log->trace('got node_info: ' . Dumper($node_info));
+	
+	eval {	
+		$self->node_info($self->_get_node_info($user));
+	};
+	if ($@){
+		$self->add_warning($@);
+		return;
+	}
+	$self->log->trace('got node_info: ' . Dumper($self->node_info));
 	
 	my $form_params = {
 		start => epoch2iso($self->node_info->{min}),
