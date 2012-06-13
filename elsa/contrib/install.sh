@@ -121,6 +121,16 @@ freebsd_get_node_packages(){
 		echo "Creating elsa_syslog-ng.conf"
 		cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "/usr/local/etc/elsa_syslog-ng.conf" &&
 		echo "@include \"elsa_syslog-ng.conf\"" >> /usr/local/etc/syslog-ng.conf
+	else 
+		grep "elsa_syslog-ng.conf" /usr/local/etc/elsa_syslog-ng.conf
+		if [ $? -ne 0 ]; then
+			# Copy the syslog-ng.conf
+			echo "Creating elsa_syslog-ng.conf"
+			cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "/usr/local/etc/elsa_syslog-ng.conf" &&
+			echo "@include \"elsa_syslog-ng.conf\"" >> /usr/local/etc/syslog-ng.conf
+		else 
+			echo "/usr/local/etc/syslog-ng.conf already configured"
+		fi
 	fi
 	enable_service "syslog-ng" &&
 	service syslog-ng start
@@ -238,7 +248,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -637,6 +647,14 @@ centos_set_apache(){
 
 freebsd_set_apache(){
 	# For Apache, locations vary, but this is the gist:
+	DIR="/usr/local/etc/apache2"
+	if [ ! -d $DIR ]; then
+		DIR = "/usr/local/etc/apache22";
+	fi
+	if [ ! -d $DIR ]; then
+		echo "Cannot find Apache conf dir in apache2 or apache22!"
+		return 0
+	fi
 	egrep "^LoadModule perl_module" /usr/local/etc/apache2/httpd.conf
 	if [ $? -ne 0 ]; then
 		echo "Enabling mod_perl"
