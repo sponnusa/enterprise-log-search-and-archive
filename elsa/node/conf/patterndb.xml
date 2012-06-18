@@ -6,6 +6,7 @@
 				<patterns>
 					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
 					<pattern>Deny @ESTRING:: @@ESTRING:i0: @src @ESTRING:s0::@@IPv4:i1:@/@NUMBER:i2:@ dst @ESTRING:s1::@@IPv4:i3:@/@NUMBER:i4:@</pattern>
+					<pattern>Shunned packet: @IPv4:i1:@ ==> @IPv4:i3:@ on interface @ANYSTRING:s0:@</pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -62,6 +63,7 @@
 			<rule provider="ELSA" class='2' id='2'>
 				<patterns>
 					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
+					<pattern>Shunned packet: @IPv4:i1:@ ==> @IPv4:i3:@ on interface @ANYSTRING:s0:@</pattern>
 				</patterns>
 			</rule>
 			<rule provider="ELSA" class='3' id='3'>
@@ -104,6 +106,7 @@
 			<rule provider="ELSA" class='2' id='2'>
 				<patterns>
 					<pattern>Deny@QSTRING:i0: @src@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ dst@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ by access-group @QSTRING:s2:"@</pattern>
+					<pattern>Shunned packet: @IPv4:i1:@ ==> @IPv4:i3:@ on interface @ANYSTRING:s0:@</pattern>
 				</patterns>
 			</rule>
 			<rule provider="ELSA" class='3' id='3'>
