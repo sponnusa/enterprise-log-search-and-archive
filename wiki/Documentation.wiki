@@ -293,7 +293,7 @@ Example pattern:
                                 </patterns>
                                 <examples>
                                   <example>
-                                    <test_message program="test_prog">source_ip 1.1.1.1 sent 50 bytes to destination_ip 2.2.2.2 from user joe</test_mesage>
+                                    <test_message program="test_prog">source_ip 1.1.1.1 sent 50 bytes to destination_ip 2.2.2.2 from user joe</test_message>
                                     <!-- srcip -->
                                     <test_value name="i0">1.1.1.1</test_value>
                                     <!-- conn_bytes -->
