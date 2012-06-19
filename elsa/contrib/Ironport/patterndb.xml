@@ -1,0 +1,36 @@
+<patterndb version='3' pub_date='2009-11-04'>
+	<ruleset name="ironport">
+		<pattern>ironport_mail_logs</pattern>
+		<rules>
+			<rule class="10000" id="10000" context-id="ironport-rejected" context-timeout="15" context-scope="program">
+				<patterns>
+					<pattern>Info: New SMTP ICID @NUMBER:icid:@ interface @ESTRING:interface_name: @(@IPv4:interface_ip:@) address @IPv4:sender_ip:@ reverse dns host @ESTRING:sender_dns: @verified yes</pattern>
+				</patterns>
+			</rule>
+			<rule class="10000" id="10000" context-id="ironport-rejected" context-timeout="15" context-scope="program">
+				<patterns>
+					<pattern>Warning: SMTP connection rejected on interface @ESTRING:interface_name: @address @IPv4:sender_ip:@</pattern>
+				</patterns>
+			</rule>
+			<rule class="10000" id="10000" context-id="ironport-rejected" context-timeout="15" context-scope="program">
+				<patterns>
+					<pattern>Info: ICID @NUMBER:icid:@ @ESTRING:reason: match@ @ESTRING::@</pattern>
+				</patterns>
+			</rule>
+			<rule class="10000" id="10000" context-id="ironport-rejected" context-timeout="15" context-scope="program">
+				<patterns>
+					<pattern>Info: ICID @NUMBER:icid:@ close</pattern>
+				</patterns>
+				<actions>
+					<action trigger="match" condition=" '${reason}@1' == 'TCPREFUSE SG BLACKLIST' ">
+						<message>
+							<values>
+								<value name="MESSAGE">IronPort message rejected: icid: ${icid}@1, interface_name: ${interface_name}@4, interface_ip: ${interface_ip}@4, sender_ip: ${sender_ip}@4, sender_dns: ${sender_dns}@4, reason: ${reason}@2</value>
+							</values>
+						</message>
+					</action>
+				</actions>
+			</rule>
+		</rules>
+	</ruleset>
+</patterndb>
