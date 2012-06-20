@@ -361,7 +361,7 @@ mk_node_dirs(){
 
 set_node_mysql(){
 	# Test to see if schema is already installed
-	mysql -uelsa -p$MYSQL_PASS syslog -e "select count(*) from programs"
+	mysql -uelsa -p$MYSQL_PASS syslog -e "select count(*) from programs" > /dev/null 2>&1
 	if [ $? -eq 0 ]; then
 		echo "MySQL and schema already installed."
 		return 0;
@@ -484,12 +484,21 @@ freebsd_get_web_packages(){
 		return 1
 	fi
 	
-	# Edit the load modules file to disable unique_id, as it causes problems when host does not have FQDN
-	cp /usr/local/etc/apache2/httpd.conf /usr/local/etc/apache2/httpd.conf.bak &&
-	cat /usr/local/etc/apache2/httpd.conf.bak | sed -e "s|LoadModule unique_id_module|#LoadModule unique_id_module|" > /usr/local/etc/apache2/httpd.conf &&
+	APACHE="apache2"
+	if [ ! -d "/usr/local/etc/$APACHE" ]; then
+		APACHE = "apache22";
+	fi
+	if [ ! -d "/usr/local/etc/$APACHE" ]; then
+		echo "Cannot find Apache conf dir in apache2 or apache22!"
+		return 0
+	fi
 	
-	enable_service "apache2" &&
-	service apache2 start
+	# Edit the load modules file to disable unique_id, as it causes problems when host does not have FQDN
+	cp /usr/local/etc/$APACHE/httpd.conf /usr/local/etc/$APACHE/httpd.conf.bak &&
+	cat /usr/local/etc/$APACHE/httpd.conf.bak | sed -e "s|LoadModule unique_id_module|#LoadModule unique_id_module|" > /usr/local/etc/$APACHE/httpd.conf &&
+	
+	enable_service "$APACHE" &&
+	service $APACHE start
 	pgrep httpd
 		
 	return $?
@@ -647,23 +656,23 @@ centos_set_apache(){
 
 freebsd_set_apache(){
 	# For Apache, locations vary, but this is the gist:
-	DIR="/usr/local/etc/apache2"
-	if [ ! -d $DIR ]; then
-		DIR = "/usr/local/etc/apache22";
+	APACHE="apache2"
+	if [ ! -d "/usr/local/etc/$APACHE" ]; then
+		APACHE = "apache22";
 	fi
-	if [ ! -d $DIR ]; then
+	if [ ! -d "/usr/local/etc/$APACHE" ]; then
 		echo "Cannot find Apache conf dir in apache2 or apache22!"
 		return 0
 	fi
-	egrep "^LoadModule perl_module" /usr/local/etc/apache2/httpd.conf
+	egrep "^LoadModule perl_module" /usr/local/etc/$APACHE/httpd.conf
 	if [ $? -ne 0 ]; then
 		echo "Enabling mod_perl"
-		echo "LoadModule perl_module libexec/apache2/mod_perl.so" >> /usr/local/etc/apache2/httpd.conf
+		echo "LoadModule perl_module libexec/$APACHE/mod_perl.so" >> /usr/local/etc/$APACHE/httpd.conf
 	fi
 	cpanm Plack::Handler::Apache2 &&
-	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /usr/local/etc/apache2/Includes/elsa.conf &&
+	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /usr/local/etc/$APACHE/Includes/elsa.conf &&
 	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
-	service apache2 restart
+	service $APACHE restart
 	
 	return $?
 }
