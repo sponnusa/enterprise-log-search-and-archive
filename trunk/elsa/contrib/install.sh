@@ -451,7 +451,7 @@ set_logrotate(){
 suse_get_web_packages(){
 	# Install required packages
 	zypper -n update &&
-	zypper -qn install curl subversion make gcc gcc-c++ mysql-community-server-client libmysqlclient-devel apache2-prefork apache2-mod_perl apache2-mod_perl-devel
+	zypper -qn install curl subversion make gcc gcc-c++ mysql-community-server-client libmysqlclient-devel apache2-prefork apache2-mod_perl apache2-mod_perl-devel libexpat-devel
 	return $?
 }
 
@@ -461,7 +461,7 @@ ubuntu_get_web_packages(){
 	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections &&
 	
 	# Install required packages
-	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev &&
+	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libexpat1-dev &&
 	
 	# Make debconf interactive again
 	echo "debconf debconf/frontend select readline" | debconf-set-selections
@@ -470,13 +470,13 @@ ubuntu_get_web_packages(){
 
 centos_get_web_packages(){
 	yum update &&
-	yum -yq install curl subversion make gcc gcc-c++ mysql mysql-libs mysql-devel httpd mod_perl pam-devel setools-console
+	yum -yq install curl subversion make gcc gcc-c++ mysql mysql-libs mysql-devel httpd mod_perl pam-devel setools-console expat-devel
 	return $?
 }
 
 freebsd_get_web_packages(){
 	cd /usr/ports/www/mod_perl2 && make install clean
-	pkg_add -vFr subversion curl mysql55-client perl p5-App-cpanminus
+	pkg_add -vFr subversion curl mysql55-client perl p5-App-cpanminus expat
 	RET=$?
 	# pkg_add will return 6 when packages were already present
 	if [ "$RET" -ne 0 ] && [ "$RET" -ne 6 ]; then
@@ -486,7 +486,7 @@ freebsd_get_web_packages(){
 	
 	APACHE="apache2"
 	if [ ! -d "/usr/local/etc/$APACHE" ]; then
-		APACHE = "apache22";
+		APACHE="apache22";
 	fi
 	if [ ! -d "/usr/local/etc/$APACHE" ]; then
 		echo "Cannot find Apache conf dir in apache2 or apache22!"
@@ -538,10 +538,10 @@ build_web_perl(){
 	echo "Retrieving GeoIP databases..."
 	mkdir -p /usr/local/share/GeoIP &&
 	curl -L "http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz" > $TMP_DIR/GeoLiteCity.dat.gz &&
-	gunzip $TMP_DIR/GeoLiteCity.dat.gz &&
+	gunzip -f $TMP_DIR/GeoLiteCity.dat.gz &&
 	cp $TMP_DIR/GeoLiteCity.dat $GEOIP_DIR/GeoIPCity.dat
 	curl -L "http://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz" > $TMP_DIR/GeoIP.dat.gz &&
-	gunzip $TMP_DIR/GeoIP.dat.gz &&
+	gunzip -f $TMP_DIR/GeoIP.dat.gz &&
 	cp $TMP_DIR/GeoIP.dat $GEOIP_DIR/ &&
 	echo "...done."
 	
@@ -658,7 +658,7 @@ freebsd_set_apache(){
 	# For Apache, locations vary, but this is the gist:
 	APACHE="apache2"
 	if [ ! -d "/usr/local/etc/$APACHE" ]; then
-		APACHE = "apache22";
+		APACHE="apache22";
 	fi
 	if [ ! -d "/usr/local/etc/$APACHE" ]; then
 		echo "Cannot find Apache conf dir in apache2 or apache22!"
