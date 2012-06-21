@@ -80,6 +80,23 @@ sub BUILD {
 	else {
 		die('No auth_method');
 	}
+	
+	# Apply allowed_groups check
+	if ($self->conf->get('allowed_groups')){
+		my $is_allowed = 0;
+		ALLOWED_LOOP: foreach my $allowed_group (@{ $self->conf->get('allowed_groups') }){
+			foreach my $group (@{ $self->groups }){
+				if ($allowed_group eq $group){
+					$is_allowed = $allowed_group;
+					last ALLOWED_LOOP;
+				}
+			}
+		}
+		unless ($is_allowed){
+			$self->log->error('User not found in any allowed group defined in config for "allowed_groups." User was in groups: ' . join(', ', @{ $self->groups }));
+			return 0;
+		}
+	}
 		
 	# Get the uid
 	my ( $query, $sth );
@@ -156,7 +173,7 @@ sub _init_ldap {
 			'User ' . $self->username . ' not found in LDAP server' );
 		return;
 	}
-
+	
 	my $entry       = $entries[0];
 	my $attr_map    = $self->conf->get('ldap/attr_map');
 	my $extra_attrs = $self->conf->get('ldap/extra_attrs');
