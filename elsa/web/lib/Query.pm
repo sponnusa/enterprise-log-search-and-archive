@@ -642,8 +642,8 @@ sub _parse_query_string {
 	}
 	
 	# Check to see if the query is after the latest end, but not in the future (this happens if the indexing process is backed up)
-	if ($self->start and $self->start <= time() and $self->start > $self->node_info->{start_max}){
-		$self->log->warn('Adjusted start_int ' . $self->start . ' to ' . $self->node_info->{start_max});
+	if ($self->start and $self->start <= time() and $self->start > $self->node_info->{max}){
+		$self->log->warn('Adjusted start_int ' . $self->start . ' to ' . $self->node_info->{start_max} . ' because it was after ' . $self->node_info->{max});
 		$self->start($self->node_info->{start_max});
 	}
 	if ($self->end and $self->end <= time() and $self->end > $self->node_info->{max}){
