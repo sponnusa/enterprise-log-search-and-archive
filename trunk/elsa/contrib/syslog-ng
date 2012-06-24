@@ -52,7 +52,20 @@ do_stop() {
 	return $RETVAL
 }
 
+do_reload() {
+	echo "Reloading $prog"
+	if [ -e $PID_FILE ]; then
+		kill -HUP `cat $PID_FILE`
+	fi
+	RETVAL=$?
+	echo
+	return $RETVAL
+}
+
 case $* in
+reload)
+	do_reload
+	;;
 restart)
 	do_stop
 	do_start
