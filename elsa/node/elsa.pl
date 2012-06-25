@@ -8,22 +8,23 @@ use Getopt::Std;
 use String::CRC32;
 use Log::Log4perl;
 use DBI;
-use Socket qw(inet_aton);
 use FindBin;
 
 # Include the directory this script is in
 use lib $FindBin::Bin;
 
 use Indexer;
+use Reader;
+use Writer;
 
 my %Opts;
-getopts('onc:f:', \%Opts);
+getopts('onlc:f:', \%Opts);
 
 $| = 1;
 my $pipes     = {};
-my $conf_file = $Opts{c} ? $Opts{c} : '/etc/elsa_node.conf';
-my $Conf = Config::JSON->new( $conf_file );
-$Conf = $Conf->{config}; # native hash is 10x faster than using Config::JSON->get()
+my $Conf_file = $Opts{c} ? $Opts{c} : '/etc/elsa_node.conf';
+my $Config_json = Config::JSON->new( $Conf_file );
+my $Conf = $Config_json->{config}; # native hash is 10x faster than using Config::JSON->get()
 
 # Setup logger
 my $logdir = $Conf->{logdir};
@@ -63,37 +64,7 @@ my $Dbh = DBI->connect(($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'
 my $num_children = $Conf->{num_log_readers} or die("undefined config for num_log_readers");
 my $continue     = 1;
 my $Run          = 1;
-my $Missing_field_tolerance = 1;
-my $Default_class_id = 1;
-
-my $Proto_map = {
-	'ICMP' => 1,
-	'icmp' => 1,
-	'TCP' => 6,
-	'tcp' => 6,
-	'UDP' => 17,
-	'udp' => 17,
-};
-
-use constant FIELD_TIMESTAMP => 0;
-use constant FIELD_HOST => 1;
-use constant FIELD_PROGRAM => 2;
-use constant FIELD_CLASS_ID => 3;
-use constant FIELD_MSG => 4;
-use constant FIELD_I0 => 5;
-use constant FIELD_I1 => 6;
-use constant FIELD_I2 => 7;
-use constant FIELD_I3 => 8;
-use constant FIELD_I4 => 9;
-use constant FIELD_I5 => 10;
-use constant FIELD_S0 => 11;
-use constant FIELD_S1 => 12;
-use constant FIELD_S2 => 13;
-use constant FIELD_S3 => 14;
-use constant FIELD_S4 => 15;
-use constant FIELD_S5 => 16;
-
-my $Class_info = _get_class_info();
+my $Class_info = Reader::get_class_info($Dbh);
 my $Cache = {};
 _init_cache();
 
@@ -103,8 +74,15 @@ unless (-f $Conf->{sphinx}->{config_file}){
 
 unless ($Opts{n}){
 	print "Validating directory...\n";
-	my $indexer = new Indexer(log => $Log, conf => Config::JSON->new( $conf_file ), class_info => $Class_info);
+	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 	$indexer->initial_validate_directory();
+}
+
+if ($Opts{l}){
+	print "Loading existing buffers\n";
+	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
+	$indexer->load_buffers();
+	exit;
 }
 
 if ($Opts{f}){
@@ -122,20 +100,42 @@ $SIG{TERM} = sub { $Run = 0; $Log->warn('Shutting down'); };
 $SIG{CHLD} = 'IGNORE'; # will do the wait() so we don't create zombies
 
 my $total_processed = 0;
+my $Realtime_enabled = defined $Conf->{realtime};
+my $Realtime = $Realtime_enabled ? $Conf->{realtime} : undef;
+my $rt_indexed = 0;
 do {
-	$Log->debug("Starting process_batch");
-	eval {
-		my $num_processed = _process_batch();
+	if ($Realtime_enabled){
+		my ($num_processed, $current_id) = _realtime_process();
 		$total_processed += $num_processed;
-		$Log->debug("Processed $num_processed records");
-		sleep 1 unless $num_processed; # avoid batch-bombing if our parent handle closes
-	};
-	if ($@) {
-		my $e = $@;
-		$Log->error($e);
-		sleep 1 if $Run;                                # to avoid errmsg flooding
+		$rt_indexed += $num_processed;
+		
+		# Check to see if we need to exit realtime mode
+		if (($num_processed / $Conf->{sphinx}->{index_interval}) > $Realtime->{rate}){
+			$Log->info('Leaving realtime processing because rate was ' . ($num_processed / $Conf->{sphinx}->{index_interval}));
+			$Realtime_enabled = 0;
+		}
 	}
-	$Conf = Config::JSON->new( $conf_file )->{config} if $Run; # reload the config in case it has changed on disk
+	else {
+		$Log->debug("Starting process_batch");
+		eval {
+			my $num_processed = _process_batch();
+			$total_processed += $num_processed;
+			$Log->debug("Processed $num_processed records");
+			# Check to see if we need to enter realtime mode
+			if ($Realtime and $Realtime->{rate} and $Conf->{sphinx}->{index_interval} and 
+				($num_processed / $Conf->{sphinx}->{index_interval}) < $Realtime->{rate}){
+				$Log->info('Entering realtime processing because rate was ' . ($num_processed / $Conf->{sphinx}->{index_interval}));
+				$Realtime_enabled = 1;
+			}
+			sleep 1 unless $num_processed; # avoid batch-bombing if our parent handle closes
+		};
+		if ($@) {
+			my $e = $@;
+			$Log->error($e);
+			sleep 1 if $Run;                                # to avoid errmsg flooding
+		}
+	}
+	$Conf = $Config_json->{config} if $Run; # reload the config in case it has changed on disk
 } while ($Run);
 
 $Log->info('Exiting after processing ' . $total_processed . ' records');
@@ -152,7 +152,7 @@ sub _sql_error_handler {
 }
 
 sub _create_sphinx_conf {
-	my $indexer = new Indexer(log => $Log, conf => Config::JSON->new( $conf_file ), class_info => $Class_info);
+	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 	open(FH, '>' . $Conf->{sphinx}->{config_file}) or die("Cannot open config file for writing: $!");
 	print FH $indexer->get_sphinx_conf();
 	close(FH);
@@ -161,9 +161,6 @@ sub _create_sphinx_conf {
 
 sub _process_batch {
 	my $filename = shift;
-	
-	# Grab a fresh copy of class info in case there has been an update
-	$Class_info = _get_class_info();
 	
 	my $args = { run => 1 };
 	
@@ -181,8 +178,6 @@ sub _process_batch {
 	die "Non-existent buffer_dir: " . $Conf->{buffer_dir}
 		unless -d $Conf->{buffer_dir};
 		
-#	$Log->debug("Starting up with batch_id: $batch_id, first_id: $first_id");
-	
 	$args->{start_time} = Time::HiRes::time();
 		
 	$args->{tempfile} = File::Temp->new( DIR => $Conf->{buffer_dir}, UNLINK => 0 );
@@ -208,9 +203,11 @@ sub _process_batch {
 		alarm $Conf->{sphinx}->{index_interval};
 	}
 	
+	my $reader = new Reader(log => $Log, conf => $Config_json, cache => $Cache, offline_processing => $args->{offline_processing});
+	
 	while (<$fh>){	
 		eval { 
-			$args->{tempfile}->print(join("\t", @{ _parse_line($args, $_) }) . "\n");
+			$args->{tempfile}->print(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
 			$args->{batch_counter}++;
 		};
 		if ($@){
@@ -225,8 +222,8 @@ sub _process_batch {
 	
 	# Update args to be results
 	$args->{file} = $args->{tempfile}->filename();
-	$args->{start} = $args->{offline_processing} ? $args->{offline_processing_start} : $args->{start_time};
-	$args->{end} = $args->{offline_processing} ? $args->{offline_processing_end} : Time::HiRes::time();
+	$args->{start} = $args->{offline_processing} ? $reader->offline_processing_times->{start} : $args->{start_time};
+	$args->{end} = $args->{offline_processing} ? $reader->offline_processing_times->{end} : Time::HiRes::time();
 	$args->{total_processed} = $args->{batch_counter};
 	$args->{total_errors} = $args->{error_counter};
 	
@@ -235,22 +232,10 @@ sub _process_batch {
 	$Log->debug('Total errors: ' . $args->{error_counter} . ' (%' . (($args->{error_counter} / $args->{batch_counter}) * 100) . ')' ) if $args->{batch_counter};
 	
 	my ($query, $sth);
-	if (scalar keys %{ $args->{cache_add} }){
-		$Log->trace('Adding programs: ' . Dumper($args->{cache_add}));
-		$query = 'INSERT INTO programs (id, program) VALUES(?,?) ON DUPLICATE KEY UPDATE id=?';
-		$sth = $Dbh->prepare($query);
-		$query = 'REPLACE INTO class_program_map (class_id, program_id) VALUES(?,?)';
-		my $sth_map = $Dbh->prepare($query);
-		foreach my $program (keys %{ $args->{cache_add} }){
-			$sth->execute($args->{cache_add}->{$program}->{id}, $program, $args->{cache_add}->{$program}->{id});
-			if ($sth->rows){ # this was not a duplicate, proceed with the class map insert
-				$sth_map->execute($args->{cache_add}->{$program}->{class_id}, $args->{cache_add}->{$program}->{id});
-			}
-			else {
-				$Log->error('Duplicate CRC found for ' . $program . ' with CRC ' . $args->{cache_add}->{$program}->{id});
-			}
-		}
-		$args->{cache_add} = {};
+	if (scalar keys %{ $reader->to_add }){
+		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
+		$indexer->add_programs($reader->to_add);
+		$reader->to_add({});
 	}
 	
 	if ($args->{batch_counter}){
@@ -273,7 +258,7 @@ sub _process_batch {
 	# Child
 	$Log->trace('Child started');
 	eval {
-		my $indexer = new Indexer(log => $Log, conf => Config::JSON->new( $conf_file ), class_info => $Class_info);
+		my $indexer = new Indexer(log => $Log, conf => $Config_json);
 		$indexer->load_buffers();
 	};
 	if ($@){
@@ -283,189 +268,47 @@ sub _process_batch {
 	exit; # done with child
 }
 
-sub _parse_line {
-	my $args = shift;
-	my $raw_line = shift;
-		
-	chomp($raw_line);
+sub _realtime_process {
+	my $args = { run => 1, start_time => Time::HiRes::time() };
 	
-	# Escape any backslashes
-	$raw_line =~ s/\\/\\\\/g;
-		
-	my @line = split(/\t/, $raw_line);
+	my $fh = \*STDIN;
+	$fh->autoflush(1);
+	$fh->blocking(1);
 	
-	# Fix class_id for "unknown"
-    if ($line[FIELD_CLASS_ID] eq 'unknown'){
-    	$line[FIELD_CLASS_ID] = $Default_class_id;
-    }
-    		        
-	# If we're configured to do so, we'll tolerate missing a missing field and make up a default
-	if ($Missing_field_tolerance){
-		my $missing_fields = 0;
-		# Make sure that we've got the basics--things we don't want to fake
-		unless ($line[FIELD_HOST] and $line[FIELD_MSG]){
-			die "Unable to parse log line: $raw_line.  Only parsed into:\n" . Dumper(\@line);
-		}
-		unless ($line[FIELD_TIMESTAMP]){
-			$line[FIELD_TIMESTAMP] = time();
-			$Log->warn('Missing required field timestamp') if $Conf->{log_parse_errors};
-			$missing_fields++;
-		}
-		unless ($line[FIELD_PROGRAM]){
-			# Check to see if this is a dumb situation in which Cisco put program in msg
-			$line[FIELD_PROGRAM] = 'unknown';
-			$Log->warn('Missing required field program') if $Conf->{log_parse_errors};
-			$missing_fields++;
-		}
-		unless ($line[FIELD_CLASS_ID]){
-			$line[FIELD_CLASS_ID] = '1';
-			$Log->warn('Missing required field class id') if $Conf->{log_parse_errors};
-			$missing_fields++;
-		}
-					
-		if ($missing_fields > $Missing_field_tolerance){
-			die "Unable to parse log line $raw_line: not enough fields.  Only parsed into:\n" . Dumper(\@line);
-		}
-	}
-	else {
-		# No tolerance for any missing fields
-		unless ($line[FIELD_TIMESTAMP] and $line[FIELD_CLASS_ID] and $line[FIELD_HOST] and
-			$line[FIELD_PROGRAM] and $line[FIELD_MSG]){
-			die "Unable to parse log line $raw_line: no tolerance for missing fields.  Only parsed into:\n" . Dumper(\@line);
-		}
-	}
-    
-    unless ($Class_info->{classes_by_id}->{ $line[FIELD_CLASS_ID] }){
-		die "Unable to parse valid class id from log line $raw_line.  Only parsed into:\n" . Dumper(\@line);
-	}
-	
-	# Fix weird programs that may be wrong
-	if ($line[FIELD_PROGRAM] =~ /^\d+$/){
-#		$Log->debug("ALL NUMBER PROG: " . $line[FIELD_PROGRAM] . ", raw_line: $raw_line");
-		$line[FIELD_PROGRAM] = 'unknown';
-	}
-	
-	# Normalize program name to be all lowercase
-	$line[FIELD_PROGRAM] = lc($line[FIELD_PROGRAM]);
-	
-	# Normalize program name to swap any weird chars with underscores
-	#$line[FIELD_PROGRAM] =~ s/[^a-zA-Z0-9\_\-]/\_/g;
-	
-	# Host gets the int version of itself
-	$line[FIELD_HOST] = unpack('N*', inet_aton($line[FIELD_HOST]));
-	
-	# Perform a crc32 conversion of the program and store it in the cache for later recording
-	if ($Cache->{ $line[FIELD_PROGRAM] }){
-		$line[FIELD_PROGRAM] = $Cache->{ $line[FIELD_PROGRAM] };
-	}
-	else {
-		my $program = $line[FIELD_PROGRAM];
-		$line[FIELD_PROGRAM] = crc32( $program );
-		$args->{cache_add}->{ $program } = { id => $line[FIELD_PROGRAM], class_id => $line[FIELD_CLASS_ID] };
-		$Cache->{ $program } = $line[FIELD_PROGRAM];
-	}
-	
-	if ($line[FIELD_CLASS_ID] ne 1){ #skip default since there aren't any fields
-		# Convert any IP fields as necessary
-		foreach my $field_order (keys %{ $Class_info->{field_conversions}->{ $line[FIELD_CLASS_ID] }->{'IPv4'} }){
-			$line[$field_order] = unpack('N', inet_aton($line[$field_order]));
-		}
-		
-		# Convert any proto fields as necessary
-		foreach my $field_order (keys %{ $Class_info->{field_conversions}->{ $line[FIELD_CLASS_ID] }->{PROTO} }){
-			$line[$field_order] = $Proto_map->{ $line[$field_order] };
-		}
-	}
-	
-	# Update start/end times if necessary
-	if ($args->{offline_processing}){
-		if ($line[FIELD_TIMESTAMP] < $args->{offline_processing_start}){
-			$args->{offline_processing_start} = $line[FIELD_TIMESTAMP];
-		}
-		if ($line[FIELD_TIMESTAMP] > $args->{offline_processing_end}){
-			$args->{offline_processing_end} = $line[FIELD_TIMESTAMP];
-		}
-	}
-		
-	# Push our auto-inc dummy val on
-	unshift(@line, '0');
-	
-	return \@line;
-}
-
-
-sub _get_class_info {
-	my $ret = { classes => {}, classes_by_id => {}, fields => [], field_conversions => {}, };
-	my ($query, $sth);	
-	# Get classes
-	$query = "SELECT id, class FROM classes";
-	$sth = $Dbh->prepare($query);
-	$sth->execute;
-	while (my $row = $sth->fetchrow_hashref){
-		$ret->{classes_by_id}->{ $row->{id} } = $row->{class};
-	}
-		
-	# Get fields
-	$query = "SELECT DISTINCT field, class, field_type, input_validation, field_id, class_id, field_order,\n" .
-		"IF(class!=\"\", CONCAT(class, \".\", field), field) AS fqdn_field, pattern_type\n" .
-		"FROM fields\n" .
-		"JOIN fields_classes_map t2 ON (fields.id=t2.field_id)\n" .
-		"JOIN classes t3 ON (t2.class_id=t3.id)\n";
-	$sth = $Dbh->prepare($query);
-	$sth->execute;
-	while (my $row = $sth->fetchrow_hashref){
-		push @{ $ret->{fields} }, {
-			field => $row->{field},
-			fqdn_field => $row->{fqdn_field},
-			class => $row->{class}, 
-			value => $row->{field}, 
-			text => uc($row->{field}),
-			field_id => $row->{field_id},
-			class_id => $row->{class_id},
-			field_order => $row->{field_order},
-			field_type => $row->{field_type},
-			input_validation => $row->{input_validation},
-			pattern_type => $row->{pattern_type},
-		};
-	}
-	
-	# Find unique classes;
-	foreach my $class_id (keys %{ $ret->{classes_by_id} }){
-		$ret->{classes}->{ $ret->{classes_by_id}->{$class_id} } = $class_id;
-	}
-	
-	# Find unique field conversions
-	foreach my $field_hash (@{ $ret->{fields} }){
-		$ret->{field_conversions}->{ $field_hash->{class_id} } ||= {};
-		if ($field_hash->{pattern_type} eq 'IPv4'){
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{IPv4} ||= {};
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{IPv4}->{ $field_hash->{field_order} } = $field_hash->{field};
-		}
-		elsif ($field_hash->{field} eq 'proto' and $field_hash->{pattern_type} eq 'QSTRING'){
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{PROTO} ||= {};
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{PROTO}->{ $field_hash->{field_order} } = $field_hash->{field};
-		}
-		elsif ($field_hash->{field} eq 'country_code' and $field_hash->{pattern_type} eq 'QSTRING'){
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE} ||= {};
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE}->{ $field_hash->{field_order} } = $field_hash->{field};
-		}
-	}
+	# End the loop after index_interval seconds
+	local $SIG{ALRM} = sub {
+		$Log->trace("ALARM");
+		$args->{run} = 0;
+		# check to see if we need to stop processing
+		$fh->blocking(0);
+	};
+	alarm $Conf->{sphinx}->{index_interval};
 			
-	# Find fields by arranged by order
-	$ret->{fields_by_order} = {};
-	foreach my $field_hash (@{ $ret->{fields} }){
-		$ret->{fields_by_order}->{ $field_hash->{class_id} } ||= {};
-		$ret->{fields_by_order}->{ $field_hash->{class_id} }->{ $field_hash->{field_order} } = $field_hash;
+	my $reader = new Reader(log => $Log, conf => $Config_json, cache => $Cache);
+	my $writer = new Writer(log => $Log, conf => $Config_json);
+	
+	while (<$fh>){	
+		eval { 
+			$writer->write($reader->parse_line($_));
+			$args->{batch_counter}++;
+		};
+		if ($@){
+			my $e = $@;
+			$args->{error_counter}++;
+			if ($Conf->{log_parse_errors}){
+				$Log->error($e) 
+			}
+		}
+		last unless $args->{run};
 	}
 	
-	# Find fields by arranged by short field name
-	$ret->{fields_by_name} = {};
-	foreach my $field_hash (@{ $ret->{fields} }){
-		$ret->{fields_by_name}->{ $field_hash->{field} } ||= [];
-		push @{ $ret->{fields_by_name}->{ $field_hash->{field} } }, $field_hash;
-	}
+	# Disable the alarm if we haven't already
+	alarm 0;
 	
-	return $ret;
+	# Insert any that are pending
+	$writer->realtime_batch_insert();
+	
+	return ($args->{batch_counter}, $writer->current_id);
 }
 
 sub _init_cache {
@@ -476,81 +319,4 @@ sub _init_cache {
 	while (my $row = $sth->fetchrow_hashref){
 		$Cache->{ $row->{program} } = $row->{id};
 	}
-}
-
-__END__
-for my $i ( 0 .. ( $num_children - 1 ) ) {
-	my $fh;
-	my $pid = open( $fh, "|-" );    # fork and send to child's STDIN
-	$fh->autoflush(1);
-	die("Couldn't fork: $!") unless defined $pid;
-	if ($pid) {
-		$pipes->{$i} = { pid => $pid, fh => $fh, counter => 0 };
-		$SIG{TERM} = sub {
-			$Run = 0;
-			#$Log->info("indexer.pl is shutting down");
-
-			# Shut down all children
-			foreach my $i ( keys %{$pipes} ) {
-				my $pid = $pipes->{$i}->{pid};
-				#$Log->debug("Sending SIGALRM to $pid");
-				kill SIGALRM, $pid;    # send SIGALRM to each so they finish up
-				                  # Send SIGTERM so they stop their continue loops
-				#$Log->debug("Sending SIGTERM to $pid");
-				kill SIGTERM, $pid;
-				exit;
-			}
-			$SIG{CHLD} = sub{
-				#$Log->debug("Got SIGCHLD");
-				exit;	
-			}
-			
-		};
-	}
-	else {
-		# child worker
-		$Log = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n"); # get a new logger to not conflict with parent
-		$pipes = undef;           # to avoid any confusion
-		$SIG{TERM} = sub {
-			$Log->info("Worker $$ is shutting down");
-			$continue = 0;
-		};
-
-		OUTER_LOOP: while ($continue) {
-			eval {
-				INNER_LOOP: while ($continue) {
-					$Log->debug("Starting process_batch");
-					#my $num_processed = $kid_writer->process_batch();
-					my $num_processed = _process_batch();
-					$Log->debug("Processed $num_processed records");
-					sleep 1 unless $num_processed; # avoid batch-bombing if our parent handle closes
-				}
-			};
-			if ($@) {
-				my $e = $@;
-				$Log->error($e);
-				sleep 1;                                # to avoid errmsg flooding
-			}
-		}
-		exit;
-	}
-}
-
-my $status_check_limit = 10_000;
-
-# Still parent down here
-while (<>) {
-	last unless $Run;
-
-	# child id will be line number (total records read) modulo number of sweatshop workers
-	$pipes->{ ( $. % $num_children ) }->{fh}->print($_);
-	$pipes->{ ( $. % $num_children ) }->{counter}++;
-	if ( $. % $status_check_limit == 0 ) {
-		foreach my $kid ( sort keys %{$pipes} ) {
-			printf( "Worker %d processed %d logs\n", $kid, $pipes->{$kid}->{counter} );
-		}
-	}
-}
-foreach my $kid ( sort keys %{$pipes} ) {
-	printf( "Worker %d processed %d logs\n", $kid, $pipes->{$kid}->{counter} );
 }

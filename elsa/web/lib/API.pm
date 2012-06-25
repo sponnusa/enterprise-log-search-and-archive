@@ -638,7 +638,7 @@ sub _get_sphinx_nodes {
 			$mysql_port = $node_conf->{$node}->{port};
 		}
 				
-		my $sphinx_port = 3307;
+		my $sphinx_port = 9306;
 		if ($node_conf->{$node}->{sphinx_port}){
 			$sphinx_port = $node_conf->{$node}->{sphinx_port};
 		}
@@ -720,7 +720,7 @@ sub _get_node_info {
 				my ($dbh, $rows, $rv) = @_;
 				
 				if ($rv and $rows){
-					$self->log->trace('node returned rv: ' . $rv);
+					#$self->log->trace('node returned rv: ' . $rv);
 					$ret->{nodes}->{$node}->{indexes} = {
 						indexes => $rows,
 						min => $rows->[0]->{start_int},
@@ -746,7 +746,7 @@ sub _get_node_info {
 				my ($dbh, $rows, $rv) = @_;
 				
 				if ($rv and $rows){
-					$self->log->trace('node returned rv: ' . $rv);
+					#$self->log->trace('node returned rv: ' . $rv);
 					$ret->{nodes}->{$node}->{tables} = {
 						tables => $rows,
 						min => $rows->[0]->{start_int},
@@ -1518,7 +1518,7 @@ sub query {
 		}
 		# Get our node info
 		if (not $self->node_info->{updated_at} 
-			or (time() - $self->node_info->{updated_at} >= $self->conf->get('node_info_cache_timeout'))
+			or ((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout'))
 			or not $args->{user}->is_admin){
 			$self->node_info($self->_get_node_info($args->{user}));
 		}

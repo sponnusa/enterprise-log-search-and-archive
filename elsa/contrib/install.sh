@@ -749,5 +749,5 @@ elif [ "$INSTALL" = "web" ]; then
 fi
 
 echo "!!!!!! IMPORTANT !!!!!!!!!"
-echo "If you have a host-based firewall like IPTables running, remember to allow ports 80 (and/or 443) for the web server and ports 514 (syslog), 3306 (MySQL), and 3307 (Sphinx) for log nodes"
+echo "If you have a host-based firewall like IPTables running, remember to allow ports 80 (and/or 443) for the web server and ports 514 (syslog), 3306 (MySQL), and 9306 (Sphinx) for log nodes"
 
