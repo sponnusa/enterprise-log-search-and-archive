@@ -383,7 +383,7 @@ CREATE TABLE indexes (
 	start INT UNSIGNED NOT NULL,
 	end INT UNSIGNED NOT NULL,
 	table_id SMALLINT UNSIGNED NOT NULL,
-	type ENUM("temporary", "permanent", "unavailable") NOT NULL DEFAULT "temporary",
+	type ENUM("temporary", "permanent", "unavailable", "realtime") NOT NULL DEFAULT "temporary",
 	locked_by SMALLINT UNSIGNED,
 	PRIMARY KEY (id, type),
 	UNIQUE KEY (first_id, last_id),
@@ -439,11 +439,14 @@ CREATE TABLE stats (
 	KEY (type)
 ) ENGINE=InnoDB;
 
-/*CREATE TABLE IF NOT EXISTS current_indexes (
-	node INT UNSIGNED NOT NULL PRIMARY KEY,
-	timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	indexes TEXT NOT NULL
-) ENGINE=InnoDB;*/
+/*CREATE TABLE IF NOT EXISTS host_stats (
+	timestamp INT UNSIGNED NOT NULL,
+	host_id INT UNSIGNED NOT NULL,
+	class_id SMALLINT UNSIGNED NOT NULL,
+	count MEDIUMINT UNSIGNED NOT NULL DEFAULT 0,
+	PRIMARY KEY (timestamp, host_id, class_id)
+) ENGINE=MyISAM PARTITION BY RANGE (timestamp)
+( PARTITION p0 VALUES LESS THAN (0));*/
 
 CREATE TABLE IF NOT EXISTS buffers (
 	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,

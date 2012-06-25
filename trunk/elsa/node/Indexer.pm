@@ -11,9 +11,9 @@ use File::Find;
 use Sys::Info; 
 use Sys::Info::Constants qw( :device_cpu );
 use Sys::MemInfo qw( freemem totalmem freeswap totalswap );
+use Config::JSON;
 
 use constant CRITICAL_LOW_MEMORY_LIMIT => 100 * 1024 * 1024;
-
 our $Missing_table_error_limit = 4;
 our $Timeout = 30;
 our $Run = 1;
@@ -28,26 +28,67 @@ has 'locks' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {}
 has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
 has 'conf' => ( is => 'ro', isa => 'Config::JSON', required => 1 );
 has 'db' => (is => 'rw', isa => 'Object', required => 0);
-has 'class_info' => (is => 'rw', isa => 'HashRef', required => 1);
+#has 'class_info' => (is => 'rw', isa => 'HashRef', required => 1);
 has 'cpu_count' => (is => 'ro', isa => 'Int', required => 1, default => sub {
 	# Find number of CPU's
 	return Sys::Info->new->device('CPU')->count;
 });
 
+sub BUILDARGS {
+	my $class = shift;
+	my %params = @_;
+	
+	if ($params{config_file}){
+		$params{conf} = Config::JSON->new($params{config_file});
+		my $logdir = $params{conf}->get('logdir');
+		my $debug_level = $params{conf}->get('debug_level');
+		my $l4pconf = qq(
+			log4perl.category.ELSA       = $debug_level, File
+			log4perl.appender.File			 = Log::Log4perl::Appender::File
+			log4perl.appender.File.filename  = $logdir/node.log
+			log4perl.appender.File.syswrite = 1
+			log4perl.appender.File.recreate = 1
+			log4perl.appender.File.layout = Log::Log4perl::Layout::PatternLayout
+			log4perl.appender.File.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
+			log4perl.filter.ScreenLevel               = Log::Log4perl::Filter::LevelRange
+			log4perl.filter.ScreenLevel.LevelMin  = $debug_level
+			log4perl.filter.ScreenLevel.LevelMax  = ERROR
+			log4perl.filter.ScreenLevel.AcceptOnMatch = true
+			log4perl.appender.Screen         = Log::Log4perl::Appender::Screen
+			log4perl.appender.Screen.Filter = ScreenLevel 
+			log4perl.appender.Screen.stderr  = 1
+			log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
+			log4perl.appender.Screen.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
+		);
+		Log::Log4perl::init( \$l4pconf ) or die("Unable to init logger\n");
+		$params{log} = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n");
+	}
+	
+	if ($params{conf}){ # wrap this in a condition so that the right error message will be thrown if no conf
+		my $dbh = DBI->connect(($params{conf}->get('database/dsn') or 'dbi:mysql:database=syslog;'), 
+			$params{conf}->get('database/username'), 
+			$params{conf}->get('database/password'), 
+			{
+				RaiseError => 1, 
+				mysql_auto_reconnect => 1,
+				mysql_local_infile => 1, # Needed by some MySQL implementations
+			}
+		) or die 'connection failed ' . $! . ' ' . $DBI::errstr;
+		$params{db} = $dbh;
+		
+#		unless ($params{class_info}){
+#			$params{class_info} = get_class_info($dbh);
+#		}
+	}
+	
+	return \%params;
+}
+
 sub BUILD {
 	my $self = shift;
 	$Data_db_name = $self->conf->get('database/data_db') ? $self->conf->get('database/data_db') : 'syslog_data';
 	
-	$self->db(DBI->connect(($self->conf->get('database/dsn') or 'dbi:mysql:database=syslog;'), 
-		$self->conf->get('database/username'), 
-		$self->conf->get('database/password'), 
-		{
-			RaiseError => 1, 
-			mysql_auto_reconnect => 1,
-			mysql_local_infile => 1, # Needed by some MySQL implementations
-		})
-	) or die 'connection failed ' . $! . ' ' . $DBI::errstr;
-	$self->log->debug('db id: ' . $self->dbh_id);		
+	#$self->log->debug('db id: ' . $self->dbh_id);		
 }
 
 sub DEMOLISH {
@@ -566,22 +607,24 @@ sub _check_consolidate {
 	
 	# Check to see if we need to consolidate any tables
 	$self->db->begin_work;
-	$query = 'SELECT table_name, SUM(locked_by) AS locked, COUNT(DISTINCT id) AS num_indexes, ' . "\n"
+	$query = 'SELECT table_name, type, SUM(locked_by) AS locked, COUNT(DISTINCT id) AS num_indexes, ' . "\n"
 		. 'min_id, max_id, max_id-min_id AS num_rows ' . "\n"
 		. 'FROM v_directory' . "\n"
 		. 'WHERE ISNULL(table_locked_by) AND table_type="index"' . "\n"
 		. 'GROUP BY table_name' . "\n"
-		. 'HAVING ISNULL(locked) AND num_rows > ? AND num_indexes > 1 FOR UPDATE';
+		. 'HAVING ISNULL(locked) AND num_rows > ? AND (num_indexes > 1 OR type="realtime") FOR UPDATE';
 	$sth = $self->db->prepare($query);
 	$sth->execute($self->conf->get('sphinx/perm_index_size'));
 	
 	my @to_consolidate;
 	while (my $row = $sth->fetchrow_hashref){
+		next if $row->{min_id} >= $row->{max_id};
 		# Lock the table
 		$query = 'UPDATE tables SET table_locked_by=? WHERE table_name=?';
 		my $upd_sth = $self->db->prepare($query);
 		$upd_sth->execute($$, $row->{table_name});
 		$self->log->debug('Locked table ' . $row->{table_name});
+		$self->log->debug('Locked table ' . Dumper($row));
 		push @to_consolidate, { first_id => $row->{min_id}, last_id => $row->{max_id} };
 	}
 	$self->db->commit;
@@ -610,10 +653,27 @@ sub load_buffers {
 		$sth->finish();
 	}
 	
+	my ($first_id, $last_id, $multiple_loads);
 	foreach my $row (@rows){	
 		# Send to index load records
 		if ($self->conf->get('sphinx/perm_index_size')){
-			$self->index_records($self->load_records({ file => $row->{filename} }));
+			my $batch_ids  = $self->load_records({ file => $row->{filename} });
+			$first_id ||= $batch_ids->{first_id};
+			$last_id = $batch_ids->{last_id};
+			if (scalar @rows == 1){
+				# Standard case, just do the indexing
+				$self->index_records($batch_ids);
+			}
+			elsif ($batch_ids->{first_id} - $last_id > 1){
+				# Non-consecutive, must do an index for this batch
+				$self->log->debug('non-consecutive ids: ' . $batch_ids->{first_id} . ' and ' . $last_id);
+				$self->index_records($batch_ids);
+				$first_id = $batch_ids->{first_id};
+			}
+			else {
+				# Consecutive, keep loading, we will index at the end
+				$multiple_loads++;
+			}
 		}
 		
 		# Send to archive
@@ -621,6 +681,12 @@ sub load_buffers {
 			$self->archive_records({ file => $row->{filename} })
 		}
 	}
+	
+	if ($multiple_loads and $self->conf->get('sphinx/perm_index_size')){
+		$self->log->trace('Loading multiple buffers between ' . $first_id . ' and ' . $last_id);
+		$self->index_records({ first_id => $first_id, last_id => $last_id });
+	}
+	
 	$self->rotate_logs();
 	
 	return {};
@@ -778,7 +844,7 @@ sub archive_records {
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my $row = $sth->fetchrow_hashref;
-	my $first_id = $Peer_id_multiplier * $self->conf->get('id');
+	my $first_id = $self->conf->get('id') ? $Peer_id_multiplier * $self->conf->get('id') : 0;
 	if ($row){
 		$first_id = $row->{id};
 	}
@@ -823,7 +889,10 @@ sub _get_max_id {
 	my ($query, $sth, $row);
 	
 	# Find db's current max id
-	$query = 'SELECT MAX(max_id) AS max_id FROM tables t1 JOIN table_types t2 on (t1.table_type_id=t2.id) WHERE table_type=?';
+	#$query = 'SELECT MAX(max_id) AS max_id FROM tables t1 JOIN table_types t2 on (t1.table_type_id=t2.id) WHERE table_type=?';
+	$query = 'SELECT AUTO_INCREMENT AS max_id FROM INFORMATION_SCHEMA.TABLES ' .
+		'WHERE CONCAT(table_schema, ".", table_name)=' . 
+			'(SELECT table_name FROM v_directory WHERE table_type=? ORDER BY table_id DESC LIMIT 1)';
 	$sth = $self->db->prepare($query);
 	$sth->execute($type);
 	$row = $sth->fetchrow_hashref;
@@ -831,7 +900,7 @@ sub _get_max_id {
 	$max_id = 0 unless $max_id;
 	
 	# Validate this is with the correct range for this node
-	my $min_id = $self->conf->get('id') * $Peer_id_multiplier;
+	my $min_id = $self->conf->get('id') ? $Peer_id_multiplier * $self->conf->get('id') : 0;
 	unless ($max_id > $min_id){
 		$self->log->warn('Found max_id of ' . $max_id . ' which was smaller than min_id of ' . $min_id . ', setting to ' . $min_id);
 		$max_id = $min_id;
@@ -853,10 +922,13 @@ sub _get_table {
 	
 	my ($query, $sth, $row);
 	
-	$query = 'SELECT table_name, min_id, max_id' . "\n" .
-		'FROM tables' . "\n" .
-		'WHERE table_type_id=(SELECT id FROM table_types WHERE table_type=?)' . "\n" .
-		"ORDER BY tables.id DESC LIMIT 1";
+	$query = 'SELECT CONCAT(table_schema, ".", table_name) AS table_name, AUTO_INCREMENT AS max_id, table_rows FROM INFORMATION_SCHEMA.TABLES ' .
+		'WHERE CONCAT(table_schema, ".", table_name)=' . 
+			'(SELECT table_name FROM v_directory WHERE table_type=? ORDER BY table_id DESC LIMIT 1)'; 
+#	$query = 'SELECT table_name, min_id, max_id' . "\n" .
+#		'FROM tables' . "\n" .
+#		'WHERE table_type_id=(SELECT id FROM table_types WHERE table_type=?)' . "\n" .
+#		"ORDER BY tables.id DESC LIMIT 1";
 #	$query = sprintf('SELECT table_name, min_id, max_id, table_locked_by, locked_by' . "\n" .
 #		'FROM %1$s.tables' . "\n" .
 #		'LEFT JOIN %1$s.indexes ON (tables.table_locked_by=indexes.locked_by)' . "\n" .
@@ -872,9 +944,10 @@ sub _get_table {
 			$size = $self->conf->get('archive/table_size');
 		}
 		# See if the table is too big
-		if (($row->{max_id} - $row->{min_id}) >= $size){
+		#if (($row->{max_id} - $row->{min_id}) >= $size){
+		if ($row->{table_rows} >= $size){
 			my $new_id = $row->{max_id} + 1;
-			$self->log->debug("suggesting new table with id $new_id because row was: " . Dumper($row) . ' and size was ' . $size);
+			$self->log->debug("suggesting new table with id $new_id because row was: " . Dumper($row) . ' and size was ' . $row->{table_rows});
 			$args->{table_name} = sprintf("%s.syslogs_%s_%d", $Data_db_name, $table_type, $new_id);
 			return $args;
 		}
@@ -929,8 +1002,8 @@ sub _create_table {
 		$sth = $self->db->prepare($query);
 		$sth->execute( $needed_table, ($args->{start} ? $args->{start} : CORE::time()), ($args->{end} ? $args->{end} : CORE::time()), $current_max_id + 1, $current_max_id + 1, $args->{table_type});
 		my $id = $self->db->{mysql_insertid};
-		$self->log->debug(sprintf("Created table id %d with start %s, end %s, first_id %lu, last_id %lu", 
-			$id, _epoch2iso($args->{start}), _epoch2iso($args->{end}), $args->{first_id}, $args->{last_id} ));	
+		#$self->log->debug(sprintf("Created table id %d with start %s, end %s, first_id %lu, last_id %lu", 
+		#	$id, _epoch2iso($args->{start}), _epoch2iso($args->{end}), $args->{first_id}, $args->{last_id} ));	
 		
 		$query = "CREATE TABLE IF NOT EXISTS $needed_table LIKE syslogs_template";
 		$self->log->debug("Creating table: $query");
@@ -997,7 +1070,7 @@ sub consolidate_indexes {
 	}
 	
 	$query = 'SELECT COUNT(*) AS count FROM v_directory ' . "\n" .
-			'WHERE table_type="index" AND min_id >= ? AND max_id <= ?';
+			'WHERE table_type="index" AND min_id >= ? AND max_id <= ? and type!="realtime"';
 	$sth = $self->db->prepare($query);
 	$sth->execute($first_id, $last_id);
 	$row = $sth->fetchrow_hashref;
@@ -1441,7 +1514,21 @@ sub _drop_indexes {
 		$self->log->trace('committed');
 		
 		my $index_name = $self->_get_index_name($type, $id);
-		$self->_sphinx_index($index_name);
+		if ($type eq 'realtime'){
+			my $sphinx_dbh = DBI->connect('dbi:mysql:host=' . $self->conf->get('sphinx/host') . ';port=' . $self->conf->get('sphinx/mysql_port'), 
+				undef, undef, 
+				{
+					RaiseError => 1, 
+					mysql_auto_reconnect => 1,
+					mysql_multi_statements => 1,
+					mysql_bind_type_guessing => 1,
+				}
+			) or die 'sphinx connection failed ' . $! . ' ' . $DBI::errstr;
+			$sphinx_dbh->do('TRUNCATE RTINDEX ' . $index_name);
+		}
+		else {
+			$self->_sphinx_index($index_name);
+		}
 		$self->log->info('Dropped index id ' . $id . ' with name ' . $index_name);
 	}
 	
@@ -1487,8 +1574,10 @@ searchd {
         read_timeout = 5
         seamless_rotate = 1
         unlink_old = 1
-        listen = 0.0.0.0:3307:mysql41
-        listen = 0.0.0.0:3312
+        listen = 0.0.0.0:%8\$s:mysql41
+        listen = 0.0.0.0:%9\$s
+        expansion_limit = 10
+        workers = threads
 }
 source permanent {
         sql_attr_timestamp = timestamp
@@ -1567,6 +1656,78 @@ index temporary {
         source = temporary
         stopwords = %3\$s
 }
+
+index real_1 {
+		type = rt
+		charset_table = 0..9, A..Z->a..z, _, a..z, U+A8->U+B8, U+B8, U+C0..U+DF->U+E0..U+FF, U+E0..U+FF, U+2E, U+40, U+2D
+        dict = keywords
+        enable_star = 1
+        path = %2\$s/real_1
+        stopwords = %3\$s
+        rt_field = host
+        rt_field = msg
+        rt_field = s0
+        rt_field = s1
+        rt_field = s2
+        rt_field = s3
+        rt_field = s4
+        rt_field = s5
+        rt_attr_timestamp = timestamp
+        rt_attr_uint = minute
+        rt_attr_uint = hour
+        rt_attr_uint = day
+        rt_attr_uint = host_id
+        rt_attr_uint = program_id
+        rt_attr_uint = class_id
+        rt_attr_uint = attr_i0
+        rt_attr_uint = attr_i1
+        rt_attr_uint = attr_i2
+        rt_attr_uint = attr_i3
+        rt_attr_uint = attr_i4
+        rt_attr_uint = attr_i5
+        rt_attr_uint = attr_s0
+        rt_attr_uint = attr_s1
+        rt_attr_uint = attr_s2
+        rt_attr_uint = attr_s3
+        rt_attr_uint = attr_s4
+        rt_attr_uint = attr_s5
+}
+
+index real_2 {
+		type = rt
+		charset_table = 0..9, A..Z->a..z, _, a..z, U+A8->U+B8, U+B8, U+C0..U+DF->U+E0..U+FF, U+E0..U+FF, U+2E, U+40, U+2D
+        dict = keywords
+        enable_star = 1
+        path = %2\$s/real_2
+        stopwords = %3\$s
+        rt_field = host
+        rt_field = msg
+        rt_field = s0
+        rt_field = s1
+        rt_field = s2
+        rt_field = s3
+        rt_field = s4
+        rt_field = s5
+        rt_attr_timestamp = timestamp
+        rt_attr_uint = minute
+        rt_attr_uint = hour
+        rt_attr_uint = day
+        rt_attr_uint = host_id
+        rt_attr_uint = program_id
+        rt_attr_uint = class_id
+        rt_attr_uint = attr_i0
+        rt_attr_uint = attr_i1
+        rt_attr_uint = attr_i2
+        rt_attr_uint = attr_i3
+        rt_attr_uint = attr_i4
+        rt_attr_uint = attr_i5
+        rt_attr_uint = attr_s0
+        rt_attr_uint = attr_s1
+        rt_attr_uint = attr_s2
+        rt_attr_uint = attr_s3
+        rt_attr_uint = attr_s4
+        rt_attr_uint = attr_s5
+}
 	
 EOT
 ;
@@ -1574,7 +1735,9 @@ EOT
 	my $template = sprintf($template_base, $self->conf->get('logdir'), $self->conf->get('sphinx/index_path'), 
 		$self->conf->get('sphinx/stopwords_file'), $self->conf->get('database/db'), 
 		$self->conf->get('database/username'), $self->conf->get('database/password'), 
-		$self->conf->get('sphinx/pid_file'));
+		$self->conf->get('sphinx/pid_file'), 
+		$self->conf->get('sphinx/mysql_port') ? $self->conf->get('sphinx/mysql_port') : 9306,
+		$self->conf->get('sphinx/port') ? $self->conf->get('sphinx/port') : 9312);
 
 	
 	my $perm_template = <<EOT
@@ -1616,12 +1779,16 @@ EOT
 	
 	# Split all indexes into four evenly distributed groups
 	my @index_groups;
+	for (my $i = 1; $i <= 2; $i++){
+		unshift @{ $index_groups[ $i % $self->cpu_count ] }, 
+			$self->_get_index_name('realtime', $i);
+	}
 	for (my $i = 1; $i <= $self->conf->get('num_indexes'); $i++){
 		unshift @{ $index_groups[ $i % $self->cpu_count ] }, 
 			$self->_get_index_name('temporary', $i), $self->_get_index_name('permanent', $i);
 	}
 	
-	my $sphinx_port = $self->conf->get('sphinx/port');
+	my $sphinx_port = $self->conf->get('sphinx/agent_port') ? $self->conf->get('sphinx/agent_port') : 9312;
 	my @local_index_arr;
 	for (my $i = 0; $i < $self->cpu_count; $i++){
 		if ($index_groups[$i] and @{ $index_groups[$i] }){
@@ -1657,7 +1824,11 @@ sub _get_next_index_id {
 	$sth = $self->db->prepare($query);
 	$sth->execute($type);
 	my $ids = $sth->fetchall_hashref('id') or return 1;
-	for (my $i = 1; $i <= $self->conf->get('num_indexes'); $i++){
+	my $num_indexes = $self->conf->get('num_indexes');
+	if ($type eq 'realtime'){
+		$num_indexes = 2;
+	}
+	for (my $i = 1; $i <= $num_indexes; $i++){
 		unless ($ids->{$i}){
 			return $i;
 		}
@@ -1684,6 +1855,9 @@ sub _get_index_name {
 	elsif ($type eq 'temporary'){
 		return sprintf('temp_%d', $id);
 	}
+	elsif ($type eq 'realtime'){
+		return sprintf('real_%d', $id);
+	}
 	else {
 		die 'Unknown index type: ' . $type;
 	}
@@ -1706,6 +1880,72 @@ sub dbh_id {
 	my $row = $sth->fetchrow_arrayref;
 	return $row->[0];
 }
+
+sub get_current_index_info {
+	my $self = shift;
+	
+	my $index_id = ($self->_get_max_id('index'));
+	my ($query, $sth);
+	$query = 'SELECT id, records FROM v_indexes WHERE type="realtime" ORDER BY id DESC LIMIT 1';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	my $row = $sth->fetchrow_hashref;
+	my $realtime_index_id;
+	my $do_init = 0;
+	my $records = 0;
+	if ($row){
+		$records = $row->{records};
+		if ($records > $self->conf->get('sphinx/perm_index_size')){
+			$realtime_index_id = $self->_get_next_index_id('realtime');
+		}
+		else {
+			$realtime_index_id = $row->{id};
+		}
+	}
+	else {
+		 $realtime_index_id = 1;
+		 $do_init = 1;
+	}
+	
+	return {
+		index => {
+			table => $self->_create_table({}),
+			id => $index_id,
+		},
+		archive => {
+			table => $self->_create_table({archive => 1}),
+			id => ($self->_get_max_id('archive')),
+		},
+		realtime => {
+			table => $self->_get_index_name('realtime', $realtime_index_id),
+			id => $index_id,
+			do_init => $do_init,
+			records => $records,
+		},
+	};
+}
+
+sub add_programs {
+	my $self = shift;
+	my $to_add = shift;
+	my ($query, $sth);
+	$self->log->trace('Adding programs: ' . Dumper($to_add));
+	$query = 'INSERT INTO programs (id, program) VALUES(?,?) ON DUPLICATE KEY UPDATE id=?';
+	$sth = $self->db->prepare($query);
+	$query = 'REPLACE INTO class_program_map (class_id, program_id) VALUES(?,?)';
+	my $sth_map = $self->db->prepare($query);
+	foreach my $program (keys %{ $to_add }){
+		$sth->execute($to_add->{$program}->{id}, $program, $to_add->{$program}->{id});
+		if ($sth->rows){ # this was not a duplicate, proceed with the class map insert
+			$sth_map->execute($to_add->{$program}->{class_id}, $to_add->{$program}->{id});
+		}
+		else {
+			$self->log->error('Duplicate CRC found for ' . $program . ' with CRC ' . $to_add->{$program}->{id});
+		}
+	}
+}
+
+__PACKAGE__->meta->make_immutable;
 
 1;
 
