@@ -859,4 +859,29 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="Windows Event log Firewall Filtering" id='32'>
+		<pattern>Security-Auditing</pattern>
+		<rules>
+			<rule provider="M Smith" class='3' id='1000'>
+				<patterns>
+					<pattern>@ESTRING:: @The Windows Filtering Platform has @ESTRING:: @a connection. Application Information: Process ID: @ESTRING:: @Application Name: @ESTRING:: @Network Information: Direction: @ESTRING:: @Source Address: @IPv4:i1@ Source Port: @NUMBER:i2:@ Destination Address: @IPv4:i3:@ Destination Port: @NUMBER:i4:@ Protocol: @NUMBER:i0:@ Filter Information: Filter Run-Time ID: @ESTRING:: @Layer Name: @ESTRING:: @Layer Run-Time ID: @NUMBER::@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="Security-Auditing">5156: The Windows Filtering Platform has permitted a connection. Application Information: Process ID: 1924 Application Name: \device\harddiskvolume1\users\admin\appdata\local\dude\win.exe Network Information: Direction: Outbound Source Address: 1.1.1.1 Source Port: 1234 Destination Address: 2.2.2.2 Destination Port: 4567 Protocol: 17 Filter Information: Filter Run-Time ID: 70078 Layer Name: Connect Layer Run-Time ID: 48</test_message>
+							<!-- srcip -->
+							<test_value name="i1">1.1.1.1</test_value>
+							<!-- srcport -->
+							<test_value name="i2">1234</test_value>
+							<!-- dstip -->
+							<test_value name="i3">2.2.2.2</test_value>
+							<!-- dstport -->
+							<test_value name="i4">4567</test_value>
+							<!-- proto -->
+							<test_value name="i0">17</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
