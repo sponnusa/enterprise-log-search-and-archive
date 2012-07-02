@@ -1604,7 +1604,7 @@ source permanent {
         sql_host = localhost
         sql_pass = %6\$s
         sql_range_step = 10000
-        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
+        sql_query = SELECT id, timestamp, CAST(TRUNCATE(timestamp/86400, 0) AS unsigned) AS day, CAST(TRUNCATE(timestamp/3600, 0) AS unsigned) AS hour, CAST(TRUNCATE(timestamp/60, 0) AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
         type = mysql
 }
 index permanent {
@@ -1643,7 +1643,7 @@ source temporary {
         sql_host = localhost
         sql_pass = %6\$s
         sql_range_step = 100000
-        sql_query = SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
+        sql_query = SELECT id, timestamp, CAST(TRUNCATE(timestamp/86400, 0) AS unsigned) AS day, CAST(TRUNCATE(timestamp/3600, 0) AS unsigned) AS hour, CAST(TRUNCATE(timestamp/60, 0) AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5 FROM syslog.init
         type = mysql
 }
 index temporary {
@@ -1745,7 +1745,7 @@ source perm_%1\$d : permanent {
         sql_query_pre = SELECT table_name INTO \@src_table FROM v_directory WHERE id=%1\$d AND type="permanent"
         sql_query_pre = SELECT IF(NOT ISNULL(\@src_table), \@src_table, "init") INTO \@src_table FROM dual
         sql_query_pre = SELECT IF((SELECT first_id FROM v_directory WHERE id=%1\$d AND type="permanent"), (SELECT first_id FROM v_directory WHERE id=%1\$d AND type="permanent"), 1), IF((SELECT last_id FROM v_directory WHERE id=%1\$d AND type="permanent"), (SELECT last_id FROM v_directory WHERE id=%1\$d AND type="permanent"), 1) INTO \@first_id, \@last_id FROM dual
-        sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5, CRC32(s0) AS attr_s0, CRC32(s1) AS attr_s1, CRC32(s2) AS attr_s2, CRC32(s3) AS attr_s3, CRC32(s4) AS attr_s4, CRC32(s5) AS attr_s5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
+        sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, CAST(TRUNCATE(timestamp/86400, 0) AS unsigned) AS day, CAST(TRUNCATE(timestamp/3600, 0) AS unsigned) AS hour, CAST(TRUNCATE(timestamp/60, 0) AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5, CRC32(s0) AS attr_s0, CRC32(s1) AS attr_s1, CRC32(s2) AS attr_s2, CRC32(s3) AS attr_s3, CRC32(s4) AS attr_s4, CRC32(s5) AS attr_s5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
         sql_query_pre = PREPARE stmt FROM \@sql
         sql_query = EXECUTE stmt 
 }
@@ -1761,7 +1761,7 @@ source temp_%1\$d : temporary {
         sql_query_pre = SELECT table_name INTO \@src_table FROM v_directory WHERE id=%1\$d AND type="temporary"
         sql_query_pre = SELECT IF(NOT ISNULL(\@src_table), \@src_table, "init") INTO \@src_table FROM dual
         sql_query_pre = SELECT IF((SELECT first_id FROM v_directory WHERE id=%1\$d AND type="temporary"), (SELECT first_id FROM v_directory WHERE id=%1\$d AND type="temporary"), 1), IF((SELECT last_id FROM v_directory WHERE id=%1\$d AND type="temporary"), (SELECT last_id FROM v_directory WHERE id=%1\$d AND type="temporary"), 1) INTO \@first_id, \@last_id FROM dual
-        sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, CAST(timestamp/86400 AS unsigned) AS day, CAST(timestamp/3600 AS unsigned) AS hour, CAST(timestamp/60 AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5, CRC32(s0) AS attr_s0, CRC32(s1) AS attr_s1, CRC32(s2) AS attr_s2, CRC32(s3) AS attr_s3, CRC32(s4) AS attr_s4, CRC32(s5) AS attr_s5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
+        sql_query_pre = SET \@sql = CONCAT("SELECT id, timestamp, CAST(TRUNCATE(timestamp/86400, 0) AS unsigned) AS day, CAST(TRUNCATE(timestamp/3600, 0) AS unsigned) AS hour, CAST(TRUNCATE(timestamp/60, 0) AS unsigned) AS minute, host_id, host_id AS host, program_id, class_id, msg, s0, s1, s2, s3, s4, s5, i0 AS attr_i0, i1 AS attr_i1, i2 AS attr_i2, i3 AS attr_i3, i4 AS attr_i4, i5 AS attr_i5, CRC32(s0) AS attr_s0, CRC32(s1) AS attr_s1, CRC32(s2) AS attr_s2, CRC32(s3) AS attr_s3, CRC32(s4) AS attr_s4, CRC32(s5) AS attr_s5 FROM ", \@src_table, " WHERE id >= ", \@first_id, " AND id <= ", \@last_id)
         sql_query_pre = PREPARE stmt FROM \@sql
         sql_query = EXECUTE stmt 
 }
