@@ -170,6 +170,17 @@ with 'MooseX::Traits';
 # Object for storing query results
 has 'results' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} },
 	handles => { all_groupbys => 'keys', groupby => 'get' });
+	
+sub BUILDARGS {
+	my $class = shift;
+	my %params = @_;
+	if ($params{results} and ref($params{results}) and ref($params{results}) eq 'HASH'){
+		foreach my $groupby (keys %{ $params{results} }){
+			$params{total_records} += scalar @{ $params{results}->{$groupby} };
+		}
+	}
+	return \%params;
+}	
 
 sub records_returned {
 	my $self = shift;
