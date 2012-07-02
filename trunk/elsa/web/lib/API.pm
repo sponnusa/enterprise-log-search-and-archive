@@ -11,6 +11,7 @@ use MIME::Base64;
 use Socket qw(inet_aton inet_ntoa);
 use CHI;
 use Time::HiRes qw(time);
+use Time::Local;
 use Module::Pluggable require => 1, search_path => [ qw( Export Info Transform Connector ) ];
 use URI::Escape qw(uri_unescape);
 use Mail::Internet;
@@ -2006,22 +2007,29 @@ sub _sphinx_query {
 			if (exists $Fields::Time_values->{ $groupby }){
 				# Sort these in ascending label order
 				my @tmp;
+				my $increment = $Fields::Time_values->{ $groupby };
+				#my $gmt_offset = timegm(localtime)-timelocal(localtime); 
 				foreach my $key (sort { $a <=> $b } keys %agg){
 					$total_records += $agg{$key};
-					my $unixtime = ($key * $Fields::Time_values->{ $groupby });
+					#my $unixtime = timelocal(gmtime(($key * $increment) - $increment)); # convert from GMT 
+					my $unixtime = $key * $increment;
+					#my $unixtime = ($key * $increment) - $increment; # MySQL rounds up during cast to int, we want rounded down
+					#if ($increment > $gmt_offset){
+					#	$unixtime -= $gmt_offset; # remove GMT offset
+					#}
 										
-					$self->log->trace('key: ' . $key . ', tv: ' . $Fields::Time_values->{ $groupby } . 
+					$self->log->trace('key: ' . $key . ', tv: ' . $increment . 
 						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($unixtime)));
 					push @tmp, { 
 						intval => $unixtime, 
-						'@groupby' => $self->resolve_value(0, $key, $groupby), 
+						'@groupby' => epoch2iso($unixtime), #$self->resolve_value(0, $key, $groupby), 
 						'@count' => $agg{$key}
 					};
 				}
 				
 				# Fill in zeroes for missing data so the graph looks right
 				my @zero_filled;
-				my $increment = $Fields::Time_values->{ $groupby };
+				
 				$self->log->trace('using increment ' . $increment . ' for time value ' . $groupby);
 				OUTER: for (my $i = 0; $i < @tmp; $i++){
 					push @zero_filled, $tmp[$i];
@@ -2029,7 +2037,7 @@ sub _sphinx_query {
 						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
 							#$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
 							push @zero_filled, { 
-								'@groupby' => epoch2iso($j), 
+								'@groupby' => epoch2iso($j),
 								intval => $j,
 								'@count' => 0
 							};
@@ -2646,7 +2654,7 @@ sub transform {
 		$transform_args->{groupby} = $q->groupby;
 		foreach my $groupby ($q->results->all_groupbys){
 			foreach my $datum (@{ $q->results->groupby($groupby) }){
-				push @{ $transform_args->{results} }, { $groupby => $datum->{'@groupby'} };
+				push @{ $transform_args->{results} }, { $groupby => $datum->{'@groupby'}, count => $datum->{'@count'} };
 			}
 		}
 		$self->log->trace('new results: ' . Dumper($transform_args->{results}));
@@ -2847,20 +2855,24 @@ sub transform {
 				if (lc($plugin) eq lc($plugin_fqdn)){
 					$self->log->debug('loading plugin ' . $plugin);
 					eval {
-						my $data_to_transform = $transform_args->{results};
-						if ($transform_args->{groupby} and ref($transform_args->{results}) eq 'HASH'){
-							foreach my $groupby (@{ $transform_args->{groupby} }){
-								$data_to_transform = $transform_args->{results}->{$groupby};
-							}
-						}
-						my $plugin_object = $plugin->new(
+						my %compiled_transform_args = (
 							query_string => $q->query_string,
 							query_meta_params => $q->meta_params,
 							conf => $self->conf,
 							log => $self->log, 
 							cache => $cache,
-							data => $data_to_transform, #$transform_args->{results}, 
+							data => $transform_args->{results}, #$transform_args->{results}, 
 							args => [ @given_transform_args ]);
+						if ($transform_args->{groupby} and ref($transform_args->{results}) eq 'HASH'){
+							foreach my $groupby (@{ $transform_args->{groupby} }){
+								$compiled_transform_args{data} = $transform_args->{results}->{$groupby};
+								$compiled_transform_args{groupby} = $groupby;
+							}
+						}
+						elsif ($transform_args->{groupby}){
+							$compiled_transform_args{groupby} = $transform_args->{groupby}->[0];
+						}
+						my $plugin_object = $plugin->new(%compiled_transform_args);
 						$transform_args->{results} = $plugin_object->data;
 						
 						$self->log->debug('transform_args groupby: ' . Dumper($transform_args->{groupby}));
@@ -3128,7 +3140,10 @@ sub send_to {
 							args => [ @connector_args ],
 							query => $q,
 						);
-						if (ref($plugin_object->results) eq 'HASH' and scalar keys %{ $plugin_object->results }){
+						if ($q->has_groupby and ref($plugin_object->results) eq 'HASH' and scalar keys %{ $plugin_object->results }){
+							$q->results(Results::Groupby->new(results => $plugin_object->results->{results}));
+						}
+						elsif (ref($plugin_object->results) eq 'HASH' and scalar keys %{ $plugin_object->results }){
 							$q->results(Results->new(results => $plugin_object->results->{results}));
 							#$self->log->debug('$plugin_object->results->{results}: ' . Dumper($plugin_object->results->{results}));
 							#$self->log->debug('$q->results: ' . Dumper($q->results));
