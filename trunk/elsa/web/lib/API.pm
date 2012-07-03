@@ -3658,20 +3658,18 @@ sub _archive_query {
 				foreach (@zero_filled){
 					$q->results->add_result($groupby, $_);
 				}
-				#$total_records += scalar keys %agg;
 			}
 			else { 
 				# Sort these in descending value order
 				my @tmp;
 				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
 					push @tmp, { intval => $agg{$key}, '@groupby' => $key, '@count' => $agg{$key} };
-					#$total_records += $agg{$key};
-					last if scalar keys %agg > $limit;
+					last if scalar @tmp >= $limit;
 				}
 				foreach (@tmp){
 					$q->results->add_result($groupby, $_);
 				}
-				#$total_records += scalar @tmp;
+				#$self->log->debug('archive groupby results: ' . Dumper($q->results));
 			}
 		}
 	}
