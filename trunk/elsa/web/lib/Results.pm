@@ -219,4 +219,16 @@ sub add_results {
 	}
 }
 
+sub all_results {
+	my $self = shift;
+	my $ret = [];
+	# Return a flattened array
+	foreach my $groupby (keys %{ $self->results }){
+		foreach (@{ $self->results->{$groupby} }){
+			push @$ret, $_;
+		}
+	}
+	return $ret;
+}
+
 1;
