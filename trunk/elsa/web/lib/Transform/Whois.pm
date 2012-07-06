@@ -31,7 +31,7 @@ sub BUILD {
 		$self->cv->begin;
 		
 		foreach my $key (keys %{ $datum }){
-			if ($key eq 'srcip' or $key eq 'dstip'){
+			if ($key =~ /srcip/ or $key =~ /dstip/){
 				$datum->{transforms}->{$Name}->{$key} = {};
 				$self->_lookup($datum, $key, $datum->{$key});
 			}
