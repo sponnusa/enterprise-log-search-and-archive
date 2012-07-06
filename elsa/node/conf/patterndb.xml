@@ -884,4 +884,32 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="TMG-Gateway-W3C-Logs-via-Epilog" id='10099'>
+            <rules>
+                    <rule provider="bgreen" class='3' id='10099'>
+                            <patterns>
+                                    <pattern>@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:::@@ESTRING:i2:|@@ESTRING:i3::@@ESTRING:i4:|@@ESTRING:i1:|@@ESTRING:s0:|@@ESTRING:s1:|@</pattern>
+                            </patterns>
+                            <examples>
+                                    <example>
+                                            <test_message program="ISAFWSLOG">BOB|2012-07-05|15:05:11|TCP|123.123.123.222:40521|123.123.123.111:443|123.123.111.111|Local Host|Internal|Establish|0x0|-|HTTPS|0|0|0|0|-|-|-|-|4|1874698|-|-|::|-|1048575|-</test_message>
+                                            <!-- proto -->
+                                            <test_value name="i0">TCP</test_value>
+                                            <!-- srcip -->
+                                            <test_value name="i1">123.123.111.111</test_value>
+                                            <!-- srcport -->
+                                            <test_value name="i2">40521</test_value>
+                                            <!-- dstip -->
+                                            <test_value name="i3">123.123.123.111</test_value>
+                                            <!-- dstport -->
+                                            <test_value name="i4">443</test_value>
+											<!-- inside interface -->
+											<test_value name="s0">Local Host</test_value>
+											<!-- outside interface -->
+											<test_value name="s1">Internal</test_value>
+                                    </example>
+                            </examples>
+                    </rule>
+            </rules>
+    </ruleset>
 </patterndb>
