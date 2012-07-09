@@ -133,7 +133,9 @@
 		</rules>
 	</ruleset>
 	<ruleset name="Windows_Snare" id='4'>
-		<pattern>MSWinEventLog</pattern>
+		<pattern>Application</pattern>
+		<pattern>Security</pattern>
+		<pattern>System</pattern>
 		<rules>
 			<rule provider="ELSA" class='4' id='4'>
 				<patterns>
