@@ -20,16 +20,16 @@ if ($opts{c}){
 
 my $start = time();
 my $api = API->new(config_file => $config_file);
-my $user_info = $api->get_user_info('system');
+my $user = User->new(conf => $api->conf, username => 'system');
 
-my $result = $api->query({query_string => $opts{q}, user_info => $user_info});
+my $q = $api->query({query_string => $opts{q}, user => $user});
 my $duration = time() - $start;
-exit unless $result and ref($result) eq 'HASH' and $result->{results} and ref($result->{results});
-$result->{format} = $opts{f} ? $opts{f} : 'tsv';
-if ($result->{errors}){
-	foreach (@{ $result->{errors} }){
+exit unless $q->results->total_records;
+my $format = $opts{f} ? $opts{f} : 'tsv';
+if ($q->has_warnings){
+	foreach (@{ $q->warnings }){
 		print "$_\n";
 	}
 }
-print $api->format_results($result) . "\n";
+print $api->format_results({ results => $q->results->results, format => $format }) . "\n";
 print "Finished in $duration seconds.\n";
