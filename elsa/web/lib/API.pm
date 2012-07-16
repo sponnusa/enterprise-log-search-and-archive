@@ -304,11 +304,11 @@ sub set_permissions {
 	my ($query, $sth);
 	my $rows_updated = 0;
 	foreach my $perm (@{ $args->{permissions} }){
-		if ($perm->{attr} eq 'host_id' and $perm->{attr_id} !~ /^\d+$/){
-			$perm->{attr_id} = unpack('N*', inet_aton($perm->{attr_id}));
-		}
-		elsif ($perm->{attr} eq 'host_id' and $perm->{attr_id} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\-(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/){
+		if ($perm->{attr} eq 'host_id' and $perm->{attr_id} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\-(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/){
 			$perm->{attr_id} = unpack('N*', inet_aton($1)) . '-' . unpack('N*', inet_aton($2));
+		}
+		elsif ($perm->{attr} eq 'host_id' and $perm->{attr_id} !~ /^\d+$/){
+			$perm->{attr_id} = unpack('N*', inet_aton($perm->{attr_id}));
 		}
 		
 		$self->log->info('Changing permissions: ' . join(', ', $args->{action}, $perm->{gid}, $perm->{attr}, $perm->{attr_id}));
@@ -2736,8 +2736,10 @@ sub transform {
 			
 			# Add optional field
 			my $field = '';
+			my $negate = 0;
 			if ($#given_transform_args >= 1){
 				$field = $given_transform_args[1];
+				$negate = $given_transform_args[2] ? 1 : 0;
 			}
 			my @values;
 			$self->log->debug('attempting to subsearch result: ' . Dumper($transform_args->{results}));
@@ -2749,9 +2751,11 @@ sub transform {
 							my $value = $datum->{$key};
 							next if ref($value);
 							if ($field){
+								next if $key eq 'count' and $field ne 'count';
 								push @values, $field . ':' . $value;
 							}
 							else {
+								next if $key eq 'count';
 								push @values, $value;
 							}
 						}
@@ -2764,9 +2768,11 @@ sub transform {
 						my $value = $datum->{$key};
 						next if ref($value);
 						if ($field){
+							next if $key eq 'count' and $field ne 'count';
 							push @values, $field . ':' . $value;
 						}
 						else {
+							next if $key eq 'count';
 							push @values, $value;
 						}
 					}
@@ -2789,7 +2795,13 @@ sub transform {
 				$self->log->debug('values_counter: ' . $values_counter . ', end: ' . $end . ', num subvalues: ' . (scalar @subvalues));
 				last unless scalar @subvalues;
 				
-				my $sub_query_string = $given_transform_args[0] . ' +(' . join(' ', @subvalues) . ')';
+				my $sub_query_string;
+				if ($negate){
+					$sub_query_string = $given_transform_args[0] . ' -(' . join(' ', @subvalues) . ')';
+				}
+				else {
+					$sub_query_string = $given_transform_args[0] . ' +(' . join(' ', @subvalues) . ')';
+				}
 				my $subq = new Query(
 					conf => $self->conf, 
 					user => $q->user, 
