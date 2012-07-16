@@ -778,6 +778,8 @@ sub _parse_query_term {
 					# need to quote
 					$term_hash->{value} = '"' . $term_hash->{value} . '"';
 				}
+				# Escape any free-standing hypens
+				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@]*)\-([^a-zA-Z0-9\.\_\-\@]*)/$1\\\\\-$2/g;
 				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
 				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
 					die('Integer search terms must be 15 or fewer digits, received ' 
