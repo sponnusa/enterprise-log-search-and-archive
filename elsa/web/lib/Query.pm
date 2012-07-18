@@ -244,15 +244,15 @@ sub _parse_query_string {
 	}
 	$self->log->trace('partially_permitted_classes: ' . Dumper($self->classes->{partially_permitted}));
 	
-	# Attach the query filters for this user from permissions
-	my $filtered_raw_query = $raw_query;
-	if ($self->user->permissions->{filter}){
-		$filtered_raw_query .= ' ' . $self->user->permissions->{filter};
-	}
+#	# Attach the query filters for this user from permissions
+#	my $filtered_raw_query = $raw_query;
+#	if ($self->user->permissions->{filter}){
+#		$filtered_raw_query .= ' ' . $self->user->permissions->{filter};
+#	}
 	
 	# Strip off any transforms and apply later
-	($filtered_raw_query, my @transforms) = split(/\s*\|\s+/, $filtered_raw_query);
-	$self->log->trace('query: ' . $filtered_raw_query . ', transforms: ' . join(' ', @transforms));
+	($raw_query, my @transforms) = split(/\s*\|\s+/, $raw_query);
+	$self->log->trace('query: ' . $raw_query . ', transforms: ' . join(' ', @transforms));
 	$self->transforms([ @transforms ]);
 	
 	# See if there are any connectors given
@@ -284,7 +284,7 @@ sub _parse_query_string {
 		
 	if ($raw_query =~ /\S/){ # could be meta_attr-only
 		my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
-		my $orig_parsed_query = $qp->parse($filtered_raw_query, $Implicit_plus) or die($qp->err);
+		my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or die($qp->err);
 		$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
 		
 		my $parsed_query = dclone($orig_parsed_query); #dclone so recursion doesn't mess up original
@@ -351,6 +351,9 @@ sub _parse_query_string {
 							or exists $self->classes->{partially_permitted}->{$class_id};
 						my $forbidden = delete $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id};
 						$self->log->warn('Forbidding attr_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
+						unless (scalar keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+							die('All terms for field ' . $field_name . ' were dropped due to insufficient permissions.');
+						}
 					}
 				}
 			}
@@ -361,6 +364,11 @@ sub _parse_query_string {
 					or exists $self->classes->{partially_permitted}->{$class_id};
 				my $forbidden = delete $self->terms->{field_terms}->{$boolean}->{$class_id};
 				$self->log->warn('Forbidding field_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
+				foreach my $attr (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} } ){
+					unless (scalar keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$attr} }){
+						die('All terms for field ' . $attr . ' were dropped due to insufficient permissions.');
+					}
+				}
 			}
 		}
 	}
@@ -380,22 +388,7 @@ sub _parse_query_string {
 	elsif (scalar keys %{ $self->classes->{groupby} }){
 		$self->classes->{given} = $self->classes->{groupby};
 	}
-	
-	# Apply field permissions
-	foreach my $class_id (sort keys %{ $self->user->permissions->{fields} }){
-		if ($self->classes->{distinct}->{$class_id} or not scalar keys %{ $self->classes->{distinct} }){
-			foreach my $field_perm_hash (@{ $self->user->permissions->{fields}->{$class_id} }){
-				my $field = $field_perm_hash->{name};
-				my $attr = $field_perm_hash->{attr}->[0];
-				my $attr_id = $field_perm_hash->{attr}->[1];
-				$self->terms->{attr_terms}->{'or'}->{'='}->{$field} ||= {};
-				$self->terms->{attr_terms}->{'or'}->{'='}->{$field}->{$class_id} ||= {};
-				$self->terms->{attr_terms}->{'or'}->{'='}->{$field}->{$class_id}->{$attr} ||= [];
-				push @{ $self->terms->{attr_terms}->{'or'}->{'='}->{$field}->{$class_id}->{$attr} }, $attr_id;
-			}
-		}			
-	}
-	
+		
 	if (scalar keys %{ $self->classes->{given} } == 1 and $self->classes->{given}->{0}){
 		$self->classes->{distinct} = $self->classes->{permitted};
 	}
@@ -462,23 +455,6 @@ sub _parse_query_string {
 							die "Insufficient permissions to query $id from $attr";
 						}
 					}
-				}
-			}
-
-
-			# Add required items to filter if no filter exists
-			unless (($self->terms->{attr_terms}->{and} 
-				and $self->terms->{attr_terms}->{and}->{0} 
-				and $self->terms->{attr_terms}->{and}->{0}->{$attr}
-				and scalar keys %{ $self->terms->{attr_terms}->{and}->{0}->{$attr} })
-				or ($self->terms->{attr_terms}->{or} 
-				and $self->terms->{attr_terms}->{or}->{0} 
-				and $self->terms->{attr_terms}->{or}->{0}->{$attr}
-				and scalar keys %{ $self->terms->{attr_terms}->{or}->{0}->{$attr} })){
-				foreach my $id (keys %{ $self->user->permissions->{$attr} }){
-					$self->log->trace("Adding id $id to $attr based on permissions");
-					push @{ $self->terms->{attr_terms}->{and}->{0}->{ $self->user->permissions->{$attr}->{$id} }->{0}->{$attr} }, $id;
-					$num_added_terms++;
 				}
 			}
 		}
@@ -678,8 +654,8 @@ sub _parse_query_term {
 			elsif ($given_operator eq '+' and $effective_operator eq '-'){
 				$effective_operator = '-';
 			}
-
 		}
+		
 		my $arr = $terms->{$operator};
 		foreach my $term_hash (@{$arr}){
 			next unless defined $term_hash->{value};

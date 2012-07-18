@@ -2370,10 +2370,43 @@ sub _build_query {
 	my $q = shift;
 	
 	my @queries;
-	my %clauses = ( classes => { clauses => [], vals => [] }, and => { clauses => [], vals => [] }, or => { clauses => [], vals => [] }, not => { clauses => [], vals => [] } );
+	my %clauses = ( 
+		classes => { clauses => [], vals => [] }, 
+		and => { clauses => [], vals => [] }, 
+		or => { clauses => [], vals => [] }, 
+		not => { clauses => [], vals => [] },
+		permissions =>  { clauses => [], vals => [] },
+	);
+	
+	# Create permissions clauses
+	foreach my $attr qw(host_id program_id node_id){
+		foreach my $id (keys %{ $q->user->permissions->{$attr} }){
+			next unless $id;
+			$self->log->trace("Adding id $id to $attr based on permissions");
+			push @{ $clauses{permissions}->{clauses} }, [ $attr . '=?' ];
+			push @{ $clauses{permissions}->{vals} }, $id;
+		}
+	}
+	
+	foreach my $class_id (keys %{ $q->user->permissions->{fields} }){
+		#next unless exists $q->classes->{distinct}->{$class_id};
+		foreach my $perm_hash (@{ $q->user->permissions->{fields}->{$class_id} }){
+			my ($name, $value) = @{ $perm_hash->{attr} };
+			if ($value =~ /^(\d+)\-(\d+)$/){
+				my ($min, $max) = ($1, $2);
+				push @{ $clauses{permissions}->{clauses} }, [ '(class_id=? AND ' . $name . '>=? AND ' . $name . '<=?)' ];
+				push @{ $clauses{permissions}->{vals} }, $class_id, $min, $max;
+			}
+			else {
+				push @{ $clauses{permissions}->{clauses} }, [ '(class_id=? AND ' . $name . '=?)' ];
+				push @{ $clauses{permissions}->{vals} }, $class_id, $value;
+			}
+			
+		}
+	}
 
 	foreach my $class_id (keys %{ $q->classes->{distinct} }){
-		next if exists $q->classes->{partially_permitted}->{$class_id};
+		#next if exists $q->classes->{partially_permitted}->{$class_id};
 		push @{ $clauses{classes}->{clauses} }, [ 'class_id=?' ];
 		push @{ $clauses{classes}->{vals} }, $class_id;
 	}
@@ -2384,7 +2417,7 @@ sub _build_query {
 	}
 	
 	# Handle our basic equalities
-	foreach my $boolean (keys %clauses){
+	foreach my $boolean (qw(and or not)){
 		foreach my $field (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{'='} }){
 			my @clause;
 			foreach my $class_id (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{'='}->{$field} }){
@@ -2507,22 +2540,31 @@ sub _build_query {
 		foreach my $clause_arr (@{ $clauses{not}->{clauses} }){
 			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
 		}
-		$negative_qualifier = join(" " . ' OR ', @clauses);
+		$negative_qualifier = '(' . join(" " . ' OR ', @clauses) . ')';
 	}
 	
-	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier";
+	my $permissions_qualifier = 1;
+	if (@{ $clauses{permissions}->{clauses} }){
+		my @clauses;
+		foreach my $clause_arr (@{ $clauses{permissions}->{clauses} }){
+			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
+		}
+		$permissions_qualifier = '(' . join(" " . ' OR ', @clauses) . ')';
+	}
+	
+	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier, $permissions_qualifier AS permissions_qualifier";
 	my $where;
 	if ($q->archive){
 		my $match_str = $self->_build_archive_match_str($q);
 		$match_str = '1=1' unless $match_str;
-		$where = $match_str . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier;
+		$where = $match_str . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier . ' AND ' . $permissions_qualifier;
 	}
 	else {
 		$where = 'MATCH(\'' . $self->_build_sphinx_match_str($q) .'\')';
-		$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0';
+		$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0 AND permissions_qualifier=1';
 	}
 	
-	my @values = (@{ $clauses{classes}->{vals} }, @{ $clauses{and}->{vals} }, @{ $clauses{or}->{vals} }, @{ $clauses{not}->{vals} });
+	my @values = (@{ $clauses{classes}->{vals} }, @{ $clauses{and}->{vals} }, @{ $clauses{or}->{vals} }, @{ $clauses{not}->{vals} }, @{ $clauses{permissions}->{vals} });
 	
 	# Check for time given
 	if ($q->start and $q->end){

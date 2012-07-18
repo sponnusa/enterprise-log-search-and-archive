@@ -380,24 +380,24 @@ sub _get_permissions {
 		}
 	}
 		
-	# Get filters using the values/placeholders found above
-	my @values;
-	my @placeholders;
-	foreach my $group ( @{ $self->groups } ) {
-		push @values,       '?';
-		push @placeholders, $group;
-	}
-	$query =
-	    'SELECT filter FROM filters ' . "\n"
-	  . 'JOIN groups ON (filters.gid=groups.gid) ' . "\n"
-	  . 'WHERE groupname IN (';
-	$query .= join( ', ', @values ) . ')';
-	$sth = $self->db->prepare($query);
-	$sth->execute(@placeholders);
-	$permissions{filter} = '';
-	while ( my $row = $sth->fetchrow_hashref ) {
-		$permissions{filter} .= ' ' . $row->{filter};
-	}
+#	# Get filters using the values/placeholders found above
+#	my @values;
+#	my @placeholders;
+#	foreach my $group ( @{ $self->groups } ) {
+#		push @values,       '?';
+#		push @placeholders, $group;
+#	}
+#	$query =
+#	    'SELECT filter FROM filters ' . "\n"
+#	  . 'JOIN groups ON (filters.gid=groups.gid) ' . "\n"
+#	  . 'WHERE groupname IN (';
+#	$query .= join( ', ', @values ) . ')';
+#	$sth = $self->db->prepare($query);
+#	$sth->execute(@placeholders);
+#	$permissions{filter} = '';
+#	while ( my $row = $sth->fetchrow_hashref ) {
+#		$permissions{filter} .= ' ' . $row->{filter};
+#	}
 	
 	# Find field permissions
 	$permissions{fields} = {};
