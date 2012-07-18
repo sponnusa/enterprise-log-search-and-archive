@@ -914,4 +914,39 @@
                     </rule>
             </rules>
     </ruleset>
+    <ruleset name="Cisco SEC">
+    	<pattern>%SEC-</pattern>
+    	<rules>
+    		<rule provider="ELSA" class="2" id="2">
+    			<pattern>list @ESTRING:s0: @denied @ESTRING:i0: @@ESTRING:i1:(@@NUMBER:i2:@) -> @ESTRING:i3:(@@NUMBER:i4:@@ANYSTRING@</pattern>
+    			<examples>
+	    			<example>
+	    				<test_message program="%SEC-6-IPACCESSLOGP">list FILTER-INTERNET-IN denied tcp 1.2.3.4(53420) -> 5.6.7.8(23), 1 packet</test_message>
+	    				<test_value name="s2">FILTER-INTERNET-IN</test_value>
+	    				<test_value name="i0">tcp</test_value>
+	    				<test_value name="i1">1.2.3.4</test_value>
+	    				<test_value name="i2">53420</test_value>
+	    				<test_value name="i3">5.6.7.8</test_value>
+	    				<test_value name="i4">23</test_value>
+	    			</example>
+	    		</examples>
+	    	</rule>
+    	</rules>
+    	<rules>
+    		<rule provider="ELSA" class="3" id="3">
+    			<pattern>list @ESTRING:s0: @permitted @ESTRING:i0: @@ESTRING:i1:(@@NUMBER:i2:@) -> @ESTRING:i3:(@@NUMBER:i4:@@ANYSTRING@</pattern>
+    			<examples>
+	    			<example>
+	    				<test_message program="%SEC-6-IPACCESSLOGP">list FILTER-INTERNET-IN permitted tcp 1.2.3.4(53420) -> 5.6.7.8(23), 1 packet</test_message>
+	    				<test_value name="s2">FILTER-INTERNET-IN</test_value>
+	    				<test_value name="i0">tcp</test_value>
+	    				<test_value name="i1">1.2.3.4</test_value>
+	    				<test_value name="i2">53420</test_value>
+	    				<test_value name="i3">5.6.7.8</test_value>
+	    				<test_value name="i4">23</test_value>
+	    			</example>
+	    		</examples>
+	    	</rule>
+    	</rules>
+    </ruleset>	
 </patterndb>
