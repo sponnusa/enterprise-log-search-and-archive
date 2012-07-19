@@ -212,6 +212,7 @@ sub _init_local {
 			$in{$arr[0]} = 1;
 		}
 	}
+	setgrent(); # Resets the iterator to the beginning of the groups file for the next getgrent()
 	$self->log->debug('groups before: ' . Dumper($self->groups));
 	$self->groups([ keys %in, $self->username ]);
 	$self->log->debug('groups after: ' . Dumper($self->groups));
