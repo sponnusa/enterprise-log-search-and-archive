@@ -945,7 +945,7 @@ sub get_form_params {
 		$self->add_warning($@);
 		return;
 	}
-	$self->log->trace('got node_info: ' . Dumper($self->node_info));
+	#$self->log->trace('got node_info: ' . Dumper($self->node_info));
 	
 	my $form_params = {
 		start => epoch2iso($self->node_info->{min}),
@@ -992,7 +992,7 @@ sub get_form_params {
 		{'value' => 'NONE', 'text' => 'NONE', 'class_id' => 1 };
 	
 	$form_params->{schedule_actions} = $self->_get_schedule_actions($user);
-	
+		
 	return $form_params;
 }
 
@@ -2379,7 +2379,7 @@ sub _build_query {
 	);
 	
 	# Create permissions clauses
-	foreach my $attr qw(host_id program_id node_id){
+	foreach my $attr qw(class_id host_id program_id node_id){
 		foreach my $id (keys %{ $q->user->permissions->{$attr} }){
 			next unless $id;
 			$self->log->trace("Adding id $id to $attr based on permissions");
