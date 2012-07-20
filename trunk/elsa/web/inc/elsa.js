@@ -1610,8 +1610,6 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 	
 	logger.log('tab: ', this.tab);
 	try {
-		var oActiveTab = p_oTabView.get('activeTab');
-		
 		this.tabView.addTab(this.tab);
 		this.tabId = this.tabView.getTabIndex(this.tab);
 		this.tab.get('labelEl').innerHTML = 
@@ -1640,9 +1638,17 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		this.tab.get('contentEl').appendChild(oEl);
 		oElClose.addListener('click', this.closeTab, this, true);
 		
+		var oActiveTab = p_oTabView.get('activeTab');
+		var iActiveTabId = this.tabView.getTabIndex(oActiveTab);
 		if (YAHOO.util.Dom.get('same_tab_checkbox').checked && oActiveTab){
-			p_oTabView.removeTab(oActiveTab);
+			logger.log('removing tab with tabid: ' + iActiveTabId);
+			var iLocalResultId = YAHOO.ELSA.getLocalResultId(oActiveTab);
+			YAHOO.ELSA.localResults.splice(iLocalResultId, 1);
+			this.tabView.deselectTab(iActiveTabId);
+			this.tabView.removeTab(oActiveTab);
+			YAHOO.ELSA.updateTabIds(iActiveTabId);
 		}
+		
 		
 	} catch (e){ logger.log(e) }
 	
