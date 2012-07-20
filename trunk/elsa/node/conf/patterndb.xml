@@ -133,6 +133,7 @@
 		</rules>
 	</ruleset>
 	<ruleset name="Windows_Snare" id='4'>
+		<pattern>MSWinEventLog</pattern>
 		<pattern>Application</pattern>
 		<pattern>Security</pattern>
 		<pattern>System</pattern>
@@ -144,6 +145,34 @@
 					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@|@ESTRING:i0:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING::|@@ESTRING::|@</pattern>
 					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@|@ESTRING:i0:|@@ESTRING:s0:|@@ESTRING:s1:|@@ANYSTRING@</pattern>
 				</patterns>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="Windows_evtsys" id='4'>
+		<pattern>Application</pattern>
+		<pattern>Security</pattern>
+		<pattern>System</pattern>
+		<rules>
+			<rule provider="ELSA" class='4' id='4'>
+				<patterns>
+					<pattern>@NUMBER:i0:@: @ESTRING::.@ Client IP address: @IPv4:s0::@</pattern>
+					<pattern>@NUMBER:i0:@: @ESTRING:s0::@</pattern>
+					<pattern>@NUMBER:i0:@: @ANYSTRING::@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="Service_Control_Manager">7035: NT AUTHORITYSYSTEM: The COH_Mon service was successfully sent a start control.</test_message>
+						<test_values>
+							<test_value name="i0">7035</test_value>
+							<test_value name="s0">NT AUTHORITYSYSTEM</test_value>
+						</test_values>
+					</example>
+					<example>
+						<test_message program="SceCli">1202: Security policies were propagated with warning. 0x4b8 : An extended error has occurred. For best results in resolving this event, log on with a non-administrative account and search http://support.microsoft.com for "Troubleshooting Event 1202's".</test_message>
+						<test_value name="i0">1202</test_value>
+						<test_value name="s0">Security policies were propagated with warning. 0x4b8 </test_value>
+					</example>
+				</examples>
 			</rule>
 		</rules>
 	</ruleset>
