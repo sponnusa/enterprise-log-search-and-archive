@@ -178,6 +178,11 @@ EOHTML
 		}
 	}
 	
+	# Check to see if we want to use the same tab for each query by default
+	if ($self->api->conf->get('same_tab_for_queries_default')){
+		$HTML .= 'YAHOO.ELSA.sameTabForQueries = 1;' . "\n";
+	}
+	
 	# Set form params
 	my $user = $self->api->get_user($self->session->get('user_info')->{username});
 	my $form_params = $self->api->get_form_params($user);
