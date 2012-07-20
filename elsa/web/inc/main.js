@@ -434,9 +434,9 @@ YAHOO.ELSA.main = function () {
 				
 		oFormGridCfg['grid'] = [
 			[ 
-				{type:'text', args:'From'}, 
+				{type:'element', 'element':'a', args:{'id':'start_time_link', 'name':'from_time', 'innerHTML':'From', 'href':'#'} }, 
 				{type:'input', args:{id:'start_time', size:15, value:getISODateTime(oStartDate)}}, 
-				{type:'text', args:'To'},
+				{type:'element', 'element':'a', args:{'id':'end_time_link', 'name':'to_time', 'innerHTML':'To', 'href':'#'} },
 				{type:'input', args:{id:'end_time', size:15}},
 				{type:'widget', className:'Button', args:oTermMenuButtonCfg},
 				{type:'widget', className:'Button', args:oGroupByMenuButtonCfg},
@@ -452,6 +452,11 @@ YAHOO.ELSA.main = function () {
 			
 			YAHOO.util.Dom.get('query_form').appendChild(oTargetForm);
 			
+			var oStartCal = new YAHOO.ELSA.Calendar('start', formParams);
+			YAHOO.util.Event.addListener('start_time_link', 'click', oStartCal.dialog.show, oStartCal.dialog, true);
+			var oEndCal = new YAHOO.ELSA.Calendar('end', formParams);
+			YAHOO.util.Event.addListener('end_time_link', 'click', oEndCal.dialog.show, oEndCal.dialog, true);
+					
 			// Tack on the tooltip for earliest start date
 			var oStartToolTip = new YAHOO.widget.Tooltip('start_time_tool_tip', { context: 'start_time', text: 'Earliest: ' + formParams.start});
 			var oStartToolTip = new YAHOO.widget.Tooltip('end_time_tool_tip', { context: 'end_time', text: 'Latest: ' + formParams.end});
