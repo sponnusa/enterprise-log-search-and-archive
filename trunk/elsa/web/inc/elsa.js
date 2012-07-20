@@ -3923,3 +3923,114 @@ YAHOO.ELSA.Panel.Confirmation = function(p_sName, p_callback, p_oCallbackArgs, p
 YAHOO.ELSA.Warn = function(p_sMessage){
 	logger.log('WARNING: ' + p_sMessage);
 }
+
+YAHOO.ELSA.Calendars = {};
+YAHOO.ELSA.Calendar = function(p_sType, p_oFormParams){
+	var sContainer = p_sType + '_container';
+	var oEl = YAHOO.util.Dom.get(sContainer);
+	if (!oEl){
+		oEl = document.createElement('div');
+		oEl.id = sContainer;
+		YAHOO.util.Dom.get('query_form').appendChild(oEl);
+	}
+	this.dialog = new YAHOO.widget.Dialog(sContainer, {
+		visible:false,
+		context:["show", "tl", "bl"],
+		buttons:[
+			{
+				text:"Reset",
+				handler: this.resetHandler,
+				isDefault:true
+			},
+			{
+				text:"Close",
+				handler: this.closeHandler
+			}
+		],
+		draggable:false,
+		close:true
+	});
+	
+	this.dialog.setHeader(p_sType);
+	var sCalendarContainer = p_sType + '_calendar_container';
+	this.dialog.setBody('<div id="' + sCalendarContainer + '"></div>');
+	this.dialog.render('query_form');
+	
+	var oMinDate = new Date();
+	var oMaxDate = new Date();
+	var oMinTime = Date.parse(p_oFormParams['start']);
+	var oMaxTime = Date.parse(p_oFormParams['end']);
+	if(oMinTime){
+	        oMinDate.setTime(oMinTime);
+	}
+	if(oMaxTime){
+	        oMaxDate.setTime(oMaxTime);
+	}
+
+	this.calendar = new YAHOO.widget.Calendar(sCalendarContainer,{
+		mindate: oMinDate,
+		maxdate: oMaxDate,
+		pagedate: oMaxDate,
+	});
+	
+	this.calendar.render();
+	this.calendar.show();
+	
+	var onCalendarButtonClick = function(p_sType, p_aArgs){
+		var aDate;
+		var aMatches = this.containerId.split('_');
+		var sTimeType = aMatches[0];
+		try {
+			if (p_aArgs){
+				aDate = p_aArgs[0][0];
+				// get previous time
+				var re = new RegExp(/(\d{2}:\d{2}:\d{2})/);
+				logger.log('p_sTimeType', sTimeType);
+				var aTime = re.exec(YAHOO.util.Dom.get(sTimeType + '_time').value);
+				var sTime = '00:00:00';
+				if (aTime){
+					sTime = aTime[0];
+				}
+				logger.log('aDate', aDate);
+				logger.log('sTime: ' + sTime);
+				var sNewDateTime = formatDateTimeAsISO(aDate[1] + '/' + aDate[2] + '/' + aDate[0] + ' ' + sTime);
+				YAHOO.util.Dom.get(sTimeType + '_time').value = sNewDateTime;
+				YAHOO.ELSA.currentQuery.addMeta(sTimeType + '_time', sNewDateTime);
+			}
+		} catch (e){ logger.log(e) }
+
+		YAHOO.ELSA.Calendars[sTimeType].dialog.hide();
+	}
+	
+	this.calendar.selectEvent.subscribe(onCalendarButtonClick, this.calendar, true);
+	
+	YAHOO.ELSA.Calendars[p_sType] = this;
+}
+
+YAHOO.ELSA.Calendar.prototype.closeHandler = function(p_oEvent, p_oThis){
+	p_oThis.hide();
+}
+
+YAHOO.ELSA.Calendar.prototype.resetHandler = function(p_oEvent, p_oThis){
+	var aMatches = this.id.split('_');
+	var sTimeType = aMatches[0];
+	var oCalendar = YAHOO.ELSA.Calendars[sTimeType].calendar;
+		
+	// Reset the current calendar page to the select date, or 
+	// to today if nothing is selected.
+	var selDates = oCalendar.getSelectedDates();
+	var resetDate;
+        
+	if (selDates.length > 0) {
+		resetDate = selDates[0];
+	}
+	else {
+		resetDate = oCalendar.today;
+	}
+    
+	oCalendar.cfg.setProperty("pagedate", resetDate);
+	oCalendar.render();
+}
+
+
+	
