@@ -152,9 +152,16 @@ body {
 <script type="text/javascript" src="%3$s/inc/utilities.js" ></script>
 <script type="text/javascript" src="%3$s/inc/elsa.js" ></script>
 <script type="text/javascript" src="%3$s/inc/main.js" ></script>
-<script type="text/Javascript">
 EOHTML
 ;
+
+	if ($self->api->conf->get('custom_javascript_includes')){
+		foreach my $include (@{ $self->api->conf->get('custom_javascript_includes') }){
+			$template .= '<script type="text/javascript" src="' . $include . '" ></script>';
+		}
+	}
+
+	$template .= '<script type="text/Javascript">';	
 
 	if ($self->api->conf->get('javascript_debug_mode')){
 		$template .= 'YAHOO.ELSA.viewMode = \'' . $self->api->conf->get('javascript_debug_mode') . '\';' . "\n";
