@@ -1604,12 +1604,14 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 	this.tabView = p_oTabView;
 	YAHOO.util.Dom.removeClass(this.tabView, 'hiddenElement');
 	this.tab = new YAHOO.widget.Tab();
-	
+		
 	var oLabelEl = new YAHOO.util.Element(this.tab.get('labelEl'));
 	oLabelEl.addClass('yui-panel');
 	
 	logger.log('tab: ', this.tab);
 	try {
+		var oActiveTab = p_oTabView.get('activeTab');
+		
 		this.tabView.addTab(this.tab);
 		this.tabId = this.tabView.getTabIndex(this.tab);
 		this.tab.get('labelEl').innerHTML = 
@@ -1637,6 +1639,11 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		oEl.id = 'query_export_' + this.id;
 		this.tab.get('contentEl').appendChild(oEl);
 		oElClose.addListener('click', this.closeTab, this, true);
+		
+		if (YAHOO.util.Dom.get('same_tab_checkbox').checked && oActiveTab){
+			p_oTabView.removeTab(oActiveTab);
+		}
+		
 	} catch (e){ logger.log(e) }
 	
 	this.loadResponse = function(p_oResults){

@@ -431,6 +431,10 @@ YAHOO.ELSA.main = function () {
 		};
 		
 		var oStartDate = new Date((formParams.display_start_int) * 1000);
+		var oSameTabCheckboxArgs = {id:'same_tab_checkbox', type:'checkbox'};
+		if (YAHOO.ELSA.sameTabForQueries){
+			oSameTabCheckboxArgs.checked = true;
+		}
 				
 		oFormGridCfg['grid'] = [
 			[ 
@@ -440,7 +444,9 @@ YAHOO.ELSA.main = function () {
 				{type:'input', args:{id:'end_time', size:15}},
 				{type:'widget', className:'Button', args:oTermMenuButtonCfg},
 				{type:'widget', className:'Button', args:oGroupByMenuButtonCfg},
-				{type:'widget', className:'Button', args:oArchiveButtonCfg}
+				{type:'widget', className:'Button', args:oArchiveButtonCfg},
+				{type:'input', args:oSameTabCheckboxArgs},
+				{type:'text', args:'Reuse current tab'}
 			]
 		];
 		
