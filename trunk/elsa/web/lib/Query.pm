@@ -391,6 +391,9 @@ sub _parse_query_string {
 		
 	if (scalar keys %{ $self->classes->{given} } == 1 and $self->classes->{given}->{0}){
 		$self->classes->{distinct} = $self->classes->{permitted};
+		foreach my $class_id (keys %{ $self->classes->{partially_permitted} }){
+			$self->classes->{distinct}->{$class_id} = 1;
+		}
 	}
 	elsif (scalar keys %{ $self->classes->{given} }){ #if 0 (meaning any) is given, go with permitted classes
 		$self->classes->{distinct} = {};
@@ -412,6 +415,9 @@ sub _parse_query_string {
 	}
 	else {
 		$self->classes->{distinct} = $self->classes->{permitted};
+		foreach my $class_id (keys %{ $self->classes->{partially_permitted} }){
+			$self->classes->{distinct}->{$class_id} = 1;
+		}
 	}
 	$self->log->trace('distinct_classes after adjustments: ' . Dumper($self->classes->{distinct}));
 	
@@ -667,8 +673,8 @@ sub _parse_query_term {
 			}
 			
 			# Escape any digit-dash-word combos (except for host or program)
-			$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
-			
+			#$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
+						
 			if ($term_hash->{field} eq 'start'){
 				# special case for start/end
 				$self->start(UnixDate($term_hash->{value}, "%s"));
@@ -755,7 +761,8 @@ sub _parse_query_term {
 					$term_hash->{value} = '"' . $term_hash->{value} . '"';
 				}
 				# Escape any free-standing hypens
-				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@]*)\-([^a-zA-Z0-9\.\_\-\@]*)/$1\\\\\-$2/g;
+				$term_hash->{value} =~ s/^\-$/\\\-/g;
+				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])\-([^a-zA-Z0-9\.\_\-\@]*)/$1\\\\\-$2/g;
 				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
 				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
 					die('Integer search terms must be 15 or fewer digits, received ' 
