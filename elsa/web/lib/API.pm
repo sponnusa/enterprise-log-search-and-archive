@@ -2258,7 +2258,7 @@ sub _build_sphinx_match_str {
 	}
 	
 	my @class_match_strs;
-	foreach my $class_id (sort keys %{ $q->classes->{distinct} }){
+	foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
 		(%and, %or, %not) = ();
 		my $class_match_str = '';
 		# First, the ANDs
