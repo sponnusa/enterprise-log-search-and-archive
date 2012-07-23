@@ -422,3 +422,34 @@ In addition to whois lookups, ELSA has a transform for GeoIP provided by MaxMind
 site:www.google.com | geoip
 }}}
 This will attach the location fields to results.  Results that have these fields can then be exported using the GoogleEarth export, which returns a .kml file suitable for opening in Google Earth or Google Maps.
+
+=Configuring IDS to Forward Logs=
+==Snort==
+There are two ways to configure Snort to send logs.  Either configure barnyard or Snort itself to send logs to local syslog.  Both configuration entries (in either snort.conf or barnyard.conf) will look like this:
+{{{
+output alert_syslog: LOG_LOCAL6 LOG_ALERT
+}}}
+==Suricata==
+To log to local syslog from Suricata, edit the "outputs" stanza to contain:
+{{{
+outputs:
+ - syslog:
+      enabled: yes
+      identity: "snort"
+      facility: local6
+}}}
+==Forwarding Local Logs to ELSA==
+You will then need to configure the local syslog on the box that is running Snort to forward logs to ELSA.  
+===rsyslog/Syslogd===
+If the box is running a simple syslogd, it would look like this to forward all logs to ELSA (which is usually a good idea):
+{{{
+*.* @ip.address.of.elsa
+}}}
+===Syslog-NG===
+If it's running syslog-ng, use this:
+{{{
+source src { unix-dgram("/dev/log"); };
+filter f_local6 { facility(local6); };
+destination d_elsa { udp("ip.address.of.elsa"); };
+log { source(src); filter(f_local6); destination(d_elsa); };
+}}}
