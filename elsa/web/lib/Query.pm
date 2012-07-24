@@ -675,27 +675,27 @@ sub _parse_query_term {
 			# Escape any digit-dash-word combos (except for host or program)
 			#$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
 						
-			if ($term_hash->{field} eq 'start'){
+			if (lc($term_hash->{field}) eq 'start'){
 				# special case for start/end
 				$self->start(UnixDate($term_hash->{value}, "%s"));
 				next;
 			}
-			elsif ($term_hash->{field} eq 'end'){
+			elsif (lc($term_hash->{field}) eq 'end'){
 				# special case for start/end
 				$self->end(UnixDate($term_hash->{value}, "%s"));
 				next;
 			}
-			elsif ($term_hash->{field} eq 'limit'){
+			elsif (lc($term_hash->{field}) eq 'limit'){
 				# special case for limit
 				$self->limit(sprintf("%d", $term_hash->{value}));
 				next;
 			}
-			elsif ($term_hash->{field} eq 'offset'){
+			elsif (lc($term_hash->{field}) eq 'offset'){
 				# special case for offset
 				$self->offset(sprintf("%d", $term_hash->{value}));
 				next;
 			}
-			elsif ($term_hash->{field} eq 'class'){
+			elsif (lc($term_hash->{field}) eq 'class'){
 				# special case for class
 				my $class;
 				$self->log->trace('classes: ' . Dumper($self->node_info->{classes}));
@@ -716,7 +716,7 @@ sub _parse_query_term {
 				$self->log->debug("Set operator $effective_operator for given class " . $term_hash->{value});		
 				next;
 			}
-			elsif ($term_hash->{field} eq 'groupby'){
+			elsif (lc($term_hash->{field}) eq 'groupby'){
 				my $field_infos = $self->get_field($term_hash->{value});
 				$self->log->trace('$field_infos ' . Dumper($field_infos));
 				if ($field_infos or $term_hash->{value} eq 'node'){
@@ -728,7 +728,7 @@ sub _parse_query_term {
 				}
 				next;
 			}
-			elsif ($term_hash->{field} eq 'node'){
+			elsif (lc($term_hash->{field}) eq 'node'){
 				if ($term_hash->{value} =~ /^[\w\.]+$/){
 					if ($effective_operator eq '-'){
 						$self->nodes->{excluded}->{ $term_hash->{value} } = 1;
@@ -739,7 +739,7 @@ sub _parse_query_term {
 				}
 				next;
 			}
-			elsif ($term_hash->{field} eq 'cutoff'){
+			elsif (lc($term_hash->{field}) eq 'cutoff'){
 				$self->limit($self->cutoff(sprintf("%d", $term_hash->{value})));
 				$self->log->trace("Set cutoff " . $self->cutoff);
 				next;
