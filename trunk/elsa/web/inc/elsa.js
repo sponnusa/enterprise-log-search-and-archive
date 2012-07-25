@@ -808,6 +808,7 @@ YAHOO.ELSA.Results = function(){
 			var msgDiv = document.createElement('div');
 			msgDiv.setAttribute('class', 'msg');
 			var msg = cloneVar(oRecord.getData().msg);
+			var re;
 			
 			if (oSelf.results.highlights){
 				//apply highlights
@@ -815,7 +816,7 @@ YAHOO.ELSA.Results = function(){
 					sHighlight = sHighlight.replace(/^["']*/, '');
 					sHighlight = sHighlight.replace(/["']*$/, '');
 					logger.log('sHighlight '  + sHighlight);
-					var re = new RegExp('(' + sHighlight + ')', 'ig');
+					re = new RegExp('(' + sHighlight + ')', 'ig');
 					var aMatches = msg.match(re);
 					if (aMatches != null){
 						var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
@@ -831,7 +832,14 @@ YAHOO.ELSA.Results = function(){
 			
 			for (var i in oTempWorkingSet){
 				var fieldHash = oTempWorkingSet[i];
-				fieldHash.value_with_markup = escapeHTML(fieldHash.value);
+				var aMatches = fieldHash.value.match(re);
+				if (aMatches != null){
+					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
+					fieldHash.value_with_markup = fieldHash.value.replace(re, sReplacement);
+				}
+				else {
+					fieldHash.value_with_markup = escapeHTML(fieldHash.value);
+				}
 				//logger.log('fieldHash', fieldHash);
 				
 				// create chart link
