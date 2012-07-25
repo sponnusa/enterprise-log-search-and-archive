@@ -9,6 +9,7 @@ use Time::HiRes;
 use Data::Dumper;
 use Search::QueryParser;
 use Storable qw(dclone);
+use Socket;
 
 # Object for dealing with user queries
 
@@ -142,32 +143,32 @@ sub BUILD {
 	$self->hash($self->get_hash($self->qid));
 	
 	# Find highlights to inform the web client
-	my $highlights = {};	
 	foreach my $boolean qw(and or){
 		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
 			foreach my $field_name (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
 				foreach my $term (@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field_name} }){
-					my $regex = $term;
-					$regex =~ s/^\s{2,}/\ /;
-					$regex =~ s/\s{2,}$/\ /;
-					$regex =~ s/\s/\./g;
-					$regex =~ s/\\{2,}/\\/g;
-					$highlights->{$regex} = 1;
+					my $regex = _term_to_regex($term);
+					$self->highlights->{$regex} = 1;
 				}
 			}
 		}
 		foreach my $term (sort keys %{ $self->terms->{any_field_terms}->{$boolean} }){
-			my $regex = $term;
-			$regex =~ s/^\s{2,}/\ /;
-			$regex =~ s/\s{2,}$/\ /;
-			$regex =~ s/\s/\./g;
-			$regex =~ s/\\{2,}/\\/g;
-			$highlights->{$regex} = 1;
+			my $regex = _term_to_regex($term);
+			$self->highlights->{$regex} = 1;
 		}
 	}
-	$self->highlights($highlights);
-	
+		
 	return $self;	
+}
+
+sub _term_to_regex {
+	my $term = shift;
+	my $regex = $term;
+	$regex =~ s/^\s{2,}/\ /;
+	$regex =~ s/\s{2,}$/\ /;
+	$regex =~ s/\s/\./g;
+	$regex =~ s/\\{2,}/\\/g;
+	return $regex;
 }
 
 sub TO_JSON {
@@ -307,6 +308,7 @@ sub _parse_query_string {
 						next if $self->archive; # archive queries don't need this
 						$self->log->trace('adding host_int ' . $host_int);
 						push @{ $self->terms->{any_field_terms}->{$boolean} }, '(@host ' . $host_int . ')';
+						$self->highlights->{ _term_to_regex( inet_ntoa(pack('N*', $host_int)) ) } = 1;
 					}
 					else {
 						die "Insufficient permissions to query host_int $host_int";
@@ -565,6 +567,30 @@ sub _parse_query_string {
 			}
 		}
 	}
+#	elsif (not keys %{ $self->terms->{field_terms} } and not keys %{ $self->terms->{attr_terms} }){
+#		foreach my $boolean qw(or and not){
+#			foreach	my $candidate_term (keys %{ $self->terms->{any_field_terms}->{$boolean} }){
+#				if ($candidate_term =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
+#					my $host_int = unpack('N*', inet_aton($candidate_term));
+#					if ($self->user->is_permitted('host_id', $host_int)){
+#						if ($self->archive){
+#							# No good way of handling the and/or booleans for this in archive mode
+#							$self->add_warning('Search will not include ' . $candidate_term . ' as a host, use host= for that if desired.');							
+#						}
+#						else {
+#							$self->log->trace('adding host_int ' . $host_int);
+#							delete $self->terms->{any_field_terms}->{$boolean}->{$candidate_term};
+#							$self->terms->{any_field_terms}->{$boolean}->{'(@host ' . $host_int . '|' . $candidate_term . ')'} = 1; 
+#							$self->highlights->{ _term_to_regex($candidate_term) } = 1;
+#						}
+#					}
+#					else {
+#						$self->log->warn("Insufficient permissions to query host_int $host_int");
+#					}
+#				}
+#			}
+#		}
+#	}
 	
 	$self->log->trace("terms: " . Dumper($self->terms));
 	$self->log->trace("classes: " . Dumper($self->classes));

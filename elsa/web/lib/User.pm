@@ -213,9 +213,9 @@ sub _init_local {
 		}
 	}
 	setgrent(); # Resets the iterator to the beginning of the groups file for the next getgrent()
-	$self->log->debug('groups before: ' . Dumper($self->groups));
+	#$self->log->debug('groups before: ' . Dumper($self->groups));
 	$self->groups([ keys %in, $self->username ]);
-	$self->log->debug('groups after: ' . Dumper($self->groups));
+	#$self->log->debug('groups after: ' . Dumper($self->groups));
 	# Is the group this user is a member of a designated admin group?
 	foreach my $group (@{ $self->groups }){
 		my @admin_groups = qw(root admin);
