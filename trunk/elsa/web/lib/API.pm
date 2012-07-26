@@ -1841,7 +1841,7 @@ sub _sphinx_query {
 			$self->log->trace('multiquery: ' . join(';', @sphinx_queries));
 			$self->log->trace('values: ' . join(',', @sphinx_values));
 			$cv->begin;
-			$nodes->{$node}->{sphinx}->sphinx(join(';', @sphinx_queries) . ';SHOW META', sub { 
+			$nodes->{$node}->{sphinx}->sphinx(join(';SHOW META;', @sphinx_queries), sub {
 				$self->log->debug('Sphinx query for node ' . $node . ' finished in ' . (time() - $start));
 				my ($dbh, $result, $rv) = @_;
 				if (not $rv){
