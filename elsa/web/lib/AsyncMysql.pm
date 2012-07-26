@@ -167,16 +167,18 @@ sub sphinx {
 		$self->watchers->{$id} = AnyEvent->io( fh => $dbh->mysql_fd, poll => 'r', cb => sub {
 			my @rows;
 			my %meta;
-			my $in_meta = 0;
 			eval {
 				do {
 					while (my $row = $sth->fetchrow_hashref){
 						# Is this a meta block row?
 						if (exists $row->{Value} and exists $row->{Variable_name} and (scalar keys %$row) eq 2){
-							$in_meta = 1; # meta should come at the end of the set
-						}
-						if ($in_meta){
-							$meta{ $row->{Variable_name} } = $row->{Value};
+							next unless $row->{Variable_name};
+							if ($row->{Value} =~ /^\d+(?:\.\d+)?$/){
+								$meta{ $row->{Variable_name} } += $row->{Value};
+							}
+							else {
+								$meta{ $row->{Variable_name} } = $row->{Value};
+							}
 						}
 						else {
 							push @rows, $row;
