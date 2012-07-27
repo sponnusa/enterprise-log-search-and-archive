@@ -10,7 +10,9 @@ use lib $FindBin::Bin;
 use API;
 use Web;
 use Web::Query;
-use Web::Dashboard;
+#use Web::Dashboard;
+use Web::GoogleDatasource;
+use Web::GoogleDashboard;
 
 my $config_file = '/usr/local/elsa/etc/elsa.conf';
 if ($ENV{ELSA_CONF}){
@@ -118,7 +120,9 @@ builder {
 	
 	mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
 	mount '/Query' => Web::Query->new(api => $api)->to_app;
-	mount '/dashboard' => Web::Dashboard->new(api => $api)->to_app;
+	mount '/datasource' => Web::GoogleDatasource->new(api => $api)->to_app;
+	#mount '/dashboard' => Web::Dashboard->new(api => $api)->to_app;
+	mount '/dashboard' => Web::GoogleDashboard->new(api => $api)->to_app;
 	mount '/' => Web->new(api => $api)->to_app;
 };
 

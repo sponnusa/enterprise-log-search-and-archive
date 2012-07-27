@@ -22,7 +22,7 @@ around BUILDARGS => sub {
 	my $orig = shift;
 	my $class = shift;
 	my %params = @_;
-	
+		
 	if ($params{config_file}){
 		$params{conf} = new Config::JSON ( $params{config_file} ) or die("Unable to open config file");
 	}		

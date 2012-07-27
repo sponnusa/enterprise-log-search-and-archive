@@ -1,4 +1,4 @@
-package Web::Dashboard;
+package Web::GoogleDashboard;
 use Moose;
 extends 'Web';
 use Data::Dumper;
@@ -22,7 +22,8 @@ sub call {
 	my $dashboard_name = $self->_extract_method($req->request_uri);
 	$self->api->log->debug('method: ' . $dashboard_name);
 	
-	unless ($self->api->conf->get('dashboards/' . $dashboard_name)){
+	my $config = $self->api->conf->get('dashboards/' . $dashboard_name);
+	unless ($config){
 		$res->status(404);
 		$res->body('not found');
 		return $res->finalize();
@@ -67,12 +68,11 @@ sub call {
 	else {
 		$args->{end_time} = time;
 	}
-		
-	my $config = $self->api->conf->get('dashboards/' . $dashboard_name);
+	
 	foreach my $key (keys %$config){
 		$args->{$key} = $config->{$key};
 	}
-		
+	
 	$args->{api} = $self->api;
 	if ($config->{auth} eq 'none'){
 		$args->{user} = $self->api->get_user('system');
@@ -91,8 +91,8 @@ sub call {
 		$dashboard = $config->{package}->new($args);
 		$self->api->log->trace('created dashboard in ' . (time() - $start_time) . ' seconds');
 		
-		unless ($dashboard->data){
-			die('no data: ' . $self->api->last_error);
+		unless ($dashboard->queries){
+			die('no queries: ' . $self->api->last_error);
 		}
 	};
 	if ($@){
@@ -101,74 +101,60 @@ sub call {
 		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
 	}
 	else {
-		$self->api->log->debug('data: ' . Dumper($dashboard->data));
-		$res->body([$self->index($req, $dashboard->data)]);
+		$self->api->log->debug('queries: ' . Dumper($dashboard->queries));
+		$res->body([$self->index($req, $dashboard->queries)]);
 	}
+		
 	$res->finalize();
 }
 
 sub index {
 	my $self = shift;
 	my $req = shift;
-	my $data = shift;
-	return $self->_get_headers() . $self->_get_index_body($data);
+	my $queries = shift;
+	return $self->_get_headers() . $self->_get_index_body($queries);
 }
 
 sub _get_index_body {
 	my $self = shift;
-	my $data = shift;
-	#TODO sort data
-	my $HTML = '<script>YAHOO.ELSA.queryResults = ' . encode_json($data) . "; YAHOO.ELSA.includeDir = '../inc';</script>\n";
-	$HTML .= <<'EOHTML'
-<script>YAHOO.util.Event.addListener(window, "load", function(){
-	YAHOO.ELSA.initLogger();
-	var iAlarm = 20000;
-	var sBgcolor = false;
+	my $queries = shift;
 	
-	for (var i in YAHOO.ELSA.queryResults){
-		var sDescription = YAHOO.ELSA.queryResults[i][0];
-		var sGroupby = YAHOO.ELSA.queryResults[i][2];
-		var oResults = YAHOO.ELSA.queryResults[i][1].results[sGroupby];
-		// create data formatted for chart
-		var aX = [];
-		var aY = [];
-		for (var j in oResults){
-			var oRec = oResults[j];
-			if (oRec['@groupby'] > iAlarm){
-				sBgcolor = '#FF0000';
-			}
-			aX.push(oRec['@groupby']);
-			aY.push(oRec['@count']);
-		}
-		var oChartData = {
-			x: aX
-		};
-		oChartData[sGroupby] = aY;
-		logger.log('oChartData', oChartData);
-		var oEl = document.createElement('div');
-		oEl.id = 'chart_id_' + i;
-		YAHOO.util.Dom.get('panel_root').appendChild(oEl);
-		var oChart = new YAHOO.ELSA.Chart.Auto({
-			container:oEl.id, 
-			type:'bar', 
-			title:sDescription, 
-			data:oChartData, 
-			callback:function(){logger.log('null action');}, 
-			width:1000, 
-			height:300, 
-			bgColor:sBgcolor,
-			includeDir: YAHOO.ELSA.includeDir
-		});
-	}
-});</script>
+	
+	foreach my $query (@$queries){
+		delete $query->{user};
+	}	
+	my $json = $self->api->json->encode($queries);
+	my $dir = $self->path_to_inc;
+
+	my $HTML =<<"EOHTML"
+<!--Load the AJAX API-->
+<script type="text/javascript" src="https://www.google.com/jsapi"></script>
+<script type="text/javascript" src="$dir/inc/dashboard.js" ></script>
+<script>
+YAHOO.ELSA.viewMode = 'dev';
+YAHOO.ELSA.dashboardGroups = {};
+YAHOO.ELSA.charts = {};
+YAHOO.ELSA.dashboardRows = $json;
+
+// Load the Visualization API and the piechart package.
+google.load('visualization', '1.0', {'packages':['corechart', 'charteditor', 'controls']});
+
+YAHOO.util.Event.addListener(window, "load", function(){
+	YAHOO.ELSA.initLogger();
+	// Set a callback to run when the Google Visualization API is loaded.
+	//google.setOnLoadCallback(loadCharts);
+	loadCharts();
+	
+});
+</script>
 </head>
-<body class=" yui-skin-sam">
-<div id="panel_root"></div>
-</body>
+
+  <body>
+    <div id="google_charts"></div>
+  </body>
 </html>
 EOHTML
 ;
-
 	return $HTML;
 }
 
