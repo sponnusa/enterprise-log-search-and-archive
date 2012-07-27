@@ -1,6 +1,5 @@
 package Fields;
 use Moose::Role;
-with 'Utils';
 with 'MooseX::Traits';
 use Data::Dumper;
 use Sys::Hostname::FQDN;
@@ -106,6 +105,14 @@ our $Time_values = {
 
 # Helper methods for dealing with resolving fields
 has 'node_info' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
+
+sub epoch2iso {
+	my $epochdate = shift;
+	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($epochdate);
+	my $date = sprintf("%04d-%02d-%02d %02d:%02d:%02d", 
+		$year + 1900, $mon + 1, $mday, $hour, $min, $sec);
+	return $date;
+}
 
 sub resolve {
 	my $self = shift;
