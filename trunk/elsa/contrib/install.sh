@@ -548,6 +548,7 @@ build_web_perl(){
 	if [ "$DISTRO" = "ubuntu" ]; then
 		# C API was installed already, proceed normally
 		#cpanm Geo::IP
+		echo "C API installed already via apt-get"
 	else
 		echo "Using slower pure-Perl GeoIP library, install GeoIP C library for faster version" 
 		curl -L "http://search.cpan.org/CPAN/authors/id/B/BO/BORISZ/Geo-IP-1.40.tar.gz" > $TMP_DIR/Geo-IP-1.40.tar.gz &&
