@@ -30,10 +30,22 @@ function loadCharts(){
 	}
 	
 	var oElCharts = document.getElementById('google_charts');
+	var oElOutsideTable = document.createElement('table');
+	var oElOutsideTableEl = new YAHOO.util.Element(oElOutsideTable);
+	oElOutsideTableEl.setStyle('width', '1024px');
+	oElOutsideTableEl.addClass('overlay');
+	var oElOutsideTbody = document.createElement('tbody');
+	oElOutsideTable.appendChild(oElOutsideTbody);
+	oElCharts.appendChild(oElOutsideTable);
 	
 	for (var i in YAHOO.ELSA.dashboardRows){
+		var oElOutsideRow = document.createElement('tr');
+		oElOutsideTbody.appendChild(oElOutsideRow);
+		var oElOutsideCol = document.createElement('td');
+		oElOutsideRow.appendChild(oElOutsideCol);
 		var oElDiv = document.createElement('div');
-		oElCharts.appendChild(oElDiv);
+		oElOutsideCol.appendChild(oElDiv);
+		//oElCharts.appendChild(oElDiv);
 		if (YAHOO.ELSA.dashboardRows[i].title){
 			var oElRowTitle = document.createElement('h2');
 			oElRowTitle.innerText = YAHOO.ELSA.dashboardRows[i].title;
@@ -68,6 +80,8 @@ function loadCharts(){
 			else {
 				oTargetEl = oElDiv;
 			}
+			//var oTest = new YAHOO.util.Element(oTargetEl);
+			//oTest.setStyle('background', 'url(\'../inc/wait.gif\')');
 								
 			var aNeededIds = [ 'chart', 'dashboard', 'control' ];
 			for (var k in aNeededIds){
@@ -79,6 +93,11 @@ function loadCharts(){
 				//oElDiv.appendChild(oEl);
 				oChart[sType + '_el'] = oEl;
 			}
+			
+			// Add loading gif
+			var oChartEl = new YAHOO.util.Element(oTargetEl);
+			oChartEl.addClass('loading');
+			oChart.target_el = oChartEl;
 			
 			// Counter to see when we've gotten all of our async query results
 			oChart.received = 0;
@@ -97,6 +116,9 @@ function sendQuery(p_iRowId, p_iChartId, p_iQueryId){
 	var oDSQuery = new google.visualization.Query('/datasource/?tqx=reqId:' + sReqId
 		+ ';out:json&q=' + encodeURIComponent(JSON.stringify(oQuery)));
 	var fnStoreResult = function(p_oResponse){
+		// Remove loading gif
+		oChart.target_el.removeClass('loading');
+		
 		if (p_oResponse.isError()){
 			logger.log('FAIL: ' + p_oResponse.getMessage() + ' ' + p_oResponse.getDetailedMessage());
 			return;
@@ -196,6 +218,7 @@ function drawChart(p_iRowId, p_iChartId){
 		makeGeoChart(p_iRowId, p_iChartId);
 	}
 	else {
+		oChart.dataTable.sort({column:1, desc:true});
 		makeSimpleChart(p_iRowId, p_iChartId);
 	}
 }
@@ -215,17 +238,21 @@ function makeSimpleChart(p_iRowId, p_iChartId){
 	google.visualization.events.addListener(oChart.wrapper, 'ready', function(){
 		google.visualization.events.addListener(oChart.wrapper.getChart(), 'select', function(){ selectHandler(p_iRowId, p_iChartId) });
 	});
+	
 	oChart.wrapper.draw();
 }
 
 function makeGeoChart(p_iRowId, p_iChartId){
 	var oChart = YAHOO.ELSA.dashboardRows[p_iRowId].charts[p_iChartId];
-		
+	
 	oChart.wrapper = new google.visualization.ChartWrapper({
 		dataTable: oChart.dataTable,
 		containerId: oChart.chart_el,
 		chartType: oChart.type,
-		options: { title: oChart.title }
+		options: { 
+			title: oChart.title,
+			colorAxis: {colors: ['red']}
+		}
 	});
 	
 	google.visualization.events.addListener(oChart.wrapper, 'ready', function(){
@@ -237,7 +264,7 @@ function makeGeoChart(p_iRowId, p_iChartId){
 function makeChart(p_iRowId, p_iChartId){
 	var oChart = YAHOO.ELSA.dashboardRows[p_iRowId].charts[p_iChartId];
 	oChart.dashboard = new google.visualization.Dashboard(YAHOO.util.Dom.get(oChart.dashboard_el));
-	
+		
 	var oRange = oChart.dataTable.getColumnRange(0);
 	logger.log('oRange', oRange);
 	logger.log('oRange', oRange.min);

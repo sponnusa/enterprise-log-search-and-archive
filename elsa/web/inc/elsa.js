@@ -33,25 +33,27 @@ YAHOO.ELSA.initLogger = function(){
 	if (YAHOO.ELSA.viewMode == 'dev'){
 		YAHOO.widget.Logger.categories.push('elsa');
 		logger = new YAHOO.ELSA.ConsoleProvider();
-		var myLogReader = new YAHOO.widget.LogReader("logger");
-		myLogReader.collapse();
-		var tildeKeyListener = function(event){
-			if(event && event.keyCode && event.keyCode==192){
-				if(event.target && (event.target.nodeName=='INPUT' || event.target.nodeName=='TEXTAREA')){
-					return true;
-				}
-				if(myLogReader.isCollapsed){
-					myLogReader.expand();
-				}else{
-					myLogReader.collapse();
+		if (typeof(console) == 'undefined'){
+			var myLogReader = new YAHOO.widget.LogReader("logger");
+			myLogReader.collapse();
+			var tildeKeyListener = function(event){
+				if(event && event.keyCode && event.keyCode==192){
+					if(event.target && (event.target.nodeName=='INPUT' || event.target.nodeName=='TEXTAREA')){
+						return true;
+					}
+					if(myLogReader.isCollapsed){
+						myLogReader.expand();
+					}else{
+						myLogReader.collapse();
+					}
 				}
 			}
-		}
-		try{
-			var w = new YAHOO.util.Element(document);
-			w.subscribe("keyup", tildeKeyListener); 
-		}catch(e){
-			logger.log('Error subscribing document keyup', e);
+			try{
+				var w = new YAHOO.util.Element(document);
+				w.subscribe("keyup", tildeKeyListener); 
+			}catch(e){
+				logger.log('Error subscribing document keyup', e);
+			}
 		}
 	}
 	else {
