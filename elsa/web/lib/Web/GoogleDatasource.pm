@@ -75,12 +75,12 @@ sub call {
 		if (ref($ret) and ref($ret) eq 'HASH'){
 			if ($self->api->has_warnings){
 				$self->api->log->debug('warnings: ' . Dumper($self->api->warnings));
-				$datasource->add_message({type => 'warning', reason => join(' ', @{ $self->api->warnings })});
+				$datasource->add_message({type => 'warning', reason => 'data_truncated', message => join(' ', @{ $self->api->warnings })});
 			}
 		}
 		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->api->has_warnings){
 			$self->api->log->debug('warnings: ' . Dumper($self->api->warnings));
-			$datasource->add_message({type => 'warning', reason => join(' ', @{ $self->api->warnings })});
+			$datasource->add_message({type => 'warning', reason => 'data_truncated', message => join(' ', @{ $self->api->warnings })});
 		}
 		my ($headers, $body) = $datasource->serialize;
 		$self->api->log->debug('headers: ' . Dumper($headers));
