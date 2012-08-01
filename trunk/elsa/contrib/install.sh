@@ -7,6 +7,8 @@ BASE_DIR="/usr/local"
 DATA_DIR="/data"
 TMP_DIR="/tmp"
 
+MYSQL_NODE_DB="syslog"
+
 # Web DB settings
 MYSQL_HOST="localhost"
 MYSQL_PORT="3306"
@@ -361,7 +363,7 @@ mk_node_dirs(){
 
 set_node_mysql(){
 	# Test to see if schema is already installed
-	mysql -uelsa -p$MYSQL_PASS syslog -e "select count(*) from programs" > /dev/null 2>&1
+	mysql -uelsa -p$MYSQL_PASS $MYSQL_NODE_DB -e "select count(*) from programs" > /dev/null 2>&1
 	if [ $? -eq 0 ]; then
 		echo "MySQL and schema already installed."
 		return 0;
@@ -369,20 +371,33 @@ set_node_mysql(){
 	
 	# Install mysql schema
 	service $MYSQL_SERVICE_NAME start
-	mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog && mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog_data && 
+	mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create $MYSQL_NODE_DB && mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog_data && 
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "elsa"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "elsa"@"%" IDENTIFIED BY "'$MYSQL_PASS'"' &&
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "elsa"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "elsa"@"%" IDENTIFIED BY "'$MYSQL_PASS'"'
 	
 	# Above could fail with db already exists, but this is the true test for success
-	mysql -uelsa -p$MYSQL_PASS syslog -e "source $BASE_DIR/elsa/node/conf/schema.sql" &&
+	mysql -uelsa -p$MYSQL_PASS $MYSQL_NODE_DB -e "source $BASE_DIR/elsa/node/conf/schema.sql" &&
 	enable_service "$MYSQL_SERVICE_NAME"
 	return $?
 }
 
 update_node_mysql(){
 	echo "Updating MySQL..."
+	echo "Updating Windows fields..."
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("domain", "string", "QSTRING")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_name", "string", "QSTRING")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_path", "string", "QSTRING")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_target", "string", "QSTRING")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="eventid"), 5)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="srcip"), 6)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="source"), 11)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="user"), 12)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="domain"), 13)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_name"), 14)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_path"), 15)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_target"), 15)'
 }
 
 init_elsa(){
