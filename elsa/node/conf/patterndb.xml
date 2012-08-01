@@ -155,6 +155,9 @@
 		<rules>
 			<rule provider="ELSA" class='4' id='4'>
 				<patterns>
+					<pattern>@NUMBER:i0:@: A network share object was accessed. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: Account Domain@: @ESTRING:s2: Logon ID@: @ESTRING:: @Network Information: Object Type: File Source Address: @IPv4:i1:@ Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: Share Path:@ @ESTRING:s4: Access Request Information:@ </pattern>
+					<pattern>@NUMBER:i0:@: A network share object was accessed. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: Account Domain@: @ESTRING:s2: Logon ID@: @ESTRING:: @Network Information: Object Type: File Source Address: @IPv4:i1:@ Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: Share Path:@</pattern>
+					<pattern>@NUMBER:i0:@: A network share object was checked to see whether client can be granted desired access. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: @Account Domain: @ESTRING:s2: @Logon ID: @ESTRING:: @Network Information: Object Type: File Source Address: @ESTRING:i1: @Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: @Share Path: @ESTRING:s4: @Relative Target Name: @ESTRING:s5: @Access</pattern>
 					<pattern>@NUMBER:i0:@: @ESTRING::.@ Client IP address: @IPv4:s0::@</pattern>
 					<pattern>@NUMBER:i0:@: @ESTRING:s0::@</pattern>
 					<pattern>@NUMBER:i0:@: @ANYSTRING::@</pattern>
@@ -181,6 +184,9 @@
 		<rules>
 			<rule provider="ELSA" class='4' id='4'>
 				<patterns>
+					<pattern>@NUMBER:i0:@: A network share object was accessed. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: Account Domain@: @ESTRING:s2: Logon ID@: @ESTRING:: @Network Information: Object Type: File Source Address: @IPv4:i1:@ Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: Share Path:@ @ESTRING:s4: Access Request Information:@ </pattern>
+					<pattern>@NUMBER:i0:@: A network share object was accessed. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: Account Domain@: @ESTRING:s2: Logon ID@: @ESTRING:: @Network Information: Object Type: File Source Address: @IPv4:i1:@ Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: Share Path:@</pattern>
+					<pattern>@NUMBER:i0:@: A network share object was checked to see whether client can be granted desired access. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: @Account Domain: @ESTRING:s2: @Logon ID: @ESTRING:: @Network Information: Object Type: File Source Address: @ESTRING:i1: @Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: @Share Path: @ESTRING:s4: @Relative Target Name: @ESTRING:s5: @Access</pattern>
 					<pattern>@NUMBER:i0:@: @ESTRING::.@ Client IP address: @IPv4:s0::@</pattern>
 					<pattern>@NUMBER:i0:@: @ESTRING:s0::@</pattern>
 					<pattern>@NUMBER:i0:@: @ANYSTRING::@</pattern>
@@ -197,6 +203,33 @@
 						<test_message program="SceCli">1202: Security policies were propagated with warning. 0x4b8 : An extended error has occurred. For best results in resolving this event, log on with a non-administrative account and search http://support.microsoft.com for "Troubleshooting Event 1202's".</test_message>
 						<test_value name="i0">1202</test_value>
 						<test_value name="s0">Security policies were propagated with warning. 0x4b8 </test_value>
+					</example>
+					<example>
+						<test_message program="security-auditing">5140: A network share object was accessed. Subject: Security ID: S-1-5-18 Account Name: MYUSER Account Domain: MYDOMAIN Logon ID: 0x3e7 Network Information: Object Type: File Source Address: 192.168.148.5 Source Port: 49206 Share Information: Share Name: \\*\ADMIN$ Share Path: \??\C:\Windows Access Request Information: Access Mask: 0x1 Accesses: ReadData (or ListDirectory)</test_message>
+						<test_value name="i0">5140</test_value>
+						<test_value name="s1">MYUSER</test_value>
+						<test_value name="s2">MYDOMAIN</test_value>
+						<test_value name="i1">192.168.148.5</test_value>
+						<test_value name="s3">\\*\ADMIN$</test_value>
+						<test_value name="s4">\??\C:\Windows</test_value>
+					</example>
+					<example>
+						<test_message program="security-auditing">5140: A network share object was accessed. Subject: Security ID: S-1-5-7 Account Name: ANONYMOUS LOGON Account Domain: NT AUTHORITY Logon ID: 0x1e05bb9b Network Information: Object Type: File Source Address: 192.168.148.5 Source Port: 65518 Share Information: Share Name: \\\\*\\IPC$ Share Path: Access Request Information: Access Mask: 0x1 Accesses: ReadData (or ListDirectory)</test_message>
+						<test_value name="i0">5140</test_value>
+						<test_value name="s1">ANONYMOUS LOGON</test_value>
+						<test_value name="s2">NT AUTHORITY</test_value>
+						<test_value name="i1">192.168.148.5</test_value>
+						<test_value name="s3">\\\\*\\IPC$</test_value>
+					</example>
+					<example>
+						<test_message program="security-auditing">5145: A network share object was checked to see whether client can be granted desired access. Subject: Security ID: S-1-5-21-518783779-1162290680-929701000-2097 Account Name: MYUSER Account Domain: MYDOMAIN Logon ID: 0x19789189 Network Information: Object Type: File Source Address: 192.168.148.5 Source Port: 4235 Share Information: Share Name: \\*\SHARE_NAME Share Path: \??\C:\SHARE_PATH Relative Target Name: MYFILE Access Request Information: Access Mask: 0x80 Accesses: ReadAttributes Access Check Results: ReadAttributes: Granted by D:(A;;FA;;;WD)</test_message>
+						<test_value name="i0">5145</test_value>
+						<test_value name="s1">MYUSER</test_value>
+						<test_value name="s2">MYDOMAIN</test_value>
+						<test_value name="i1">192.168.148.5</test_value>
+						<test_value name="s3">\\*\SHARE_NAME</test_value>
+						<test_value name="s4">\??\C:\SHARE_PATH</test_value>
+						<test_value name="s5">MYFILE</test_value>
 					</example>
 				</examples>
 			</rule>
