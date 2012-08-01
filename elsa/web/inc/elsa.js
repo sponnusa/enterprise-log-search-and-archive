@@ -834,12 +834,15 @@ YAHOO.ELSA.Results = function(){
 			
 			for (var i in oTempWorkingSet){
 				var fieldHash = oTempWorkingSet[i];
-				var aMatches = fieldHash.value.match(re);
+				var aMatches = null;
+				if (fieldHash.value != null){
+					aMatches = fieldHash.value.match(re);
+				}
 				if (aMatches != null){
 					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
 					fieldHash.value_with_markup = fieldHash.value.replace(re, sReplacement);
 				}
-				else {
+				else if (fieldHash.value != ''){
 					fieldHash.value_with_markup = escapeHTML(fieldHash.value);
 				}
 				//logger.log('fieldHash', fieldHash);
