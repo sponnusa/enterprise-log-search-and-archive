@@ -114,7 +114,7 @@ This should give you .8 x 400 x 60 seconds of time before temp indexes get rolle
 ||Web Clients||Web Node||TCP 80/443||
 ||Web Node||LDAP/AD Server||TCP 389/636||
 ||Web Node||Log Node||TCP 3306||
-||Web Node||Log Node||TCP 3307||
+||Web Node||Log Node||TCP 9306 (formerly 3307)||
 ||Log Clients||Log Node||TCP/UDP 514||
 
 =Permissions=
