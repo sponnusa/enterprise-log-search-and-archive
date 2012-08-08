@@ -453,3 +453,9 @@ filter f_local6 { facility(local6); };
 destination d_elsa { udp("ip.address.of.elsa"); };
 log { source(src); filter(f_local6); destination(d_elsa); };
 }}}
+=Eventlog-to-Syslog=
+Sending logs from Windows servers is best achieved with the free, open-source program [http://eventlog-to-syslog.googlecode.com Eventlog-to-Syslog].  It's incredibly easy to install:
+ # Copy evtsys.exe and evtsys.dll to Windows machine in the system directory.
+ # Install with: {{{evtsys.exe -i -h ip.of.elsa.node}}}
+ # Profit
+The logs will be sent using the syslog protocol to your ELSA server where they will be parsed as the class "WINDOWS" and available for reporting, etc.
