@@ -20,7 +20,7 @@ elsif ($ENV{ELSA_CONF}){
 	$config_file = $ENV{ELSA_CONF};
 }
 else {
-	$config_file = '/etc/elsa.conf';
+	$config_file = '/etc/elsa_web.conf';
 }
 die('Cannot find config file, specify with -c or env variable ELSA_CONF') unless -f $config_file;
 $ENV{DEBUG_LEVEL} = 'ERROR'; # we don't want to fill our logs up with automated query logs
