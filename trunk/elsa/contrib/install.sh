@@ -542,7 +542,7 @@ build_web_perl(){
 	for RETRY in 1 2 3; do
 		# PAM requires some user input for testing, and we don't want that
 		cpanm -n Authen::PAM &&
-		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp
+		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::PAM Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -598,6 +598,61 @@ update_web_mysql(){
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN connector VARCHAR(255)" &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN params VARCHAR(8000)" > /dev/null 2>&1
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_log ADD KEY(archive)" > /dev/null 2>&1
+	
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "
+CREATE TABLE IF NOT EXISTS dashboards (
+id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+uid INT UNSIGNED NOT NULL,
+title VARCHAR(255),
+alias VARCHAR(255),
+auth_required TINYINT UNSIGNED NOT NULL DEFAULT 1,
+FOREIGN KEY (uid) REFERENCES users (uid),
+UNIQUE KEY (uid, alias)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS dashboard_auth (
+dashboard_id INT UNSIGNED NOT NULL,
+gid INT UNSIGNED NOT NULL,
+PRIMARY KEY (dashboard_id, gid),
+FOREIGN KEY (dashboard_id) REFERENCES dashboards (id) ON DELETE CASCADE ON UPDATE CASCADE,
+FOREIGN KEY (gid) REFERENCES groups (gid) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS charts (
+id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+uid INT UNSIGNED NOT NULL,
+type VARCHAR(255),
+options TEXT,
+FOREIGN KEY (uid) REFERENCES users (uid) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS chart_queries (
+id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+chart_id INT UNSIGNED NOT NULL,
+label VARCHAR(255),
+query VARCHAR(8000) NOT NULL,
+FOREIGN KEY (chart_id) REFERENCES charts (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS dashboards_charts_map (
+dashboard_id INT UNSIGNED NOT NULL,
+chart_id INT UNSIGNED NOT NULL,
+x TINYINT UNSIGNED NOT NULL DEFAULT 0,
+y TINYINT UNSIGNED NOT NULL DEFAULT 0,
+PRIMARY KEY (dashboard_id, chart_id),
+FOREIGN KEY (dashboard_id) REFERENCES dashboards (id) ON DELETE CASCADE ON UPDATE CASCADE,
+FOREIGN KEY (chart_id) REFERENCES charts (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+CREATE OR REPLACE VIEW v_dashboards AS
+SELECT dashboards.id AS dashboard_id, dashboards.uid AS uid, dashboards.alias, username, dashboards.title AS dashboard_title,
+charts.id AS chart_id, charts.type AS chart_type, chart_queries.id AS query_id, charts.options AS chart_options,
+chart_queries.label AS label, chart_queries.query AS query, dashboards_charts_map.x AS x, dashboards_charts_map.y AS y,
+dashboards.auth_required, dashboard_auth.gid, groups.groupname
+FROM dashboards
+LEFT JOIN dashboards_charts_map ON (dashboards.id=dashboards_charts_map.dashboard_id)
+LEFT JOIN charts ON (charts.id=dashboards_charts_map.chart_id)
+LEFT JOIN chart_queries ON (charts.id=chart_queries.chart_id)
+JOIN users ON (dashboards.uid=users.uid)
+LEFT JOIN dashboard_auth ON (dashboards.id=dashboard_auth.dashboard_id)
+LEFT JOIN groups ON (dashboard_auth.gid=groups.gid);
+	" > /dev/null 2>&1
+	
 	# The above can all fail for perfectly fine reasons
 	echo "Finished updating MySQL"
 	return 0

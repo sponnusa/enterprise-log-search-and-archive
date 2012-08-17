@@ -430,7 +430,7 @@ YAHOO.ELSA.main = function () {
 			}
 		};
 		
-		var oStartDate = new Date((formParams.display_start_int) * 1000);
+		//var oStartDate = new Date((formParams.display_start_int) * 1000);
 		var oSameTabCheckboxArgs = {id:'same_tab_checkbox', type:'checkbox'};
 		if (YAHOO.ELSA.sameTabForQueries){
 			oSameTabCheckboxArgs.checked = true;
@@ -439,7 +439,7 @@ YAHOO.ELSA.main = function () {
 		oFormGridCfg['grid'] = [
 			[ 
 				{type:'element', 'element':'a', args:{'id':'start_time_link', 'name':'from_time', 'innerHTML':'From', 'href':'#'} }, 
-				{type:'input', args:{id:'start_time', size:15, value:getISODateTime(oStartDate)}}, 
+				{type:'input', args:{id:'start_time', size:15, value:formParams.start}}, //value:getISODateTime(oStartDate)}}, 
 				{type:'element', 'element':'a', args:{'id':'end_time_link', 'name':'to_time', 'innerHTML':'To', 'href':'#'} },
 				{type:'input', args:{id:'end_time', size:15}},
 				{type:'widget', className:'Button', args:oTermMenuButtonCfg},
@@ -464,8 +464,8 @@ YAHOO.ELSA.main = function () {
 			YAHOO.util.Event.addListener('end_time_link', 'click', oEndCal.dialog.show, oEndCal.dialog, true);
 					
 			// Tack on the tooltip for earliest start date
-			var oStartToolTip = new YAHOO.widget.Tooltip('start_time_tool_tip', { context: 'start_time', text: 'Earliest: ' + formParams.start});
-			var oStartToolTip = new YAHOO.widget.Tooltip('end_time_tool_tip', { context: 'end_time', text: 'Latest: ' + formParams.end});
+			var oStartToolTip = new YAHOO.widget.Tooltip('start_time_tool_tip', { context: 'start_time', text: 'Earliest: ' + formParams.start + ', Archive Earliest: ' + formParams.archive_start});
+			var oStartToolTip = new YAHOO.widget.Tooltip('end_time_tool_tip', { context: 'end_time', text: 'Latest: ' + formParams.end + ', Archive Latest: ' + formParams.archive_end});
 						
 			/* Put the cursor in the main search field */
 			if (YAHOO.util.Dom.get('q')){
@@ -528,6 +528,13 @@ YAHOO.ELSA.main = function () {
 							helptext: 'Currently running queries',
 							onclick: {
 								fn: YAHOO.ELSA.getRunningArchiveQuery
+							}
+						},
+						{
+							text: 'Dashboards',
+							helptext: 'View/edit dashboards',
+							onclick: {
+								fn: YAHOO.ELSA.getDashboards
 							}
 						}
 					]

@@ -68,41 +68,76 @@ sub call {
 		$args->{end_time} = time;
 	}
 		
-	my $config = $self->api->conf->get('dashboards/' . $dashboard_name);
-	foreach my $key (keys %$config){
-		$args->{$key} = $config->{$key};
-	}
-		
-	$args->{api} = $self->api;
-	if ($config->{auth} eq 'none'){
-		$args->{user} = $self->api->get_user('system');
-	}
-	else {
-		$args->{user} = $self->api->get_user($req->user);
+#	my $config = $self->api->conf->get('dashboards/' . $dashboard_name);
+#	foreach my $key (keys %$config){
+#		$args->{$key} = $config->{$key};
+#	}
+#		
+#	$args->{api} = $self->api;
+#	if ($config->{auth} eq 'none'){
+#		$args->{user} = $self->api->get_user('system');
+#	}
+#	else {
+#		$args->{user} = $self->api->get_user($req->user);
+#	}
+#	
+#	my $dashboard;
+#	eval {
+#		$self->api->freshen_db;
+#	
+#		$self->plugins();
+#		#$self->api->log->trace('creating dashboard from args: ' . Dumper($args));
+#		my $start_time = time();
+#		$dashboard = $config->{package}->new($args);
+#		$self->api->log->trace('created dashboard in ' . (time() - $start_time) . ' seconds');
+#		
+#		unless ($dashboard->data){
+#			die('no data: ' . $self->api->last_error);
+#		}
+#	};
+
+	my ($query, $sth);
+	$query = 'SELECT * FROM v_dashboards WHERE uid=? AND alias=? ORDER BY x,y';
+	$sth = $self->api->db->prepare($query);
+	$sth->execute($self->api->user->uid, $dashboard_name);
+	my %dashboards;
+	my @queries;
+	while (my $row = $sth->fetchrow_hashref){
+		$dashboards{ $row->{dashboard_id} } ||= [];
+		$dashboards{ $row->{dashboard_id} }->[ $row->{y} ] ||= { title => $row->{dashboard_title}, charts => [] };
+		$dashboards{ $row->{dashboard_id} }->[ $row->{y} ]->{charts} ||= { title => $row->{chart_title}, type => $row->{chart_type}, queries => [] };
+		$dashboards{ $row->{dashboard_id} }->[ $row->{y} ]->{charts}->{queries}->[ $row->{x} ] = { query => $row->{query}, label => $row->{label} }; 
 	}
 	
-	my $dashboard;
-	eval {
-		$self->api->freshen_db;
-	
-		$self->plugins();
-		#$self->api->log->trace('creating dashboard from args: ' . Dumper($args));
-		my $start_time = time();
-		$dashboard = $config->{package}->new($args);
-		$self->api->log->trace('created dashboard in ' . (time() - $start_time) . ' seconds');
-		
-		unless ($dashboard->data){
-			die('no data: ' . $self->api->last_error);
+	foreach my $dashboard_id (sort { $a cmp $b } keys %dashboards){
+		foreach my $chart (@{ $dashboards{$dashboard_id} }){
+			foreach my $query (@{ $chart->{queries} }){
+				my $query_meta_params = {
+					start => $self->start_time,
+					end => $self->end_time,
+					comment => $query->{label},
+					type => $chart->{type},
+				};
+				$query_meta_params->{groupby} = [$self->groupby] unless $query->{query} =~ /\sgroupby[:=]/ or $query->{query} =~ /sum\([^\)]+\)$/;
+				$query->{query_string} = delete $query->{query};
+				$query->{query_meta_params} = $query_meta_params;
+				$query->{user} = $self->user;
+			}
 		}
-	};
+		push @queries, $dashboards{$dashboard_id};
+	}
+	$self->api->log->debug('queries: ' . Dumper(\@queries));
+
 	if ($@){
 		my $e = $@;
 		$self->api->log->error($e);
 		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
 	}
 	else {
-		$self->api->log->debug('data: ' . Dumper($dashboard->data));
-		$res->body([$self->index($req, $dashboard->data)]);
+		#$self->api->log->debug('data: ' . Dumper($dashboard->data));
+		#$res->body([$self->index($req, $dashboard->data)]);
+		$self->api->log->debug('data: ' . Dumper(\@queries));
+		$res->body([$self->index($req, \@queries)]);
 	}
 	$res->finalize();
 }

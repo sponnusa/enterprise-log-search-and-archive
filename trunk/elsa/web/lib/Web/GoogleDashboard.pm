@@ -10,6 +10,8 @@ use JSON;
 use Plack::Middleware::Auth::Basic;
 use Date::Manip;
 
+our $Default_width = 1000;
+
 sub call {
 	my ($self, $env) = @_;
     $self->session(Plack::Session->new($env));
@@ -22,23 +24,20 @@ sub call {
 	my $dashboard_name = $self->_extract_method($req->request_uri);
 	$self->api->log->debug('method: ' . $dashboard_name);
 	
-	my $config = $self->api->conf->get('dashboards/' . $dashboard_name);
-	unless ($config){
-		$res->status(404);
-		$res->body('not found');
-		return $res->finalize();
-	}
 	my $user = $self->api->get_user($req->user);
 	if ($user){
 		$self->session->set('user', $user->freeze);
 		$self->session->set('user_info', $user->TO_JSON);
 	}
-	else {
-		$res->status(401);
-		die('Unauthorized');
-	}
 	
 	my $args = $req->parameters->as_hashref;
+	$args->{alias} = $dashboard_name;
+	
+	if ($req->request_uri =~ /[\?\&]edit[=]?/){
+		$args->{edit} = 1;
+		$self->api->log->trace('edit mode');
+	}
+	
 	my $time_units = {
 		seconds => { groupby => 'timestamp', multiplier => 1 },
 		minutes => { groupby => 'minute', multiplier => 60 },
@@ -48,6 +47,7 @@ sub call {
 		years => { groupby => 'year', multiplier => 946080000 },
 	};
 	
+	$args->{groupby} = 'hour';
 	foreach my $arg (keys %$args){
 		if (exists $time_units->{ $arg }){
 			$args->{groupby} = $time_units->{ $arg }->{groupby};
@@ -56,10 +56,13 @@ sub call {
 			last;
 		}
 	}
-	
+		
 	if (exists $args->{start}){
 		$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
 		$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+	}
+	else {
+		$args->{start_time} = (time() - (86400*7));
 	}
 	if (exists $args->{end}){
 		$args->{end_time} = UnixDate(ParseDate(delete $args->{end}), '%s');
@@ -69,31 +72,105 @@ sub call {
 		$args->{end_time} = time;
 	}
 	
-	foreach my $key (keys %$config){
-		$args->{$key} = $config->{$key};
-	}
-	
-	$args->{api} = $self->api;
-	if ($config->{auth} eq 'none'){
-		$args->{user} = $self->api->get_user('system');
-	}
-	else {
-		$args->{user} = $self->api->get_user($req->user);
-	}
-	
-	my $dashboard;
+	my $ret = [];
 	eval {
 		$self->api->freshen_db;
-	
-		$self->plugins();
-		#$self->api->log->trace('creating dashboard from args: ' . Dumper($args));
-		my $start_time = time();
-		$dashboard = $config->{package}->new($args);
-		$self->api->log->trace('created dashboard in ' . (time() - $start_time) . ' seconds');
+		my ($query, $sth);
 		
-		unless ($dashboard->queries){
-			die('no queries: ' . $self->api->last_error);
+		$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE uid=? AND alias=? ORDER BY x,y';
+		$sth = $self->api->db->prepare($query);
+		$sth->execute($user->uid, $dashboard_name);
+		my $row = $sth->fetchrow_hashref;
+		die('dashboard ' . $dashboard_name . ' not found or not authorized') unless $row;
+		$args->{id} = $row->{dashboard_id};
+		$args->{title} = $row->{dashboard_title};
+		$self->title($args->{title});
+		$args->{alias} = $row->{alias};
+		$args->{auth_required} = $row->{auth_required};
+		if ($self->api->conf->get('dashboard_width')){
+			$args->{width} = $self->api->conf->get('dashboard_width');
 		}
+		else {
+			$args->{width} = $Default_width;
+		}
+		
+		# Check authorization
+		my $is_authorized = 0;
+		if ($args->{auth_required}){
+			if ($args->{auth_required} == 1 and $user){
+				$self->api->log->trace('user authentication sufficient');
+				$is_authorized = 1;
+			}
+			elsif ($args->{auth_required} == 2){
+				$query = 'SELECT groupname FROM groups WHERE gid IN (SELECT gid FROM dashboard_auth WHERE dashboard_id=?)';
+				$sth = $self->api->db->prepare($query);
+				$sth->execute($args->{id});
+				AUTH_LOOP: while (my $row = $sth->fetchrow_hashref){
+					foreach my $groupname (@{ $user->groups }){
+						if ($row->{groupname} eq $groupname){
+							$self->api->log->trace('Authorizing based on membership in group ' . $groupname);
+							$is_authorized = 1;
+							last AUTH_LOOP;
+						}
+					}
+				}
+			}
+		}
+		else {
+			$self->api->log->trace('no auth required');
+			$is_authorized = 1;
+		}
+		
+		unless ($is_authorized){
+			$res->status(401);
+			die('Unauthorized');
+		}
+		
+		$args->{user} = $user;
+		$args->{dashboard_name} = $dashboard_name;
+		$ret = $self->api->get_rows($args);
+		delete $args->{user};
+		
+#		$query = 'SELECT * FROM v_dashboards WHERE uid=? AND alias=? ORDER BY x,y';
+#		$sth = $self->api->db->prepare($query);
+#		$sth->execute($user->uid, $dashboard_name);
+#		
+#		while (my $row = $sth->fetchrow_hashref){
+#			next unless defined $row->{chart_id};
+#			$ret->[ $row->{y} ] ||= { title => '', charts => [] };
+#			$ret->[ $row->{y} ]->{charts}->[ $row->{x} ] ||= { 
+#				title => $row->{chart_title}, 
+#				type => $row->{chart_type}, 
+#				queries => [], 
+#				chart_id => $row->{chart_id}, 
+#				chart_options => $row->{chart_options} ? $self->api->json->decode($row->{chart_options}) : undef,
+#				x => $row->{x},
+#				y => $row->{y}, 
+#			};
+#			$self->api->log->debug('query: ' . $row->{query});
+#			#push @{ $ret->[ $row->{y} ]->{charts}->[ $row->{x} ]->{queries} }, { query => $self->api->json->decode($row->{query}), label => $row->{label}, query_id => $row->{query_id} }; 
+#			push @{ $ret->[ $row->{y} ]->{charts}->[ $row->{x} ]->{queries} }, { 
+#				query_string => $row->{query}, 
+#				label => $row->{label}, 
+#				query_id => $row->{query_id} 
+#			};
+#		}
+#
+#		$self->api->log->debug('ret: ' . Dumper($ret));
+#		foreach my $chart_row (@$ret){
+#			foreach my $chart (@{ $chart_row->{charts} }){
+#				foreach my $query (@{ $chart->{queries} }){
+#					my $query_meta_params = {
+#						start => $args->{start_time},
+#						end => $args->{end_time},
+#						comment => $query->{label},
+#						type => $chart->{type},
+#					};
+#					$query_meta_params->{groupby} = [$args->{groupby}] unless $query->{query_string} =~ /\sgroupby[:=]/ or $query->{query_string} =~ /sum\([^\)]+\)$/;
+#					$query->{query_meta_params} = $query_meta_params;
+#				}
+#			}
+#		}
 	};
 	if ($@){
 		my $e = $@;
@@ -101,8 +178,8 @@ sub call {
 		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
 	}
 	else {
-		$self->api->log->debug('queries: ' . Dumper($dashboard->queries));
-		$res->body([$self->index($req, $dashboard->queries)]);
+		$self->api->log->debug('data: ' . Dumper($ret));
+		$res->body([$self->index($req, $args, $ret)]);
 	}
 		
 	$res->finalize();
@@ -111,31 +188,54 @@ sub call {
 sub index {
 	my $self = shift;
 	my $req = shift;
+	my $args = shift;
 	my $queries = shift;
-	return $self->_get_headers() . $self->_get_index_body($queries);
+	return $self->_get_headers() . $self->_get_index_body($args, $queries);
 }
 
 sub _get_index_body {
 	my $self = shift;
+	my $args = shift;
 	my $queries = shift;
-	
-	
-	foreach my $query (@$queries){
-		delete $query->{user};
-	}	
+		
+	my $edit = '';
+	if ($args->{edit}){
+		$edit = 'YAHOO.ELSA.editCharts = true;';
+	}
+		
 	my $json = $self->api->json->encode($queries);
 	my $dir = $self->path_to_inc;
+	my $defaults = $self->api->json->encode({
+		groupby => [$args->{groupby}],
+		start => $args->{start_time},
+		end => $args->{end_time}
+	});
+		
+	my $yui = new YUI(%{ $self->api->conf->get('yui') });
+	my $yui_css = $yui->css($dir);
+	my $yui_js = $yui->js($dir);
 
 	my $HTML =<<"EOHTML"
 <!--Load the AJAX API-->
 <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+<script type="text/javascript" src="$dir/inc/elsa.js" ></script>
 <script type="text/javascript" src="$dir/inc/dashboard.js" ></script>
+$yui_css
+$yui_js
+<link rel="stylesheet" type="text/css" href="$dir/inc/custom.css" />
 <script>
+$edit
 YAHOO.ELSA.viewMode = 'dev';
-YAHOO.ELSA.dashboardGroups = {};
-YAHOO.ELSA.charts = {};
-YAHOO.ELSA.dashboardRows = $json;
-
+YAHOO.ELSA.queryMetaParamsDefaults = $defaults;
+YAHOO.ELSA.dashboardParams = {
+	id: $args->{id},
+	title: '$args->{title}',
+	alias: '$args->{alias}',
+	container: 'google_charts',
+	rows: $json,
+	width: $args->{width}
+};
+			 
 // Load the Visualization API and the piechart package.
 google.load('visualization', '1.0', {'packages':['corechart', 'charteditor', 'controls']});
 
@@ -143,13 +243,15 @@ YAHOO.util.Event.addListener(window, "load", function(){
 	YAHOO.ELSA.initLogger();
 	// Set a callback to run when the Google Visualization API is loaded.
 	//google.setOnLoadCallback(loadCharts);
-	loadCharts();
+	//YAHOO.ELSA.Chart.loadCharts();
+	oDashboard = new YAHOO.ELSA.Dashboard($args->{id}, '$args->{title}', '$args->{alias}', $json, 'google_charts');
 	
 });
 </script>
 </head>
 
-  <body>
+  <body class=" yui-skin-sam">
+   <div id="panel_root"></div>
     <div id="google_charts"></div>
   </body>
 </html>

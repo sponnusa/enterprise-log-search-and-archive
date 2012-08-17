@@ -1117,7 +1117,8 @@ YAHOO.ELSA.Results = function(){
 		// Create the export button
 		var oMenuSources = [ 
 			{text:'Save Results', value:'saveResults', onclick: { fn: YAHOO.ELSA.saveResults, obj:this.id }},
-			{text:'Export Results', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportData, obj:aExportData }}
+			{text:'Export Results', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportData, obj:aExportData }},
+			{text:'Add to Dashboard...', value:'addToDashboard', onclick:{ fn:YAHOO.ELSA.addQueryToChart}}
 		];
 		
 		var oMenuButtonCfg = {
@@ -1340,7 +1341,7 @@ YAHOO.ELSA.Form = function(p_oFormEl, p_oFormCfg){
 YAHOO.ELSA.Form.prototype.appendItem = function(p_oEl, p_oArgs){
 	if (p_oArgs.type == 'text'){
 		var oTextNode = document.createTextNode(p_oArgs.args);
-		p_oEl.appendChild(oTextNode);;
+		p_oEl.appendChild(oTextNode);
 	}
 	else if (p_oArgs.type == 'widget') {
 		logger.log('p_oArgs', p_oArgs);
@@ -1780,7 +1781,8 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			{text:'Save Results...', value:'saveResults', onclick: { fn: YAHOO.ELSA.saveResults, obj:this.id }},
 			{text:'Export Results...', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportResults, obj:this.id }},
 			{text:'Alert or schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}},
-			{text:'Send to connector...', value:'sendToConnector', onclick:{ fn:YAHOO.ELSA.sendToConnector, obj:this.id}}
+			{text:'Send to connector...', value:'sendToConnector', onclick:{ fn:YAHOO.ELSA.sendToConnector, obj:this.id}},
+			{text:'Add to Dashboard...', value:'addToDashboard', onclick:{ fn:YAHOO.ELSA.addQueryToChart}}
 		];
 		
 		var oMenuButtonCfg = {
@@ -3072,138 +3074,121 @@ YAHOO.ELSA.getQuerySchedule = function(){
 	YAHOO.ELSA.getQuerySchedule.panel.show();
 };
 
-YAHOO.ELSA.Dashboard = function(p_oData){
-	this.data = p_oData;
-	if (this.data.id){
-		this.id = this.data.id;
-	}
-	else {
-		this.create();
-	}
-	
-	this.create = function(){
-		var callback = {
-			success: function(oResponse){
-				oSelf = oResponse.argument[0];
-				if (oResponse.responseText){
-					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
-					if (typeof oReturn === 'object'){
-						if (oReturn['error']){
-							YAHOO.ELSA.Error(oReturn['error']);
-						}
-						else {
-							logger.log('created successfully, return:',oReturn);
-							
-						}
+YAHOO.ELSA.async = function(p_sUrl, p_oCallback, p_oPostData, p_oObject){
+	var callback_wrapper = {
+		success: function(oResponse){
+			callback = oResponse.argument[0];
+			if (oResponse.responseText){
+				var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+				if (typeof oReturn === 'object'){
+					if (oReturn['error']){
+						YAHOO.ELSA.Error(oReturn['error']);
+						callback(false);
 					}
 					else {
-						logger.log(oReturn);
-						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
+						callback(oReturn);
 					}
 				}
 				else {
-					YAHOO.ELSA.Error('No response text');
+					logger.log(oReturn);
+					YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
 				}
-			},
-			failure: function(oResponse){
-				YAHOO.ELSA.Error('Error saving result.');
-				return [ false, ''];
-			},
-			argument: [this]
-		};
-		var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/create_dashboard', callback,
-			'args=' + Base64.encode(YAHOO.lang.JSON.stringify(this.data)));
-	}
-	
-	this.set = function(p_sProperty, p_oNewValue, p_fnCallback){
-		this[p_sProperty] = p_oNewValue; // set
-		
-		// sync to server
-		var callback = {
-			success: function(oResponse){
-				oSelf = oResponse.argument[0];
-				if (oResponse.responseText){
-					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
-					if (typeof oReturn === 'object'){
-						if (oReturn['error']){
-							YAHOO.ELSA.Error(oReturn['error']);
-							p_fnCallback();
-						}
-						else {
-							logger.log('updated successfully, return:',oReturn);
-							for (var arg in oReturn){
-								p_fnCallback(true, oReturn[arg]);
-							}
-						}
-					}
-					else {
-						logger.log(oReturn);
-						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
-						p_fnCallback();
-					}
-				}
-				else {
-					YAHOO.ELSA.Error('No response text');
-					p_fnCallback();
-				}
-			},
-			failure: function(oResponse){
-				YAHOO.ELSA.Error('Error saving result.');
-				return [ false, ''];
-			},
-			argument: [this]
-		};
-		var str = this[p_sProperty];
-		if (typeof str == 'object'){
-			str = YAHOO.lang.JSON.stringify(str);
-		}
-		var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/update_dashboard', callback,
-			'id=' + this.id + '&' +  p_sProperty + '=' + str);
+			}
+			else {
+				YAHOO.ELSA.Error('No response text');
+			}
+		},
+		failure: function(oResponse){ YAHOO.ELSA.Error('Error with asyncGet ' + oResponse.toString()); },
+		argument:[p_oCallback]
 	};
 	
-	this.remove = function(){
-		var removeCallback = {
-			success: function(oResponse){
-				oSelf = oResponse.argument[0];
-				if (oResponse.responseText){
-					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
-					if (typeof oReturn === 'object'){
-						if (oReturn['error']){
-							YAHOO.ELSA.Error(oReturn['error']);
-						}
-						else {
-							logger.log('deleted query ' + oSelf.id);
-							// find the row in the data table and delete it
-							oSelf.data.dataTable.deleteRow(oSelf.data.recordSetId);
-						}
-					}
-					else {
-						logger.log(oReturn);
-						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
-					}
-				}
-				else {
-					YAHOO.ELSA.Error('No response text');
-				}
-			},
-			failure: function(oResponse){ YAHOO.ELSA.Error('Error deleting scheduled query ' + this.scheduleId); },
-			argument: [this]
-		};
-		var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/delete_dashboard', removeCallback,
-			'id=' + this.id);
+	if (p_oPostData){
+		var aPost = [];
+		for (var i in p_oPostData){
+			if (typeof(p_oPostData[i]) == 'object'){
+				aPost.push(i + '=' + YAHOO.lang.JSON.stringify(p_oPostData[i]));
+			}
+			else {
+				aPost.push(i + '=' + p_oPostData[i]);
+			}
+		}
+		var sPost = aPost.join('&');
+		var oConn = YAHOO.util.Connect.asyncRequest('POST', p_sUrl, callback_wrapper, sPost);
 	}
-	
+	else {
+		var oConn = YAHOO.util.Connect.asyncRequest('GET', p_sUrl, callback_wrapper);
+	}
 }
 
 YAHOO.ELSA.getDashboards = function(){
 	
+	var oPanel = new YAHOO.ELSA.Panel('Dashboards');
+	oPanel.panel.setHeader('Dashboards');
+	oPanel.panel.render();
+	
+	var aAuthMenu = [
+		{ text:'Public', value:0 },
+		{ text:'Any authenticated user', value:1 },
+		{ text:'Specific group', value:2 }
+	];
+	
 	var deleteDashboard = function(p_sType, p_aArgs, p_a){
 		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
 		var oData = p_oRecord.getData();
-		oData.dataTable = p_oDataTable;
-		oDashboard = new YAHOO.ELSA.Dashboard(oData);
-		oDashboard.remove();
+		oData.recordSetId = p_oRecord.getId();
+		logger.log('oData', oData);
+		var oConfirmationPanel = new YAHOO.ELSA.Panel.Confirmation(function(p_oEvent, p_oData){
+			var oPanel = this;
+			oPanel.hide();
+			
+			var removeCallback = {
+				success: function(oResponse){
+					var oData = oResponse.argument[0];
+					if (oResponse.responseText){
+						var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+						if (typeof oReturn === 'object'){
+							if (oReturn['error']){
+								YAHOO.ELSA.Error(oReturn['error']);
+							}
+							else {
+								logger.log('deleted dashboard ' + oData.id);
+								// find the row in the data table and delete it
+								p_oDataTable.deleteRow(oData.recordSetId);
+							}
+						}
+						else {
+							logger.log(oReturn);
+							YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
+						}
+					}
+					else {
+						YAHOO.ELSA.Error('No response text');
+					}
+				},
+				failure: function(oResponse){ YAHOO.ELSA.Error('Error deleting dashboard ' + oData.id); },
+				argument: [oData]
+			};
+			var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Charts/del_dashboard', removeCallback,
+				'id=' + p_oData.id);
+		}, oData, 'Really delete dashboard?');
+	}
+	var editDashboard = function(p_sType, p_aArgs, p_a){
+		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
+		var oData = p_oRecord.getData();
+		//oData.dataTable = p_oDataTable;
+		//oData.recordSetId = p_oRecord.getId();
+		logger.log('oData', oData);
+		//YAHOO.ELSA.editDashboard(oData.id);
+		var oWindow = window.open('dashboard/' + oData.alias + '?edit');
 	};
+	var exportDashboard = function(p_sType, p_aArgs, p_a){
+		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
+		var oData = p_oRecord.getData();
+		//oData.dataTable = p_oDataTable;
+		oData.recordSetId = p_oRecord.getId();
+		logger.log('oData', oData);
+		YAHOO.ELSA.send(null, 'Charts/export_dashboard', p_oRecord.getData().id);
+	}
 	var formatMenu = function(elLiner, oRecord, oColumn, oData){
 		// Create menu for our menu button
 		var oButtonMenuCfg = [
@@ -3211,7 +3196,23 @@ YAHOO.ELSA.getDashboards = function(){
 				text: 'Delete', 
 				value: 'delete', 
 				onclick:{
-					fn: deleteScheduledQuery,
+					fn: deleteDashboard,
+					obj: [oRecord,this]
+				}
+			},
+			{ 
+				text: 'Edit', 
+				value: 'edit', 
+				onclick:{
+					fn: editDashboard,
+					obj: [oRecord,this]
+				}
+			},
+			{ 
+				text: 'Export', 
+				value: 'export', 
+				onclick:{
+					fn: exportDashboard,
 					obj: [oRecord,this]
 				}
 			}
@@ -3222,195 +3223,231 @@ YAHOO.ELSA.getDashboards = function(){
 				type:'menu', 
 				label:'Actions',
 				menu: oButtonMenuCfg,
+				name: 'dashboard_menu_button',
 				container: elLiner
 			});
 	};
-	var oDataSource = new YAHOO.util.DataSource('Query/get_dashboards?');
-	oDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
-	oDataSource.responseSchema = {
-		resultsList: 'results',
-		fields: ['id', 'description', 'query', 'meta' ],
-		metaFields: {
-			totalRecords: 'totalRecords',
-			recordsReturned: 'recordsReturned'
-		}
-	};
 	
-	
-	var oPanel = new YAHOO.ELSA.Panel('Dashboards');
-		
-	var makeFrequency = function(p_i){
-		var ret = [];
-		for (var i = 1; i <=7; i++){
-			if (i == p_i){
-				ret.push(1);
+    var oElCreate = document.createElement('a');
+    oElCreate.href = '#';
+    oElCreate.innerHTML = 'Create/import new dashboard';
+    oPanel.panel.body.appendChild(oElCreate);
+    var oElCreateEl = new YAHOO.util.Element(oElCreate);
+    oElCreateEl.on('click', function(){
+    	logger.log('creating dashboard');
+    	var handleSubmit = function(p_sType, p_oDialog){
+			this.submit();
+		};
+		var handleCancel = function(){
+			this.hide();
+		};
+		var oCreatePanel = new YAHOO.ELSA.Panel('Create Dashboard', {
+			buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
+				{ text:"Cancel", handler:handleCancel } ]
+		});
+		var handleSuccess = function(p_oResponse){
+			var response = YAHOO.lang.JSON.parse(p_oResponse.responseText);
+			if (response['error']){
+				YAHOO.ELSA.Error(response['error']);
 			}
 			else {
-				ret.push(0);
+				oCreatePanel.panel.hide();
+				logger.log('YAHOO.ELSA.getDashboards.dataTable', YAHOO.ELSA.getDashboards.dataTable);
+				//YAHOO.ELSA.getDashboards.dataTable.load();
+				YAHOO.ELSA.getDashboards.dataTable.getDataSource().sendRequest(YAHOO.ELSA.getDashboards.dataTable.get('initialRequest'), {
+					success: YAHOO.ELSA.getDashboards.dataTable.onDataReturnInitializeTable,
+					failure: YAHOO.ELSA.getDashboards.dataTable.onDataReturnInitializeTable,
+					scope: YAHOO.ELSA.getDashboards.dataTable,
+					argument: YAHOO.ELSA.getDashboards.dataTable.getState()
+				});
+				logger.log('successful submission');
 			}
-		}
-		return ret.join(':');
-	};
-	
-	var aIntervalValues = [
-		{ label:'Year', value: makeFrequency(1) },
-		{ label:'Month', value: makeFrequency(2) },
-		{ label:'Week', value: makeFrequency(3) },
-		{ label:'Day', value: makeFrequency(4) },
-		{ label:'Hour', value: makeFrequency(5) },
-		{ label:'Minute', value: makeFrequency(6) },
-		{ label:'Second', value: makeFrequency(7) }
-	];
-	
-	var formatInterval = function(elLiner, oRecord, oColumn, oData){
-		var aTimeUnits = oData.split(':');
+		};
+		oCreatePanel.panel.callback = {
+			success: handleSuccess,
+			failure: YAHOO.ELSA.Error
+		};
 		
-		for (var i = 0; i < aTimeUnits.length; i++){
-			if (aTimeUnits[i] == 1){
-				elLiner.innerHTML = aIntervalValues[i]['label'];
-				logger.log('setting interval: ' + aIntervalValues[i]['label']);
+		oCreatePanel.panel.renderEvent.subscribe(function(){
+			
+			var sAuthButtonId = 'auth_select_button';
+			var sAuthId = 'auth_input_connector';
+			var onAuthMenuItemClick = function(p_sType, p_aArgs, p_oItem){
+				var sText = p_oItem.cfg.getProperty("text");
+				// Set the label of the button to be our selection
+				var oAuthButton = YAHOO.widget.Button.getButton(sAuthButtonId);
+				oAuthButton.set('label', sText);
+				var oFormEl = YAHOO.util.Dom.get(sFormId);
+				var oInputEl = YAHOO.util.Dom.get(sAuthId);
+				oInputEl.setAttribute('value', p_oItem.value);
 			}
-		}
-	};
-	
-	var aEnabledValues = [
-		{ label: 'Disabled', value: 0 },
-		{ label: 'Enabled', value: 1 }
-	];
-	
-	var formatEnabled = function(elLiner, oRecord, oColumn, oData){
-		var i = parseInt(oData);
-		if (!i){
-			i = 0;
-		}
-		elLiner.innerHTML = aEnabledValues[i]['label'];
-	};
-	
-	var formatQuery  = function(elLiner, oRecord, oColumn, oData){
-		try {
-			oParsed = YAHOO.lang.JSON.parse(oData);
-			elLiner.innerHTML = oParsed['query_string'];
-		}
-		catch (e){
-			logger.log(e);
-			elLiner.innerHTML = '';
-		}
-	};
-	
-	var formatConnector = function(elLiner, oRecord, oColumn, oData){
-		logger.log('connector data:', oData);
-		logger.log('column', oColumn);
-		logger.log('record', oRecord);
-		elLiner.innerHTML = oData;
-	}
-	var formatThreshold = function(elLiner, oRecord, oColumn, oData){
-		var p_i = parseInt(oData);
-		logger.log('oData', oData);
-		logger.log('oColumn', oColumn);
-		logger.log('oRecord', oRecord);
-		if (!p_i){
-			elLiner.innerHTML = oData;
-		}
-		else {
-			if (p_i >= 86400){
-				elLiner.innerHTML = (p_i / 86400) + ' days';
+			var onAuthMenuItemClickChooseGroups = function(p_sType, p_aArgs, p_oItem){
+				var sText = p_oItem.cfg.getProperty("text");
+				// Set the label of the button to be our selection
+				var oAuthButton = YAHOO.widget.Button.getButton(sAuthButtonId);
+				oAuthButton.set('label', sText);
+				var oFormEl = YAHOO.util.Dom.get(sFormId);
+				var oInputEl = YAHOO.util.Dom.get(sAuthId);
+				oInputEl.setAttribute('value', p_oItem.value);
+				oCreatePanel.panel.form.appendChild(document.createTextNode('Groups'));
+				var oElNew = document.createElement('input');
+				oElNew.name = 'groups';
+				oElNew.id = 'auth_groups';
+				oCreatePanel.panel.form.appendChild(oElNew);
 			}
-			else if (p_i >= 3600){
-				elLiner.innerHTML = (p_i / 3600) + ' hours';
-			}
-			else if (p_i >= 60){
-				elLiner.innerHTML = (p_i / 60) + ' minutes';
-			}
-			else {
-				elLiner.innerHTML = p_i + ' seconds';	
-			}
-		}
-	}
-	
-	YAHOO.ELSA.getQuerySchedule.panel.setHeader('Scheduled Queries');
+			
+			var aAuthMenu = [
+				{ text:'Public', value:0, onclick: { fn: onAuthMenuItemClick } },
+				{ text:'Any authenticated user', value:1, onclick: { fn: onAuthMenuItemClick } },
+				{ text:'Specific group', value:2, onclick: { fn: onAuthMenuItemClickChooseGroups } }
+			];
+			
+			var oAuthMenuButtonCfg = {
+				id: sAuthButtonId,
+				type: 'menu',
+				label: 'Who has access',
+				name: sAuthButtonId,
+				menu: aAuthMenu
+			};
+			
+			oCreatePanel.panel.setBody('');
+			oCreatePanel.panel.setHeader('Create New Dashboard');
+			oCreatePanel.panel.bringToTop();
+			//var sFormId = 'create_dashboard_form';
+			var sFormId = oCreatePanel.panel.form.id;
+			
+			var oFormGridCfg = {
+				form_attrs:{
+					action: 'Charts/add_dashboard',
+					method: 'POST',
+					id: sFormId
+				},
+				grid: [
+					[ {type:'text', args:'Title'}, {type:'input', args:{id:'dashboard_title', name:'title', size:32}} ],
+					[ {type:'text', args:'Alias (end of URL for access)'}, {type:'input', args:{id:'dashboard_alias', name:'alias', size:32}} ],
+					[ {type:'text', args:'Auth'}, {type:'widget', className:'Button', args:oAuthMenuButtonCfg} ],
+					[ {type:'text', args:'(Paste here for import)'}, {type:'element', element:'textarea', args:{id:'dashboard_import_data', name:'data', rows:1, cols:32}} ]
+				]
+			};
+			
+			// Now build a new form using the element auto-generated by widget.Dialog
+			var oForm = new YAHOO.ELSA.Form(oCreatePanel.panel.form, oFormGridCfg);
+			
+			var oInputEl = document.createElement('input');
+			oInputEl.id = sAuthId;
+			oInputEl.setAttribute('type', 'hidden');
+			oInputEl.setAttribute('name', 'auth_required');
+			oInputEl.setAttribute('value', 0);
+			oForm.form.appendChild(oInputEl);
+		});
+		oCreatePanel.panel.render();
+		oCreatePanel.panel.show();
+    });
+    
+    var oElDiv = document.createElement('div');
+	oElDiv.id = 'dashboards_dt';
+	oPanel.panel.body.appendChild(oElDiv);
 	
 	var asyncSubmitter = function(p_fnCallback, p_oNewValue){
 		// called in the scope of the editor
 		logger.log('editor this: ', this);
+		var oEditor = this;
 		logger.log('p_oNewValue:', p_oNewValue);
 		
 		var oRecord = this.getRecord(),
 			oColumn = this.getColumn(),
 			sOldValue = this.value,
 			oDatatable = this.getDataTable();
-		logger.log('column:', oColumn);
+		logger.log('sOldValue:', sOldValue);
+		logger.log('oColumn.getKey()', oColumn.getKey());
 		
-		var oQuery = new YAHOO.ELSA.Query.Scheduled(oRecord);
-		logger.log('oQuery:', oQuery);
-		oQuery.set(oColumn.field, p_oNewValue); //will call the asyncSubmitterCallback
+		var oNewValue = p_oNewValue;
+		var oSendValue = oNewValue;
+		
+		YAHOO.ELSA.async('Charts/update_dashboard?id=' + oRecord.getData().id + '&col=' + oColumn.getKey() + '&val=' + oSendValue, function(p_oReturn){
+			if (p_oReturn.ok && p_oReturn.ok > 0){
+				// update the edit queries datatable
+				oDatatable.updateCell(oRecord, oColumn, oNewValue);
+				p_fnCallback(true,oNewValue);
+			}
+			else {
+				p_fnCallback(false);
+			}
+		});
 	};
 	
-	YAHOO.ELSA.getQuerySchedule.asyncSubmitterCallback = function(p_bSuccess, p_oNewValue){
-		logger.log('arguments:', arguments);
-		logger.log('callback p_bSuccess', p_bSuccess);
-		logger.log('callback p_oNewValue:', p_oNewValue);
-		if (p_bSuccess){
-			logger.log('setting ' + YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().getColumn().field + ' to ' + p_oNewValue);
-			YAHOO.ELSA.getQuerySchedule.dataTable.updateCell(
-				YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().getRecord(),
-				YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().getColumn(),
-				p_oNewValue
-			);
-		}
-		YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().unblock();
-		YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().cancel(); //hides box
+//	var asyncSubmitterAuth = function(p_fnCallback, p_oNewValue){
+//		// called in the scope of the editor
+//		logger.log('editor this: ', this);
+//		logger.log('p_oNewValue:', p_oNewValue);
+//		
+//		var oRecord = this.getRecord(),
+//			oColumn = this.getColumn(),
+//			sOldValue = this.value,
+//			oDatatable = this.getDataTable();
+//		logger.log('sOldValue:', sOldValue);
+//		logger.log('oColumn.getKey()', oColumn.getKey());
+//		
+//		var oNewValue = p_oNewValue;
+//		var oSendValue = oNewValue;
+//		
+//		var sSendStr = 'Charts/update_dashboard?id=' + oRecord.getData().id + '&col=' + oColumn.getKey() + '&val=' + oSendValue;
+//		
+//		var handleSubmit = function(p_sType, p_oDialog){
+//			sSendStr += '&auth_groups=' + YAHOO.util.Dom.get('auth_groups').value;
+//			YAHOO.ELSA.async(sSendStr, function(p_oReturn){
+//				if (p_oReturn.ok && p_oReturn.ok > 0){
+//					// update the edit queries datatable
+//					oDatatable.updateCell(oRecord, oColumn, oNewValue);
+//					p_fnCallback(true,oNewValue);
+//				}
+//				else {
+//					YAHOO.ELSA.Error(p_oReturn.warnings);
+//				}
+//			});
+//			this.hide();
+//		};
+//		var handleCancel = function(){
+//			this.hide();
+//		};
+//		var oCreatePanel = new YAHOO.ELSA.Panel('Auth Groups', {
+//			buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
+//				{ text:"Cancel", handler:handleCancel } ]
+//		});
+//		
+//		oCreatePanel.panel.setHeader('Groups');
+//		oCreatePanel.panel.form.appendChild(document.createTextNode('Groups'));
+//		var oElNew = document.createElement('input');
+//		oElNew.name = 'groups';
+//		oElNew.id = 'auth_groups';
+//		oCreatePanel.panel.form.appendChild(oElNew);
+//		
+//		oCreatePanel.panel.render();
+//		oCreatePanel.panel.show();
+//	};
+	
+	var cellEditorValidatorQuery = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
+		return p_sInputValue;
 	};
 	
-	// Set up editing flow
-	var highlightEditableCell = function(p_oArgs) {
-		var elCell = p_oArgs.target;
-		if(YAHOO.util.Dom.hasClass(elCell, "yui-dt-editable")) {
-			this.highlightCell(elCell);
-		}
-	};
-	
-	YAHOO.ELSA.getQuerySchedule.cellEditorValidatorInt = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
-		return parseInt(p_sInputValue);
-	};
-	
-	YAHOO.ELSA.getQuerySchedule.cellEditorValidatorJSON = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
-		try {
-			return YAHOO.lang.JSON.parse(p_sInputValue);
-		}
-		catch (e){
-			YAHOO.ELSA.Error(e);
-			return p_sCurrentValue;
-		}
-	};
-	
-	YAHOO.ELSA.getQuerySchedule.cellEditorValidatorQuery = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
-		var oQueryParams;
-		try {
-			oQueryParams = YAHOO.lang.JSON.parse(p_sInputValue);
-		}
-		catch (e){
-			YAHOO.ELSA.Error(e);
-			return;
-		}
-		logger.log('query_string:', typeof oQueryParams['query_string']);
-		if (!oQueryParams['query_string'] || typeof oQueryParams['query_meta_params'] != 'object'){
-			YAHOO.ELSA.Error('Need query_string and query_meta_params in obj');
-			return;
-		}
-		return oQueryParams;
-	};
-	
-	YAHOO.ELSA.getQuerySchedule.onEventShowCellEditor = function(p_oArgs){
+	var onEventShowCellEditor = function(p_oArgs){
 		logger.log('p_oArgs', p_oArgs);
+		var oEl = new YAHOO.util.Element(p_oArgs.target);
+		if (!oEl.hasClass('yui-dt-editable')){
+			return;
+		}
 		this.onEventShowCellEditor(p_oArgs);
-		logger.log('YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor():',YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor());
+		if (YAHOO.ELSA.getDashboards.dataTable.getCellEditor().value != null && typeof(YAHOO.ELSA.getDashboards.dataTable.getCellEditor().value) == 'object'){
+			YAHOO.ELSA.getDashboards.dataTable.getCellEditor().textarea.value = YAHOO.ELSA.getDashboards.dataTable.getCellEditor().value.query_string;
+		}
+		
 		// increase the size of the textbox, if we have one
-		if (YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor() && YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().textbox){				
-			YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().textbox.setAttribute('size', 20);
-			YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().textbox.removeAttribute('style');
+		if (YAHOO.ELSA.getDashboards.dataTable.getCellEditor() && YAHOO.ELSA.getDashboards.dataTable.getCellEditor().textbox){				
+			YAHOO.ELSA.getDashboards.dataTable.getCellEditor().textbox.setAttribute('size', 20);
+			YAHOO.ELSA.getDashboards.dataTable.getCellEditor().textbox.removeAttribute('style');
 			// create key listener for the submit
 			var enterKeyListener = new YAHOO.util.KeyListener(
-					YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().textbox,
+					YAHOO.ELSA.getDashboards.dataTable.getCellEditor().textbox,
 					{ keys: 13 },
 					{ 	fn: function(eName, p_aArgs){
 							var oEvent = p_aArgs[1];
@@ -3423,7 +3460,7 @@ YAHOO.ELSA.getDashboards = function(){
 							}
 							catch(e){}
 							var op = '=';
-							YAHOO.ELSA.getQuerySchedule.dataTable.getCellEditor().save();
+							this.getCellEditor().save();
 						},
 						scope: YAHOO.ELSA,
 						correctScope: false
@@ -3433,69 +3470,73 @@ YAHOO.ELSA.getDashboards = function(){
 		}
 	}
 	
-	var aConnectors = [
-		{ label:'Save report (no action)', value:'' }
-	];
-	for (var i in YAHOO.ELSA.formParams.schedule_actions){
-		aConnectors.push({
-			label: YAHOO.ELSA.formParams.schedule_actions[i].description,
-			value: YAHOO.ELSA.formParams.schedule_actions[i].action
-		});
+	var oDataSource = new YAHOO.util.DataSource('Charts/get_dashboards?');
+	oDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
+	oDataSource.responseSchema = {
+		resultsList: 'results',
+		fields: ['id', 'alias', 'title', 'auth_required', 'groupname' ],
+		metaFields: {
+			totalRecords: 'totalRecords',
+			recordsReturned: 'recordsReturned'
+		}
+	};
+	
+	var aAuthDropDownMenu = [];
+	for (var i in aAuthMenu){
+		aAuthDropDownMenu.push({label: aAuthMenu[i].text, value: aAuthMenu[i].value});
 	}
 	
-	YAHOO.ELSA.getQuerySchedule.panel.renderEvent.subscribe(function(){
-		var myColumnDefs = [
-			{ key:'menu', label:'Action', formatter:formatMenu },
-			{ key:"id", label:"ID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
-			{ key:"query", label:"Query", formatter:formatQuery, sortable:true, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter, validator:YAHOO.ELSA.getQuerySchedule.cellEditorValidatorQuery}) },
-			{ key:'frequency', label:'Interval', formatter:formatInterval, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aIntervalValues}) },
-			{ key:'start', label:'Starts On', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true, editor: new YAHOO.widget.DateCellEditor({asyncSubmitter:asyncSubmitter}) },
-			{ key:'end', label:'Ends On', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true, editor: new YAHOO.widget.DateCellEditor({asyncSubmitter:asyncSubmitter}) },
-			{ key:'connector', label:'Action', formatter:formatConnector, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aConnectors}) },
-			{ key:'enabled', label:'Enabled', formatter:formatEnabled, sortable:true, editor: new YAHOO.widget.DropdownCellEditor({asyncSubmitter:asyncSubmitter, dropdownOptions:aEnabledValues}) },
-			{ key:'last_alert', label:'Last Alert', formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true },
-			{ key:'alert_threshold', label:'Alert Threshold', formatter:formatThreshold, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter, validator:YAHOO.ELSA.getQuerySchedule.cellEditorValidatorInt}) }
-		];
-		var oPaginator = new YAHOO.widget.Paginator({
-		    pageLinks          : 10,
-	        rowsPerPage        : 5,
-	        rowsPerPageOptions : [5,20],
-	        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
-	        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
-	    });
-	    
-	    var oDataTableCfg = {
-	    	initialRequest: 'startIndex=0&results=5',
-	    	initialLoad: true,
-	    	dynamicData: true,
-	    	sortedBy : {key:"id", dir:YAHOO.widget.DataTable.CLASS_DESC},
-	    	paginator: oPaginator
-	    };
-	    var dtDiv = document.createElement('div');
-		dtDiv.id = 'saved_queries_dt';
-		document.body.appendChild(dtDiv);
-		YAHOO.ELSA.getQuerySchedule.dataTable = '';
-		try {	
-			YAHOO.ELSA.getQuerySchedule.dataTable = new YAHOO.widget.DataTable(dtDiv, 
-				myColumnDefs, YAHOO.ELSA.getQuerySchedule.dataSource, oDataTableCfg );
-			logger.log(YAHOO.ELSA.getQuerySchedule.dataSource);
-			logger.log(YAHOO.ELSA.getQuerySchedule.dataTable);
-			YAHOO.ELSA.getQuerySchedule.dataTable.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
-				oPayload.totalRecords = oResponse.meta.totalRecords;
-				return oPayload;
+	var formatAuth = function(elLiner, oRecord, oColumn, oData){
+		for (var i in aAuthMenu){
+			if (aAuthMenu[i].value == oData){
+				elLiner.innerHTML = aAuthMenu[i].text;
+				break;
 			}
+		}
+	}
 			
-			YAHOO.ELSA.getQuerySchedule.dataTable.subscribe("cellClickEvent", 
-				YAHOO.ELSA.getQuerySchedule.onEventShowCellEditor);
-			YAHOO.ELSA.getQuerySchedule.panel.setBody(dtDiv);
-		}
-		catch (e){
-			logger.log('Error:', e);
-		}
-	});
+	var oColumnDefs = [
+		{ key:'menu', label:'Action', formatter:formatMenu },
+		{ key:"id", label:"ID", formatter:YAHOO.widget.DataTable.formatNmber, sortable:true },
+		{ key:"alias", label:"Alias", sortable:true,
+			editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter}) },
+		{ key:"title", label:"Title", sortable:true,
+			editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter}) },
+		{ key:"auth_required", label:"Auth Required", sortable:true, formatter:formatAuth,
+			editor: new YAHOO.widget.DropdownCellEditor({dropdownOptions:aAuthDropDownMenu, asyncSubmitter:asyncSubmitter}) },
+		{ key:"groupname", label:"Auth Group", sortable:true,
+			editor: new YAHOO.widget.DropdownCellEditor({dropdownOptions:YAHOO.ELSA.formParams.groups, asyncSubmitter:asyncSubmitter}) }
+	];
+	var oPaginator = new YAHOO.widget.Paginator({
+	    pageLinks          : 10,
+        rowsPerPage        : 5,
+        rowsPerPageOptions : [5,20],
+        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
+        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
+    });
+    
+    var oDataTableCfg = {
+    	sortedBy : {key:"id", dir:YAHOO.widget.DataTable.CLASS_DESC},
+    	paginator: oPaginator
+    };
 	
-	YAHOO.ELSA.getQuerySchedule.panel.render();
-	YAHOO.ELSA.getQuerySchedule.panel.show();
+	try {
+		YAHOO.ELSA.getDashboards.dataTable = new YAHOO.widget.DataTable(oElDiv,	oColumnDefs, oDataSource, oDataTableCfg);
+		YAHOO.ELSA.getDashboards.dataTable.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
+			oPayload.totalRecords = oResponse.meta.totalRecords;
+			return oPayload;
+		}
+		YAHOO.ELSA.getDashboards.dataTable.subscribe("cellClickEvent", onEventShowCellEditor);
+		
+		//oPanel.panel.setBody(oElDiv);
+		oPanel.panel.body.appendChild(oElDiv);
+	}
+	catch (e){
+		logger.log('Error:', e);
+	}
+	
+	//oPanel.panel.render();
+	oPanel.panel.show();
 };
 
 YAHOO.ELSA.formatDateFromUnixTime = function(p_elCell, oRecord, oColumn, p_oData)
@@ -3869,7 +3910,12 @@ YAHOO.ELSA.send = function(p_sPlugin, p_sUrl, p_oData){
 	oDataInput.setAttribute('name', 'data');
 	oDataInput.setAttribute('type', 'hidden');
 	oDataInput.setAttribute('maxlength', 2147483647);
-	oDataInput.setAttribute('value', encodeURIComponent(YAHOO.lang.JSON.stringify(p_oData)));
+	if (typeof(p_oData) == 'object'){
+		oDataInput.setAttribute('value', encodeURIComponent(YAHOO.lang.JSON.stringify(p_oData)));
+	}
+	else {
+		oDataInput.setAttribute('value', p_oData);
+	}
 	oForm.appendChild(oDataInput);
 	
 	
@@ -3882,11 +3928,16 @@ YAHOO.ELSA.send = function(p_sPlugin, p_sUrl, p_oData){
 YAHOO.ELSA.Panel = function(p_sName, p_oArgs){
 	this.name = p_sName;
 	if (YAHOO.ELSA.panels[p_sName]){
-		logger.log('YAHOO.ELSA.panels[p_sName]', YAHOO.ELSA.panels[p_sName]);
-		YAHOO.ELSA.panels[p_sName].panel.setHeader('');
-		YAHOO.ELSA.panels[p_sName].panel.setBody('');
-		return YAHOO.ELSA.panels[p_sName];
+		YAHOO.ELSA.overlayManager.remove(YAHOO.ELSA.panels[p_sName].panel);
+		YAHOO.ELSA.panels[p_sName].panel.destroy();
+		delete YAHOO.ELSA.panels[p_sName];
 	}
+//	if (YAHOO.ELSA.panels[p_sName]){
+//		logger.log('YAHOO.ELSA.panels[p_sName]', YAHOO.ELSA.panels[p_sName]);
+//		YAHOO.ELSA.panels[p_sName].panel.setHeader('');
+//		YAHOO.ELSA.panels[p_sName].panel.setBody('');
+//		return YAHOO.ELSA.panels[p_sName];
+//	}
 	
 	var elRootDiv = document.getElementById('panel_root');
 	var elNewDiv = document.createElement('div');
@@ -3924,8 +3975,8 @@ YAHOO.ELSA.Panel = function(p_sName, p_oArgs){
 	return this;
 }
 
-YAHOO.ELSA.Panel.Confirmation = function(p_sName, p_callback, p_oCallbackArgs, p_sMessage){ 
-	var oPanel = new YAHOO.ELSA.Panel(p_sName, 
+YAHOO.ELSA.Panel.Confirmation = function(p_callback, p_oCallbackArgs, p_sMessage){ 
+	var oPanel = new YAHOO.ELSA.Panel('confirmation', 
 		{
 			buttons: [ 
 				{ 
@@ -3941,9 +3992,13 @@ YAHOO.ELSA.Panel.Confirmation = function(p_sName, p_callback, p_oCallbackArgs, p
 	);
 	this.panel = oPanel.panel;
 	this.panel.setHeader('Confirm');
+	//var oEl = new YAHOO.util.Element(this.panel.header);
+	//oEl.addClass('error');
 	this.panel.setBody(p_sMessage);
 	this.panel.render();
 	this.panel.show();
+	//this.panel.bringToTop();
+	YAHOO.ELSA.overlayManager.bringToTop(this.panel);
 }
 
 YAHOO.ELSA.Warn = function(p_sMessage){
@@ -4058,5 +4113,163 @@ YAHOO.ELSA.Calendar.prototype.resetHandler = function(p_oEvent, p_oThis){
 	oCalendar.render();
 }
 
-
+YAHOO.ELSA.addQueryToChart = function(p_sType, p_aArgs){
+	var p_sPathToQueryDir = '';
+	var p_sQuery = YAHOO.ELSA.currentQuery.queryString;
+	var p_sGroupBy = '';
+	if (YAHOO.ELSA.currentQuery.metas.groupby && YAHOO.ELSA.currentQuery.metas.groupby[0]){
+		p_sGroupBy = YAHOO.ELSA.currentQuery.metas.groupby[0];
+	}
+	logger.log('ding query: ', p_sQuery);
+	//YAHOO.ELSA.async(p_sPathToQueryDir + 'Charts/get_all', addQuery);
+	YAHOO.ELSA.async(p_sPathToQueryDir + 'Charts/get_dashboards', addQuery);
+	function addQuery(p_oReturn){
+		if (!p_oReturn){
+			return;
+		}
+		logger.log('adding query');
+		var handleSubmit = function(p_sType, p_oDialog){
+			this.submit();
+		};
+		var handleCancel = function(){
+			this.hide();
+		};
+		var oCreatePanel = new YAHOO.ELSA.Panel('Create Chart', {
+			buttons : [ { text:"Submit", handler:handleSubmit, isDefault:true },
+				{ text:"Cancel", handler:handleCancel } ]
+		});
+		var handleSuccess = function(p_oResponse){
+			var response = YAHOO.lang.JSON.parse(p_oResponse.responseText);
+			if (response['error']){
+				YAHOO.ELSA.Error(response['error']);
+			}
+			else {
+				oCreatePanel.panel.hide();
+				logger.log('successful submission');
+			}
+		};
+		oCreatePanel.panel.callback = {
+			success: handleSuccess,
+			failure: YAHOO.ELSA.Error
+		};
+		
+		oCreatePanel.panel.renderEvent.subscribe(function(){
+			oCreatePanel.panel.setBody('');
+			oCreatePanel.panel.setHeader('Add Query to Chart');
+			oCreatePanel.panel.bringToTop();
+			//var sFormId = 'create_dashboard_form';
+			var sFormId = oCreatePanel.panel.form.id;
+			
+			var sChartButtonId = 'chart_select_button';
+			var sDashboardButtonId = 'dashboard_select_button';
+			var sChartId = 'chart_id';
+			var sDashboardId = 'dashboard_id';
+			var fnOnChartMenuItemClick = function(p_sType, p_aArgs, p_oItem){
+				var sText = p_oItem.cfg.getProperty("text");
+				logger.log('sText ' + sText);
+				// Set the label of the button to be our selection
+				var oButton = YAHOO.widget.Button.getButton(sChartButtonId);
+				oButton.set('label', sText);
+				var oFormEl = YAHOO.util.Dom.get(sFormId);
+				var oInputEl = YAHOO.util.Dom.get(sChartId);
+				oInputEl.setAttribute('value', p_oItem.value);
+			}
+			
+			var fnOnDashboardMenuItemClick = function(p_sType, p_aArgs, p_oItem){
+				var sText = p_oItem.cfg.getProperty("text");
+				logger.log('sText ' + sText);
+				// Set the label of the button to be our selection
+				
+				var oDashboardButton = YAHOO.widget.Button.getButton(sDashboardButtonId);
+				oDashboardButton.set('label', sText);
+				
+				YAHOO.util.Dom.get('dashboard_id').value = p_oItem.value;
+								
+				YAHOO.ELSA.async(p_sPathToQueryDir + 'Charts/get?dashboard_id=' + p_oItem.value, function(p_oReturn){
+					if (!p_oReturn){
+						return;
+					}
+					var oButton = YAHOO.widget.Button.getButton(sChartButtonId);
+					var oMenu = oButton.getMenu();
+				
+					oMenu.clearContent();
+					var aNewItems = [{selected:true, text:'New Chart', value:'__NEW__', onclick:{fn:fnOnChartMenuItemClick}}];
+					for (var i in p_oReturn.charts){
+						var oRow = p_oReturn.charts[i];
+						aNewItems.push({text: oRow.chart_options.title + ' ' + oRow.chart_type, value:oRow.chart_id, onclick:{fn:fnOnChartMenuItemClick}});
+					}
+					//oMenu.addItems(aNewItems);
+					oMenu.itemData = aNewItems;
+					oButton.set('disabled', false);
+					//oMenu.focus();
+					oMenu.setInitialSelection(0);
+					//oMenu.setInitialFocus();
+					//oMenu.render();
+					logger.log('omenu', oMenu);
+				});
+			}
+						
+			var aChartMenu = [];
+			var aDashboardMenu = [];
+			for (var i in p_oReturn.results){
+				var oRow = p_oReturn.results[i];
+				//aChartMenu.push({text: oRow.alias + '/' + oRow.chart_options.title, value:oRow.chart_id, onclick:{fn:fnOnChartMenuItemClick}});
+				//aChartMenu.push({text: oRow.chart_options.title, value:oRow.chart_id, onclick:{fn:fnOnChartMenuItemClick}});
+				aDashboardMenu.push({text: oRow.alias, value:oRow.id, onclick:{fn:fnOnDashboardMenuItemClick}});
+			}
+			
+			var oChartMenuButtonCfg = {
+				id: sChartButtonId,
+				type: 'menu',
+				label: 'Choose Chart',
+				name: sChartButtonId,
+				menu: aChartMenu,
+				disabled: true
+			};
+			var oDashboardMenuButtonCfg = {
+				id: sDashboardButtonId,
+				type: 'menu',
+				label: 'Choose Dashboard',
+				name: sDashboardButtonId,
+				menu: aDashboardMenu
+			};
+			var sQuery = p_sQuery;
+			//if (!sQuery.match(/groupby[\:\=](\w+)/i)){
+			if (p_sGroupBy){
+				sQuery += ' groupby:' + p_sGroupBy;
+			}
+			
+			var oFormGridCfg = {
+				form_attrs:{
+					action: p_sPathToQueryDir + 'Charts/add_query',
+					method: 'POST',
+					id: sFormId
+				},
+				grid: [
+					[ {type:'text', args:'Label'}, {type:'input', args:{id:'label', name:'label', size:32, value:p_sQuery}} ],
+					[ {type:'text', args:'Query'}, {type:'input', args:{id:'query', name:'query', size:64, value:sQuery}} ],
+					[ {type:'text', args:'Dashboard'}, {type:'widget', className:'Button', args:oDashboardMenuButtonCfg} ],
+					[ {type:'text', args:'Chart'}, {type:'widget', className:'Button', args:oChartMenuButtonCfg} ]
+				]
+			};
+			
+			// Now build a new form using the element auto-generated by widget.Dialog
+			var oForm = new YAHOO.ELSA.Form(oCreatePanel.panel.form, oFormGridCfg);
+			
+			var oInputEl = document.createElement('input');
+			oInputEl.id = sChartId;
+			oInputEl.setAttribute('type', 'hidden');
+			oInputEl.setAttribute('name', 'chart_id');
+			oForm.form.appendChild(oInputEl);
+			
+			var oInputEl = document.createElement('input');
+			oInputEl.id = sDashboardId;
+			oInputEl.setAttribute('type', 'hidden');
+			oInputEl.setAttribute('name', 'dashboard_id');
+			oForm.form.appendChild(oInputEl);
+		});
+		oCreatePanel.panel.render();
+		oCreatePanel.panel.show();
+	}
+}
 	

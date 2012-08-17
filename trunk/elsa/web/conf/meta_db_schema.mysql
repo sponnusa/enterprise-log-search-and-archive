@@ -82,3 +82,61 @@ INSERT INTO users_groups_map (uid, gid) VALUES((SELECT uid FROM users WHERE user
 CREATE TABLE schedule_bookmark (
 	last_run TIMESTAMP NOT NULL PRIMARY KEY
 ) ENGINE=InnoDB;
+
+DROP VIEW v_dashboards;
+DROP TABLE dashboards_charts_map;
+DROP TABLE chart_queries;
+DROP TABLE charts;
+DROP TABLE dashboard_auth;
+DROP TABLE dashboards;
+CREATE TABLE dashboards (
+	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	uid INT UNSIGNED NOT NULL,
+	title VARCHAR(255),
+	alias VARCHAR(255),
+	auth_required TINYINT UNSIGNED NOT NULL DEFAULT 1,
+	FOREIGN KEY (uid) REFERENCES users (uid),
+	UNIQUE KEY (uid, alias)
+) ENGINE=InnoDB;
+CREATE TABLE dashboard_auth (
+	dashboard_id INT UNSIGNED NOT NULL,
+	gid INT UNSIGNED NOT NULL,
+	PRIMARY KEY (dashboard_id, gid),
+	FOREIGN KEY (dashboard_id) REFERENCES dashboards (id) ON DELETE CASCADE ON UPDATE CASCADE,
+	FOREIGN KEY (gid) REFERENCES groups (gid) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+CREATE TABLE charts (
+	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	uid INT UNSIGNED NOT NULL,
+	type VARCHAR(255),
+	options TEXT,
+	FOREIGN KEY (uid) REFERENCES users (uid) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+CREATE TABLE chart_queries (
+	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	chart_id INT UNSIGNED NOT NULL,
+	label VARCHAR(255),
+	query VARCHAR(8000) NOT NULL,
+	FOREIGN KEY (chart_id) REFERENCES charts (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+CREATE TABLE dashboards_charts_map (
+	dashboard_id INT UNSIGNED NOT NULL,
+	chart_id INT UNSIGNED NOT NULL,
+	x TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	y TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	PRIMARY KEY (dashboard_id, chart_id),
+	FOREIGN KEY (dashboard_id) REFERENCES dashboards (id) ON DELETE CASCADE ON UPDATE CASCADE,
+	FOREIGN KEY (chart_id) REFERENCES charts (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+CREATE OR REPLACE VIEW v_dashboards AS
+SELECT dashboards.id AS dashboard_id, dashboards.uid AS uid, dashboards.alias, username, dashboards.title AS dashboard_title,
+	charts.id AS chart_id, charts.type AS chart_type, chart_queries.id AS query_id, charts.options AS chart_options,
+	chart_queries.label AS label, chart_queries.query AS query, dashboards_charts_map.x AS x, dashboards_charts_map.y AS y,
+	dashboards.auth_required, dashboard_auth.gid, groups.groupname
+FROM dashboards
+LEFT JOIN dashboards_charts_map ON (dashboards.id=dashboards_charts_map.dashboard_id)
+LEFT JOIN charts ON (charts.id=dashboards_charts_map.chart_id)
+LEFT JOIN chart_queries ON (charts.id=chart_queries.chart_id)
+JOIN users ON (dashboards.uid=users.uid)
+LEFT JOIN dashboard_auth ON (dashboards.id=dashboard_auth.dashboard_id)
+LEFT JOIN groups ON (dashboard_auth.gid=groups.gid);
