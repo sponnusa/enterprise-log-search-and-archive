@@ -75,14 +75,14 @@ fi
 centos_get_node_packages(){
 	# Install required packages
 	yum -y update
-	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ mysql-server mysql-libs mysql-devel pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel
+	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ mysql-server mysql-libs mysql-devel pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel perl-Module-Build
 	return $?
 }
 
 suse_get_node_packages(){
 	# Install required packages
 	zypper -n update &&
-	zypper -qn install ntp perl curl make subversion gcc gcc-c++ mysql-community-server libmysqlclient-devel pkg-config pcre-devel libcap-devel libnet-devel libopenssl-devel glib2-devel pam-devel
+	zypper -qn install ntp perl curl make subversion gcc gcc-c++ mysql-community-server libmysqlclient-devel pkg-config pcre-devel libcap-devel libnet-devel libopenssl-devel glib2-devel pam-devel perl-Module-Build
 	return $?
 }
 
@@ -92,7 +92,7 @@ ubuntu_get_node_packages(){
 	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections &&
 	
 	# Install required packages
-	apt-get -qy install curl subversion gcc g++ mysql-server libmysqlclient-dev pkg-config libglib2.0-dev libpcre3-dev libcap-dev libnet1-dev libssl-dev make &&
+	apt-get -qy install curl subversion gcc g++ mysql-server libmysqlclient-dev pkg-config libglib2.0-dev libpcre3-dev libcap-dev libnet1-dev libssl-dev make libmodule-build-perl cpanminus &&
 	
 	# Make debconf interactive again
 	echo "debconf debconf/frontend select readline" | debconf-set-selections
@@ -230,7 +230,10 @@ build_node_perl(){
 	# Install required Perl modules
 	
 	if [ \! -f /usr/local/bin/cpanm ]; then
-		cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
+	#	cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
+		curl -LO http://xrl.us/cpanm
+    	chmod +x cpanm
+    	mv cpanm /usr/local/bin/cpanm
 	fi
 	
 	# FreeBSD has trouble testing with the current version of ExtUtils
