@@ -83,12 +83,6 @@ CREATE TABLE schedule_bookmark (
 	last_run TIMESTAMP NOT NULL PRIMARY KEY
 ) ENGINE=InnoDB;
 
-DROP VIEW v_dashboards;
-DROP TABLE dashboards_charts_map;
-DROP TABLE chart_queries;
-DROP TABLE charts;
-DROP TABLE dashboard_auth;
-DROP TABLE dashboards;
 CREATE TABLE dashboards (
 	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
 	uid INT UNSIGNED NOT NULL,
