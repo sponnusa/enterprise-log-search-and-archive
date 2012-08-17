@@ -6,7 +6,6 @@ use File::Slurp qw(slurp);
 extends 'Dashboard';
 
 has 'file' => (is => 'rw', isa => 'Str', required => 1);
-has 'json' => (is => 'rw', isa => 'JSON', required => 1, default => sub { return JSON->new->allow_nonref->allow_blessed->pretty(0) });
 
 sub BUILD {
 	my $self = shift;
@@ -17,7 +16,7 @@ sub BUILD {
 	else {
 		$self->_read_json();
 	}
-		
+			
 	return $self;
 }
 
@@ -56,7 +55,7 @@ sub _read_json {
 	my $buf = slurp($self->file) or die('Invalid file: ' . $!);
 	
 	my $group_counter = 0;
-	foreach my $dashboard_row (@{ $self->json->decode($buf) }){
+	foreach my $dashboard_row (@{ $self->api->json->decode($buf) }){
 		foreach my $chart (@{ $dashboard_row->{charts} }){
 			foreach my $query (@{ $chart->{queries} }){
 				my $query_meta_params = {
@@ -72,30 +71,6 @@ sub _read_json {
 			}
 		}
 		push @{ $self->queries }, $dashboard_row;
-#		if (ref($entry) eq 'ARRAY'){
-#			foreach my $sub_entry (@$entry){
-#				my $query_meta_params = {
-#					start => $self->start_time,
-#					end => $self->end_time,
-#					comment => $sub_entry->{title},
-#					type => $sub_entry->{type},
-#					group_id => $group_counter,
-#				};
-#				$query_meta_params->{groupby} = [$self->groupby] unless $sub_entry->{query} =~ /\sgroupby[:=]/ or $sub_entry->{query} =~ /sum\([^\)]+\)$/;
-#				push @{ $self->queries }, { query_string => $sub_entry->{query}, query_meta_params => $query_meta_params, user => $self->user };
-#			}
-#			$group_counter++;
-#		}
-#		else {
-#			my $query_meta_params = {
-#				start => $self->start_time,
-#				end => $self->end_time,
-#				comment => $entry->{title},
-#				type => $entry->{type},
-#			};
-#			$query_meta_params->{groupby} = [$self->groupby] unless $entry->{query} =~ /\sgroupby[:=]/ or $entry->{query} =~ /sum\([^\)]+\)$/;
-#			push @{ $self->queries }, { query_string => $entry->{query}, query_meta_params => $query_meta_params, user => $self->user };
-#		}
 	}
 			
 	return 1;

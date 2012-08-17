@@ -83,9 +83,9 @@ sub call {
 			$datasource->add_message({type => 'warning', reason => 'data_truncated', message => join(' ', @{ $self->api->warnings })});
 		}
 		my ($headers, $body) = $datasource->serialize;
-		$self->api->log->debug('headers: ' . Dumper($headers));
+		$self->api->log->debug('headers: ' . Dumper(@$headers));
 		$self->api->log->debug('body: ' . Dumper($body));
-		$res->headers($headers);
+		$res->headers(@$headers);
 		$res->body([encode_utf8($body)]);
 	}
 	$res->finalize();

@@ -821,23 +821,35 @@ sub _get_node_info {
 	
 	$cv->recv;
 	
-	# Find min/max indexes
-	my $min = 2**32;
-	my $max = 0;
-	my $start_max = 0;
-	foreach my $node (keys %{ $ret->{nodes} }){
-		if ($ret->{nodes}->{$node}->{indexes}->{min} < $min){
-			$min = $ret->{nodes}->{$node}->{indexes}->{min};
+	my $time_ranges = { indexes => {}, archive => {} };
+	foreach my $type (qw(indexes archive)){
+		my $key = $type;
+		if ($type eq 'archive'){
+			$key = 'tables';
 		}
-		if ($ret->{nodes}->{$node}->{indexes}->{max} > $max){
-			$max = $ret->{nodes}->{$node}->{indexes}->{max};
-			$start_max = $ret->{nodes}->{$node}->{indexes}->{start_max};
+		# Find min/max indexes
+		my $min = 2**32;
+		my $max = 0;
+		my $start_max = 0;
+		foreach my $node (keys %{ $ret->{nodes} }){
+			if (defined $ret->{nodes}->{$node}->{$key}->{min} and $ret->{nodes}->{$node}->{$key}->{min} < $min){
+				$min = $ret->{nodes}->{$node}->{$key}->{min};
+			}
+			if (defined $ret->{nodes}->{$node}->{$key}->{max} and $ret->{nodes}->{$node}->{$key}->{max} > $max){
+				$max = $ret->{nodes}->{$node}->{$key}->{max};
+				$start_max = $ret->{nodes}->{$node}->{$key}->{start_max};
+			}
 		}
-	}
-	$ret->{min} = $min;
-	$ret->{max} = $max;
-	$ret->{start_max} = $start_max;
-	$self->log->trace('Found min ' . $min . ', max ' . $max);
+		if ($min == 2**32 and $max == 0){
+			$self->log->trace('No min/max found for type ' . $type);
+		}
+		else {
+			$ret->{$type . '_min'} = $min;
+			$ret->{$type . '_max'} = $max;
+			$ret->{$type . '_start_max'} = $start_max;
+			$self->log->trace('Found min ' . $min . ', max ' . $max . ' for type ' . $type);
+		}
+	}	
 	
 	# Resolve class names into class_id's for excluded classes
 	my $given_excluded_classes = $self->conf->get('excluded_classes') ? $self->conf->get('excluded_classes') : {};
@@ -948,20 +960,26 @@ sub get_form_params {
 	#$self->log->trace('got node_info: ' . Dumper($self->node_info));
 	
 	my $form_params = {
-		start => epoch2iso($self->node_info->{min}),
-		start_int => $self->node_info->{min},
-		display_start_int => $self->node_info->{min},
-		end => epoch2iso($self->node_info->{max}),
-		end_int => $self->node_info->{max},
+		start => $self->node_info->{indexes_min} ? epoch2iso($self->node_info->{indexes_min}) : epoch2iso($self->node_info->{archive_min}),
+		start_int => $self->node_info->{indexes_min} ? $self->node_info->{indexes_min} : $self->node_info->{archive_min},
+		display_start_int => $self->node_info->{indexes_min} ? $self->node_info->{indexes_min} : $self->node_info->{archive_min},
+		archive_start => epoch2iso($self->node_info->{archive_min}),
+		archive_start_int => $self->node_info->{archive_min},
+		archive_display_start_int => $self->node_info->{archive_min},
+		end => $self->node_info->{indexes_max} ? epoch2iso($self->node_info->{indexes_max}) : epoch2iso($self->node_info->{archive_max}),
+		end_int => $self->node_info->{indexes_max} ? $self->node_info->{indexes_max} : $self->node_info->{archive_max},
+		archive_end => epoch2iso($self->node_info->{archive_max}),
+		archive_end_int => $self->node_info->{archive_max},
 		classes => $self->node_info->{classes},
 		classes_by_id => $self->node_info->{classes_by_id},
 		fields => $self->node_info->{fields},
 		nodes => [ keys %{ $self->node_info->{nodes} } ],
+		groups => $user->groups,
 	};
 	
 	# You can change the default start time displayed to web users by changing this config setting
 	if ($self->conf->get('default_start_time_offset')){
-		$form_params->{display_start_int} = ($self->node_info->{max} - (86400 * $self->conf->get('default_start_time_offset')));
+		$form_params->{display_start_int} = ($form_params->{end_int} - (86400 * $self->conf->get('default_start_time_offset')));
 	}
 	
 	

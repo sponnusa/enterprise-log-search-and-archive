@@ -8,6 +8,7 @@ use FindBin;
 use lib $FindBin::Bin;
 
 use API;
+use API::Charts;
 use Web;
 use Web::Query;
 #use Web::Dashboard;
@@ -20,6 +21,7 @@ if ($ENV{ELSA_CONF}){
 }
 
 my $api = API->new(config_file => $config_file) or die('Unable to start from given config file.');
+my $charts_api = API::Charts->new(config_file => $config_file) or die('Unable to start from given config file.');
 
 my $auth;
 if (lc($api->conf->get('auth/method')) eq 'ldap' and $api->conf->get('ldap')){
@@ -122,7 +124,8 @@ builder {
 	mount '/Query' => Web::Query->new(api => $api)->to_app;
 	mount '/datasource' => Web::GoogleDatasource->new(api => $api)->to_app;
 	#mount '/dashboard' => Web::Dashboard->new(api => $api)->to_app;
-	mount '/dashboard' => Web::GoogleDashboard->new(api => $api)->to_app;
+	mount '/dashboard' => Web::GoogleDashboard->new(api => $charts_api)->to_app;
+	mount '/Charts' => Web::Query->new(api => $charts_api)->to_app;
 	mount '/' => Web->new(api => $api)->to_app;
 };
 

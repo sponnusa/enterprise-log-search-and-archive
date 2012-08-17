@@ -20,8 +20,8 @@
 
 .loading {
 	background:url('../inc/wait.gif') no-repeat scroll 0 0 transparent;
-	height: 15px;
-	width: 25px;
+	height: 150px;
+	width: 250px;
 	position: relative;
 }
 
@@ -279,6 +279,10 @@ div.yui-dt-liner:hover > img{
 	/*background-color:#FF0000;*/
 	background:red;
 }
+#panel_confirmation_h  {
+	/*background-color:#FF0000;*/
+	background:red;
+}
 #panel_error_h.error {
 	background:red;
 }
@@ -350,4 +354,7 @@ inputWrapperMiddle{
 }
 .msg {
 	font-weight: bold;
+}
+.dashboard.cell {
+	vertical-align: text-top;
 }
