@@ -38,6 +38,21 @@ sub call {
 		$self->api->log->trace('edit mode');
 	}
 	
+	if (exists $args->{start}){
+		$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
+		$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+	}
+	else {
+		$args->{start_time} = (time() - (86400*7));
+	}
+	if (exists $args->{end}){
+		$args->{end_time} = UnixDate(ParseDate(delete $args->{end}), '%s');
+		$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+	}
+	else {
+		$args->{end_time} = time;
+	}
+	
 	my $time_units = {
 		seconds => { groupby => 'timestamp', multiplier => 1 },
 		minutes => { groupby => 'minute', multiplier => 60 },
@@ -56,30 +71,15 @@ sub call {
 			last;
 		}
 	}
-		
-	if (exists $args->{start}){
-		$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
-		$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
-	}
-	else {
-		$args->{start_time} = (time() - (86400*7));
-	}
-	if (exists $args->{end}){
-		$args->{end_time} = UnixDate(ParseDate(delete $args->{end}), '%s');
-		$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
-	}
-	else {
-		$args->{end_time} = time;
-	}
 	
 	my $ret = [];
 	eval {
 		$self->api->freshen_db;
 		my ($query, $sth);
 		
-		$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE uid=? AND alias=? ORDER BY x,y';
+		$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
 		$sth = $self->api->db->prepare($query);
-		$sth->execute($user->uid, $dashboard_name);
+		$sth->execute($dashboard_name);
 		my $row = $sth->fetchrow_hashref;
 		die('dashboard ' . $dashboard_name . ' not found or not authorized') unless $row;
 		$args->{id} = $row->{dashboard_id};
@@ -94,83 +94,15 @@ sub call {
 			$args->{width} = $Default_width;
 		}
 		
-		# Check authorization
-		my $is_authorized = 0;
-		if ($args->{auth_required}){
-			if ($args->{auth_required} == 1 and $user){
-				$self->api->log->trace('user authentication sufficient');
-				$is_authorized = 1;
-			}
-			elsif ($args->{auth_required} == 2){
-				$query = 'SELECT groupname FROM groups WHERE gid IN (SELECT gid FROM dashboard_auth WHERE dashboard_id=?)';
-				$sth = $self->api->db->prepare($query);
-				$sth->execute($args->{id});
-				AUTH_LOOP: while (my $row = $sth->fetchrow_hashref){
-					foreach my $groupname (@{ $user->groups }){
-						if ($row->{groupname} eq $groupname){
-							$self->api->log->trace('Authorizing based on membership in group ' . $groupname);
-							$is_authorized = 1;
-							last AUTH_LOOP;
-						}
-					}
-				}
-			}
-		}
-		else {
-			$self->api->log->trace('no auth required');
-			$is_authorized = 1;
-		}
-		
-		unless ($is_authorized){
+		$args->{user} = $user;
+		$args->{dashboard_name} = $dashboard_name;
+		unless ($self->api->_is_permitted($args)){
 			$res->status(401);
 			die('Unauthorized');
 		}
 		
-		$args->{user} = $user;
-		$args->{dashboard_name} = $dashboard_name;
-		$ret = $self->api->get_rows($args);
+		$ret = $self->api->_get_rows($args);
 		delete $args->{user};
-		
-#		$query = 'SELECT * FROM v_dashboards WHERE uid=? AND alias=? ORDER BY x,y';
-#		$sth = $self->api->db->prepare($query);
-#		$sth->execute($user->uid, $dashboard_name);
-#		
-#		while (my $row = $sth->fetchrow_hashref){
-#			next unless defined $row->{chart_id};
-#			$ret->[ $row->{y} ] ||= { title => '', charts => [] };
-#			$ret->[ $row->{y} ]->{charts}->[ $row->{x} ] ||= { 
-#				title => $row->{chart_title}, 
-#				type => $row->{chart_type}, 
-#				queries => [], 
-#				chart_id => $row->{chart_id}, 
-#				chart_options => $row->{chart_options} ? $self->api->json->decode($row->{chart_options}) : undef,
-#				x => $row->{x},
-#				y => $row->{y}, 
-#			};
-#			$self->api->log->debug('query: ' . $row->{query});
-#			#push @{ $ret->[ $row->{y} ]->{charts}->[ $row->{x} ]->{queries} }, { query => $self->api->json->decode($row->{query}), label => $row->{label}, query_id => $row->{query_id} }; 
-#			push @{ $ret->[ $row->{y} ]->{charts}->[ $row->{x} ]->{queries} }, { 
-#				query_string => $row->{query}, 
-#				label => $row->{label}, 
-#				query_id => $row->{query_id} 
-#			};
-#		}
-#
-#		$self->api->log->debug('ret: ' . Dumper($ret));
-#		foreach my $chart_row (@$ret){
-#			foreach my $chart (@{ $chart_row->{charts} }){
-#				foreach my $query (@{ $chart->{queries} }){
-#					my $query_meta_params = {
-#						start => $args->{start_time},
-#						end => $args->{end_time},
-#						comment => $query->{label},
-#						type => $chart->{type},
-#					};
-#					$query_meta_params->{groupby} = [$args->{groupby}] unless $query->{query_string} =~ /\sgroupby[:=]/ or $query->{query_string} =~ /sum\([^\)]+\)$/;
-#					$query->{query_meta_params} = $query_meta_params;
-#				}
-#			}
-#		}
 	};
 	if ($@){
 		my $e = $@;

@@ -37,6 +37,8 @@ sub call {
 
 	my $ret;
 	eval {
+		my $check_args = $self->api->json->decode($args->{q});
+		die('Invalid auth token') unless $self->api->_check_auth_token($check_args);
 		$self->api->freshen_db;
 		$ret = $self->api->query($args);
 		unless ($ret){
@@ -46,7 +48,10 @@ sub call {
 	if ($@){
 		my $e = $@;
 		$self->api->log->error($e);
-		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
+		$datasource->add_message({type => 'error', reason => 'access_denied', message => $e});
+		my ($headers, $body) = $datasource->serialize;
+		$res->headers(@$headers);
+		$res->body([encode_utf8($body)]);
 	}
 	else {
 		my $datatable = Data::Google::Visualization::DataTable->new();
