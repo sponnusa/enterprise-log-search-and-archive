@@ -38,7 +38,7 @@ sub add_dashboard {
 		}
 		defined $args->{auth_required} or $args->{auth_required} = 1; 
 				
-		die('Invalid alias, must be alphanumeric or underscore') unless $args->{alias} =~ /^[a-zA-Z0-9\_]+$/;
+		die('Invalid alias, must be alphanumeric, hyphen, or underscore') unless $args->{alias} =~ /^[a-zA-Z0-9\_\-]+$/;
 		$self->db->begin_work;
 		$query = 'INSERT INTO dashboards (uid, title, alias, auth_required) VALUES(?,?,?,?)';
 		$sth = $self->db->prepare($query);
@@ -554,19 +554,72 @@ sub move {
 	return $self->get_rows($args);
 }
 
-sub get_rows {
+sub _is_permitted {
+	my ($self, $args) = @_;
+	my ($query, $sth);
+	
+	# Check authorization
+	my $is_authorized = 0;
+	$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{dashboard_name});
+	my $row = $sth->fetchrow_hashref;
+	if ($row->{auth_required}){
+		if ($row->{auth_required} == 1 and $args->{user}){
+			$self->log->trace('user authentication sufficient');
+			$is_authorized = 1;
+		}
+		elsif ($row->{auth_required} == 2){
+			$query = 'SELECT groupname FROM groups WHERE gid IN (SELECT gid FROM dashboard_auth WHERE dashboard_id=?)';
+			$sth = $self->db->prepare($query);
+			$sth->execute($args->{id});
+			AUTH_LOOP: while (my $row = $sth->fetchrow_hashref){
+				foreach my $groupname (@{ $args->{user}->groups }){
+					if ($row->{groupname} eq $groupname){
+						$self->log->trace('Authorizing based on membership in group ' . $groupname);
+						$is_authorized = 1;
+						last AUTH_LOOP;
+					}
+				}
+			}
+		}
+	}
+	else {
+		$self->log->trace('no auth required');
+		$is_authorized = 1;
+	}
+	
+	return $is_authorized;
+}
+
+sub _get_auth_token {
+	my ($self, $args) = @_;
+	return $self->get_hash($args->{query} . $args->{label} . $args->{query_id});
+}
+
+sub _check_auth_token {
+	my ($self, $args) = @_;
+	return $args->{auth} eq $self->get_hash($args->{query_string} . $args->{label} . $args->{query_id}) ? 1 : 0;
+}
+
+sub _get_rows {
 	my ($self, $args) = @_;
 	my ($query, $sth, $ret);
 	
+	# Double-check auth so public API can't abuse this
+	unless ($self->_is_permitted($args)){
+		die('Unauthorized');
+	}
+	
 	if ($args->{dashboard_name}){
-		$query = 'SELECT * FROM v_dashboards WHERE uid=? AND alias=? ORDER BY x,y';
+		$query = 'SELECT * FROM v_dashboards WHERE alias=? ORDER BY x,y';
 		$sth = $self->db->prepare($query);
-		$sth->execute($args->{user}->uid, $args->{dashboard_name});
+		$sth->execute($args->{dashboard_name});
 	}
 	else {
-		$query = 'SELECT * FROM v_dashboards WHERE uid=? AND dashboard_id=? ORDER BY x,y';
+		$query = 'SELECT * FROM v_dashboards WHERE dashboard_id=? ORDER BY x,y';
 		$sth = $self->db->prepare($query);
-		$sth->execute($args->{user}->uid, $args->{dashboard_id});
+		$sth->execute($args->{dashboard_id});
 	}
 	
 	while (my $row = $sth->fetchrow_hashref){
@@ -586,7 +639,8 @@ sub get_rows {
 		push @{ $ret->[ $row->{y} ]->{charts}->[ $row->{x} ]->{queries} }, { 
 			query_string => $row->{query}, 
 			label => $row->{label}, 
-			query_id => $row->{query_id} 
+			query_id => $row->{query_id},
+			auth => $self->_get_auth_token($row),
 		};
 	}
 

@@ -19,6 +19,14 @@ sub call {
 	
 	my $method = $self->_extract_method($req->request_uri);
 	$self->api->log->debug('method: ' . $method);
+	
+	# Make sure private methods can't be run from the web
+	if ($method =~ /^\_/){
+		$res->status(404);
+		$res->body('not found');
+		return $res->finalize();
+	}
+	
 	my $args = $req->parameters->as_hashref;
 	if ($self->session->get('user')){
 		$args->{user} = $self->api->get_stored_user($self->session->get('user'));

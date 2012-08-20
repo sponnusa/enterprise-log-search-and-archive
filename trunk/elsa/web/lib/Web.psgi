@@ -122,7 +122,7 @@ builder {
 	
 	mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
 	mount '/Query' => Web::Query->new(api => $api)->to_app;
-	mount '/datasource' => Web::GoogleDatasource->new(api => $api)->to_app;
+	mount '/datasource' => Web::GoogleDatasource->new(api => $charts_api)->to_app;
 	#mount '/dashboard' => Web::Dashboard->new(api => $api)->to_app;
 	mount '/dashboard' => Web::GoogleDashboard->new(api => $charts_api)->to_app;
 	mount '/Charts' => Web::Query->new(api => $charts_api)->to_app;
