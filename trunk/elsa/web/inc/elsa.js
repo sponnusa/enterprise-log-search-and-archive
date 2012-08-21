@@ -3109,7 +3109,7 @@ YAHOO.ELSA.async = function(p_sUrl, p_oCallback, p_oPostData, p_oObject){
 				aPost.push(i + '=' + YAHOO.lang.JSON.stringify(p_oPostData[i]));
 			}
 			else {
-				aPost.push(i + '=' + p_oPostData[i]);
+				aPost.push(i + '=' + encodeURIComponent(p_oPostData[i]));
 			}
 		}
 		var sPost = aPost.join('&');
