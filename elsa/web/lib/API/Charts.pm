@@ -700,7 +700,7 @@ sub add_query {
 			$sth = $self->db->prepare($query);
 			$sth->execute($args->{user}->uid, $args->{chart_id});
 			my $row = $sth->fetchrow_hashref;
-			die('Chart does not belong to this user') unless $row;
+			die('Chart does not exist or belong to this user') unless $row;
 		}
 		
 		

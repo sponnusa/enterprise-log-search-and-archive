@@ -4120,11 +4120,15 @@ YAHOO.ELSA.addQueryToChart = function(p_sType, p_aArgs){
 	if (YAHOO.ELSA.currentQuery.metas.groupby && YAHOO.ELSA.currentQuery.metas.groupby[0]){
 		p_sGroupBy = YAHOO.ELSA.currentQuery.metas.groupby[0];
 	}
-	logger.log('ding query: ', p_sQuery);
+	logger.log('adding query: ', p_sQuery);
 	//YAHOO.ELSA.async(p_sPathToQueryDir + 'Charts/get_all', addQuery);
 	YAHOO.ELSA.async(p_sPathToQueryDir + 'Charts/get_dashboards', addQuery);
 	function addQuery(p_oReturn){
 		if (!p_oReturn){
+			return;
+		}
+		if (p_oReturn.totalRecords == 0){
+			YAHOO.ELSA.Error('You need to create a dashboard first.');
 			return;
 		}
 		logger.log('adding query');
@@ -4152,6 +4156,22 @@ YAHOO.ELSA.addQueryToChart = function(p_sType, p_aArgs){
 			success: handleSuccess,
 			failure: YAHOO.ELSA.Error
 		};
+		
+		oCreatePanel.panel.validate = function(){
+			if (!this.getData().query){
+				YAHOO.ELSA.Error('Need a query');
+				return false;
+			}
+			if (!this.getData().dashboard_id || !parseInt(this.getData().dashboard_id)){
+				YAHOO.ELSA.Error('Please select a dashboard');
+				return false;
+			}
+			if (!this.getData().chart_id){
+				YAHOO.ELSA.Error('Please select a chart');
+				return false;
+			}
+			return true;
+		}
 		
 		oCreatePanel.panel.renderEvent.subscribe(function(){
 			oCreatePanel.panel.setBody('');
