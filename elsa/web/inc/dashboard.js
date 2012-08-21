@@ -762,7 +762,7 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 	var oQuery = this.queries[p_iQueryNum];
 	logger.log('oQuery', oQuery);
 	var sReqId = oQuery.query_id;
-	this.reqStr = '/datasource/?tqx=reqId:' + sReqId
+	this.reqStr = '../datasource/?tqx=reqId:' + sReqId
 		+ ';out:json&q=' + encodeURIComponent(JSON.stringify(oQuery));
 	logger.log('sReqId: ' + sReqId + ', reqStr: ' + this.reqStr);
 	var oDSQuery = new google.visualization.Query(this.reqStr);
@@ -1254,7 +1254,7 @@ YAHOO.ELSA.Chart.prototype.editQueries = function(p_oData, p_sPathToQueryDir){
 		var oNewValue = p_oNewValue;
 		var oSendValue = oNewValue;
 		
-		YAHOO.ELSA.async(p_sPathToQueryDir + 'Charts/update_query?chart_id=' + oRecord.getData().chart_id + '&query_id=' + oRecord.getData().query_id + '&col=' + oColumn.getKey() + '&val=' + oSendValue, function(p_oReturn){
+		YAHOO.ELSA.async(p_sPathToQueryDir + 'Charts/update_query', function(p_oReturn){
 			if (p_oReturn.ok && p_oReturn.ok > 0){
 				// update the edit queries datatable
 				oDatatable.updateCell(oRecord, oColumn, oNewValue);
@@ -1278,6 +1278,11 @@ YAHOO.ELSA.Chart.prototype.editQueries = function(p_oData, p_sPathToQueryDir){
 			else {
 				YAHOO.ELSA.Error(p_oReturn.warnings);
 			}
+		}, {
+			chart_id: oRecord.getData().chart_id,
+			query_id: oRecord.getData().query_id,
+			col: oColumn.getKey(),
+			val: oSendValue
 		});
 	};
 	

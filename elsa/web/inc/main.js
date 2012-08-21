@@ -430,7 +430,7 @@ YAHOO.ELSA.main = function () {
 			}
 		};
 		
-		//var oStartDate = new Date((formParams.display_start_int) * 1000);
+		var oStartDate = new Date((formParams.display_start_int) * 1000);
 		var oSameTabCheckboxArgs = {id:'same_tab_checkbox', type:'checkbox'};
 		if (YAHOO.ELSA.sameTabForQueries){
 			oSameTabCheckboxArgs.checked = true;
@@ -439,7 +439,7 @@ YAHOO.ELSA.main = function () {
 		oFormGridCfg['grid'] = [
 			[ 
 				{type:'element', 'element':'a', args:{'id':'start_time_link', 'name':'from_time', 'innerHTML':'From', 'href':'#'} }, 
-				{type:'input', args:{id:'start_time', size:15, value:formParams.start}}, //value:getISODateTime(oStartDate)}}, 
+				{type:'input', args:{id:'start_time', size:15, value:getISODateTime(oStartDate)}}, 
 				{type:'element', 'element':'a', args:{'id':'end_time_link', 'name':'to_time', 'innerHTML':'To', 'href':'#'} },
 				{type:'input', args:{id:'end_time', size:15}},
 				{type:'widget', className:'Button', args:oTermMenuButtonCfg},
