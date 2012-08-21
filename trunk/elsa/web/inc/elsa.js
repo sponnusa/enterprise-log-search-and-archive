@@ -3172,13 +3172,16 @@ YAHOO.ELSA.getDashboards = function(){
 				'id=' + p_oData.id);
 		}, oData, 'Really delete dashboard?');
 	}
+	var viewDashboard = function(p_sType, p_aArgs, p_a){
+		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
+		var oData = p_oRecord.getData();
+		logger.log('oData', oData);
+		var oWindow = window.open('dashboard/' + oData.alias);
+	};
 	var editDashboard = function(p_sType, p_aArgs, p_a){
 		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
 		var oData = p_oRecord.getData();
-		//oData.dataTable = p_oDataTable;
-		//oData.recordSetId = p_oRecord.getId();
 		logger.log('oData', oData);
-		//YAHOO.ELSA.editDashboard(oData.id);
 		var oWindow = window.open('dashboard/' + oData.alias + '?edit');
 	};
 	var exportDashboard = function(p_sType, p_aArgs, p_a){
@@ -3192,6 +3195,14 @@ YAHOO.ELSA.getDashboards = function(){
 	var formatMenu = function(elLiner, oRecord, oColumn, oData){
 		// Create menu for our menu button
 		var oButtonMenuCfg = [
+			{ 
+				text: 'View', 
+				value: 'view', 
+				onclick:{
+					fn: viewDashboard,
+					obj: [oRecord,this]
+				}
+			},
 			{ 
 				text: 'Delete', 
 				value: 'delete', 
