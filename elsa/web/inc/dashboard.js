@@ -772,6 +772,7 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 		logger.log('result back for ' + sReqId);
 		if (p_oResponse.isError()){
 			logger.log('FAIL: ' + p_oResponse.getMessage() + ' ' + p_oResponse.getDetailedMessage());
+			YAHOO.ELSA.Error(p_oResponse.getMessage() + ' ' + p_oResponse.getDetailedMessage());
 			return;
 		}
 				

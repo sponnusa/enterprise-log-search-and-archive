@@ -38,11 +38,16 @@ sub call {
 	my $ret;
 	eval {
 		my $check_args = $self->api->json->decode($args->{q});
-		unless ($self->api->_get_query_owner($check_args) eq $args->{user}->uid){
-			die('Invalid auth token') unless $self->api->_check_auth_token($check_args);
+		my $query_args = $self->api->_get_query($check_args); # this is now from the database, so we can trust the input
+		$query_args->{auth} = $check_args->{auth};
+		$query_args->{query_meta_params} = $check_args->{query_meta_params};
+		$query_args->{user} = $args->{user};
+		
+		unless ($query_args->{uid} eq $query_args->{user}->uid){
+			die('Invalid auth token') unless $self->api->_check_auth_token($query_args);
 		}
 		$self->api->freshen_db;
-		$ret = $self->api->query($args);
+		$ret = $self->api->query($query_args);
 		unless ($ret){
 			$ret = { error => $self->api->last_error };
 		}
