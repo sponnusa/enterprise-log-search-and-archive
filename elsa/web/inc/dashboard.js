@@ -1400,7 +1400,8 @@ YAHOO.ELSA.Chart.prototype.deleteQuery = function(p_sType, p_aArgs, p_a){
 			oPanel.hide();
 		});
 	}, null, 'Really delete query?');
-	
+	logger.log('oConfirmationPanel', oConfirmationPanel);
+	oConfirmationPanel.panel.bringToTop();
 };
 
 YAHOO.ELSA.Chart.prototype.addQuery = function(p_sType, p_aArgs, p_a){

@@ -602,6 +602,18 @@ sub _check_auth_token {
 	return $args->{auth} eq $self->get_hash($args->{query_string} . $args->{label} . $args->{query_id}) ? 1 : 0;
 }
 
+sub _get_query_owner {
+	my ($self, $args) = @_;
+	my ($query,$sth);
+	
+	$query = 'SELECT uid FROM charts t1 JOIN chart_queries t2 ON (t1.id=t2.chart_id) WHERE t2.id=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{query_id});
+	my $row = $sth->fetchrow_hashref;
+	return 0 unless $row;
+	return $row->{uid};
+}
+
 sub _get_rows {
 	my ($self, $args) = @_;
 	my ($query, $sth, $ret);

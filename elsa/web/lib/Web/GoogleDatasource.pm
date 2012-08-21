@@ -38,7 +38,9 @@ sub call {
 	my $ret;
 	eval {
 		my $check_args = $self->api->json->decode($args->{q});
-		die('Invalid auth token') unless $self->api->_check_auth_token($check_args);
+		unless ($self->api->_get_query_owner($check_args) eq $args->{user}->uid){
+			die('Invalid auth token') unless $self->api->_check_auth_token($check_args);
+		}
 		$self->api->freshen_db;
 		$ret = $self->api->query($args);
 		unless ($ret){
