@@ -915,7 +915,7 @@ YAHOO.ELSA.Results = function(){
 		if(p_oData instanceof Date){
 			oDate = p_oData;
 		}else{
-			var mSec = Date.parse(p_oData);
+			var mSec = getDateFromISO(p_oData);
 			oDate = new Date();
 			oDate.setTime(mSec);
 		}
@@ -4050,8 +4050,9 @@ YAHOO.ELSA.Calendar = function(p_sType, p_oFormParams){
 	
 	var oMinDate = new Date();
 	var oMaxDate = new Date();
-	var oMinTime = Date.parse(p_oFormParams['start']);
-	var oMaxTime = Date.parse(p_oFormParams['end']);
+	var oMinTime = getDateFromISO(p_oFormParams['start']);
+	var oMaxTime = getDateFromISO(p_oFormParams['end']);
+	
 	if(oMinTime){
 	        oMinDate.setTime(oMinTime);
 	}
