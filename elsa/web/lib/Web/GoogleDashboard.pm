@@ -63,12 +63,19 @@ sub call {
 	};
 	
 	$args->{groupby} = 'hour';
+	
 	foreach my $arg (keys %$args){
 		if (exists $time_units->{ $arg }){
 			$args->{groupby} = $time_units->{ $arg }->{groupby};
-			$args->{start_time} = (time() - ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
+			$time_units->{ $args->{groupby} }->{multiplier} = $time_units->{ $arg }->{multiplier};
+			$args->{start_time} = (time() - ($time_units->{ $args->{groupby} }->{multiplier} * int($args->{$arg})));
 			$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
 			last;
+		}
+	}
+	foreach my $plural_unit (keys %$time_units){
+		if ($time_units->{$plural_unit}->{groupby} eq $args->{groupby}){
+			$args->{limit} = ($args->{end_time} - $args->{start_time}) / $time_units->{$plural_unit}->{multiplier};
 		}
 	}
 	
@@ -157,7 +164,7 @@ $yui_js
 <link rel="stylesheet" type="text/css" href="$dir/inc/custom.css" />
 <script>
 $edit
-YAHOO.ELSA.viewMode = 'dev';
+//YAHOO.ELSA.viewMode = 'dev';
 YAHOO.ELSA.queryMetaParamsDefaults = $defaults;
 YAHOO.ELSA.dashboardParams = {
 	id: $args->{id},
