@@ -1434,7 +1434,7 @@ YAHOO.ELSA.Chart.prototype.addQuery = function(p_sType, p_aArgs, p_a){
 			logger.log('response', response);
 			oPanel.panel.hide();
 			oSelf.editChartDataTable.addRow(response);
-			if (!response.query.match(/groupby[\:\=](\w+)/i)){
+			if (!response.query.match(/groupby[\:\=]([\w\.\_]+)/i)){
 				response.query += ' groupby:' + YAHOO.ELSA.queryMetaParamsDefaults.groupby;
 			}
 			
@@ -1459,7 +1459,7 @@ YAHOO.ELSA.Chart.prototype.addQuery = function(p_sType, p_aArgs, p_a){
 		var sGroupby = '';
 		var bDisabled = false;
 		if (oSelf.queries.length > 0){
-			var aMatches = oSelf.queries[0].query_string.match(/groupby[\:\=](\w+)/i);
+			var aMatches = oSelf.queries[0].query_string.match(/groupby[\:\=]([\w\.\_]+)/i);
 			if (aMatches){
 				sGroupby = aMatches[1];
 				bDisabled = true;

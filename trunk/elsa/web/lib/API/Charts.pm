@@ -621,6 +621,7 @@ sub _get_query {
 sub _get_rows {
 	my ($self, $args) = @_;
 	my ($query, $sth, $ret);
+	#$self->log->debug('get rows args: ' . Dumper($args));
 	
 	# Double-check auth so public API can't abuse this
 	unless ($self->_is_permitted($args)){
@@ -671,6 +672,9 @@ sub _get_rows {
 					type => $chart->{type},
 				};
 				$query_meta_params->{groupby} = [$args->{groupby}] unless $query->{query_string} =~ /\sgroupby[:=]/ or $query->{query_string} =~ /sum\([^\)]+\)$/;
+				if ($args->{limit}){
+					$query_meta_params->{limit} = $args->{limit};
+				}
 				$query->{query_meta_params} = $query_meta_params;
 			}
 		}
