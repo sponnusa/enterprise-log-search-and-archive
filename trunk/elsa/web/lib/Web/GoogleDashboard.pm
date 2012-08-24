@@ -38,8 +38,9 @@ sub call {
 		$self->api->log->trace('edit mode');
 	}
 	
+	#$self->api->log->debug('dashboard args: ' . Dumper($args));
 	if (exists $args->{start}){
-		$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
+		$args->{start_time} = UnixDate(ParseDate($args->{start}), '%s');
 		$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
 	}
 	else {
@@ -67,9 +68,16 @@ sub call {
 	foreach my $arg (keys %$args){
 		if (exists $time_units->{ $arg }){
 			$args->{groupby} = $time_units->{ $arg }->{groupby};
-			$time_units->{ $args->{groupby} }->{multiplier} = $time_units->{ $arg }->{multiplier};
-			$args->{start_time} = (time() - ($time_units->{ $args->{groupby} }->{multiplier} * int($args->{$arg})));
-			$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+			if ($args->{$arg}){
+				if ($args->{start}){
+					$args->{end_time} = ($args->{start_time} + ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
+					$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+				}
+				else {
+					$args->{start_time} = ($args->{end_time} - ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
+					$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+				}
+			}
 			last;
 		}
 	}
