@@ -38,14 +38,17 @@ sub call {
 	my $ret;
 	eval {
 		my $check_args = $self->api->json->decode($args->{q});
-		my $query_args = $self->api->_get_query($check_args); # this is now from the database, so we can trust the input
+		my $query_args = $self->api->_get_query($check_args) or die('Query not found'); # this is now from the database, so we can trust the input
 		$query_args->{auth} = $check_args->{auth};
 		$query_args->{query_meta_params} = $check_args->{query_meta_params};
 		$query_args->{user} = $args->{user};
 		
-		unless ($query_args->{uid} eq $query_args->{user}->uid){
+		unless ($query_args->{uid} eq $args->{user}->uid){
 			die('Invalid auth token') unless $self->api->_check_auth_token($query_args);
+			$self->api->log->info('Running query created by ' . $query_args->{username} . ' on behalf of ' . $req->user);
+			$query_args->{user} = $self->api->get_user(delete $query_args->{username});
 		}
+		
 		$self->api->freshen_db;
 		$ret = $self->api->query($query_args);
 		unless ($ret){
