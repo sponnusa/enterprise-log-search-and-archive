@@ -1032,7 +1032,7 @@ YAHOO.ELSA.Results = function(){
 		p_elCell.appendChild(a);
 		
 		var oAEl = new YAHOO.util.Element(a);
-		oAEl.on('click', YAHOO.ELSA.addTermFromOnClickNoSubmit, ['NONE', p_oColumn.getKey(), a.innerHTML]);
+		oAEl.on('click', YAHOO.ELSA.addTermFromOnClickNoSubmit, ['any', p_oColumn.getKey(), a.innerHTML]);
 	}
 	
 	this.createDataTable = function(p_oResults, p_oElContainer){
