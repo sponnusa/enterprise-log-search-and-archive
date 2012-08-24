@@ -1016,6 +1016,25 @@ YAHOO.ELSA.Results = function(){
 			'comments=' + p_sComment + '&results=' + encodeURIComponent(YAHOO.lang.JSON.stringify(this.results)));
 	};
 	
+	this.formatExtraColumn = function(p_elCell, p_oRecord, p_oColumn, p_oData){
+		var a = document.createElement('a');
+		a.id = p_oRecord.getData().id + '_' + p_oColumn.getKey();
+		
+		a.setAttribute('href', '#');//Will jump to the top of page. Could be annoying
+		a.setAttribute('class', 'value');
+		a.innerHTML = p_oData;
+		
+		// Special case for logs coming from localhost to show the node value instead
+		if (p_oColumn.getKey() == 'host' && p_oData == '127.0.0.1'){
+			a.innerHTML = p_oRecord.getData().node;
+		}
+				
+		p_elCell.appendChild(a);
+		
+		var oAEl = new YAHOO.util.Element(a);
+		oAEl.on('click', YAHOO.ELSA.addTermFromOnClickNoSubmit, ['NONE', p_oColumn.getKey(), a.innerHTML]);
+	}
+	
 	this.createDataTable = function(p_oResults, p_oElContainer){
 		var oFields = [
 			{ key:'id', parser:parseInt },
@@ -1029,10 +1048,16 @@ YAHOO.ELSA.Results = function(){
 		];
 		
 		var oColumns = [
-			{ key:'info', label:'', sortable:true, formatter:this.formatInfoButton },
-			{ key:'timestamp', label:'Timestamp', sortable:true, editor:'date', formatter:this.formatDate },
-			{ key:'_fields', label:'Fields', sortable:true, formatter:this.formatFields } //parser adds highlights
+			{ key:'info', label:'', sortable:true, formatter:this.formatInfoButton }
 		];
+		
+		for (var i in YAHOO.ELSA.formParams.additional_display_columns){
+			var sCol = YAHOO.ELSA.formParams.additional_display_columns[i];
+			oColumns.push({ key:sCol, label:sCol, sortable:true, formatter:this.formatExtraColumn });
+		}
+		
+		oColumns.push({ key:'timestamp', label:'Timestamp', sortable:true, editor:'date', formatter:this.formatDate });
+		oColumns.push({ key:'_fields', label:'Fields', sortable:true, formatter:this.formatFields }); //formatter adds highlights
 		
 		// DataSource instance
 	    this.dataSource = new YAHOO.util.DataSource(p_oResults);
