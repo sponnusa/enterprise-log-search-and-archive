@@ -558,7 +558,7 @@ build_web_perl(){
 	done
 	
 	echo "Retrieving GeoIP databases..."
-	mkdir -p /usr/local/share/GeoIP &&
+	mkdir -p $GEOIP_DIR &&
 	curl -L "http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz" > $TMP_DIR/GeoLiteCity.dat.gz &&
 	gunzip -f $TMP_DIR/GeoLiteCity.dat.gz &&
 	cp $TMP_DIR/GeoLiteCity.dat $GEOIP_DIR/GeoIPCity.dat
