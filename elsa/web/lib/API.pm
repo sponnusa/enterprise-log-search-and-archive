@@ -12,7 +12,7 @@ use Socket qw(inet_aton inet_ntoa);
 use CHI;
 use Time::HiRes qw(time);
 use Time::Local;
-use Module::Pluggable require => 1, search_path => [ qw( Export Info Transform Connector ) ];
+use Module::Pluggable require => 1, search_path => [ qw( Export Info Transform Connector Datasource ) ];
 use URI::Escape qw(uri_unescape);
 use Mail::Internet;
 use Email::LocalDelivery;
@@ -49,6 +49,20 @@ sub BUILD {
 			my $alias = delete $conf->{alias};
 			my $metaclass = Moose::Meta::Class->create( 'Transform::' . $alias, 
 				superclasses => [ 'Transform::Database' ],
+			);
+			foreach my $attr (keys %$conf){
+				$metaclass->add_attribute($attr => (is => 'rw', default => sub { $conf->{$attr} } ) );
+			}
+			# Set name
+			$metaclass->add_attribute('name' => (is => 'rw', default => $db_lookup_plugin ) );
+		}
+	}
+	if ($self->conf->get('datasources')){
+		foreach my $db_lookup_plugin (keys %{ $self->conf->get('datasources') }){
+			my $conf = $self->conf->get('datasources/' . $db_lookup_plugin);
+			my $alias = delete $conf->{alias};
+			my $metaclass = Moose::Meta::Class->create( 'Datasource::' . $alias, 
+				superclasses => [ 'Datasource::Database' ],
 			);
 			foreach my $attr (keys %$conf){
 				$metaclass->add_attribute($attr => (is => 'rw', default => sub { $conf->{$attr} } ) );
@@ -975,6 +989,7 @@ sub get_form_params {
 		fields => $self->node_info->{fields},
 		nodes => [ keys %{ $self->node_info->{nodes} } ],
 		groups => $user->groups,
+		additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
 	};
 	
 	# You can change the default start time displayed to web users by changing this config setting
@@ -1611,7 +1626,10 @@ sub query {
 	}
 	
 	# Execute search
-	if ($q->archive){
+	if ($q->datasource ne 'sphinx'){
+		$self->_external_database_query($q);
+	}
+	elsif ($q->archive){
 		$self->_archive_query($q);
 	}
 	elsif ($q->analytics or ($q->limit > $Max_limit)){
@@ -3780,6 +3798,56 @@ sub _archive_query {
 	$self->log->debug('completed query in ' . $q->time_taken . ' with ' . $q->results->total_records . ' rows');
 	
 	return 1;
+}
+
+sub _external_database_query {
+	my ($self, $q) = @_;
+	$self->log->trace('running external query with args: ' . Dumper($q));
+	
+	my $cache;
+	eval {
+		$cache = CHI->new(
+			driver => 'DBI', 
+			dbh => $self->db, 
+			create_table => 1,
+			table_prefix => 'cache_',
+			namespace => 'transforms',
+		);
+	};
+	if (@$ or not $cache){
+		$self->log->warn('Falling back to RawMemory for cache, consider installing CHI::Driver::DBI');
+		$cache = CHI->new(driver => 'RawMemory', datastore => {});
+	}
+	
+	$q->datasource =~ /(\w+)\(?([^\)]+)?\)?/;
+	my $datasource = lc($1);
+	my @given_args = $2 ? split(/\,/, $2) : ();
+	
+	my $plugin_fqdn = 'Datasource::' . $datasource;
+	foreach my $plugin ($self->plugins()){
+		$self->log->debug('checking ' . $plugin_fqdn . ' against ' . $plugin);
+		if (lc($plugin) eq lc($plugin_fqdn)){
+			$self->log->debug('loading plugin ' . $plugin);
+			my %compiled_args;
+			eval {
+				%compiled_args = (
+					conf => $self->conf,
+					log => $self->log, 
+					cache => $cache,
+					args => [ @given_args ]
+				);
+				my $plugin_object = $plugin->new(%compiled_args);
+				$plugin_object->query($q);
+			};
+			if ($@){
+				$self->log->error('Error creating plugin ' . $plugin . ' with args ' . Dumper(\%compiled_args) . ': ' . $@);
+				$self->add_warning($@);
+			}
+			return $q;
+		}
+	}
+	
+	die('datasource ' . $q->datasource . ' not found');
 }
 
 sub cancel_query {

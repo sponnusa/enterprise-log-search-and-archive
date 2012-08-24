@@ -103,6 +103,8 @@ our $Time_values = {
 	day => 86400,
 };
 
+our $Reserved_fields = { map { $_ => 1 } qw( start end limit offset class groupby node cutoff datasource ) };
+
 # Helper methods for dealing with resolving fields
 has 'node_info' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 

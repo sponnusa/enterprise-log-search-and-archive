@@ -31,6 +31,7 @@ has 'groupby' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required
 has 'timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'cancelled' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'archive' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
+has 'datasource' => (is => 'rw', isa => 'Str', required => 1, default => 'sphinx'); 
 has 'analytics' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'system' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'batch' => (is => 'rw', isa => 'Bool', required => 1, default => 0, trigger => \&_set_batch);
@@ -78,7 +79,7 @@ sub BUILDARGS {
 		$params{meta_params} = delete $params{query_meta_params};
 	}
 	
-	foreach my $property qw(groupby timeout archive analytics){
+	foreach my $property qw(groupby timeout archive analytics datasource){
 		if ($params{meta_params}->{$property}){
 			$params{$property} = delete $params{meta_params}->{$property};
 		}
@@ -778,6 +779,11 @@ sub _parse_query_term {
 			elsif (lc($term_hash->{field}) eq 'cutoff'){
 				$self->limit($self->cutoff(sprintf("%d", $term_hash->{value})));
 				$self->log->trace("Set cutoff " . $self->cutoff);
+				next;
+			}
+			elsif (lc($term_hash->{field}) eq 'datasource'){
+				$self->datasource($term_hash->{value});
+				$self->log->trace("Set datasource " . $self->datasource);
 				next;
 			}
 			
