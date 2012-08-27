@@ -47,7 +47,7 @@ sub add_dashboard {
 		$dashboard_id = $self->db->{mysql_insertid};
 		
 		if ($args->{groups}){
-			my @groups = split(/\,/, $args->{groups});
+			my @groups = split(/\t/, $args->{groups});
 			$query = 'INSERT INTO dashboard_auth (dashboard_id, gid) VALUES (?,(SELECT gid FROM groups WHERE groupname=?))';
 			$sth = $self->db->prepare($query);
 			foreach my $group (@groups){
@@ -433,7 +433,7 @@ sub del {
 sub move {
 	my ($self, $args) = @_;
 	
-	$self->log->trace('move args: ' . Dumper($args));
+	#$self->log->trace('move args: ' . Dumper($args));
 	my ($query, $sth);
 	my $rows;
 	eval {
@@ -558,9 +558,12 @@ sub _is_permitted {
 	my ($self, $args) = @_;
 	my ($query, $sth);
 	
+	# Yes if admin
+	return 1 if $args->{user}->is_admin;
+	
 	# Check authorization
 	my $is_authorized = 0;
-	$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
+	$query = 'SELECT dashboard_id, uid, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{dashboard_name});
 	my $row = $sth->fetchrow_hashref;
@@ -570,6 +573,10 @@ sub _is_permitted {
 			$is_authorized = 1;
 		}
 		elsif ($row->{auth_required} == 2){
+			# Yes if we created the dashboard
+			return 1 if $row->{uid} == $args->{user}->uid;
+			
+			# Check group membership
 			$query = 'SELECT groupname FROM groups WHERE gid IN (SELECT gid FROM dashboard_auth WHERE dashboard_id=?)';
 			$sth = $self->db->prepare($query);
 			$sth->execute($args->{id});
