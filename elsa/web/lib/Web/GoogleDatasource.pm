@@ -67,9 +67,11 @@ sub call {
 		my $datatable = Data::Google::Visualization::DataTable->new();
 	
 		if ($ret->has_groupby){
+			$self->api->log->debug('ret: ' . Dumper($ret));
 			foreach my $groupby ($ret->all_groupbys){
+				my $label = $ret->meta_params->{comment} ? $ret->meta_params->{comment} : 'count'; 
 				if ($Fields::Time_values->{$groupby}){
-					$datatable->add_columns({id => 'key', label => $groupby, type => 'datetime'}, {id => 'value', label => 'count', type => 'number'});
+					$datatable->add_columns({id => 'key', label => $groupby, type => 'datetime'}, {id => 'value', label => $label, type => 'number'});
 					my $tz = DateTime::TimeZone->new( name => "local");
 					foreach my $row (@{ $ret->results->results->{$groupby} }){
 						$self->api->log->debug('row: ' . Dumper($row));
@@ -77,14 +79,17 @@ sub call {
 					}
 				}
 				else {
-					$datatable->add_columns({id => 'key', label => $groupby, type => 'string'}, {id => 'value', label => 'count', type => 'number'});
+					$datatable->add_columns({id => 'key', label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
 					foreach my $row (@{ $ret->results->results->{$groupby} }){
 						$self->api->log->debug('row: ' . Dumper($row));
 						$datatable->add_rows([ { v => $row->{'@groupby'} }, { v => $row->{'@count'} } ]);
 					}
 				}
 			}
-		}	
+		}
+		else {
+			die('groupby required');
+		}
 		$datasource->datatable($datatable);
 		
 		if (ref($ret) and ref($ret) eq 'HASH'){

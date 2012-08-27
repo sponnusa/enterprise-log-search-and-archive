@@ -19,10 +19,10 @@ has 'dsn' => (is => 'rw', isa => 'Str', required => 1);
 has 'username' => (is => 'rw', isa => 'Str', required => 1);
 has 'password' => (is => 'rw', isa => 'Str', required => 1);
 has 'query_template' => (is => 'rw', isa => 'Str', required => 1);
-has 'query_placeholders' => (is => 'rw', isa => 'ArrayRef', required => 1);
 has 'fields' => (is => 'rw', isa => 'ArrayRef', required => 1);
 has 'parser' => (is => 'rw', isa => 'Object');
 has 'db' => (is => 'rw', isa => 'Object');
+has 'timestamp_column' => (is => 'rw', isa => 'Str');
 
 sub BUILD {
 	my $self = shift;
@@ -32,29 +32,50 @@ sub BUILD {
 
 	if ($self->dsn =~ /mysql/){
 		$self->query_template =~ /FROM\s+([\w\_]+)/;
-		my $table = $1;
-		$self->dsn =~ /database=([\w\_]+)/;
-		my $database = $1;
-		$query = 'SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema=? AND table_name=?';
-		$sth = $self->db->prepare($query);
-		$sth->execute($database, $table);
+#		my $table = $1;
+#		$self->dsn =~ /database=([\w\_]+)/;
+#		my $database = $1;
+#		$query = 'SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema=? AND table_name=?';
+#		$sth = $self->db->prepare($query);
+#		$sth->execute($database, $table);
 		my %cols;
+		
+#		while (my $row = $sth->fetchrow_hashref){
+#			next if $Fields::Reserved_fields->{ lc($row->{column_name}) };
+#			next unless grep @{ $self->fields }, $row->{column_name};
+#			if ($row->{data_type} =~ /char/){
+#				$cols{ $row->{column_name} } = { name => $row->{column_name}, type => $row->{data_type}, fuzzy_op => 'LIKE', fuzzy_not_op => 'NOT LIKE' };
+#			}
+#			else {
+#				$cols{ $row->{column_name} } = { name => $row->{column_name}, type => $row->{data_type} };
+#			}
+#		}
+		
+		foreach my $row (@{ $self->fields }){
+			if (not $row->{type}){
+				$row->{fuzzy_op} = 'LIKE';
+				$row->{fuzzy_not_op} = 'NOT LIKE';
+			}
+			else {
+				$row->{fuzzy_not_op} = '<=';
+			}
+			my $col_name = $row->{name};
+			if ($row->{alias}){
+				if ($row->{alias} eq 'timestamp'){
+					$self->timestamp_column($row->{name});
+				}
+				#$row->{name} .= ' AS ' . $row->{alias};
+				$col_name = $row->{alias};
+			}
+			$cols{$col_name} = $row;
+		}
+				
 		foreach my $field (keys %$Fields::Reserved_fields){
 		 	$cols{$field} = { name => $field, callback => sub { '1=1' } };
 		}
-		while (my $row = $sth->fetchrow_hashref){
-			next if $Fields::Reserved_fields->{ lc($row->{column_name}) };
-			next unless grep @{ $self->fields }, $row->{column_name};
-			if ($row->{data_type} =~ /char/){
-				$cols{ $row->{column_name} } = { name => $row->{column_name}, type => $row->{data_type}, fuzzy_op => 'LIKE', fuzzy_not_op => 'NOT LIKE' };
-			}
-			else {
-				$cols{ $row->{column_name} } = { name => $row->{column_name}, type => $row->{data_type} };
-			}
-		}
+		
 		$self->log->debug('cols ' . Dumper(\%cols));
 		$self->parser(Search::QueryParser::SQL->new(columns => \%cols, fuzzify2 => 1));
-		$self->log->debug('col: ' . Dumper($self->parser->get_column('date_created')));
 	} 
 	else {
 		$self->parser(Search::QueryParser::SQL->new(columns => $self->fields, fuzzify2 => 1, like => 'LIKE'));
@@ -380,27 +401,66 @@ sub _query {
 	my ($query, $sth);
 	
 	my $query_string = $q->query_string;
-	#$query_string =~ s/datasource\:[\S]+//i;
-	#$query_string =~ s/groupby\:[\S]+//i;
+	$query_string =~ s/\|.*//;
+	
 	my ($where, $placeholders) = @{ $self->parser->parse($query_string)->dbi };
+	$where =~ s/(?:(?:AND|OR|NOT)\s*)?1=1\s*(?:AND|OR|NOT)?//g; # clean up dummy values
 	$self->log->debug('where: ' . Dumper($where));
 	
+	my @select;
 	my $groupby = '';
-	my $fields = join(', ', @{ $self->fields });
+	my $time_select_conversions = {
+		year => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400*365 AS unsigned)',
+		month => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400*30 AS unsigned)',
+		week => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400*7 AS unsigned)',
+		day => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400 AS unsigned)',
+		hour => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/3600 AS unsigned)',
+		minute => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/60 AS unsigned)',
+		seconds => 'UNIX_TIMESTAMP(' . $self->timestamp_column . ')',
+	};
+	
 	if ($q->has_groupby){
-		$groupby = $q->groupby->[0];
-		if (grep(@{ $self->fields }, $groupby)){
-			$fields = 'COUNT(' . $groupby . ') AS `@count`, ' . $groupby . ' AS `@groupby`';
-			$groupby = 'GROUP BY ' . join(',', @{ $q->groupby });
+		if ($time_select_conversions->{ $q->groupby->[0] }){
+			push @select, 'COUNT(*) AS `@count`', $time_select_conversions->{ $q->groupby->[0] } . ' AS `@groupby`';
+			$groupby = 'GROUP BY `@groupby`';
 		}
 		else {
+			foreach my $row (@{ $self->fields }){
+				if ($row->{alias} eq $q->groupby->[0] or $row->{name} eq $q->groupby->[0]){
+					push @select, 'COUNT(*) AS `@count`', $row->{name} . ' AS `@groupby`';
+					$groupby = 'GROUP BY ' . join(',', @{ $q->groupby });
+					last;
+				}
+			}
+		}	
+		unless ($groupby){
 			die('Invalid groupby ' . $groupby);
 		}
 	}
-	$self->log->debug('placeholders: ' . Dumper($placeholders));
 	
-	$query = sprintf($self->query_template, $fields, $where, $groupby, $q->offset, $q->limit);
+	my $orderby;
+	foreach my $row (@{ $self->fields }){
+		if ($row->{alias}){
+			push @select, $row->{name} . ' AS ' . $row->{alias};
+			if ($row->{alias} eq 'timestamp'){
+				if ($where and $where ne ' '){
+					$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+				}
+				else {
+					$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+				}
+				push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);				
+				$orderby = $row->{alias} ? $row->{alias} : $row->{name};
+			}
+		}
+		else {
+			push @select, $row->{name};
+		}
+	}
+	
+	$query = sprintf($self->query_template, join(', ', @select), $where, $groupby, $orderby, $q->offset, $q->limit);
 	$self->log->debug('query: ' . $query);
+	$self->log->debug('placeholders: ' . Dumper($placeholders));
 	$sth = $self->db->prepare($query);
 	$sth->execute(@$placeholders);
 	
@@ -418,18 +478,27 @@ sub _query {
 		foreach my $groupby ($q->all_groupbys){
 			if (exists $Fields::Time_values->{ $groupby }){
 				# Sort these in ascending label order
-				my $increment = $Fields::Time_values->{ $groupby }; 
+				my $increment = $Fields::Time_values->{ $groupby };
+				my %agg; 
 				foreach my $row (@rows){
-					my $unixtime = UnixDate($row->{'@groupby'}, '%s') * $increment;
+					#my $unixtime = UnixDate($row->{'@groupby'}, '%s');
+					my $unixtime = $row->{'@groupby'};
+					#my $value = $unixtime - ($unixtime % $increment);
+					my $value = $unixtime * $increment;
 										
-					$self->log->trace('key: ' . epoch2iso($unixtime) . ', tv: ' . $increment . 
-						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($unixtime)));
-					push @tmp, { 
-						intval => $unixtime, 
-						'@groupby' => epoch2iso($unixtime), #$self->resolve_value(0, $key, $groupby), 
-						'@count' => $row->{'@count'}
-					};
+					$self->log->trace('$value: ' . epoch2iso($value) . ', increment: ' . $increment . 
+						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($value)));
+					$row->{intval} = $value;
+					$agg{ $row->{intval} } += $row->{'@count'};
 				}
+				
+				foreach my $key (sort { $a <=> $b } keys %agg){
+					push @tmp, { 
+						intval => $key, 
+						'@groupby' => epoch2iso($key), 
+						'@count' => $agg{$key}
+					};
+				}	
 				
 				# Fill in zeroes for missing data so the graph looks right
 				my @zero_filled;
@@ -511,7 +580,7 @@ sub _query {
 	}
 	else {
 		foreach my $row (@rows){
-			my $ret = { timestamp =>  time() };
+			my $ret = { timestamp => $row->{timestamp}, class => 'NONE', host => '0.0.0.0', 'program' => 'NA' };
 			$ret->{_fields} = [
 				{ field => 'host', value => '0.0.0.0', class => 'any' },
 				{ field => 'program', value => 'NA', class => 'any' },

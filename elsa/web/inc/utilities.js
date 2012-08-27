@@ -58,8 +58,8 @@ function cloneVar(original){
 */
 function escapeHTML(text){
 	if(!text || typeof(text)!='string'){
-		var logger = new YAHOO.ELSA.ConsoleProvider();
-		logger.log('escapeHTML was expecting a string, received: ', text);
+		//var logger = new YAHOO.ELSA.ConsoleProvider();
+		//logger.log('escapeHTML was expecting a string, received: ', text);
 		try{
 			text = text.toString();
 		}catch(e){

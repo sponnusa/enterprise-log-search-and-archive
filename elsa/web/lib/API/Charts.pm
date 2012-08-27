@@ -551,7 +551,7 @@ sub move {
 		die($errstr);
 		$self->db->rollback;
 	}
-	return $self->get_rows($args);
+	return $self->_get_rows($args);
 }
 
 sub _is_permitted {
