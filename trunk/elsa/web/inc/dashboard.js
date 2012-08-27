@@ -81,13 +81,11 @@ YAHOO.ELSA.Dashboard.prototype.loadChartRow = function(p_iRowId){
 	oElOutsideRow.appendChild(oElOutsideCol);
 	var oElDiv = document.createElement('div');
 	oElOutsideCol.appendChild(oElDiv);
-	//oElCharts.appendChild(oElDiv);
 	if (this.rows[p_iRowId].title){
 		var oElRowTitle = document.createElement('h2');
 		oElRowTitle.innerText = YAHOO.ELSA.dashboardRows[p_iRowId].title;
 		oElDiv.appendChild(oElRowTitle);
 		oElRowTitle = new YAHOO.util.Element(oElRowTitle);
-		//oElTitle.setStyle('text-align', 'center');
 		oElRowTitle.addClass('chart_title');
 	}
 	
@@ -114,7 +112,6 @@ YAHOO.ELSA.Dashboard.prototype.edit = function(){
 			return;
 		}
 		var oChartsDataSource = new YAHOO.util.DataSource(p_oData);
-		//var oDataSource = new YAHOO.util.DataSource('Query/get_charts?dashboard_id=' + p_iDashboardId);
 		oChartsDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
 		oChartsDataSource.responseSchema = {
 			resultsList: 'charts',
@@ -246,7 +243,6 @@ YAHOO.ELSA.Dashboard.prototype.edit = function(){
 		var editChartQueries = function(p_sType, p_aArgs, p_a){
 			var p_oRecord = p_a[0], p_oDataTable = p_a[1];
 			var oData = p_oRecord.getData();
-			//oData.dataTable = p_oDataTable;
 			oData.recordSetId = p_oRecord.getId();
 			logger.log('oData', oData);
 			YAHOO.ELSA.editChartQueries(p_oData, oData.id);
@@ -317,7 +313,6 @@ YAHOO.ELSA.Dashboard.prototype.edit = function(){
 				return oPayload;
 			}
 			
-			//oPanel.panel.setBody(oElDiv);
 			oPanel.panel.body.appendChild(oElDiv);
 		}
 		catch (e){
@@ -377,12 +372,7 @@ YAHOO.ELSA.Dashboard.prototype.removeChart = function(p_iChartId){
 YAHOO.ELSA.Dashboard.prototype.addChart = function(p_oEvent, p_Obj, p_bAddBefore){
 	logger.log('arguments', arguments);
 	logger.log('this', this);
-//	var p_iDashboardId = p_a[0], p_sPathToQueryDir = p_a[1], p_iRowId = p_a[2], p_iCellId = p_a[3];
-//	if (typeof(p_iRowId) == 'undefined'){
-//		p_iRowId = YAHOO.ELSA.Chart.getNumRows();
-//	}
 	var oSelf = this;
-	//var p_oChart = p_a[0], p_bAddBefore = p_a[1];
 	var p_iRowId;
 	var oElTr;
 	var p_iCellId;
@@ -472,13 +462,9 @@ YAHOO.ELSA.Dashboard.prototype.addChart = function(p_oEvent, p_Obj, p_bAddBefore
 				oSelf.rows[p_iRowId].charts.push(oNewChart);
 			}
 			
-			//YAHOO.ELSA.Chart.loadChartRow(YAHOO.ELSA.dashboardRows.length - 1);
-			//YAHOO.ELSA.Chart.loadChartCell(p_iRowId, p_iCellId);
-			
 			var oElTd = document.createElement('td');
 			oElTr.appendChild(oElTd);
 			oSelf.charts[ oNewChart.chart_id ] = new YAHOO.ELSA.Chart(oNewChart, oElTd, oSelf);
-			//YAHOO.ELSA.Chart.loadChartCell(iNewRow, iNewCell);
 			logger.log('successful submission');
 		}
 	};
@@ -652,8 +638,6 @@ YAHOO.ELSA.Chart = function(p_oArgs, p_oContainer, p_oDashboard){
 	}
 		
 	this.container_el = new YAHOO.util.Element(this.container);
-	//this.container_el.addClass('dashboard');
-	//this.container_el.addClass('cell');
 		
 	if (YAHOO.ELSA.editCharts){
 		var oElEditEl = new YAHOO.util.Element(this.edit_el);
@@ -680,7 +664,6 @@ YAHOO.ELSA.Chart = function(p_oArgs, p_oContainer, p_oDashboard){
 					return;
 				}
 				oSelf.editQueries(p_oData, '../');
-				//YAHOO.ELSA.editChart(p_oChart, p_oData, '../');
 			});
 		});
 		
@@ -769,7 +752,7 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 	var oSelf = this;
 	
 	var fnStoreResult = function(p_oResponse){
-		logger.log('result back for ' + sReqId);
+		logger.log('result back for ' + sReqId + ' with label ' + oQuery.label);
 		if (p_oResponse.isError()){
 			logger.log('FAIL: ' + p_oResponse.getMessage() + ' ' + p_oResponse.getDetailedMessage());
 			YAHOO.ELSA.Error(p_oResponse.getMessage() + ' ' + p_oResponse.getDetailedMessage());
@@ -792,12 +775,18 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 			}
 		}
 		oSelf.isTimeChart = sTime;
-				
+		
 		if (oSelf.dataTable){
 			oSelf.mergeDataTables(p_oResponse.getDataTable(), oQuery.label);
+			oSelf.dataTable.setColumnLabel((oSelf.dataTable.getNumberOfColumns() - 1), oQuery.label);
 		}
 		else {
 			oSelf.dataTable = p_oResponse.getDataTable();
+			logger.log('starting with first data col label: ' + oSelf.dataTable.getColumnLabel(1));
+		}
+		
+		for (var i = 0; i < oSelf.dataTable.getNumberOfColumns(); i++){
+			logger.log('now label: ', oSelf.dataTable.getColumnLabel(i));
 		}
 		
 		if (oSelf.group){
@@ -809,10 +798,14 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 				logger.log('invalid group: ' + oSelf.group);
 			}
 		}
-				
+		
+		oSelf.draw();
+		
 		oSelf.queries_received++;
+		
 		if (oSelf.queries_received == oSelf.queries.length || p_bRedraw){
 			logger.log('received all (' + oSelf.queries.length + ') with query id ' + p_iQueryNum + ' chart data for chart ' + oSelf.id);
+			
 			// Remove loading gif
 			oSelf.container_el.removeClass('loading');
 			if (oSelf.edit_el){
@@ -836,13 +829,14 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 	oDSQuery.send(fnStoreResult);
 	this.queries_sent++;
 	
-	//logger.log('sent ' + this.reqStr, ret);
 	logger.log('sent ' + (Number(p_iQueryNum) + 1) + ' of ' + oSelf.queries.length);
 }
 
 YAHOO.ELSA.Chart.prototype.mergeDataTables = function(p_oAddTable, p_sLabel){
 	logger.log('merging ' + p_sLabel);
-	this.dataTable.addColumn('number', p_sLabel);
+	
+	this.dataTable.addColumn('number', p_sLabel, p_oAddTable.getColumnId(1));
+	
 	try {
 		var iNumAdded = 0;
 		var iNumCols = this.dataTable.getNumberOfColumns();
@@ -876,11 +870,6 @@ YAHOO.ELSA.Chart.prototype.mergeDataTables = function(p_oAddTable, p_sLabel){
 }
 	
 YAHOO.ELSA.Chart.prototype.draw = function(){
-	this.dataTable.setColumnLabel(1, this.queries[0].query_meta_params.comment);
-//	this.chart_el.innerHTML = '';
-//	this.control_el.innerHTML = '';
-//	this.dashboard_el.innerHTML = '';
-
 	if (this.isTimeChart){
 		this.makeTimeChart();
 	}
@@ -900,8 +889,6 @@ YAHOO.ELSA.Chart.prototype.redraw = function(){
 	this.chart_el.innerHTML = '';
 	this.control_el.innerHTML = '';
 	this.container_el.addClass('loading');
-	//var oEl = new YAHOO.util.Element(this.chart_el);
-	//oEl.addClass('hidden');
 	delete this.dataTable;
 	this.queries_received = 0;
 	this.queries_sent = 0;

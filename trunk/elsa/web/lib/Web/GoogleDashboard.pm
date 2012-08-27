@@ -172,6 +172,12 @@ $yui_js
 <link rel="stylesheet" type="text/css" href="$dir/inc/custom.css" />
 <script>
 $edit
+// Set viewMode for dev/prod
+var oRegExp = new RegExp('\\Wview=(\\w+)');
+var oMatches = oRegExp.exec(location.search);
+if (oMatches){
+	YAHOO.ELSA.viewMode = oMatches[1];
+}
 //YAHOO.ELSA.viewMode = 'dev';
 YAHOO.ELSA.queryMetaParamsDefaults = $defaults;
 YAHOO.ELSA.dashboardParams = {
