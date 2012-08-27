@@ -3018,6 +3018,7 @@ sub transform {
 			if (ref($results) eq 'HASH'){
 				for (my $i = 0; $i < scalar @{ $results->{$groupby} }; $i++){
 					my $row = $results->{$groupby}->[$i];
+					#$self->log->debug('row: ' . Dumper($row));
 					if (exists $row->{transforms} and scalar keys %{ $row->{transforms} }){
 						foreach my $transform (sort keys %{ $row->{transforms} }){
 							next unless ref($row->{transforms}->{$transform}) eq 'HASH';
@@ -3028,7 +3029,7 @@ sub transform {
 									foreach my $data_attr (keys %{ $row->{transforms}->{$transform}->{$field} }){
 										$add_on_str .= ' ' . $data_attr . '=' .  $row->{transforms}->{$transform}->{$field}->{$data_attr};
 									}
-									push @groupby_results, { '@count' => -1, '@groupby' => ($row->{$groupby} . ' ' . $add_on_str) };
+									push @groupby_results, { '@count' => $row->{count}, '@groupby' => ($row->{$groupby} . ' ' . $add_on_str) };
 								}
 								# If it's an array, we want to concatenate all fields together.
 								elsif (ref($row->{transforms}->{$transform}->{$field}) eq 'ARRAY'){
@@ -3038,7 +3039,7 @@ sub transform {
 								}
 							}
 							if ($arr_add_on_str ne ''){
-								push @groupby_results, { '@count' => -1, '@groupby' => ($row->{$groupby} . ' ' . $arr_add_on_str) };
+								push @groupby_results, { '@count' => $row->{count}, '@groupby' => ($row->{$groupby} . ' ' . $arr_add_on_str) };
 							}
 						}
 					}
@@ -3802,7 +3803,7 @@ sub _archive_query {
 
 sub _external_database_query {
 	my ($self, $q) = @_;
-	$self->log->trace('running external query with args: ' . Dumper($q));
+	#$self->log->trace('running external query with args: ' . Dumper($q));
 	
 	my $cache;
 	eval {
