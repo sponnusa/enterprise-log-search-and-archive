@@ -296,7 +296,7 @@ disable_service(){
 		fi
 	fi
 	return $?
-}	
+}
 
 build_sphinx(){
 	# Get and build sphinx on nodes
@@ -805,6 +805,10 @@ exec_func(){
 	fi
 }
 
+restart_apache(){
+	service apache2 restart
+}
+
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
 		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
@@ -823,7 +827,7 @@ elif [ "$INSTALL" = "web" ]; then
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql" "restart_apache"; do
 			exec_func $FUNCTION
 		done
 	else
