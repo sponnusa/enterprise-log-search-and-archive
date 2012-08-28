@@ -1,35 +1,18 @@
 <patterndb version='3' pub_date='2009-11-04'>
-	<ruleset name="ironport">
-		<pattern>ironport_mail_logs</pattern>
+	<ruleset name="ironport" id='1006'>
+		<pattern>ironport_corr_logs</pattern>
 		<rules>
-			<rule class="10000" id="10000" context-id="ironport-rejected" context-timeout="15" context-scope="program">
+			<rule provider="ELSA" class='1006' id='1006'>
 				<patterns>
-					<pattern>Info: New SMTP ICID @NUMBER:icid:@ interface @ESTRING:interface_name: @(@IPv4:interface_ip:@) address @IPv4:sender_ip:@ reverse dns host @ESTRING:sender_dns: @verified yes</pattern>
+					<pattern>IRONPORT_REPREJECT @ESTRING:s0::@ icid: @ESTRING:i0:,@ interface_name: @ESTRING::,@ sender_ip: @ESTRING:i5:,@ sender_dns: @ESTRING:s5:,@ reason: @ESTRING::@</pattern>
+					<pattern>IRONPORT_INBOUND @ESTRING:s0::@ icid: @ESTRING:i0:,@ interface_name: @ESTRING::,@ sender_ip: @ESTRING:i5:,@ sender_dns: @ESTRING:s5:,@ reason: @ESTRING::@</pattern>
+					<pattern>IRONPORT_OUTBOUND @ESTRING:s0::@ icid: @ESTRING:i0:,@ interface_name: @ESTRING::,@ sender_ip: @ESTRING:i5:,@ sender_dns: @ESTRING:s5:,@ reason: @ESTRING::@</pattern>
+					<pattern>IRONPORT_SPAM @ESTRING:s0::@ icid: @ESTRING:i0:,@ mid: @ESTRING:i1:,@ rcid: @ESTRING:i3:,@ policy: @ESTRING:s1:,@ sender: @ESTRING:s2:,@ recipient: @ESTRING:s3:@</pattern>
+					<pattern>IRONPORT_VIRUS @ESTRING:s0::@ icid: @ESTRING:i0:,@ mid: @ESTRING:i1:,@ policy: @ESTRING:s1:,@ sender: @ESTRING:s2:,@ recipient: @ESTRING:s3:,@ virus: @ESTRING:s4:@</pattern>
+					<pattern>IRONPORT_DELIVER @ESTRING:s0::@ icid: @ESTRING:i0:,@ mid: @ESTRING:i1:,@ dcid: @ESTRING:i2:,@ policy: @ESTRING:s1:,@ sender: @ESTRING:s2:,@ recipient: @ESTRING:s3:@</pattern>
+					<pattern>IRONPORT_BOUNCE @ESTRING:s0::@ icid: @ESTRING:i0:,@ mid: @ESTRING:i1:,@ dcid: @ESTRING:i2:,@ policy: @ESTRING:s1:,@ sender: @ESTRING:s2:,@ recipient: @ESTRING:s3:,@ bounce reason: @ESTRING::@</pattern>
+					<pattern>IRONPORT_DELAY @ESTRING:s0::@ icid: @ESTRING:i0:,@ mid: @ESTRING:i1:,@ dcid: @ESTRING:i2:,@ policy: @ESTRING:s1:,@ sender: @ESTRING:s2:,@ recipient: @ESTRING:s3:,@ delay reason: @ESTRING::@</pattern>
 				</patterns>
-			</rule>
-			<rule class="10000" id="10000" context-id="ironport-rejected" context-timeout="15" context-scope="program">
-				<patterns>
-					<pattern>Warning: SMTP connection rejected on interface @ESTRING:interface_name: @address @IPv4:sender_ip:@</pattern>
-				</patterns>
-			</rule>
-			<rule class="10000" id="10000" context-id="ironport-rejected" context-timeout="15" context-scope="program">
-				<patterns>
-					<pattern>Info: ICID @NUMBER:icid:@ @ESTRING:reason: match@ @ESTRING::@</pattern>
-				</patterns>
-			</rule>
-			<rule class="10000" id="10000" context-id="ironport-rejected" context-timeout="15" context-scope="program">
-				<patterns>
-					<pattern>Info: ICID @NUMBER:icid:@ close</pattern>
-				</patterns>
-				<actions>
-					<action trigger="match" condition=" '${reason}@1' == 'TCPREFUSE SG BLACKLIST' ">
-						<message>
-							<values>
-								<value name="MESSAGE">IronPort message rejected: icid: ${icid}@1, interface_name: ${interface_name}@4, interface_ip: ${interface_ip}@4, sender_ip: ${sender_ip}@4, sender_dns: ${sender_dns}@4, reason: ${reason}@2</value>
-							</values>
-						</message>
-					</action>
-				</actions>
 			</rule>
 		</rules>
 	</ruleset>
