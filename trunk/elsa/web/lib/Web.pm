@@ -187,7 +187,7 @@ EOHTML
 	my $user = $self->api->get_user($self->session->get('user_info')->{username});
 	my $form_params = $self->api->get_form_params($user);
 	if($form_params){
-		$HTML .= 'var formParams = ' . encode_json($form_params) . ';';
+		$HTML .= 'var formParams = ' . $self->api->json->encode($form_params) . ';';
 	}
 	else {
 		$HTML .= q/alert('Error contacting log server(s)');/;
@@ -260,8 +260,13 @@ sub get_results {
 		
 		my $ret = $self->api->get_saved_result($args);
 		if ($ret and ref($ret) eq 'HASH'){
-			 $HTML .= '<script>var oGivenResults = ' . $self->api->json->encode($ret) . '</script>';
-			 $HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
+			my $form_params = $self->api->get_form_params($self->api->get_user($self->session->get('user_info')->{username}));
+			if($form_params){
+				$HTML .= 'YAHOO.ELSA.formParams = ' . $self->api->json->encode($form_params) . ';';
+			}
+			
+			$HTML .= '<script>var oGivenResults = ' . $self->api->json->encode($ret) . '</script>';
+			$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
 		}
 		else {
 			$self->api->_error('Unable to get results, got: ' . Dumper($ret));
