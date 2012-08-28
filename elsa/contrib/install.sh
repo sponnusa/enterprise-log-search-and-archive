@@ -480,7 +480,7 @@ ubuntu_get_web_packages(){
 	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections &&
 	
 	# Install required packages
-	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libgeo-ip-perl libexpat1-dev libmodule-build-perl cpanminus &&
+	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libgeo-ip-perl libexpat1-dev libmodule-build-perl cpanminus libauthen-pam-perl &&
 	
 	# Make debconf interactive again
 	echo "debconf debconf/frontend select readline" | debconf-set-selections
