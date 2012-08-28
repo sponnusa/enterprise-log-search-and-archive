@@ -2735,7 +2735,7 @@ YAHOO.ELSA.getSavedQueries = function(){
 		YAHOO.ELSA.getSavedQueries.panel.setHeader('Saved Queries');
 		
 		var formatPermaLink = function(elLiner, oRecord, oColumn, oData){
-			elLiner.innerHTML = '<a href="get_results?qid=' + oRecord.getData().qid + '&hash=' + oRecord.getData().hash + '">permalink</a>';
+			elLiner.innerHTML = '<a href="get_results?qid=' + oRecord.getData().qid + '&hash=' + oRecord.getData().hash + '" target="_blank">permalink</a>';
 		}
 		
 		YAHOO.ELSA.getSavedQueries.panel.renderEvent.subscribe(function(){
