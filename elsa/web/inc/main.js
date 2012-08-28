@@ -552,13 +552,13 @@ YAHOO.ELSA.main = function () {
 							text: 'Manage Permissions',
 							helptext: 'Manage permissions for users',
 							url: 'admin',
-							target: '_new'
+							target: '_blank'
 						},
 						{
 							text: 'Stats',
 							helptext: 'Query and load statistics',
 							url: 'stats',
-							target: '_new'
+							target: '_blank'
 						}
 					]
 				}
