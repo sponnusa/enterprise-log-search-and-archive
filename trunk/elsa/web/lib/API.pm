@@ -752,7 +752,7 @@ sub _get_node_info {
 		
 		# Get tables
 		$query = sprintf('SELECT table_name, start, UNIX_TIMESTAMP(start) AS start_int, end, ' .
-			'UNIX_TIMESTAMP(end) AS end_int, table_type, min_id, max_id ' .
+			'UNIX_TIMESTAMP(end) AS end_int, table_type, min_id, max_id, max_id - min_id AS records ' .
 			'FROM %s.tables t1 JOIN table_types t2 ON (t1.table_type_id=t2.id) ORDER BY start', 
 			$nodes->{$node}->{db});
 		$cv->begin;
@@ -836,6 +836,7 @@ sub _get_node_info {
 	$cv->recv;
 	
 	my $time_ranges = { indexes => {}, archive => {} };
+	$ret->{totals} = {};
 	foreach my $type (qw(indexes archive)){
 		my $key = $type;
 		if ($type eq 'archive'){
@@ -853,6 +854,9 @@ sub _get_node_info {
 				$max = $ret->{nodes}->{$node}->{$key}->{max};
 				$start_max = $ret->{nodes}->{$node}->{$key}->{start_max};
 			}
+			foreach my $hash (@{ $ret->{nodes}->{$node}->{$key}->{$key} }){
+				$ret->{totals}->{$type} += $hash->{records};
+			}
 		}
 		if ($min == 2**32 and $max == 0){
 			$self->log->trace('No min/max found for type ' . $type);
@@ -863,7 +867,7 @@ sub _get_node_info {
 			$ret->{$type . '_start_max'} = $start_max;
 			$self->log->trace('Found min ' . $min . ', max ' . $max . ' for type ' . $type);
 		}
-	}	
+	}
 	
 	# Resolve class names into class_id's for excluded classes
 	my $given_excluded_classes = $self->conf->get('excluded_classes') ? $self->conf->get('excluded_classes') : {};
@@ -957,6 +961,11 @@ sub _get_node_info {
 	$ret->{updated_at} = time();
 	$ret->{updated_for_admin} = $user->is_admin;
 	
+	
+	foreach my $node (keys %{ $ret->{nodes} }){
+		
+	}
+	
 	return $ret;
 }
 
@@ -990,6 +999,7 @@ sub get_form_params {
 		nodes => [ keys %{ $self->node_info->{nodes} } ],
 		groups => $user->groups,
 		additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
+		totals => $self->node_info->{totals},
 	};
 	
 	# You can change the default start time displayed to web users by changing this config setting
