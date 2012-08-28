@@ -101,9 +101,12 @@ our $Time_values = {
 	minute => 60,
 	hour => 3600,
 	day => 86400,
+	week => 86400 * 7,
+	month => 86400 * 30,
+	year => 86400 * 365,
 };
 
-our $Reserved_fields = { map { $_ => 1 } qw( start end limit offset class groupby node cutoff datasource ) };
+our $Reserved_fields = { map { $_ => 1 } qw( start end limit offset class groupby node cutoff datasource timeout archive analytics ), keys %$Time_values };
 
 # Helper methods for dealing with resolving fields
 has 'node_info' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
