@@ -1051,9 +1051,11 @@ YAHOO.ELSA.Results = function(){
 			{ key:'info', label:'', sortable:true, formatter:this.formatInfoButton }
 		];
 		
-		for (var i in YAHOO.ELSA.formParams.additional_display_columns){
-			var sCol = YAHOO.ELSA.formParams.additional_display_columns[i];
-			oColumns.push({ key:sCol, label:sCol, sortable:true, formatter:this.formatExtraColumn });
+		if (YAHOO.ELSA.formParams && YAHOO.ELSA.formParams.additional_display_columns){
+			for (var i in YAHOO.ELSA.formParams.additional_display_columns){
+				var sCol = YAHOO.ELSA.formParams.additional_display_columns[i];
+				oColumns.push({ key:sCol, label:sCol, sortable:true, formatter:this.formatExtraColumn });
+			}
 		}
 		
 		oColumns.push({ key:'timestamp', label:'Timestamp', sortable:true, editor:'date', formatter:this.formatDate });
