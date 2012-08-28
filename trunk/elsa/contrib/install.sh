@@ -729,6 +729,11 @@ centos_set_apache(){
 	#cp /etc/sysconfig/iptables /etc/sysconfig/iptables.bak.elsa &&
 	#cat /etc/sysconfig/iptables.bak.elsa | sed -e "s|-A INPUT -i lo -j ACCEPT|-A INPUT -i lo -j ACCEPT\n-A INPUT -m state --state NEW -m tcp -p tcp --dport 80 -j ACCEPT|" > /etc/sysconfig/iptables &&
 	#service iptables restart
+	
+	# Set SELinux
+	semanage fcontext -a -t httpd_log_t "$DATA_DIR(/.*)?" &&
+	restorecon -r -v $DATA_DIR
+	
 	return $?
 }
 
