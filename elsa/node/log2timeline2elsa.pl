@@ -12,11 +12,10 @@ use Time::HiRes qw(time);
 
 my %Opts;
 my $Infile = pop(@ARGV);
-die('No infile given') unless -f $Infile;
+die('No infile given ' . usage()) unless -f $Infile;
 getopts('c:l:t:', \%Opts);
-print Dumper(\%Opts);
 print "Working on $Infile\n";
-die('Cannot locate log2timeline, set with -l ' . $Opts{l}) unless -f $Opts{l};
+die('Cannot locate log2timeline, set with -l ' . $Opts{l} . usage()) unless -f $Opts{l};
 
 $Opts{l} =~ /(.+)\/.+$/;
 my $l2t_path = $1 . '/lib';
