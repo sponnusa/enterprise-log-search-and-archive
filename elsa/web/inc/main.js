@@ -418,7 +418,7 @@ YAHOO.ELSA.main = function () {
 		oQueryFormGridCfg['grid'] = [
 			[ 
 				{type:'text', args:'Query'},
-				{type:'input', args:{id:'q', size:80} },
+				{type:'input', args:{id:'q', name:'elsa_query_box', size:80} },
 				{type:'widget', className:'Button', args:oSubmitButtonConfig},
 				{type:'element', element:'a', args:{href:'http://code.google.com/p/enterprise-log-search-and-archive/wiki/Documentation#Queries', innerHTML:'Help', target:'_new'}}
 			]
