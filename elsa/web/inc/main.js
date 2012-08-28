@@ -574,6 +574,37 @@ YAHOO.ELSA.main = function () {
 		// Fix z-index issues so that the menu is always on top
 		var menuEl = new YAHOO.util.Element('queries_menu');
 		menuEl.setStyle('z-index', 1000);
+		
+		// Add on totals
+		formParams.totals_readable = {};
+		for (var i in formParams.totals){
+			var iIndexes = formParams.totals[i];
+			var sUnit = '';
+			var iDiv = 1;
+			if (iIndexes > 1000000000){
+				sUnit = 'billion';
+				iDiv = 1000000000;
+			}
+			else if (iIndexes > 1000000){
+				sUnit = 'million';
+				iDiv = 1000000;
+			}
+			formParams.totals_readable[i] = Number(iIndexes / iDiv).toFixed(1) + ' ' + sUnit;
+		}
+		
+		var aElItems = YAHOO.util.Dom.getElementsByClassName('yuimenubaritem-hassubmenu', 'li', 'menu_bar_content');
+		var oElLi = document.createElement('li');
+		oElDiv = document.createElement('div');
+		oElDiv.innerHTML = 'Logs in Index: ' + formParams.totals_readable.indexes + ', Archive: ' 
+			+ formParams.totals_readable.archive + ' on ' + formParams.nodes.length + ' nodes';
+		oElDiv.innerHTML = formParams.nodes.length + ' nodes with ' + formParams.totals_readable.indexes + ' logs indexed and ' 
+			+ formParams.totals_readable.archive + ' archived';
+		oElLi.appendChild(oElDiv); 
+		oElLi.setAttribute('index', aElItems.length);
+		oElLi.setAttribute('groupindex', 0);
+		aElItems[aElItems.length - 1].parentNode.appendChild(oElLi);
+		var oElLiEl = new YAHOO.util.Element(oElLi);
+		oElLiEl.setStyle('text-align', 'right');
 	}
 	
 	drawMenuBar();
