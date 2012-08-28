@@ -3788,7 +3788,7 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 		var oA = document.createElement('a');
 		oA.href = p_oData.urls[i];
 		oA.innerHTML = p_oData.urls[i];
-		oA.target = '_new';
+		oA.target = '_blank';
 		oTd.appendChild(oA);
 		oTd.appendChild(document.createElement('br'));
 	}

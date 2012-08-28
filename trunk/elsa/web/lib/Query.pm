@@ -197,7 +197,7 @@ sub TO_JSON {
 		my $link = sprintf('%sQuery/get_bulk_file?qid=%d', 
 			$self->conf->get('email/base_url') ? $self->conf->get('email/base_url') : 'http://localhost/',
 			$self->qid);
-		$ret->{batch_message} = 'Results: <a target="_new" href="' . $link . '">' . $link . '</a>';
+		$ret->{batch_message} = 'Results: <a target="_blank" href="' . $link . '">' . $link . '</a>';
 	}
 	elsif ($self->batch_message){
 		$ret->{batch_message} = $self->batch_message;
