@@ -2,153 +2,149 @@
 	<ruleset name="ironport" id='10000'>
 		<pattern>ironport_mail_logs</pattern>
 		<rules>
-			<rule class='10000' id='10000' context-id="ironport-${icid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10006' context-id="${mid}" context-timeout="86400" context-scope="host">
 				<patterns>
-					<pattern>Info: New SMTP ICID @NUMBER:icid:@ interface @ESTRING:interface_name: @(@IPv4:interface_ip:@) address @IPv4:sender_ip:@ reverse dns host @ESTRING:sender_dns: @verified</pattern>
+					<pattern>Info: Start MID @ESTRING:mid: ICID @@ESTRING:icid:@</pattern>
 				</patterns>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${icid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10007' context-id="${mid}" context-timeout="86400" context-scope="host">
 				<patterns>
-					<pattern>Warning: SMTP connection rejected on interface @ESTRING:interface_name: @address @IPv4:sender_ip:@</pattern>
+					<pattern>Info: MID @ESTRING:mid: ICID @@ESTRING:icid: From: &lt;@@ESTRING:from_address:&gt;@</pattern>
 				</patterns>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${icid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10008' context-id="${mid}" context-timeout="86400" context-scope="host">
 				<patterns>
-					<pattern>Info: ICID @NUMBER:icid:@ @ESTRING:reason: match@ @ESTRING::@</pattern>
+					<pattern>Info: MID @ESTRING:mid: ICID @@ESTRING:icid: RID 0 To: &lt;@@ESTRING:to_address:&gt;@</pattern>
 				</patterns>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${icid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10009' context-id="${mid}" context-timeout="86400" context-scope="host">
 				<patterns>
-					<pattern>Info: ICID @NUMBER:icid:@ close</pattern>
+					<pattern>Info: MID @ESTRING:mid: matched all recipients for per-recipient policy @@ESTRING:ironport_policy: in @@ESTRING::@</pattern>
+				</patterns>
+			</rule>
+			<rule class='10000' id='10010' context-id="${mid}" context-timeout="86400" context-scope="host">
+				<patterns>
+					<pattern>Info: MID @ESTRING:mid: interim AV verdict using Sophos VIRAL@</pattern>
+				</patterns>
+			</rule>
+			<rule class='10000' id='10011' context-id="${mid}" context-timeout="86400" context-scope="host">
+				<patterns>
+					<pattern>Info: MID @ESTRING:mid: antivirus positive &apos;@@ESTRING:virus:&apos;@</pattern>
+				</patterns>
+			</rule>
+			<rule class='10000' id='10012' context-id="${mid}" context-timeout="0" context-scope="host">
+				<patterns>
+					<pattern>Info: Message aborted MID @ESTRING:mid: Dropped by antivirus@</pattern>
 				</patterns>
 				<actions>
-					<action trigger="match" condition=" '${reason}@1' == 'TCPREFUSE SG BLACKLIST' ">
+					<action trigger="match">
 						<message>
 							<values>
 								<value name="PROGRAM">ironport_corr_logs</value>
-								<value name="MESSAGE">BLREJECT IronPort message rejected by blacklists filter: icid: ${icid}@1, interface_name: ${interface_name}@3, interface_ip: ${interface_ip}@3, sender_ip: ${sender_ip}@3, sender_dns: ${sender_dns}@3, reason: ${reason}@2</value>
-								<value name="TRIGGER">yes</value>
-							</values>
-						</message>
-					</action>
-					<action trigger="match" condition=" '${reason}@1' == 'ACCEPT SG UNKNOWNLIST' ">
-						<message>
-							<values>
-								<value name="PROGRAM">ironport_corr_logs</value>
-								<value name="MESSAGE">INBOUND IronPort inbound delivered message: icid: ${icid}@1, interface_name: ${interface_name}@3, interface_ip: ${interface_ip}@3, sender_ip: ${sender_ip}@3, sender_dns: ${sender_dns}@3, reason: ${reason}@2</value>
-								<value name="TRIGGER">yes</value>
-							</values>
-						</message>
-					</action>
-					<action trigger="match" condition=" '${reason}@1' == 'RELAY SG RELAYLIST' ">
-						<message>
-							<values>
-								<value name="PROGRAM">ironport_corr_logs</value>
-								<value name="MESSAGE">OUTBOUND IronPort outbound delivered message: icid: ${icid}@1, interface_name: ${interface_name}@3, interface_ip: ${interface_ip}@3, sender_ip: ${sender_ip}@3, sender_dns: ${sender_dns}@3, reason: ${reason}@2</value>
+								<value name="MESSAGE">IRONPORT_VIRUS IronPort virus message detected: icid: ${icid}@7, mid: ${mid}@7, policy: ${ironport_policy}@4, sender: ${from_address}@6, recipient: ${to_address}@5, virus: ${virus}@2</value>
 								<value name="TRIGGER">yes</value>
 							</values>
 						</message>
 					</action>
 				</actions>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10013' context-id="${mid}" context-timeout="86400" context-scope="host">
 				<patterns>
-					<pattern>Info: Start MID @NUMBER:mid:@ ICID @NUMBER:icid:@</pattern>
+					<pattern>Info: MID @ESTRING:mid: queued for delivery@</pattern>
 				</patterns>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10014' context-id="${mid}" context-timeout="86400" context-scope="host">
 				<patterns>
-					<pattern>Info: MID @NUMBER:mid:@ ICID @NUMBER:icid:@ From: &lt;@ESTRING:from_address:&gt;@</pattern>
+					<pattern>Info: RPC Delivery start RCID @ESTRING:rcid: MID @@ESTRING:mid: to local IronPort Spam Quarantine@</pattern>
 				</patterns>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10015' context-id="${mid}" context-timeout="86400" context-scope="host">
 				<patterns>
-					<!--<pattern>Info: MID @NUMBER:mid:@ ICID @NUMBER:icid:@ RID @NUMBER:recipient_id:@ To: @QSTRING:to_address:&lt;&gt;@</pattern>-->
-					<pattern>Info: MID @NUMBER:mid:@ ICID @NUMBER:icid:@ RID 0 To: &lt;@ESTRING:to_address:&gt;@</pattern>
+					<pattern>Info: ISQ: Quarantined MID @ESTRING:mid:@</pattern>
 				</patterns>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10016' context-id="${mid}" context-timeout="0" context-scope="host">
 				<patterns>
-					<pattern>Info: MID @NUMBER:mid:@ matched all recipients for per-recipient policy @ESTRING:ironport_policy: in@ @ESTRING::@</pattern>
-				</patterns>
-			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
-				<patterns>
-					<pattern>Info: MID @NUMBER:mid:@ queued for delivery</pattern>
-				</patterns>
-			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
-				<patterns>
-					<pattern>Info: RPC Delivery start RCID @NUMBER:rcid:@ MID @NUMBER:mid:@ to local IronPort Spam Quarantine</pattern>
-				</patterns>
-			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
-				<patterns>
-					<pattern>Info: ISQ: Quarantined MID @NUMBER:mid:@</pattern>
-				</patterns>
-			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
-				<patterns>
-					<pattern>Info: RPC Message done RCID @NUMBER:rcid:@ MID @NUMBER:mid:@</pattern>
+					<pattern>Info: RPC Message done RCID @ESTRING:rcid: MID @@ESTRING:mid:@</pattern>
 				</patterns>
 				<actions>
-					<action>
+					<action trigger="match">
 						<message>
 							<values>
 								<value name="PROGRAM">ironport_corr_logs</value>
-								<value name="MESSAGE">SPAM Ironport spam message detected: icid: ${icid}@6, mid: ${mid}@1, rcid: ${rcid}@1, policy: ${ironport_policy}@5, sender: ${from_address}@7, recipient: ${to_address}@6</value>
+								<value name="injection_id">${icid}@8</value>
+								<value name="message_id">${mid}@8</value>
+								<value name="MESSAGE">IRONPORT_SPAM IronPort spam message detected: icid: ${injection_id}, mid: ${message_id}, rcid: ${rcid}@3, policy: ${ironport_policy}@5, sender: ${from_address}@7, recipient: ${to_address}@6</value>
 								<value name="TRIGGER">yes</value>
 							</values>
 						</message>
 					</action>
 				</actions>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10017' context-id="${mid}" context-timeout="86400" context-scope="host">
 				<patterns>
-					<pattern>Info: MID @NUMBER:mid:@ interim AV verdict using Sophos VIRAL</pattern>
+					<pattern>Info: Delivery start DCID @ESTRING:dcid: MID @@ESTRING:mid: to RID [@@ESTRING::]@</pattern>
 				</patterns>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10018' context-id="${mid}" context-timeout="0" context-scope="host">
 				<patterns>
-					<pattern>Info: MID @NUMBER:mid:@ antivirus positive &apos;@ESTRING:virus:&apos;@</pattern>
-				</patterns>
-			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
-				<patterns>
-					<pattern>Info: Message aborted MID @NUMBER:mid:@ Dropped by antivirus</pattern>
+					<pattern>Info: Bounced: DCID @ESTRING:dcid: MID @@ESTRING:mid: @@ESTRING:: - @@ESTRING:: - @@ESTRING:: (@@ESTRING:: ['@@ESTRING:bounce_reason:'])@</pattern>
 				</patterns>
 				<actions>
-					<action>
+					<action trigger="match">
 						<message>
 							<values>
 								<value name="PROGRAM">ironport_corr_logs</value>
-								<value name="MESSAGE">VIRUS Ironport virus message detected: icid: ${icid}@6, mid: ${mid}@1, policy: ${ironport_policy}@5, sender: ${from_address}@7, recipient: ${to_address}@6, virus: ${virus}@2</value>
+								<value name="injection_id">${icid}@7</value>
+								<value name="message_id">${mid}@1</value>
+								<value name="delivery_id">${dcid}@2</value>
+								<value name="MESSAGE">IRONPORT_BOUNCE IronPort bounced message: icid: ${injection_id}, mid: ${message_id}, dcid: ${delivery_id}, policy: ${ironport_policy}@4, sender: ${from_address}@6, recipient: ${to_address}@5, bounce reason: ${bounce_reason}@1</value>
 								<value name="TRIGGER">yes</value>
 							</values>
 						</message>
 					</action>
 				</actions>
 			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
+			<rule class='10000' id='10019' context-id="${mid}" context-timeout="0" context-scope="host">
 				<patterns>
-					<pattern>Info: Delivery start DCID @NUMBER:dcid:@ MID @NUMBER:mid:@ to RID</pattern>
-				</patterns>
-			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
-				<patterns>
-					<pattern>Info: Message done DCID @NUMBER:dcid:@ MID @NUMBER:mid:@ to RID</pattern>
-				</patterns>
-			</rule>
-			<rule class='10000' id='10000' context-id="ironport-${mid}" context-timeout="86400" context-scope="program">
-				<patterns>
-					<pattern>Info: Message finished MID @NUMBER:mid:@ done</pattern>
+					<pattern>Info: Delayed: DCID @ESTRING:dcid: MID @@ESTRING:mid: @@ESTRING:: - @@ESTRING:: - @@ESTRING:: (@@ESTRING:: ['@@ESTRING:delay_reason:'])@</pattern>
 				</patterns>
 				<actions>
-					<action>
+					<action trigger="match">
 						<message>
 							<values>
 								<value name="PROGRAM">ironport_corr_logs</value>
-								<value name="MESSAGE">DELIVER IronPort delivered message: icid: ${icid}@6, mid: ${mid}@1, dcid: ${dcid}@2, policy: ${ironport_policy}@5, sender: ${from_address}@7, recipient: ${to_address}@6</value>
+								<value name="injection_id">${icid}@7</value>
+								<value name="message_id">${mid}@1</value>
+								<value name="delivery_id">${dcid}@2</value>
+								<value name="MESSAGE">IRONPORT_DELAY IronPort delayed message: icid: ${injection_id}, mid: ${message_id}, dcid: ${delivery_id}, policy: ${ironport_policy}@4, sender: ${from_address}@6, recipient: ${to_address}@5, delay reason: ${delay_reason}@1</value>
+								<value name="TRIGGER">yes</value>
+							</values>
+						</message>
+					</action>
+				</actions>
+			</rule>
+			<rule class='10000' id='10020' context-id="${mid}" context-timeout="86400" context-scope="host">
+				<patterns>
+					<pattern>Info: Message done DCID @ESTRING:dcid: MID @@ESTRING:mid: to RID [@@ESTRING::]@</pattern>
+				</patterns>
+			</rule>
+			<rule class='10000' id='10021' context-id="${mid}" context-timeout="0" context-scope="host">
+				<patterns>
+					<pattern>Info: Message finished MID @ESTRING:mid: done@</pattern>
+				</patterns>
+				<actions>
+					<action trigger="match">
+						<message>
+							<values>
+								<value name="PROGRAM">ironport_corr_logs</value>
+								<value name="sender">$(if ('${from_address}' == '""') 'no-sender@no-domain.com' '${from_address}@7')</value>
+								<value name="recipient">$(if ('${to_address}' == '""') 'no-recipient@no-domain.com' '${to_address}@6')</value>
+								<value name="policy">$(if ('${ironport_policy}@5' != '""') '${ironport_policy}@5' 'no-policy')</value>
+								<value name="injection_id">${icid}@8</value>
+								<value name="message_id">${mid}@1</value>
+								<value name="delivery_id">${dcid}@2</value>
+								<value name="MESSAGE">IRONPORT_DELIVER IronPort delivered message: icid: ${injection_id}, mid: ${message_id}, dcid: ${delivery_id}, policy: ${ironport_policy}@5, sender: ${from_address}@7, recipient: ${to_address}@6</value>
 								<value name="TRIGGER">yes</value>
 							</values>
 						</message>
