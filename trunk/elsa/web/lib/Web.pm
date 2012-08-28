@@ -262,7 +262,7 @@ sub get_results {
 		if ($ret and ref($ret) eq 'HASH'){
 			my $form_params = $self->api->get_form_params($self->api->get_user($self->session->get('user_info')->{username}));
 			if($form_params){
-				$HTML .= 'YAHOO.ELSA.formParams = ' . $self->api->json->encode($form_params) . ';';
+				$HTML .= '<script>YAHOO.ELSA.formParams = ' . $self->api->json->encode($form_params) . ';</script>';
 			}
 			
 			$HTML .= '<script>var oGivenResults = ' . $self->api->json->encode($ret) . '</script>';
