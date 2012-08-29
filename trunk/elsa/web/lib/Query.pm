@@ -55,6 +55,7 @@ has 'hash' => (is => 'rw', isa => 'Str', required => 1, default => '');
 has 'highlights' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear' });
+has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 
 # Optional
 has 'qid' => (is => 'rw', isa => 'Int');
@@ -185,6 +186,7 @@ sub TO_JSON {
 		query_meta_params => $self->meta_params,
 		hash => $self->hash,
 		highlights => $self->highlights,
+		stats => $self->stats,
 	};
 	unless ($ret->{groupby} and ref($ret->{groupby}) and ref($ret->{groupby}) eq 'ARRAY' and scalar @{ $ret->{groupby} }){
 		delete $ret->{groupby};
