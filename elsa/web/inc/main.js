@@ -597,8 +597,8 @@ YAHOO.ELSA.main = function () {
 		oElDiv = document.createElement('div');
 		oElDiv.innerHTML = 'Logs in Index: ' + formParams.totals_readable.indexes + ', Archive: ' 
 			+ formParams.totals_readable.archive + ' on ' + formParams.nodes.length + ' nodes';
-		oElDiv.innerHTML = formParams.nodes.length + ' nodes with ' + formParams.totals_readable.indexes + ' logs indexed and ' 
-			+ formParams.totals_readable.archive + ' archived';
+		oElDiv.innerHTML = formParams.nodes.length + ' nodes with <b>' + formParams.totals_readable.indexes + '</b> logs indexed and <b>' 
+			+ formParams.totals_readable.archive + '</b> archived';
 		oElLi.appendChild(oElDiv); 
 		oElLi.setAttribute('index', aElItems.length);
 		oElLi.setAttribute('groupindex', 0);

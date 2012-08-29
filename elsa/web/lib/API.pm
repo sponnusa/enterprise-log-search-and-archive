@@ -1996,15 +1996,7 @@ sub _sphinx_query {
 	$cv->end; # bookend initial begin
 	$cv->recv; # block until all of the above completes
 	
-	# total_docs is used for query estimates
-	my ($total_records, $total_docs, $records_returned) = (0,0,0);
-	foreach my $node (keys %$ret){
-		foreach my $key (keys %{ $ret->{$node}->{meta} }){
-			if ($key =~ /^docs\[/){
-				$total_docs += $ret->{$node}->{meta}->{$key};
-			}
-		}
-	}
+	my ($total_records, $records_returned) = (0,0,0);
 	#$self->log->debug('conversions: ' . Dumper($self->node_info->{field_conversions}));
 	
 	if ($q->has_groupby){
@@ -2141,6 +2133,43 @@ sub _sphinx_query {
 	}
 	
 	$self->log->debug('completed query in ' . (time() - $overall_start) . ' with ' . $q->results->records_returned . ' rows');
+	
+	my $total_docs = 0;
+	foreach my $node (keys %$ret){
+		foreach my $key (keys %{ $ret->{$node}->{meta} }){
+			if ($key =~ /^docs\[/){
+				$total_docs += $ret->{$node}->{meta}->{$key};
+			}
+		}
+	}
+	
+	my %keywords;
+	foreach my $node (keys %$ret){
+		foreach my $key (keys %{ $ret->{$node}->{meta} }){
+			if ($key =~ /^keyword\[(\d+)\]/){
+				$keywords{$1} = $ret->{$node}->{meta}->{$key};
+			}
+		}
+	}
+	my %keyword_stats;
+	foreach my $node (keys %$ret){
+		foreach my $key (keys %{ $ret->{$node}->{meta} }){
+			$key =~ /^([\w\_]+)\[(\d+)\]/;
+			$keyword_stats{ $keywords{$2} } ||= {};
+			$keyword_stats{ $keywords{$2} }->{$1} += $ret->{$node}->{meta}->{$key} unless $1 eq 'keyword';
+		}
+	}
+	
+	foreach my $keyword_id (keys %keyword_stats){
+		$keyword_stats{$keyword_id}->{percentage} = $keyword_stats{$keyword_id}->{docs} / $total_docs * 100;
+	}  
+	
+	$q->stats({ 
+		keywords => \%keyword_stats, 
+		total_docs => $total_docs, 
+		total_time => (time() - $overall_start),
+		docs_filtered_per_sec => ($total_docs / (time() - $overall_start))
+	});
 	
 	return 1;
 }
