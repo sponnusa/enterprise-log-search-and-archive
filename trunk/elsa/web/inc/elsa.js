@@ -4090,7 +4090,7 @@ YAHOO.ELSA.Calendar = function(p_sType, p_oFormParams){
 	this.calendar = new YAHOO.widget.Calendar(sCalendarContainer,{
 		mindate: oMinDate,
 		maxdate: oMaxDate,
-		pagedate: oMaxDate,
+		pagedate: oMaxDate
 	});
 	
 	this.calendar.render();
