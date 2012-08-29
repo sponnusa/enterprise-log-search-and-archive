@@ -19,8 +19,16 @@ sub BUILD {
 		return 0;
 	}
 	
+	my @to = ($self->user->email);
+	# Allow admin or none/local auth to override recipient
+	if ($self->user->is_admin or $self->api->conf->get('auth/none') or $self->api->conf->get('auth/local')){
+		if (scalar @{ $self->args }){
+			@to = @{ $self->args };
+		}
+	}
+	
 	my $headers = {
-		To => $self->user->email,
+		To => join(', ', @to),
 		From => $self->api->conf->get('email/display_address') ? $self->api->conf->get('email/display_address') : 'system',
 		Subject => $self->api->conf->get('email/subject') ? $self->api->conf->get('email/subject') : 'system',
 	};
