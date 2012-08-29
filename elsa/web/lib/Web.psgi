@@ -15,7 +15,7 @@ use Web::Query;
 use Web::GoogleDatasource;
 use Web::GoogleDashboard;
 
-my $config_file = '/usr/local/elsa/etc/elsa.conf';
+my $config_file = '/etc/elsa_web.conf';
 if ($ENV{ELSA_CONF}){
 	$config_file = $ENV{ELSA_CONF};
 }
