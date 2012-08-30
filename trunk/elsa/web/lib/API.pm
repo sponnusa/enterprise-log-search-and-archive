@@ -2161,6 +2161,7 @@ sub _sphinx_query {
 	}
 	
 	foreach my $keyword_id (keys %keyword_stats){
+		next unless $total_docs;
 		$keyword_stats{$keyword_id}->{percentage} = $keyword_stats{$keyword_id}->{docs} / $total_docs * 100;
 	}  
 	
