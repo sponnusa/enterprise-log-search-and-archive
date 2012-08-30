@@ -1872,7 +1872,7 @@ sub _sphinx_query {
 			foreach my $query (@{ $queries }){
 				my $search_query = 'SELECT *, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where};
 				if (exists $query->{groupby}){
-					$search_query .= ' GROUP BY ' . $query->{groupby};
+					$search_query .= ' GROUP BY ' . $query->{groupby} . ' ORDER BY @count DESC';
 				}
 				$search_query .= ' LIMIT ?,? OPTION ranker=none';
 				if ($q->cutoff){
@@ -2079,7 +2079,7 @@ sub _sphinx_query {
 								intval => $j,
 								'@count' => 0
 							};
-							last OUTER if scalar @zero_filled > $q->limit;
+							last OUTER if scalar @zero_filled >= $q->limit;
 						}
 					}
 				}
@@ -2091,7 +2091,7 @@ sub _sphinx_query {
 				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
 					$total_records += $agg{$key};
 					push @tmp, { intval => $agg{$key}, '@groupby' => $key, '@count' => $agg{$key} };
-					last if scalar @tmp > $q->limit;
+					last if scalar @tmp >= $q->limit;
 				}
 				$results{$groupby} = [ @tmp ];
 			}
