@@ -1788,8 +1788,13 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 					// Set query explain stats
 					var aKeywordStats = [];
 					for (var i in this.results.stats.keywords){
-						aKeywordStats.push('keyword: ' + i + ', docs: ' + this.results.stats.keywords[i].docs 
-							+ ' (' + Number(this.results.stats.keywords[i].percentage).toFixed(1) + '%)');
+						if (this.results.stats.keywords[i].docs > 0){
+							aKeywordStats.push('keyword: ' + i + ', docs: ' + this.results.stats.keywords[i].docs 
+								+ ' (' + Number(this.results.stats.keywords[i].percentage).toFixed(1) + '%)');
+						}
+					}
+					if (aKeywordStats.length == 0){
+						aKeywordStats.push('N/A');
 					}
 					var oToolTip = new YAHOO.widget.Tooltip('explain_query_' + this.results.qid + '_tooltip', {
 						context: 'explain_query_' + this.results.qid,
