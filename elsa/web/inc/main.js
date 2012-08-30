@@ -524,8 +524,8 @@ YAHOO.ELSA.main = function () {
 							}
 						},
 						{
-							text: 'Cancel Queries',
-							helptext: 'Currently running queries',
+							text: 'Active Queries',
+							helptext: 'View/cancel active queries',
 							onclick: {
 								fn: YAHOO.ELSA.getRunningArchiveQuery
 							}
@@ -597,7 +597,7 @@ YAHOO.ELSA.main = function () {
 		oElDiv = document.createElement('div');
 		oElDiv.innerHTML = 'Logs in Index: ' + formParams.totals_readable.indexes + ', Archive: ' 
 			+ formParams.totals_readable.archive + ' on ' + formParams.nodes.length + ' nodes';
-		oElDiv.innerHTML = formParams.nodes.length + ' nodes with <b>' + formParams.totals_readable.indexes + '</b> logs indexed and <b>' 
+		oElDiv.innerHTML = '<b>' + formParams.nodes.length + '</b> node(s) with <b>' + formParams.totals_readable.indexes + '</b> logs indexed and <b>' 
 			+ formParams.totals_readable.archive + '</b> archived';
 		oElLi.appendChild(oElDiv); 
 		oElLi.setAttribute('index', aElItems.length);
