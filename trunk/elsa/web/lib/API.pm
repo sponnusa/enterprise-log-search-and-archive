@@ -3196,7 +3196,8 @@ sub send_to {
 		if($args->{query}){
 			$self->log->debug('args: ' . Dumper($args));
 			$q = new Query(conf => $self->conf, user => $args->{user}, query_string => $args->{query}->{query_string}, 
-				node_info => $self->node_info, connectors => $args->{connectors}, meta_params => $args->{query}->{query_meta_params});
+				node_info => $self->node_info, connectors => $args->{connectors}, 
+				meta_params => $args->{query}->{query_meta_params}, qid => $args->{qid});
 			$q->results(new Results(results => $args->{results}->{results}));
 		}
 		else {

@@ -57,9 +57,16 @@ sub BUILD {
 	
 	$self->api->send_email({ headers => $headers, body => $body});
 	
-	# Save the results
-	$self->query->comments('Scheduled Query ' . $self->query->schedule_id);
-	$self->api->save_results($self->query->TO_JSON);
+	# Check to see if we saved the results previously
+	$query = 'SELECT qid FROM saved_results WHERE qid=?';
+	$sth = $self->api->db->prepare($query);
+	$sth->execute($self->query->qid);
+	$row = $sth->fetchrow_hashref;
+	unless ($row){
+		# Save the results
+		$self->query->comments('Scheduled Query ' . $self->query->schedule_id);
+		$self->api->save_results($self->query->TO_JSON);
+	}
 }
 
 1

@@ -419,6 +419,7 @@ sub send_to {
 			$args->{connectors} = $json_args->{connectors};
 			$args->{results} = delete $json_args->{results};
 			$args->{query} = delete $json_args->{query};
+			$args->{qid} = delete $json_args->{qid};
 			$self->api->log->debug( "Decoded $args as : " . Dumper($args) );
 		};
 		if ($@){
