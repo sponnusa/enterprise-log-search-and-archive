@@ -986,10 +986,15 @@ YAHOO.ELSA.Results = function(){
 					}
 					else if (oReturn == 1) {
 						logger.log('result saved successfully');
-						var lbl = '';
-						lbl = oSelf.tab.get('label');
-						lbl = '(Saved to QID ' + oSelf.id + ') ' + lbl;
-						oSelf.tab.set('label', lbl);
+						var sTabLabel = YAHOO.ELSA.currentQuery.stringifyTerms() + ' (Saved to QID ' + oSelf.id + ') ';
+						//oSelf.tab.set('label', sTabLabel);
+						
+						oSelf.tab.get('labelEl').innerHTML = 
+							'<table id="' + oSelf.id + '" style="padding: 0px;"><tr><td class="yui-skin-sam">' + sTabLabel + '</td>' +
+							'<td id="close_box_' + oSelf.id + '" class="yui-skin-sam close"></td></tr></table>';
+						var oElClose = new YAHOO.util.Element(YAHOO.util.Dom.get('close_box_' + oSelf.id));
+						oElClose.removeClass('hiddenElement');
+						oElClose.addListener('click', oSelf.closeTab, oSelf, true);
 					}
 					else {
 						logger.log(oReturn);
@@ -1672,12 +1677,12 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			this.tabId = '';
 			this.tab = '';
 		}
+		oElClose.addListener('click', this.closeTab, this, true);
 		
 		// Create a div we'll attach the results menu button to later
 		var oEl = document.createElement('div');
 		oEl.id = 'query_export_' + this.id;
 		this.tab.get('contentEl').appendChild(oEl);
-		oElClose.addListener('click', this.closeTab, this, true);
 		
 		var oActiveTab = p_oTabView.get('activeTab');
 		var iActiveTabId = this.tabView.getTabIndex(oActiveTab);
@@ -2470,7 +2475,7 @@ YAHOO.ELSA.sendToConnector = function(p_sType, p_aArgs, p_iId){
 	var handleSubmit = function(p_sType, p_oDialog){
 		logger.log('sending results for query.id ' + YAHOO.ELSA.sendToConnector.id + ' with method ' + YAHOO.ELSA.sendToConnector.plugin);
 		var aParams = YAHOO.util.Dom.get('send_to_params').value.split(/\,/);
-		YAHOO.ELSA.sendAll(oPanel.panel, YAHOO.ELSA.sendToConnector.plugin, aParams, YAHOO.ELSA.localResults[YAHOO.ELSA.sendToConnector.id].results.results);
+		YAHOO.ELSA.sendAll(oPanel.panel, YAHOO.ELSA.sendToConnector.plugin, aParams, YAHOO.ELSA.localResults[YAHOO.ELSA.sendToConnector.id].results);
 		this.hide();
 	};
 	var handleCancel = function(){
@@ -2534,11 +2539,11 @@ YAHOO.ELSA.sendToConnector = function(p_sType, p_aArgs, p_iId){
 	oPanel.panel.show();
 };
 
-YAHOO.ELSA.sendAll = function(p_oPanel, p_sConnector, p_aParams, p_aData){
+YAHOO.ELSA.sendAll = function(p_oPanel, p_sConnector, p_aParams, p_oData){
 	var sConnector = p_sConnector + '(' + p_aParams.join(',') + ')';
-	logger.log('p_aData', p_aData);
+	logger.log('p_aData', p_oData);
 	
-	if (!p_aData){
+	if (!p_oData){
 		YAHOO.ELSA.Error('Need a record.');
 		return;
 	}
@@ -2577,7 +2582,7 @@ YAHOO.ELSA.sendAll = function(p_oPanel, p_sConnector, p_aParams, p_aData){
 //								}
 //							}
 //						}
-						YAHOO.ELSA.sendAll.win.document.body.appendChild(oTable);
+//						YAHOO.ELSA.sendAll.win.document.body.appendChild(oTable);
 					}
 					else {
 						logger.log('oReturn', oReturn);
@@ -2598,7 +2603,8 @@ YAHOO.ELSA.sendAll = function(p_oPanel, p_sConnector, p_aParams, p_aData){
 		},
 		argument: [this]
 	};
-	var sPayload = YAHOO.lang.JSON.stringify({results:{results:p_aData}, connectors:[sConnector], query:YAHOO.ELSA.currentQuery.toObject()});
+	//var sPayload = YAHOO.lang.JSON.stringify({results:{results:p_aData}, connectors:[sConnector], query:YAHOO.ELSA.currentQuery.toObject()});
+	var sPayload = YAHOO.lang.JSON.stringify({results:p_oData, connectors:[sConnector], query:YAHOO.ELSA.currentQuery.toObject()});
 	sPayload.replace(/;/, '', 'g');
 	logger.log('sPayload: ' + sPayload);
 	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + encodeURIComponent(Base64.encode(sPayload)));
