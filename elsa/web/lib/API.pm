@@ -3198,7 +3198,7 @@ sub send_to {
 			$q = new Query(conf => $self->conf, user => $args->{user}, query_string => $args->{query}->{query_string}, 
 				node_info => $self->node_info, connectors => $args->{connectors}, 
 				meta_params => $args->{query}->{query_meta_params}, qid => $args->{qid} ? $args->{qid} : 0);
-			$q->results(new Results(results => $args->{results}->{results}));
+			$q->results(new Results(results => $args->{results}));
 		}
 		else {
 			$self->_error('Invalid args, no Query, args->{query}');

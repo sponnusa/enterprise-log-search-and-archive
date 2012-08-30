@@ -2604,7 +2604,9 @@ YAHOO.ELSA.sendAll = function(p_oPanel, p_sConnector, p_aParams, p_oData){
 		argument: [this]
 	};
 	//var sPayload = YAHOO.lang.JSON.stringify({results:{results:p_aData}, connectors:[sConnector], query:YAHOO.ELSA.currentQuery.toObject()});
-	var sPayload = YAHOO.lang.JSON.stringify({results:p_oData, connectors:[sConnector], query:YAHOO.ELSA.currentQuery.toObject()});
+	p_oData.connectors = [sConnector];
+	p_oData.query = YAHOO.ELSA.currentQuery.toObject();
+	var sPayload = YAHOO.lang.JSON.stringify(p_oData);
 	sPayload.replace(/;/, '', 'g');
 	logger.log('sPayload: ' + sPayload);
 	var oConn = YAHOO.util.Connect.asyncRequest('POST', 'send_to', callback, 'data=' + encodeURIComponent(Base64.encode(sPayload)));
