@@ -34,6 +34,9 @@ sub BUILD {
 								if ($value =~ /^\d+$/){
 									$sums->{ $value } += $value;
 								}
+								elsif ($datum->{count}){
+									$sums->{$value} += $datum->{count};
+								}
 								else {
 									$sums->{ $value }++;
 								}
@@ -43,6 +46,9 @@ sub BUILD {
 							if ($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } =~ /^\d+$/){
 								$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } } += 
 									$datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby };
+							}
+							elsif ($datum->{count}){
+								$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } } += $datum->{count};
 							}
 							else {
 								$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }++;
@@ -56,6 +62,9 @@ sub BUILD {
 						if ($value =~ /^\d+$/){
 							$sums->{ $value } += $value;
 						}
+						elsif ($datum->{count}){
+							$sums->{$value} += $datum->{count};
+						}
 						else {
 							$sums->{ $value }++;
 						}
@@ -66,6 +75,9 @@ sub BUILD {
 		if (exists $datum->{ $self->groupby } ){
 			if ($datum->{ $self->groupby } =~ /^\d+$/){
 				$sums->{ $self->groupby } += $datum->{ $self->groupby };
+			}
+			elsif ($datum->{count}){
+				$sums->{ $self->groupby } += $datum->{count};
 			}
 			else {
 				$sums->{ $datum->{ $self->groupby } }++;
