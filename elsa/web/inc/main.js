@@ -435,6 +435,10 @@ YAHOO.ELSA.main = function () {
 		if (YAHOO.ELSA.sameTabForQueries){
 			oSameTabCheckboxArgs.checked = true;
 		}
+		var oGridCheckboxArgs = {id:'grid_display_checkbox', type:'checkbox'};
+		if (YAHOO.ELSA.gridDisplay){
+			oGridCheckboxArgs.checked = true;
+		}
 				
 		oFormGridCfg['grid'] = [
 			[ 
@@ -446,7 +450,9 @@ YAHOO.ELSA.main = function () {
 				{type:'widget', className:'Button', args:oGroupByMenuButtonCfg},
 				{type:'widget', className:'Button', args:oArchiveButtonCfg},
 				{type:'input', args:oSameTabCheckboxArgs},
-				{type:'text', args:'Reuse current tab'}
+				{type:'text', args:'Reuse current tab'},
+				{type:'input', args:oGridCheckboxArgs},
+				{type:'text', args:'Grid display'}
 			]
 		];
 		
@@ -462,6 +468,8 @@ YAHOO.ELSA.main = function () {
 			YAHOO.util.Event.addListener('start_time_link', 'click', oStartCal.dialog.show, oStartCal.dialog, true);
 			var oEndCal = new YAHOO.ELSA.Calendar('end', formParams);
 			YAHOO.util.Event.addListener('end_time_link', 'click', oEndCal.dialog.show, oEndCal.dialog, true);
+			
+			YAHOO.util.Event.addListener('grid_display_checkbox', 'click', YAHOO.ELSA.toggleGridDisplay);
 					
 			// Tack on the tooltip for earliest start date
 			var oStartToolTip = new YAHOO.widget.Tooltip('start_time_tool_tip', { context: 'start_time', text: 'Earliest: ' + formParams.start + ', Archive Earliest: ' + formParams.archive_start});

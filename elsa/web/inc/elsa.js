@@ -900,6 +900,50 @@ YAHOO.ELSA.Results = function(){
 		}
 	}
 	
+	this.highlightText = function(p_sText){
+		if (this.results.highlights){
+			for (var sHighlight in this.results.highlights){
+				sHighlight = sHighlight.replace(/^["']*/, '');
+				sHighlight = sHighlight.replace(/["']*$/, '');
+				logger.log('sHighlight '  + sHighlight);
+				re = new RegExp('(' + sHighlight + ')', 'ig');
+				var aMatches = p_sText.match(re);
+				if (aMatches != null){
+					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
+					p_sText = p_sText.replace(re, sReplacement);
+				}
+			}
+		}
+		return p_sText;
+	}
+	
+	this.formatField = function(p_elCell, p_oRecord, p_oColumn, p_oData){
+		//logger.log('called formatField on ', p_oData);
+		//logger.log('called formatField on ', p_oRecord);
+		try {
+			var oDiv = document.createElement('div');
+			
+			// create drill-down item link
+			var a = document.createElement('a');
+			a.id = p_oRecord.getData().id + '_' + p_oColumn.getKey();
+			
+			a.setAttribute('href', '#');//Will jump to the top of page. Could be annoying
+			a.setAttribute('class', 'value');
+			a.innerHTML = oSelf.highlightText(escapeHTML(p_oData));
+			
+			oDiv.appendChild(a);
+			
+			var oAEl = new YAHOO.util.Element(a);
+			oAEl.on('click', YAHOO.ELSA.addTermFromOnClickNoSubmit, [p_oRecord.getData()['class'], p_oColumn.getKey(), p_oData]);
+			oDiv.appendChild(document.createTextNode(' '));
+			p_elCell.appendChild(oDiv);
+		}
+		catch (e){
+			logger.log('exception while parsing field:', e);
+			return '';
+		}
+	}
+	
 //	this.formatAddHighlights = function(p_elCell, oRecord, oColumn, p_oData){
 //		var sText = p_oData;
 //		for (var sHighlight in oSelf.highlights){
@@ -1100,6 +1144,131 @@ YAHOO.ELSA.Results = function(){
 	    	this.dataTable = new YAHOO.widget.DataTable(p_oElContainer, oColumns, this.dataSource, oTableCfg);
 	    	logger.log('datatable: ', this.dataTable);
 	  	 	YAHOO.util.Dom.removeClass(p_oElContainer, 'hiddenElement');
+	    }catch(e){
+	    	logger.log('No datatable because:', e);
+	    	for (var term in e){
+				logger.log(term, e[term]);
+			}
+	    	return;
+	    }
+	}
+	
+	this.createDataTableGrid = function(p_oResults, p_oElContainer){
+		var aFields = [
+			{ key:'id', parser:parseInt },
+			{ key:'node' }, // not displayed
+			{ key:'timestamp', parser:YAHOO.util.DataSourceBase.parseDate },
+			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
+			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
+			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString }
+		];
+		
+		var aColumns = [
+			{ key:'info', label:'', sortable:true, formatter:this.formatInfoButton }
+		];
+		
+		if (YAHOO.ELSA.formParams && YAHOO.ELSA.formParams.additional_display_columns){
+			for (var i in YAHOO.ELSA.formParams.additional_display_columns){
+				var sCol = YAHOO.ELSA.formParams.additional_display_columns[i];
+				aColumns.push({ key:sCol, label:sCol, sortable:true, formatter:this.formatExtraColumn });
+			}
+		}
+		
+		aColumns.push({ key:'timestamp', label:'Timestamp', sortable:true, editor:'date', formatter:this.formatDate });
+		
+		p_oResults.grid_results = [];
+		var oColsAdded = {};
+		for (var i in p_oResults.results){
+			var oNewRecord = cloneVar(p_oResults.results[i]);
+			for (var j in oNewRecord._fields){
+				var sField = oNewRecord._fields[j].field;
+				var sValue = oNewRecord._fields[j].value;
+				oNewRecord[sField] = sValue;
+				if (typeof(oColsAdded[sField]) == 'undefined'){
+					aColumns.push({ key:sField, label:sField, sortable:true, formatter:this.formatField });
+					aFields.push({ key:sField });
+					oColsAdded[sField] = 1;
+				}
+			}
+			p_oResults.grid_results.push(oNewRecord);
+		}
+		logger.log(p_oResults.grid_results);
+		
+		// DataSource instance
+	    this.dataSource = new YAHOO.util.DataSource(p_oResults);
+	    this.dataSource.maxCacheEntries = 4; //cache these
+	    this.dataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
+	    this.dataSource.responseSchema = {
+	        resultsList: 'grid_results',
+	        fields: aFields,
+	        metaFields: {
+	            totalRecords: 'totalRecords', // Access to value in the server response
+	            recordsReturned: 'recordsReturned',
+	            startIndex: 'startIndex'
+	        }
+	    };
+	    
+	    this.paginator = new YAHOO.widget.Paginator({
+	        pageLinks          : 10,
+	        rowsPerPage        : 15,
+	        rowsPerPageOptions : [15,50,100],
+	        template           : '{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}',
+	        pageReportTemplate : '<strong>Records: {totalRecords} / ' + this.dataSource.liveData.totalRecords + ' </strong> '
+	        	+ this.dataSource.liveData.totalTime + ' ms <a href="#" id="explain_query_' + this.dataSource.liveData.qid + '">?</a>'
+	    });
+	    
+	    var oTableCfg = {
+	        paginator: this.paginator,
+	        dynamicData: false,
+	        summary: 'this is a summary'
+	    };
+	    
+	    try{
+	    	logger.log('About to create DT with ', "dt" + p_oElContainer, aColumns, this.dataSource, oTableCfg);
+	    	this.dataTable = new YAHOO.widget.DataTable(p_oElContainer, aColumns, this.dataSource, oTableCfg);
+	    	logger.log('datatable: ', this.dataTable);
+	  	 	YAHOO.util.Dom.removeClass(p_oElContainer, 'hiddenElement');
+	  	 	
+	  	 	// create a summary of fields contained within the data as a quick link for navigation
+			var oUniqueFields = {};
+			for (var i in p_oResults.results){
+				var oRecord = p_oResults.results[i];
+				for (var j in oRecord._fields){
+					var oFieldHash = oRecord._fields[j];
+					var sFieldName = oFieldHash.field;
+					if (typeof oUniqueFields[sFieldName] != 'undefined'){
+						oUniqueFields[sFieldName].count++;
+						oUniqueFields[sFieldName].classes[oFieldHash['class']] = 1;
+						oUniqueFields[sFieldName].values[oFieldHash['value']] = 1;
+					}
+					else {
+						var oClasses = {};
+						oClasses[ oFieldHash['class'] ] = 1;
+						var oValues = {};
+						oValues[ oFieldHash['value'] ] = 1;
+						oUniqueFields[sFieldName] = {
+							count: 1,
+							classes: oClasses,
+							values: oValues
+						}
+					}
+				}
+			}
+			logger.log('oUniqueFields', oUniqueFields);
+			
+			for (var sUniqueField in oUniqueFields){
+				var oUniqueField = oUniqueFields[sUniqueField];
+				var fieldNameLink = document.createElement('a');
+				fieldNameLink.setAttribute('href', '#');
+				fieldNameLink.innerHTML = '(' + keys(oUniqueField.values).length + ')';
+				fieldNameLink.id = 'individual_classes_menu_link_' + sUniqueField;
+				fieldNameLink.setAttribute('title', 'Click to report on this field');
+				logger.log('ThLinerEl', this.dataTable.getColumn(sUniqueField).getThLinerEl());
+				this.dataTable.getColumn(sUniqueField).getThLinerEl().appendChild(fieldNameLink);
+				var fieldNameLinkEl = new YAHOO.util.Element(fieldNameLink);
+				fieldNameLinkEl.on('click', YAHOO.ELSA.groupData, [ YAHOO.ELSA.getLocalResultId(this.tab), null, sUniqueField ], this);
+			}
+	  	 	
 	    }catch(e){
 	    	logger.log('No datatable because:', e);
 	    	for (var term in e){
@@ -1650,6 +1819,11 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 	this.tabView = p_oTabView;
 	YAHOO.util.Dom.removeClass(this.tabView, 'hiddenElement');
 	this.tab = new YAHOO.widget.Tab();
+	
+	this.view = 'standard';
+	if (YAHOO.ELSA.gridDisplay){
+		this.view = 'grid';
+	}
 		
 	var oLabelEl = new YAHOO.util.Element(this.tab.get('labelEl'));
 	oLabelEl.addClass('yui-panel');
@@ -1698,7 +1872,16 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		
 	} catch (e){ logger.log(e) }
 	
-	this.loadResponse = function(p_oResults){
+	this.loadResponse = function(p_oResults, p_bIsReload){
+		if (p_bIsReload){
+			this.tab.get('contentEl').innerHTML = '';
+			
+			// Create a div we'll attach the results menu button to later
+			var oEl = document.createElement('div');
+			oEl.id = 'query_export_' + this.id;
+			this.tab.get('contentEl').appendChild(oEl);
+		}
+		
 		logger.log('got results:', p_oResults);
 		try {
 			this.results = p_oResults;
@@ -1714,17 +1897,19 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 				YAHOO.ELSA.Error('no qid found in results');
 			}
 		
-			if (this.results.batch){
-				oLabelEl.innerHTML += ' [batched]';
-			}
-			else {
-				oLabelEl.innerHTML += ' (' + this.results.totalRecords + ')';
-		    	if (p_oResults.query_string){ //saved result
-			    	this.sentQuery = YAHOO.lang.JSON.stringify({
-						query_string: this.results.query_string, 
-						query_meta_params: this.results.query_meta_params
-					});
-		    	}
+			if (!p_bIsReload){
+				if (this.results.batch){
+					oLabelEl.innerHTML += ' [batched]';
+				}
+				else {
+					oLabelEl.innerHTML += ' (' + this.results.totalRecords + ')';
+			    	if (p_oResults.query_string){ //saved result
+				    	this.sentQuery = YAHOO.lang.JSON.stringify({
+							query_string: this.results.query_string, 
+							query_meta_params: this.results.query_meta_params
+						});
+			    	}
+				}
 			}
 		}
 		catch (e){
@@ -1780,14 +1965,23 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		else {
 			var oEl = document.createElement('div');
 			oEl.id = 'query_data_table_' + this.id;
+			if (YAHOO.util.Dom.get(oEl.id)){
+				this.dataTable.destroy();
+			}
 	    	this.tab.get('contentEl').appendChild(oEl);
-	    	this.createDataTable(this.results, oEl);
-			//logger.log('groups: ', this.results.groups);
-			//logger.log('length: ' + keys(this.results.groups).length);
-			
+	    	
 			try {
-				this.renderDataTableHeader();
-				this.dataTable.render();
+				logger.log('view ' + this.view);
+				if (this.view == 'grid'){
+					this.createDataTableGrid(this.results, oEl);
+					this.renderDataTableHeaderGrid();
+					this.dataTable.render();
+				}
+				else {
+					this.createDataTable(this.results, oEl);
+					this.renderDataTableHeader();
+					this.dataTable.render();
+				}
 				this.dataTable.sortColumn(this.dataTable.getColumn('timestamp'), YAHOO.widget.DataTable.CLASS_ASC);
 				YAHOO.util.Event.onAvailable('explain_query_' + this.results.qid, function(){
 					// Set query explain stats
@@ -1907,6 +2101,54 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			var fieldNameLinkEl = new YAHOO.util.Element(fieldNameLink);
 			fieldNameLinkEl.on('click', YAHOO.ELSA.groupData, [ YAHOO.ELSA.getLocalResultId(this.tab), null, sUniqueField ], this);
 			fieldSummaryDiv.appendChild(document.createTextNode(' '));
+		}
+	};
+	
+	this.renderDataTableHeaderGrid = function(){
+		var headerContainerDiv = YAHOO.util.Dom.get('query_export_' + this.id);
+		var buttonContainerDiv = document.createElement('div');
+		buttonContainerDiv.id = 'query_export_' + this.id + '_button';
+		var oEl = new YAHOO.util.Element(buttonContainerDiv);
+		oEl.setStyle('float', 'left');
+		headerContainerDiv.appendChild(buttonContainerDiv);
+		
+		//	Create an array of YAHOO.widget.MenuItem configuration properties
+		var oMenuSources = [ 
+			{text:'Save Results...', value:'saveResults', onclick: { fn: YAHOO.ELSA.saveResults, obj:this.id }},
+			{text:'Export Results...', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportResults, obj:this.id }},
+			{text:'Alert or schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}},
+			{text:'Send to connector...', value:'sendToConnector', onclick:{ fn:YAHOO.ELSA.sendToConnector, obj:this.id}},
+			{text:'Add to Dashboard...', value:'addToDashboard', onclick:{ fn:YAHOO.ELSA.addQueryToChart}}
+		];
+		
+		var oMenuButtonCfg = {
+			type: 'menu',
+			label: 'Result Options...',
+			name: 'result_options_select_button',
+			menu: oMenuSources,
+			container: buttonContainerDiv
+		};
+		var oButton = new YAHOO.widget.Button(oMenuButtonCfg);
+		logger.log('rendering to ', this.tab.get('contentEl'));
+		
+		// If there were any errors, display them
+		if (this.results.errors && this.results.errors.length > 0){
+			var elErrors = document.createElement('b');
+			elErrors.innerHTML = 'Errors: ' + this.results.errors.join(', ');
+			headerContainerDiv.appendChild(elErrors);
+			var oElErrorsDiv = new YAHOO.util.Element(elErrors);
+			oElErrorsDiv.addClass('warning');
+			headerContainerDiv.appendChild(document.createElement('br'));
+		}
+		
+		// If there were any warnings, display them
+		if (this.results.warnings && this.results.warnings.length > 0){
+			var elWarnings = document.createElement('b');
+			elWarnings.innerHTML = 'Warnings: ' + this.results.warnings.join(', ');
+			headerContainerDiv.appendChild(elWarnings);
+			var oElWarningsDiv = new YAHOO.util.Element(elWarnings);
+			oElWarningsDiv.addClass('warning');
+			headerContainerDiv.appendChild(document.createElement('br'));
 		}
 	};
 };
@@ -4354,5 +4596,24 @@ YAHOO.ELSA.addQueryToChart = function(p_sType, p_aArgs){
 		oCreatePanel.panel.render();
 		oCreatePanel.panel.show();
 	}
+}
+
+YAHOO.ELSA.toggleGridDisplay = function(){
+	var oEl = YAHOO.util.Dom.get('grid_display_checkbox');
+	var oResult = YAHOO.ELSA.localResults[ YAHOO.ELSA.getLocalResultId(YAHOO.ELSA.tabView.get('activeTab')) ];
+	if (oEl.checked){
+		YAHOO.ELSA.gridDisplay = true;
+		oEl.checked = true;
+		oResult.view = 'grid';
+		logger.log('set checked');
+	}
+	else {
+		YAHOO.ELSA.gridDisplay = false;
+		oEl.checked = false;
+		oResult.view = 'standard';
+		logger.log('set unchecked');	
+	}
+	oResult.loadResponse(oResult.results, true);
+	
 }
 	
