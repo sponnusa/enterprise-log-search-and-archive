@@ -1128,7 +1128,7 @@ YAHOO.ELSA.Results = function(){
 	        pageLinks          : 10,
 	        rowsPerPage        : 15,
 	        rowsPerPageOptions : [15,50,100],
-	        template           : '{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}',
+	        template           : '{CurrentPageReport} {FirstPageLink} {PreviousPageLink} {PageLinks} {NextPageLink} {LastPageLink} {RowsPerPageDropdown}',
 	        pageReportTemplate : '<strong>Records: {totalRecords} / ' + this.dataSource.liveData.totalRecords + ' </strong> '
 	        	+ this.dataSource.liveData.totalTime + ' ms <a href="#" id="explain_query_' + this.dataSource.liveData.qid + '">?</a>'
 	    });
