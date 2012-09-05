@@ -807,7 +807,11 @@ exec_func(){
 }
 
 restart_apache(){
-	service apache2 restart
+	if [ "$DISTRO" = "centos" ]; then
+		service httpd restart
+	else
+		service apache2 restart
+	fi
 }
 
 if [ "$INSTALL" = "node" ]; then
