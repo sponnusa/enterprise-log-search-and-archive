@@ -3640,10 +3640,19 @@ sub _archive_query {
 						$search_query = "SELECT COUNT(*) AS count, class_id, $groupby\n";
 					}
 					else {
-						$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby} AS \"$query->{groupby_field}\"\n";
+						if ($query->{groupby} eq 'program_id' or $query->{groupby} eq 'class_id'){
+							$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby}, $query->{groupby_field}\n";
+						}
+						else {
+							$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby} AS \"$query->{groupby_field}\"\n";
+						}
 					}
-					$search_query .= "FROM $table main\n" .
-						'WHERE ' . $query->{where} . "\nGROUP BY $query->{groupby}\n" . 'ORDER BY 1 DESC LIMIT ?,?';
+					$search_query .= "FROM $table main\n";
+					if ($query->{groupby} eq 'program_id' or $query->{groupby} eq 'class_id'){
+						$search_query .= "LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
+						"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n";
+					}
+					$search_query .= 'WHERE ' . $query->{where} . "\nGROUP BY $query->{groupby}\n" . 'ORDER BY 1 DESC LIMIT ?,?';
 				}
 				else {
 					$search_query = "SELECT main.id,\n" .
@@ -3737,27 +3746,30 @@ sub _archive_query {
 				}
 				
 				foreach my $row (@{ $ret->{$node}->{rows} }){
-					my $field_infos = $q->resolve($groupby, $row->{$groupby}, '=');
-					my $attr = (keys %{ $field_infos->{attrs}->{ $row->{class_id} } })[0];
+					my $field_infos = $q->resolve($groupby, $row->{$groupby}, '=');					
 					my $key;
+					my $attr = (keys %{ $field_infos->{attrs}->{ $row->{class_id} } })[0];
 					if ($attr){
 						$attr =~ s/attr\_//;
-						
 						if (exists $Fields::Time_values->{ $groupby }){
 							# We will resolve later
 							$key = (values %{ $field_infos->{attrs}->{0} })[0];
 						}
+						elsif ($groupby eq 'program'){
+							$key = $row->{program};
+						}
+						elsif ($groupby eq 'class'){
+							$key = $row->{class};
+						}
 						elsif (exists $Fields::Field_to_order->{ $attr }){
 							# Resolve normally
-							$key = $self->resolve_value($row->{class_id}, 
-								$row->{$groupby}, $attr);
+							$key = $self->resolve_value($row->{class_id}, $row->{$groupby}, $attr);
 						}
 					}
 					else {
 						my $field_order = $self->get_field($groupby)->{ $row->{class_id} }->{field_order};
 						$key = $self->resolve_value($row->{class_id}, $row->{$groupby}, $Fields::Field_order_to_field->{$field_order});
 					}
-										
 					$agg{ $key } += $row->{count};	
 				}
 			}
