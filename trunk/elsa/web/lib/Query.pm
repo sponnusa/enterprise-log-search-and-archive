@@ -80,7 +80,7 @@ sub BUILDARGS {
 		$params{meta_params} = delete $params{query_meta_params};
 	}
 	
-	foreach my $property qw(groupby timeout archive analytics datasource){
+	foreach my $property qw(groupby timeout archive analytics datasource nobatch){
 		if ($params{meta_params}->{$property}){
 			$params{$property} = delete $params{meta_params}->{$property};
 		}
@@ -193,20 +193,22 @@ sub TO_JSON {
 	}
 	
 	# Check to see if our result is bulky
-	if ($self->results->is_bulk){
-		$ret->{bulk_file} = $self->results->bulk_file;
-		$ret->{batch_query} = $self->qid;
-		my $link = sprintf('%sQuery/get_bulk_file?qid=%d', 
-			$self->conf->get('email/base_url') ? $self->conf->get('email/base_url') : 'http://localhost/',
-			$self->qid);
-		$ret->{batch_message} = 'Results: <a target="_blank" href="' . $link . '">' . $link . '</a>';
-	}
-	elsif ($self->batch_message){
-		$ret->{batch_message} = $self->batch_message;
-	}
-	
-	if ($self->batch){
-		$ret->{batch} = 1;
+	unless ($self->meta_params->{nobatch}){
+		if ($self->results->is_bulk){
+			$ret->{bulk_file} = $self->results->bulk_file;
+			$ret->{batch_query} = $self->qid;
+			my $link = sprintf('%sQuery/get_bulk_file?qid=%d', 
+				$self->conf->get('email/base_url') ? $self->conf->get('email/base_url') : 'http://localhost/',
+				$self->qid);
+			$ret->{batch_message} = 'Results: <a target="_blank" href="' . $link . '">' . $link . '</a>';
+		}
+		elsif ($self->batch_message){
+			$ret->{batch_message} = $self->batch_message;
+		}
+		
+		if ($self->batch){
+			$ret->{batch} = 1;
+		}
 	}
 	
 	if ($self->has_warnings){
@@ -786,6 +788,11 @@ sub _parse_query_term {
 			elsif (lc($term_hash->{field}) eq 'datasource'){
 				$self->datasource($term_hash->{value});
 				$self->log->trace("Set datasource " . $self->datasource);
+				next;
+			}
+			elsif (lc($term_hash->{field}) eq 'nobatch'){
+				$self->meta_params->{nobatch} = 1;
+				$self->log->trace("Set batch override.");
 				next;
 			}
 			
