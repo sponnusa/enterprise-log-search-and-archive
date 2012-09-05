@@ -490,7 +490,7 @@ ubuntu_get_web_packages(){
 
 centos_get_web_packages(){
 	yum -y update &&
-	yum -yq install curl subversion make gcc gcc-c++ mysql mysql-libs mysql-devel httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build
+	yum -yq install curl subversion make gcc gcc-c++ mysql mysql-libs mysql-devel httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python
 	return $?
 }
 
