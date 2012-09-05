@@ -318,10 +318,10 @@ sub set_permissions {
 	my ($query, $sth);
 	my $rows_updated = 0;
 	foreach my $perm (@{ $args->{permissions} }){
-		if ($perm->{attr} eq 'host_id' and $perm->{attr_id} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\-(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/){
+		if ($Fields::IP_fields->{ $perm->{attr} } and $perm->{attr_id} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\-(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/){
 			$perm->{attr_id} = unpack('N*', inet_aton($1)) . '-' . unpack('N*', inet_aton($2));
 		}
-		elsif ($perm->{attr} eq 'host_id' and $perm->{attr_id} !~ /^\d+$/){
+		elsif ($Fields::IP_fields->{ $perm->{attr} } and $perm->{attr_id} !~ /^\d+$/){
 			$perm->{attr_id} = unpack('N*', inet_aton($perm->{attr_id}));
 		}
 		
@@ -335,8 +335,6 @@ sub set_permissions {
 			else {
 				$query = 'INSERT INTO permissions (gid, attr, attr_id) VALUES (?,?,?)';
 				$sth = $self->db->prepare($query);
-				
-					
 				$sth->execute($perm->{gid}, $perm->{attr}, $perm->{attr_id});
 			}
 		}
@@ -2459,8 +2457,15 @@ sub _build_query {
 		foreach my $id (keys %{ $q->user->permissions->{$attr} }){
 			next unless $id;
 			$self->log->trace("Adding id $id to $attr based on permissions");
-			push @{ $clauses{permissions}->{clauses} }, [ $attr . '=?' ];
-			push @{ $clauses{permissions}->{vals} }, $id;
+			if ($Fields::IP_fields->{$attr} and $id =~ /^(\d+)\-(\d+)$/){
+				my ($min, $max) = ($1, $2);
+				push @{ $clauses{permissions}->{clauses} }, [ '(' . $attr . '>=? AND ' . $attr . '<=?)' ];
+				push @{ $clauses{permissions}->{vals} }, $min, $max;
+			}
+			else {
+				push @{ $clauses{permissions}->{clauses} }, [ $attr . '=?' ];
+				push @{ $clauses{permissions}->{vals} }, $id;
+			}
 		}
 	}
 	
@@ -3783,7 +3788,7 @@ sub _archive_query {
 								intval => $j,
 								'@count' => 0
 							};
-							last OUTER if scalar @zero_filled > $limit;
+							last OUTER if scalar @zero_filled >= $limit;
 						}
 					}
 				}
