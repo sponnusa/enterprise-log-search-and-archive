@@ -106,7 +106,9 @@ our $Time_values = {
 	year => 86400 * 365,
 };
 
-our $Reserved_fields = { map { $_ => 1 } qw( start end limit offset class groupby node cutoff datasource timeout archive analytics ), keys %$Time_values };
+our $Reserved_fields = { map { $_ => 1 } qw( start end limit offset class groupby node cutoff datasource timeout archive analytics nobatch ), keys %$Time_values };
+
+our $IP_fields = { map { $_ => 1 } qw( node_id host_id ip srcip dstip sourceip destip ) };
 
 # Helper methods for dealing with resolving fields
 has 'node_info' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
