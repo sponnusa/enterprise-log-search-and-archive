@@ -944,14 +944,9 @@ YAHOO.ELSA.Results = function(){
 		}
 	}
 	
-//	this.formatAddHighlights = function(p_elCell, oRecord, oColumn, p_oData){
-//		var sText = p_oData;
-//		for (var sHighlight in oSelf.highlights){
-//			var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
-//			sText = sText.replace(re, '<span class="highlight">$1</span>');
-//		}
-//		p_elCell.innerHTML = sText;
-//	}
+	this.formatAddHighlights = function(p_elCell, oRecord, oColumn, p_oData){
+		p_elCell.innerHTML = oSelf.highlightText(escapeHTML(p_oData));
+	}
 	
 	this.formatDate = function(p_elCell, oRecord, oColumn, p_oData)
 	{
@@ -1164,34 +1159,44 @@ YAHOO.ELSA.Results = function(){
 		];
 		
 		var aColumns = [
-			{ key:'info', label:'', sortable:true, formatter:this.formatInfoButton }
+			{ key:'info', label:'', sortable:true, resizeable:true, formatter:this.formatInfoButton }
 		];
 		
 		if (YAHOO.ELSA.formParams && YAHOO.ELSA.formParams.additional_display_columns){
 			for (var i in YAHOO.ELSA.formParams.additional_display_columns){
 				var sCol = YAHOO.ELSA.formParams.additional_display_columns[i];
-				aColumns.push({ key:sCol, label:sCol, sortable:true, formatter:this.formatExtraColumn });
+				aColumns.push({ key:sCol, label:sCol, sortable:true, resizeable:true, formatter:this.formatExtraColumn });
 			}
 		}
 		
-		aColumns.push({ key:'timestamp', label:'Timestamp', sortable:true, editor:'date', formatter:this.formatDate });
+		aColumns.push({ key:'timestamp', label:'Timestamp', sortable:true, resizeable:true, editor:'date', formatter:this.formatDate });
 		
 		p_oResults.grid_results = [];
 		var oColsAdded = {};
+		var bHasClassNone = false;
 		for (var i in p_oResults.results){
 			var oNewRecord = cloneVar(p_oResults.results[i]);
+			if (oNewRecord['class'] == 'NONE'){
+				bHasClassNone = true;
+			}
 			for (var j in oNewRecord._fields){
 				var sField = oNewRecord._fields[j].field;
 				var sValue = oNewRecord._fields[j].value;
 				oNewRecord[sField] = sValue;
 				if (typeof(oColsAdded[sField]) == 'undefined'){
-					aColumns.push({ key:sField, label:sField, sortable:true, formatter:this.formatField });
+					aColumns.push({ key:sField, label:sField, sortable:true, resizeable:true, formatter:this.formatField });
 					aFields.push({ key:sField });
 					oColsAdded[sField] = 1;
 				}
 			}
 			p_oResults.grid_results.push(oNewRecord);
 		}
+		
+		if (bHasClassNone){
+			aFields.push({ key:'msg', parser:escapeHTML });
+			aColumns.push({ key:'msg', label:'Message', sortable:true, resizeable:true, formatter:this.formatAddHighlights });
+		}
+		
 		logger.log(p_oResults.grid_results);
 		
 		// DataSource instance
@@ -1220,7 +1225,8 @@ YAHOO.ELSA.Results = function(){
 	    var oTableCfg = {
 	        paginator: this.paginator,
 	        dynamicData: false,
-	        summary: 'this is a summary'
+	        draggableColumns:true,
+	        resizeableColumns:true
 	    };
 	    
 	    try{
@@ -4604,16 +4610,22 @@ YAHOO.ELSA.toggleGridDisplay = function(){
 	if (oEl.checked){
 		YAHOO.ELSA.gridDisplay = true;
 		oEl.checked = true;
-		oResult.view = 'grid';
+		if (oResult){
+			oResult.view = 'grid';		
+		}
 		logger.log('set checked');
 	}
 	else {
 		YAHOO.ELSA.gridDisplay = false;
 		oEl.checked = false;
-		oResult.view = 'standard';
+		if (oResult){
+			oResult.view = 'standard';		
+		}
 		logger.log('set unchecked');	
 	}
-	oResult.loadResponse(oResult.results, true);
+	if (oResult){
+		oResult.loadResponse(oResult.results, true);
+	}
 	
 }
 	
