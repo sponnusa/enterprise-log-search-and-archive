@@ -22,6 +22,7 @@ MYSQL_ROOT_PASS=""
 EVENTLOG_VER="0.2.12"
 SYSLOG_VER="3.2.4"
 GEOIP_DIR="/usr/share/GeoIP/"
+APACHE="apache2"
 
 ########################################
 
@@ -54,6 +55,7 @@ if [ -f /etc/redhat-release ] || [ -f /etc/fedora-release ]; then
 	WEB_USER="apache"
 	CRON_SERVICE="crond"
 	GEOIP_DIR="/usr/local/share/GeoIP/"
+	APACHE="httpd"
 elif [ -f /etc/SuSE-release ]; then
 	DISTRO="suse"
 	CRONTAB_DIR="/var/spool/cron/tabs"
@@ -65,6 +67,9 @@ elif [ -f /etc/freebsd-update.conf ]; then
 	WEB_USER="www"
 	# FreeBSD does better over HTTP than FTP
 	export PACKAGEROOT="http://ftp.freebsd.org"
+	if [ ! -d "/usr/local/etc/$APACHE" ]; then
+		APACHE="apache22";
+	fi
 fi
 echo "Assuming distro to be $DISTRO"
 
@@ -504,10 +509,6 @@ freebsd_get_web_packages(){
 		return 1
 	fi
 	
-	APACHE="apache2"
-	if [ ! -d "/usr/local/etc/$APACHE" ]; then
-		APACHE="apache22";
-	fi
 	if [ ! -d "/usr/local/etc/$APACHE" ]; then
 		echo "Cannot find Apache conf dir in apache2 or apache22!"
 		return 0
@@ -807,11 +808,7 @@ exec_func(){
 }
 
 restart_apache(){
-	if [ "$DISTRO" = "centos" ]; then
-		service httpd restart
-	else
-		service apache2 restart
-	fi
+	service $APACHE restart
 }
 
 if [ "$INSTALL" = "node" ]; then
