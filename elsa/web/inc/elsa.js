@@ -1990,21 +1990,29 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 				}
 				this.dataTable.sortColumn(this.dataTable.getColumn('timestamp'), YAHOO.widget.DataTable.CLASS_ASC);
 				YAHOO.util.Event.onAvailable('explain_query_' + this.results.qid, function(){
-					// Set query explain stats
-					var aKeywordStats = [];
-					for (var i in this.results.stats.keywords){
-						if (this.results.stats.keywords[i].docs > 0){
-							aKeywordStats.push('keyword: ' + i + ', docs: ' + this.results.stats.keywords[i].docs 
-								+ ' (' + Number(this.results.stats.keywords[i].percentage).toFixed(1) + '%)');
+					if (typeof(this.results.stats) != 'undefined'){
+						// Set query explain stats
+						var aKeywordStats = [];
+						for (var i in this.results.stats.keywords){
+							if (this.results.stats.keywords[i].docs > 0){
+								aKeywordStats.push('keyword: ' + i + ', docs: ' + this.results.stats.keywords[i].docs 
+									+ ' (' + Number(this.results.stats.keywords[i].percentage).toFixed(1) + '%)');
+							}
 						}
+						if (aKeywordStats.length == 0){
+							aKeywordStats.push('N/A');
+						}
+						var oToolTip = new YAHOO.widget.Tooltip('explain_query_' + this.results.qid + '_tooltip', {
+							context: 'explain_query_' + this.results.qid,
+							text: aKeywordStats.join('<br>')
+						});
 					}
-					if (aKeywordStats.length == 0){
-						aKeywordStats.push('N/A');
+					else {
+						var oToolTip = new YAHOO.widget.Tooltip('explain_query_' + this.results.qid + '_tooltip', {
+							context: 'explain_query_' + this.results.qid,
+							text: 'N/A'
+						});
 					}
-					var oToolTip = new YAHOO.widget.Tooltip('explain_query_' + this.results.qid + '_tooltip', {
-						context: 'explain_query_' + this.results.qid,
-						text: aKeywordStats.join('<br>')
-					});
 				}, this, this);
 				
 			}
