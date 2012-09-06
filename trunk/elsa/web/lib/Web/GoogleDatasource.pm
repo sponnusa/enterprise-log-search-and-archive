@@ -42,6 +42,7 @@ sub call {
 		$query_args->{auth} = $check_args->{auth};
 		$query_args->{query_meta_params} = $check_args->{query_meta_params};
 		$query_args->{user} = $args->{user};
+		$query_args->{system} = 1;
 		
 		unless ($query_args->{uid} eq $args->{user}->uid){
 			die('Invalid auth token') unless $self->api->_check_auth_token($query_args);
