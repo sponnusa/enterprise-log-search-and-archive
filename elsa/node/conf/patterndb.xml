@@ -742,6 +742,8 @@
 			<rule provider="ELSA" class='24' id='24'>
 				<patterns>
 					<pattern>@NUMBER::@:@NUMBER::@,@NUMBER::@,@ESTRING::,@url,@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING::,@@ESTRING:s2:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@1@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@"@ESTRING:s3:/@@ESTRING:s4:"@,(@NUMBER::@),@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s5:,@</pattern>
+					<!-- Alternative pattern for PAN with columns listed -->
+					<pattern>@ESTRING::,@ TYPE: THREAT, SUBTYPE: url, THREAT_ID: (@NUMBER::@), ACTION: @ESTRING::,@ RULE: @ESTRING::,@ MISC: "@ESTRING:s3:/@@ESTRING:s4:"@</pattern>
 					<values>
 						<value name="s4">/$s4</value>
 					</values>
@@ -770,6 +772,8 @@
 			<rule provider="ELSA" class='25' id='25'>
 				<patterns>
 					<pattern>@NUMBER::@:@NUMBER::@,@NUMBER::@,TRAFFIC,@ESTRING:s5:,@@NUMBER::@,@ESTRING::,@@IPv4:i0:@,@IPv4:i1:@,@IPv4::@,@IPv4::@,@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s0:,@@ESTRING:s1:,@@ESTRING:s2:,@@ESTRING:s3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i2:,@@ESTRING:i3:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:i4:,@@ESTRING::,@@ESTRING:i5:,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING::,@@ESTRING:s4:,@</pattern>
+					<!-- Alternative pattern for PAN with columns listed -->
+					<pattern>@ESTRING::,@ TYPE: TRAFFIC, SUBTYPE: @ESTRING:s5:,@ RULE: @ESTRING::,@ ACTION: @ESTRING::,@ INBOUND_INTERFACE: @ESTRING:s2:,@ FROM_ZONE: @ESTRING:s0:,@ SOURCE_USER: @ESTRING::,@ SOURCE_IP: @ESTRING:i0:,@ NAT_SOURCE_IP: @ESTRING::,@ SOURCE_PORT: @ESTRING:i2:,@ OUTBOUND_INTERFACE: @ESTRING:s3:,@ TO_ZONE: @ESTRING:s1:,@ DESTINATION_USER: @ESTRING::,@ DESTINATION_IP: @ESTRING:i1:,@ DESTINATION_PORT: @ESTRING:i3:,@ DESTINATION_LOCATION: @ESTRING:s4:,@ CATEGORY: @ESTRING:s5:,@ PROTOCOL: @ESTRING:i4:,@ APPLICATION: @ESTRING::,@ ELAPSED_TIME: @ESTRING::,@ BYTES: @ESTRING:i5:,@ BYTES_RECEIVED: @ESTRING::,@ BYTES_SENT: @ESTRING::,@ TOTAL_PACKETS: @ESTRING::,@ PACKETS_RECEIVED: @ESTRING::,@ PACKETS_SENT: @ESTRING::,@ REPEAT_COUNT_5sec: </pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -976,6 +980,35 @@
                     </rule>
             </rules>
     </ruleset>
+    <ruleset name="ISAFWSLog-via-Epilog">
+    		<patterns>
+    			<pattern>ISAFWSLog</pattern>
+    		</patterns>
+            <rules>
+                    <rule provider="ELSA" class='7' id='7'>
+                            <patterns>
+                                    <pattern>@ESTRING:i0:|@@ESTRING::|@@ESTRING:s4:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:i1:|@@ESTRING::|@@ESTRING::|@@ESTRING:s0:|@@ESTRING:://@@ESTRING:s1:/@@ESTRING:s2:|@@ESTRING:i2:|@</pattern>
+                                    <pattern>@ESTRING:i0:|@@ESTRING::|@@ESTRING:s4:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:i1:|@@ESTRING::|@@ESTRING:s0:|@@ESTRING::|@@ESTRING:s1:|@</pattern>
+                            </patterns>
+                            <examples>
+                                    <example>
+                                    		<test_message program="ISAFWSLog">1.1.1.1|domainname\username|Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.2)|2012-08-27|18:59:49|MAD00GS6|2.2.2.2|2.2.2.2|80|http|GET|http://search.twitter.com/search.json?q=hp%2520dell%2520problems&amp;since_id=240160211699122180&amp;callback=twitter._queue_callback&amp;result_type=mixed|200|Internet Access to Users|Req ID: 1f449904 |Internal|External|0x480|Allowed|-</test_message>
+                                            <test_value name="i0">1.1.1.1</test_value>
+											<test_value name="i1">2.2.2.2</test_value>
+											<test_value name="s0">GET</test_value>
+											<test_value name="s1">search.twitter.com</test_value>
+											<test_value name="s2">search.json?q=hp%2520dell%2520problems&amp;since_id=240160211699122180&amp;callback=twitter._queue_callback&amp;result_type=mixed</test_value>
+											<test_value name="s3"></test_value>
+											<test_value name="s4">Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.2)</test_value>
+											<test_value name="s5"></test_value>
+											<test_value name="i2">200</test_value>
+											<test_value name="i3"></test_value>
+											<test_value name="i4"></test_value>
+                                    </example>
+                            </examples>
+                    </rule>
+            </rules>
+    </ruleset>
     <ruleset name="Cisco SEC">
     	<pattern>%SEC-</pattern>
     	<rules>
@@ -1010,5 +1043,5 @@
 	    		</examples>
 	    	</rule>
     	</rules>
-    </ruleset>	
+    </ruleset>
 </patterndb>
