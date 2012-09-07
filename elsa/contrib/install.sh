@@ -408,6 +408,7 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_name"), 14)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_path"), 15)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_target"), 15)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS host_stats (host_id INT UNSIGNED NOT NULL, class_id SMALLINT UNSIGNED NOT NULL, count MEDIUMINT UNSIGNED NOT NULL DEFAULT 0, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (timestamp, host_id, class_id)) ENGINE=MyISAM;'
 }
 
 init_elsa(){
