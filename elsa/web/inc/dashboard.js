@@ -2,10 +2,17 @@ YAHOO.namespace('YAHOO.ELSA.Chart');
 
 YAHOO.ELSA.timeTypes = {
 	timestamp:1,
-	minute:1,
-	hour:1,
-	day:1,
-	year:1
+	minute:60,
+	hour:3600,
+	day:86400,
+	year:(86400*365)
+};
+
+YAHOO.ELSA.timeTypeDrillDowns = {
+	minute: 'seconds',
+	hour: 'minutes',
+	day: 'hours',
+	year: 'days'
 };
 
 YAHOO.ELSA.chartOptions = {
@@ -909,10 +916,20 @@ YAHOO.ELSA.Chart.prototype.selectHandler = function(){
 	    if (item.row != null && item.column != null) {
 	      var str = oDataTable.getFormattedValue(item.row, item.column);
 	      message += '{row:' + item.row + ',column:' + item.column + '} = ' + str;
-	      logger.log(oDataTable.getColumnLabel(item.column));
-	      logger.log(oDataTable.getColumnProperties(item.column));
-	      logger.log(oDataTable.getColumnProperty(item.column, 'value'));
-	      logger.log(oDataTable.getProperties(item.row, item.column));
+	      logger.log('label', oDataTable.getColumnLabel(item.column));
+	      logger.log('properties', oDataTable.getColumnProperties(item.column));
+	      logger.log('value', oDataTable.getColumnProperty(item.column, 'value'));
+	      logger.log('getProperties', oDataTable.getProperties(item.row, item.column));
+	      if (this.isTimeChart){
+	      	var oStart = oDataTable.getValue(item.row, 0);
+	      	var iOffset = YAHOO.ELSA.timeTypes[this.isTimeChart];
+	      	var oEnd = new Date(oStart.getTime() + (iOffset * 1000));
+	      	logger.log('oStart ' + oStart + ', oEnd ' + oEnd);
+	      	var sNewLocation = location.pathname + '?start=' + getISODateTime(oStart) + '&end=' + getISODateTime(oEnd) 
+	      		+ '&' + YAHOO.ELSA.timeTypeDrillDowns[this.isTimeChart];
+	      	logger.log('sNewLocation', sNewLocation);
+	      	window.location = sNewLocation;
+	      }
 	    } else if (item.row != null) {
 	      var str = oDataTable.getFormattedValue(item.row, 0);
 	      message += '{row:' + item.row + ', (no column, showing first)} = ' + str;
