@@ -196,6 +196,12 @@ sub rotate_logs {
 	
 	# Consolidate indexes
 	$self->_check_consolidate();
+	
+	# Delete old stats
+	my $retention_days = $self->conf->get('stats/retention_days') ? $self->conf->get('stats/retention_days') : 365;
+	$query = 'DELETE FROM host_stats WHERE timestamp < DATE_SUB(NOW(), INTERVAL ? DAY)';
+	$sth = $self->db->prepare($query);
+	$sth->execute($retention_days);
 }
 
 sub initial_validate_directory {
@@ -663,6 +669,7 @@ sub load_buffers {
 			if (scalar @rows == 1){
 				# Standard case, just do the indexing
 				$self->index_records($batch_ids);
+				$self->record_host_stats();
 			}
 			elsif ($batch_ids->{first_id} - $last_id > 1){
 				# Non-consecutive, must do an index for this batch
@@ -1307,7 +1314,7 @@ sub index_records {
 	my $index_name = $self->_get_index_name($index_type, $next_index_id);
 	
 	my $stats = $self->_sphinx_index($index_name);
-
+	
 	# Delete the replaced indexes
 	foreach my $type (keys %replaced){
 		$self->log->debug("Dropping indexes " . join(", ", sort keys %{ $replaced{$type} }));
@@ -1470,7 +1477,7 @@ sub _drop_indexes {
 	
 	# Delete from database
 	foreach my $id (@$ids){
-		$self->log->debug("Deleting index $id from DB");
+		$self->log->debug("Deleting index $id of type $type from DB");
 		
 		$query = 'SELECT first_id, last_id, table_name FROM v_directory WHERE id=? AND type=?';
 		$sth = $self->db->prepare($query);
@@ -1943,6 +1950,73 @@ sub add_programs {
 			$self->log->error('Duplicate CRC found for ' . $program . ' with CRC ' . $to_add->{$program}->{id});
 		}
 	}
+}
+
+sub record_host_stats {
+	my $self = shift;
+	#my $index = shift;
+	my $overall_start = Time::HiRes::time();
+		
+	my ($query, $sth);
+	$query = 'SELECT id, records FROM v_indexes WHERE type="temporary" ORDER BY end DESC LIMIT 1,1';
+	$sth = $self->db->prepare($query);
+	$sth->execute;
+	my $row = $sth->fetchrow_hashref;
+	unless ($row){
+		$self->log->error("No latest index found");
+		die('No latest index found');
+	}
+	my $index = 'temp_' . $row->{id};
+	my $records = $row->{records};
+	
+	my $dbh_sphinx = DBI->connect('dbi:mysql:host=127.0.0.1;port=' . 
+		($self->conf->get('sphinx/mysql_port') ? $self->conf->get('sphinx/mysql_port') : 9306),  
+		'', '', {
+			mysql_connect_timeout => 10,
+			PrintError => 0,
+			mysql_multi_statements => 1,
+			RaiseError => 1,
+		}
+	);
+	
+	$query = 'SELECT @count, host_id FROM ' . $index . ' GROUP BY host_id LIMIT 9999';
+	$sth = $dbh_sphinx->prepare($query);
+	$sth->execute;
+	my %hosts;
+	while (my $row = $sth->fetchrow_hashref){
+		$hosts{ $row->{host_id} } = {};
+	}
+	if (scalar keys %hosts < 100){
+		my $msg = "Only found " . (scalar keys %hosts) . " hosts in $index";
+		$self->log->trace($msg);
+		sleep 5;
+		%hosts = ();
+		$sth->execute;
+		while (my $row = $sth->fetchrow_hashref){
+			$hosts{ $row->{host_id} } = {};
+		}
+		if (scalar keys %hosts <= 1){
+			$self->log->trace($msg);
+			die("$msg");
+		}
+	}
+	
+	my $total = 0;
+	my $load_file = $self->conf->get('buffer_dir') . 'host_stats.tsv';
+	open(TSV, '> ' . $load_file);
+	foreach my $host (keys %hosts){
+		$query = 'SELECT @count, class_id FROM ' . $index . ' WHERE MATCH(\'@host ' . $host . '\') GROUP BY class_id LIMIT 9999';
+		$sth = $dbh_sphinx->prepare($query);
+		$sth->execute();
+		while (my $row = $sth->fetchrow_hashref){
+			print TSV join("\t", $host, $row->{class_id}, $row->{'@count'}) . "\n";
+			$total += $row->{'@count'};
+		}
+	}
+	
+	$self->db->do('LOAD DATA CONCURRENT LOCAL INFILE "' . $load_file . '" INTO TABLE host_stats');
+	
+	$self->log->trace("Finished in " . (Time::HiRes::time() - $overall_start) . " with $total records counted");
 }
 
 __PACKAGE__->meta->make_immutable;

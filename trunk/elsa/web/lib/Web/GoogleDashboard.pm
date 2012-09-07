@@ -9,8 +9,87 @@ use Module::Pluggable require => 1, search_path => [qw(Dashboard)];
 use JSON;
 use Plack::Middleware::Auth::Basic;
 use Date::Manip;
+use Socket;
 
 our $Default_width = 1000;
+
+has 'system_dashboards' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
+	_system => {
+		title => 'System Dashboard',
+		node_charts => [
+			{
+				x => 0,
+				y => 0,
+				chart_type => 'ColumnChart',
+				chart_options => {
+					title => 'Events per Time',
+					isStacked => 1,
+				},
+				query => 'datasource:_node_stats_%d',
+				label => 'Events %s',
+			},
+		],
+		charts => [
+			{
+				x => 0,
+				y => 1,
+				chart_type => 'PieChart',
+				chart_options => {
+					title => 'Events per Host',
+				},
+				query => 'datasource:_system_event_rates groupby:host',
+				label => 'Host',
+			},
+			{
+				x => 1,
+				y => 1,
+				chart_type => 'PieChart',
+				chart_options => {
+					title => 'Events per Class',
+				},
+				query => 'datasource:_system_event_rates groupby:class',
+				label => 'Class',
+			},
+			{
+				x => 0,
+				y => 2,
+				chart_type => 'ColumnChart',
+				chart_options => {
+					title => 'Queries per Time',
+					logScale => 1,
+				},
+				query => 'datasource:_system_web_queries_count',
+				label => 'Queries',
+			},
+			{
+				x => 0,
+				y => 2,
+				query => 'datasource:_system_web_queries_time',
+				label => 'Query Time (ms)',
+			},
+			{
+				x => 0,
+				y => 3,
+				chart_type => 'PieChart',
+				chart_options => {
+					title => 'Queries per User',
+				},
+				query => 'datasource:_system_web_queries_count groupby:username',
+				label => 'User',
+			},
+			{
+				x => 1,
+				y => 3,
+				chart_type => 'PieChart',
+				chart_options => {
+					title => 'Queries per User by Time',
+				},
+				query => 'datasource:_system_web_queries_time groupby:username',
+				label => 'User',
+			},
+		]
+	},
+}});
 
 sub call {
 	my ($self, $env) = @_;
@@ -92,16 +171,8 @@ sub call {
 		$self->api->freshen_db;
 		my ($query, $sth);
 		
-		$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
-		$sth = $self->api->db->prepare($query);
-		$sth->execute($dashboard_name);
-		my $row = $sth->fetchrow_hashref;
-		die('dashboard ' . $dashboard_name . ' not found or not authorized') unless $row;
-		$args->{id} = $row->{dashboard_id};
-		$args->{title} = $row->{dashboard_title};
-		$self->title($args->{title});
-		$args->{alias} = $row->{alias};
-		$args->{auth_required} = $row->{auth_required};
+		$args->{user} = $user;
+		$args->{dashboard_name} = $dashboard_name;
 		if ($self->api->conf->get('dashboard_width')){
 			$args->{width} = $self->api->conf->get('dashboard_width');
 		}
@@ -109,14 +180,39 @@ sub call {
 			$args->{width} = $Default_width;
 		}
 		
-		$args->{user} = $user;
-		$args->{dashboard_name} = $dashboard_name;
-		unless ($self->api->_is_permitted($args)){
-			$res->status(401);
-			die('Unauthorized');
+		if(exists $self->system_dashboards->{ $args->{alias} }){
+			unless ($args->{user}->is_admin){
+				$res->status(401);
+				die('Unauthorized');
+			}
+#			foreach my $chart (@{ $self->system_dashboards->{ $args->{alias} }->{charts} }){
+#				$chart->{query_meta_params}->{start} = $self->start_time;
+#				$chart->{query_meta_params}->{end} = $self->end_time;
+#				$chart->{query_meta_params}->{groupby} = [$self->groupby] unless $query->{query} =~ /\sgroupby[:=]/ or $query->{query} =~ /sum\([^\)]+\)$/;
+#			}
+			$args->{id} = 1;
+			$args->{title} = $self->system_dashboards->{ $args->{alias} }->{title};
+			$args->{_system_dashboard} = $self->_generate_system_dashboard($args->{alias});
+		}
+		else {
+			$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
+			$sth = $self->api->db->prepare($query);
+			$sth->execute($dashboard_name);
+			my $row = $sth->fetchrow_hashref;
+			die('dashboard ' . $dashboard_name . ' not found or not authorized') unless $row;
+			$args->{id} = $row->{dashboard_id};
+			$args->{title} = $row->{dashboard_title};
+			$self->title($args->{title});
+			$args->{alias} = $row->{alias};
+			$args->{auth_required} = $row->{auth_required};
+			unless ($self->api->_is_permitted($args)){
+				$res->status(401);
+				die('Unauthorized');
+			}
 		}
 		
 		$ret = $self->api->_get_rows($args);
+		
 		delete $args->{user};
 	};
 	if ($@){
@@ -173,12 +269,12 @@ $yui_js
 <script>
 $edit
 // Set viewMode for dev/prod
-var oRegExp = new RegExp('\\Wview=(\\w+)');
-var oMatches = oRegExp.exec(location.search);
-if (oMatches){
-	YAHOO.ELSA.viewMode = oMatches[1];
+var oRegExp = new RegExp('\\\\Wview=(\\\\w+)');
+var aMatches = oRegExp.exec(location.search);
+if (aMatches){
+	console.log('matched');
+	YAHOO.ELSA.viewMode = aMatches[1];
 }
-//YAHOO.ELSA.viewMode = 'dev';
 YAHOO.ELSA.queryMetaParamsDefaults = $defaults;
 YAHOO.ELSA.dashboardParams = {
 	id: $args->{id},
@@ -211,6 +307,40 @@ YAHOO.util.Event.addListener(window, "load", function(){
 EOHTML
 ;
 	return $HTML;
+}
+
+sub _generate_system_dashboard {
+	my $self = shift;
+	my $dashboard = shift;
+	
+	$self->api->log->trace('Generating system dashboard ' . $dashboard);
+	
+	my $ret = { %{ $self->system_dashboards->{$dashboard} } };
+	$ret->{charts} = [];
+	my $id_counter = 1;
+	if ($self->system_dashboards->{$dashboard}->{node_charts}){
+		foreach my $chart (@{ $self->system_dashboards->{$dashboard}->{node_charts} }){
+			my $clone = { %$chart };
+			foreach my $node (keys %{ $self->api->conf->get('nodes') }){
+				$clone->{chart_id} = $id_counter;
+				$clone->{query_id} = $id_counter;
+				$clone->{query} = sprintf($chart->{query}, unpack('N*', inet_aton($node)));
+				$clone->{label} = sprintf($chart->{label}, $node);
+				push @{ $ret->{charts} }, { %$clone };
+				$id_counter++;
+			}
+		}
+	}
+	foreach my $chart (@{ $self->system_dashboards->{$dashboard}->{charts} }){
+		my $clone = { %$chart };
+		$clone->{chart_id} = $id_counter;
+		$clone->{query_id} = $id_counter;
+		push @{ $ret->{charts} }, $clone;
+		$id_counter++;
+	}
+	$self->api->log->debug('ret: ' . Dumper($ret));
+	
+	return $ret;
 }
 
 1;

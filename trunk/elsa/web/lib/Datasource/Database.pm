@@ -84,316 +84,6 @@ sub BUILD {
 	return $self;
 }
 
-sub _is_authorized {
-	my $self = shift;
-	my $q = shift;
-	
-	return 1;
-}
-
-sub _build_query {
-	my $self = shift;
-	my $q = shift;
-	
-	my @queries;
-	my %clauses = ( 
-		classes => { clauses => [], vals => [] }, 
-		and => { clauses => [], vals => [] }, 
-		or => { clauses => [], vals => [] }, 
-		not => { clauses => [], vals => [] },
-		permissions =>  { clauses => [], vals => [] },
-	);
-	
-	# Create permissions clauses
-	foreach my $attr qw(class_id host_id program_id node_id){
-		foreach my $id (keys %{ $q->user->permissions->{$attr} }){
-			next unless $id;
-			$self->log->trace("Adding id $id to $attr based on permissions");
-			push @{ $clauses{permissions}->{clauses} }, [ $attr . '=?' ];
-			push @{ $clauses{permissions}->{vals} }, $id;
-		}
-	}
-	
-	foreach my $class_id (keys %{ $q->user->permissions->{fields} }){
-		#next unless exists $q->classes->{distinct}->{$class_id};
-		foreach my $perm_hash (@{ $q->user->permissions->{fields}->{$class_id} }){
-			my ($name, $value) = @{ $perm_hash->{attr} };
-			if ($value =~ /^(\d+)\-(\d+)$/){
-				my ($min, $max) = ($1, $2);
-				push @{ $clauses{permissions}->{clauses} }, [ '(class_id=? AND ' . $name . '>=? AND ' . $name . '<=?)' ];
-				push @{ $clauses{permissions}->{vals} }, $class_id, $min, $max;
-			}
-			else {
-				push @{ $clauses{permissions}->{clauses} }, [ '(class_id=? AND ' . $name . '=?)' ];
-				push @{ $clauses{permissions}->{vals} }, $class_id, $value;
-			}
-			
-		}
-	}
-
-	foreach my $class_id (keys %{ $q->classes->{distinct} }){
-		#next if exists $q->classes->{partially_permitted}->{$class_id};
-		push @{ $clauses{classes}->{clauses} }, [ 'class_id=?' ];
-		push @{ $clauses{classes}->{vals} }, $class_id;
-	}
-
-	foreach my $class_id (keys %{ $q->classes->{excluded} }){
-		push @{ $clauses{not}->{clauses} }, [ 'class_id=?' ];
-		push @{ $clauses{not}->{vals} }, $class_id;
-	}
-	
-	# Handle our basic equalities
-	foreach my $boolean (qw(and or not)){
-		foreach my $field (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{'='} }){
-			my @clause;
-			foreach my $class_id (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{'='}->{$field} }){
-				next unless $q->classes->{distinct}->{$class_id} or $class_id eq 0
-					or exists $q->classes->{partially_permitted}->{$class_id};
-				foreach my $attr (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{'='}->{$field}->{$class_id} }){
-					foreach my $value (@{ $q->terms->{attr_terms}->{$boolean}->{'='}->{$field}->{$class_id}->{$attr} }){
-						if ($class_id){
-							push @clause, '(class_id=? AND ' . $attr . '=?)';
-							push @{ $clauses{$boolean}->{vals} }, $class_id, $value;
-						}
-						else {
-							push @clause, $attr . '=?';
-							push @{ $clauses{$boolean}->{vals} }, $value;
-						}
-					}
-				}
-			}
-			push @{ $clauses{$boolean}->{clauses} }, [ @clause ] if @clause;
-		}
-	}
-	
-	# Ranges are tougher: First sort by field name so we can group the ranges for the same field together in an OR
-	my %ranges;
-	foreach my $boolean qw(and or not){
-		foreach my $op (sort keys %{ $q->terms->{attr_terms}->{$boolean} }){
-			next unless $op =~ /\<|\>/;
-			foreach my $field (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{$op} }){
-				foreach my $class_id (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field} }){		
-					next unless $q->classes->{distinct}->{$class_id} or $class_id eq 0;
-					foreach my $attr (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id} }){
-						$ranges{$boolean} ||= {};
-						$ranges{$boolean}->{$field} ||= {};
-						$ranges{$boolean}->{$field}->{$attr} ||= {};
-						$ranges{$boolean}->{$field}->{$attr}->{$class_id} ||= {};
-						$ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} ||= [];
-						foreach my $value (sort { $a < $b } @{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id}->{$attr} }){
-							push @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} }, $value;
-						}					
-					}
-				}				
-			}
-		}
-	}
-	
-	# Then divine which range operators go together by sorting them and dequeuing the appropriate operator until there are none left
-	foreach my $boolean qw(and or not){
-		foreach my $field (sort keys %{ $ranges{$boolean} }){
-			my @clause;
-			foreach my $attr (sort keys %{ $ranges{$boolean}->{$field} }){
-				foreach my $class_id (sort keys %{ $ranges{$boolean}->{$field}->{$attr} }){
-					while (scalar keys %{ $ranges{$boolean}->{$field}->{$attr}->{$class_id} }){
-						my ($min, $max, $min_op, $max_op);
-						$min = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'>'} };
-						$min_op = '>';
-						unless ($min){
-							$min = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'>='} };
-							$min_op = '>=';
-						}
-						unless ($min){
-							$min = 0;
-						}
-						$max = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'<'} };
-						$max_op = '<';
-						unless ($max){
-							$max = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'<='} };
-							$max_op = '<=';
-						}
-						unless ($max){
-							$max = 2**32;
-						}						
-						if ($class_id){
-							push @clause, '(class_id=? AND ' . $attr . $min_op . '? AND ' . $attr . $max_op . '?)';
-							push @{ $clauses{$boolean}->{vals} }, $class_id, $min, $max;
-						}
-						else {
-							push @clause, '(' . $attr . $min_op . '? AND ' . $attr . $max_op . '?)';
-							push @{ $clauses{$boolean}->{vals} }, $min, $max;
-						}
-						foreach my $op ('>', '<', '>=', '<='){
-							if (exists $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op}){
-								delete $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op}
-									unless scalar @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} };
-							}
-						}
-					}
-				}
-			}
-			my $joined_clause = join(' OR ', @clause);
-			push @{ $clauses{$boolean}->{clauses} }, [ $joined_clause ];
-		}
-	}
-	
-	my $positive_qualifier = 1;
-	if (@{ $clauses{classes}->{clauses} }){
-		my @clauses;
-		foreach my $clause_arr (@{ $clauses{classes}->{clauses} }){
-			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
-		}
-		$positive_qualifier = '(' . join(" " . ' OR ', @clauses) . ')';
-	}
-	if (@{ $clauses{and}->{clauses} }){
-		my @clauses;
-		foreach my $clause_arr (@{ $clauses{and}->{clauses} }){
-			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
-		}
-		$positive_qualifier .= ' AND ' . join(" " . ' AND ', @clauses);
-	}
-	if (@{ $clauses{or}->{clauses} }){
-		my @clauses;
-		foreach my $clause_arr (@{ $clauses{or}->{clauses} }){
-			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
-		}
-		$positive_qualifier .= " " . ' AND (' . join(' OR ', @clauses) . ')';
-	}
-	
-	my $negative_qualifier = 0;
-	if (@{ $clauses{not}->{clauses} }){
-		my @clauses;
-		foreach my $clause_arr (@{ $clauses{not}->{clauses} }){
-			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
-		}
-		$negative_qualifier = '(' . join(" " . ' OR ', @clauses) . ')';
-	}
-	
-	my $permissions_qualifier = 1;
-	if (@{ $clauses{permissions}->{clauses} }){
-		my @clauses;
-		foreach my $clause_arr (@{ $clauses{permissions}->{clauses} }){
-			push @clauses, '(' . join(' OR ', @$clause_arr) . ')';
-		}
-		$permissions_qualifier = '(' . join(" " . ' OR ', @clauses) . ')';
-	}
-	
-	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier, $permissions_qualifier AS permissions_qualifier";
-	my $where;
-	my $match_str = $self->_build_sql_match_str($q);
-	$match_str = '1=1' unless $match_str;
-	$where = $match_str . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier . ' AND ' . $permissions_qualifier;
-	
-	my @values = (@{ $clauses{classes}->{vals} }, @{ $clauses{and}->{vals} }, @{ $clauses{or}->{vals} }, @{ $clauses{not}->{vals} }, @{ $clauses{permissions}->{vals} });
-	
-	# Check for time given
-	if ($q->start and $q->end){
-		$where .= ' AND timestamp BETWEEN ? AND ?';
-		push @values, $q->start, $q->end;
-	}
-	
-	# Add a groupby query if necessary
-	my $groupby;	
-	if ($q->has_groupby){
-		foreach my $field ($q->all_groupbys){
-			if ($field eq 'node'){ # special case for node
-				# We'll do a normal query
-				push @queries, {
-					select => $select,
-					where => $where,
-					values => [ @values ],
-				};
-				next;
-			}
-			
-			my $field_infos = $self->get_field($field);
-			#$self->log->trace('field_infos: ' . Dumper($field_infos));
-			foreach my $class_id (keys %{$field_infos}){
-				next unless $q->classes->{distinct}->{$class_id} or $class_id == 0;
-				push @queries, {
-					select => $select,
-					where => $where . ($class_id ? ' AND class_id=?' : ''),
-					values => [ @values, $class_id ? $class_id : () ],
-					groupby => $Fields::Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} },
-					groupby_field => $field,
-				};
-			}
-		}
-	}
-	else {
-		# We can get away with a single query
-		push @queries, {
-			select => $select,
-			where => $where,
-			values => [ @values ],
-		};
-	}	
-		
-	return \@queries;
-}
-
-sub _build_sql_match_str {
-	my ($self, $q) = @_;
-
-	# Create the SQL LIKE clause
-	
-	# No-field match str
-	my $match_str = '';
-	my (%and, %or, %not);
-	foreach my $term (keys %{ $q->terms->{any_field_terms}->{and} }){
-		$and{'msg LIKE "%' . $term . '%"'} = 1;
-	}
-		
-	my @or = ();
-	foreach my $term (keys %{ $q->terms->{any_field_terms}->{or} }){
-		$or{'msg LIKE "%' . $term . '%"'} = 1;
-	}
-	
-	my @not = ();
-	foreach my $term (keys %{ $q->terms->{any_field_terms}->{not} }){
-		$not{'msg LIKE "%' . $term . '%"'} = 1;
-	}
-	
-	foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
-		# First, the ANDs
-		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
-			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
-				$and{$field . ' LIKE "%' . $value . '%"'} = 1;
-			}
-		}
-				
-		# Then, the NOTs
-		foreach my $field (sort keys %{ $q->terms->{field_terms}->{not}->{$class_id} }){
-			foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$field} }){
-				$not{$field . ' LIKE "%' . $value . '%"'} = 1;
-			}
-		}
-		
-		# Then, the ORs
-		foreach my $field (sort keys %{ $q->terms->{field_terms}->{or}->{$class_id} }){
-			foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$field} }){
-				$or{$field . ' LIKE "%' . $value . '%"'} = 1;
-			}
-		}
-	}
-	
-	my @strs;
-	if (scalar keys %and){
-		push @strs, ' (' . join(' AND ', sort keys %and) . ')';
-	}
-	if (scalar keys %or){
-		push @strs, ' (' . join(' OR ', sort keys %or) . ')';
-	}
-	if (scalar keys %not){
-		push @strs, ' NOT (' . join(' OR ', sort keys %not) . ')';
-	}
-	$match_str .= join(' AND ', @strs);
-		
-	$self->log->trace('match str: ' . $match_str);		
-	
-	return $match_str;
-}
-
 sub _query {
 	my $self = shift;
 	my $q = shift;
@@ -420,14 +110,36 @@ sub _query {
 	};
 	
 	if ($q->has_groupby){
+		# Check to see if there is a numeric count field
+		my $count_field;
+		foreach my $field (@{ $self->fields }){
+			if ($field->{alias} and $field->{alias} eq 'count'){
+				$count_field = $field->{name};
+			}
+		}
+		
 		if ($time_select_conversions->{ $q->groupby->[0] }){
-			push @select, 'COUNT(*) AS `@count`', $time_select_conversions->{ $q->groupby->[0] } . ' AS `@groupby`';
+			if ($count_field){
+				push @select, 'SUM(' . $count_field . ') AS `@count`', $time_select_conversions->{ $q->groupby->[0] } . ' AS `@groupby`';
+			}
+			else {
+				push @select, 'COUNT(*) AS `@count`', $time_select_conversions->{ $q->groupby->[0] } . ' AS `@groupby`';
+			}
 			$groupby = 'GROUP BY `@groupby`';
 		}
+		elsif ($q->groupby->[0] eq 'node'){
+			#TODO Need to break this query into subqueries if grouped by node
+			die('not supported');
+		}
 		else {
-			foreach my $row (@{ $self->fields }){
-				if ($row->{alias} eq $q->groupby->[0] or $row->{name} eq $q->groupby->[0]){
-					push @select, 'COUNT(*) AS `@count`', $row->{name} . ' AS `@groupby`';
+			foreach my $field (@{ $self->fields }){
+				if ($field->{alias} eq $q->groupby->[0] or $field->{name} eq $q->groupby->[0]){
+					if ($count_field){
+						push @select, 'SUM(' . $count_field . ') AS `@count`', $field->{name} . ' AS `@groupby`';
+					}
+					else {
+						push @select, 'COUNT(*) AS `@count`', $field->{name} . ' AS `@groupby`';
+					}
 					$groupby = 'GROUP BY ' . join(',', @{ $q->groupby });
 					last;
 				}
@@ -576,7 +288,12 @@ sub _query {
 			}
 			$records_returned += scalar @tmp;
 		}
-		$q->results(Results::Groupby->new(conf => $self->conf, results => \%results, total_records => $total_records));
+		if (ref($q->results) eq 'Results::Groupby'){
+			$q->results->add_results(\%results);
+		}
+		else {
+			$q->results(Results::Groupby->new(conf => $self->conf, results => \%results, total_records => $total_records));
+		}
 	}
 	else {
 		foreach my $row (@rows){

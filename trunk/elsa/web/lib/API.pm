@@ -32,6 +32,38 @@ has 'last_error' => (is => 'rw', isa => 'Str', required => 1, default => '');
 has 'cache' => (is => 'rw', isa => 'Object', required => 1, default => sub { return CHI->new( driver => 'RawMemory', global => 1) });
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear' });
+has 'system_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
+} });
+has 'web_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
+	_system_web_queries_count => {
+		query_template => 'SELECT %s FROM (SELECT username, timestamp, milliseconds, archive, num_results FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) WHERE %s) derived %s ORDER BY %s LIMIT %d,%d',
+		fields => [
+			{ name => 'username' },
+			{ name => 'timestamp', type => 'timestamp', alias => 'timestamp' },
+		],
+	},
+	_system_web_queries_time => {
+		query_template => 'SELECT %s FROM (SELECT username, timestamp, milliseconds, archive, num_results FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) WHERE %s) derived %s ORDER BY %s LIMIT %d,%d',
+		fields => [
+			{ name => 'username' },
+			{ name => 'timestamp', type => 'timestamp', alias => 'timestamp' },
+			{ name => 'milliseconds', type => 'int', alias => 'count' }
+		],
+	},
+} });
+has 'node_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
+	_system_event_rates => { 
+		alias => '_node_stats_%d',
+		dsn => 'dbi:mysql:host=%s;port=%d;database=%s',
+		query_template => 'SELECT %s FROM (SELECT INET_NTOA(host_id) AS host, timestamp, class, count FROM host_stats t1 JOIN classes t2 ON (t1.class_id=t2.id)) derived WHERE %s %s ORDER BY %s LIMIT %d,%d',
+		fields => [
+			{ name => 'host' },
+			{ name => 'timestamp', type => 'timestamp', alias => 'timestamp' },
+			{ name => 'class' },
+			{ name => 'count', type => 'int', alias => 'count' }
+		],
+	}
+} });
 
 sub BUILD {
 	my $self = shift;
@@ -57,18 +89,81 @@ sub BUILD {
 			$metaclass->add_attribute('name' => (is => 'rw', default => $db_lookup_plugin ) );
 		}
 	}
-	if ($self->conf->get('datasources')){
-		foreach my $db_lookup_plugin (keys %{ $self->conf->get('datasources') }){
-			my $conf = $self->conf->get('datasources/' . $db_lookup_plugin);
-			my $alias = delete $conf->{alias};
-			my $metaclass = Moose::Meta::Class->create( 'Datasource::' . $alias, 
+	
+	# Setup system datasources
+	foreach my $datasource_type (keys %{ $self->web_datasources }){
+		my $template_conf = $self->web_datasources->{$datasource_type};
+		$self->system_datasources->{$datasource_type} = [];
+		my $conf = { 
+			alias => $datasource_type,
+			dsn => $self->conf->get('meta_db/dsn'), 
+			username => $self->conf->get('meta_db/username'),
+			password => $self->conf->get('meta_db/password'),
+			query_template => $template_conf->{query_template},
+			fields => $template_conf->{fields},
+		};
+		
+		my $metaclass = Moose::Meta::Class->create( 'Datasource::' . $conf->{alias}, 
+			superclasses => [ 'Datasource::Database' ],
+		);
+		foreach my $attr (keys %$conf){
+			$metaclass->add_attribute($attr => (is => 'rw', default => sub { $conf->{$attr} } ) );
+		}
+		# Set name
+		$metaclass->add_attribute('name' => (is => 'rw', default => $conf->{alias} ) );
+		#push @{ $self->system_datasources->{$datasource_type} }, $conf->{alias};
+		$self->system_datasources->{$datasource_type} = 1;
+	}
+	foreach my $datasource_type (keys %{ $self->node_datasources }){
+		my $template_conf = $self->node_datasources->{$datasource_type};
+		$self->system_datasources->{$datasource_type} = [];
+		foreach my $node (keys %{ $self->conf->get('nodes') }){
+			my $conf = { 
+				alias => sprintf($template_conf->{alias}, unpack('N*', inet_aton($node))),
+				dsn => sprintf($template_conf->{dsn}, $node, 
+					($self->conf->get('nodes/' . $node . '/port') ? $self->conf->get('nodes/' . $node . '/port') : 3306),
+					$self->conf->get('nodes/' . $node . '/db')),
+				username => $self->conf->get('nodes/' . $node . '/username'),
+				password => $self->conf->get('nodes/' . $node . '/password'),
+				query_template => $template_conf->{query_template},
+				fields => $template_conf->{fields},
+			};
+			
+			my $metaclass = Moose::Meta::Class->create( 'Datasource::' . $conf->{alias}, 
 				superclasses => [ 'Datasource::Database' ],
 			);
 			foreach my $attr (keys %$conf){
 				$metaclass->add_attribute($attr => (is => 'rw', default => sub { $conf->{$attr} } ) );
 			}
 			# Set name
-			$metaclass->add_attribute('name' => (is => 'rw', default => $db_lookup_plugin ) );
+			$metaclass->add_attribute('name' => (is => 'rw', default => $conf->{alias} ) );
+			push @{ $self->system_datasources->{$datasource_type} }, $conf->{alias};
+		}
+	}
+	$self->log->debug('$self->system_datasources: ' . Dumper($self->system_datasources));
+	
+	# Setup custom datasources
+	if ($self->conf->get('datasources')){
+		foreach my $datasource_class (keys %{ $self->conf->get('datasources') }){
+			# Upper case the first letter
+			my @class_name_letters = split(//, $datasource_class);
+			$class_name_letters[0] = uc($class_name_letters[0]);
+			my $datasource_class_name = join('', @class_name_letters);
+			
+			foreach my $datasource_plugin (keys %{ $self->conf->get('datasources/' . $datasource_class) }){
+				my $conf = $self->conf->get('datasources/' . $datasource_class . '/' . $datasource_plugin);
+				die('No conf found for ' . 'datasources/' . $datasource_class . '/' . $datasource_plugin) unless $conf;
+				my $alias = delete $conf->{alias};
+				$alias ||= $datasource_plugin;
+				my $metaclass = Moose::Meta::Class->create( 'Datasource::' . $alias, 
+					superclasses => [ 'Datasource::' . $datasource_class_name ],
+				);
+				foreach my $attr (keys %$conf){
+					$metaclass->add_attribute($attr => (is => 'rw', default => sub { $conf->{$attr} } ) );
+				}
+				# Set name
+				$metaclass->add_attribute('name' => (is => 'rw', default => $datasource_plugin ) );
+			}
 		}
 	}
 	
@@ -1533,7 +1628,7 @@ sub get_running_archive_query {
 	my ($self, $args) = @_;
 	
 	my ($query, $sth);
-	$query = 'SELECT qid, query FROM query_log WHERE uid=? AND archive=1 AND ISNULL(num_results)';
+	$query = 'SELECT qid, query FROM query_log WHERE uid=? AND archive=1 AND num_results=-1';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{user}->uid);
 	my $row = $sth->fetchrow_hashref;
@@ -1560,7 +1655,7 @@ sub query {
 		}
 		# Get our node info
 		if (not $self->node_info->{updated_at} 
-			or ((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout'))
+			or ($self->conf->get('node_info_cache_timeout') and ((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout')))
 			or not $args->{user}->is_admin){
 			$self->node_info($self->_get_node_info($args->{user}));
 		}
@@ -1576,7 +1671,9 @@ sub query {
 			);
 		}
 		else {
-			$self->_error('Invalid query args, no q or query_string');
+			delete $args->{user};
+			$self->log->error('Bad args: ' . Dumper($args));
+			die('Invalid query args, no q or query_string');
 		}
 	}
 	
@@ -1634,8 +1731,8 @@ sub query {
 	}
 	
 	# Execute search
-	if ($q->datasource ne 'sphinx'){
-		$self->_external_database_query($q);
+	if (not $q->datasources->{sphinx}){
+		$self->_external_query($q);
 	}
 	elsif ($q->archive){
 		$self->_archive_query($q);
@@ -3859,7 +3956,7 @@ sub _archive_query {
 	return 1;
 }
 
-sub _external_database_query {
+sub _external_query {
 	my ($self, $q) = @_;
 	#$self->log->trace('running external query with args: ' . Dumper($q));
 	
@@ -3878,35 +3975,64 @@ sub _external_database_query {
 		$cache = CHI->new(driver => 'RawMemory', datastore => {});
 	}
 	
-	$q->datasource =~ /(\w+)\(?([^\)]+)?\)?/;
-	my $datasource = lc($1);
-	my @given_args = $2 ? split(/\,/, $2) : ();
-	
-	my $plugin_fqdn = 'Datasource::' . $datasource;
-	foreach my $plugin ($self->plugins()){
-		$self->log->debug('checking ' . $plugin_fqdn . ' against ' . $plugin);
-		if (lc($plugin) eq lc($plugin_fqdn)){
-			$self->log->debug('loading plugin ' . $plugin);
-			my %compiled_args;
-			eval {
-				%compiled_args = (
-					conf => $self->conf,
-					log => $self->log, 
-					cache => $cache,
-					args => [ @given_args ]
-				);
-				my $plugin_object = $plugin->new(%compiled_args);
-				$plugin_object->query($q);
-			};
-			if ($@){
-				$self->log->error('Error creating plugin ' . $plugin . ' with args ' . Dumper(\%compiled_args) . ': ' . $@);
-				$self->add_warning($@);
+	DATASOURCES_LOOP: foreach my $datasource_arg (sort keys %{ $q->datasources }){
+		$datasource_arg =~ /(\w+)\(?([^\)]+)?\)?/;
+		my $datasource = lc($1);
+		my @given_args = $2 ? split(/\,/, $2) : ();
+		
+		# Check to see if this is a system group
+		if ($self->system_datasources->{$datasource} and ref($self->system_datasources->{$datasource})){
+			delete $q->datasources->{$datasource};
+			foreach my $alias (@{ $self->system_datasources->{$datasource} } ){
+				$q->datasources->{$alias} = 1;
 			}
-			return $q;
+			return $self->_external_query($q);
 		}
+		
+		# Check to see if this is a group (kind of a datasource macro)
+		if ($self->conf->get('datasource_groups')){
+			foreach my $datasource_group_name (keys %{ $self->conf->get('datasource_groups') }){
+				if ($datasource_group_name eq $datasource){
+					delete $q->datasources->{$datasource_group_name};
+					foreach my $datasource_config_reference (@{ $self->conf->get('datasource_groups/' . $datasource_group_name . '/datasources') }){
+						$q->datasources->{$datasource_config_reference} = 1;
+					}
+					# Now that we've resolved the group into its subcomponents, we recurse to run those 
+					return $self->_external_query($q);
+				}
+			}
+		}
+		
+		my $plugin_fqdn = 'Datasource::' . $datasource;
+		foreach my $plugin ($self->plugins()){
+			$self->log->debug('checking ' . $plugin_fqdn . ' against ' . $plugin);
+			if (lc($plugin) eq lc($plugin_fqdn)){
+				$self->log->debug('loading plugin ' . $plugin);
+				my %compiled_args;
+				eval {
+					%compiled_args = (
+						conf => $self->conf,
+						log => $self->log, 
+						cache => $cache,
+						args => [ @given_args ]
+					);
+					my $plugin_object = $plugin->new(%compiled_args);
+					$plugin_object->query($q);
+				};
+				if ($@){
+					delete $compiled_args{user};
+					delete $compiled_args{cache};
+					delete $compiled_args{conf};
+					delete $compiled_args{log};
+					$self->log->error('Error creating plugin ' . $plugin . ' with args ' . Dumper(\%compiled_args) . ': ' . $@);
+					$self->add_warning($@);
+				}
+				next DATASOURCES_LOOP;
+			}
+		}
+		die('datasource ' . $plugin_fqdn . ' not found');
 	}
-	
-	die('datasource ' . $q->datasource . ' not found');
+	return $q;
 }
 
 sub cancel_query {

@@ -565,7 +565,7 @@ YAHOO.ELSA.main = function () {
 						{
 							text: 'Stats',
 							helptext: 'Query and load statistics',
-							url: 'stats',
+							url: 'dashboard/_system',
 							target: '_blank'
 						}
 					]

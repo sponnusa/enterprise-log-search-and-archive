@@ -631,18 +631,27 @@ sub _get_rows {
 		die('Unauthorized');
 	}
 	
-	if ($args->{dashboard_name}){
-		$query = 'SELECT * FROM v_dashboards WHERE alias=? ORDER BY x,y';
-		$sth = $self->db->prepare($query);
-		$sth->execute($args->{dashboard_name});
+	my @rows;
+	if (exists $args->{_system_dashboard}){
+		@rows = @{ $args->{_system_dashboard }->{charts} };
 	}
 	else {
-		$query = 'SELECT * FROM v_dashboards WHERE dashboard_id=? ORDER BY x,y';
-		$sth = $self->db->prepare($query);
-		$sth->execute($args->{dashboard_id});
+		if ($args->{dashboard_name}){
+			$query = 'SELECT * FROM v_dashboards WHERE alias=? ORDER BY x,y';
+			$sth = $self->db->prepare($query);
+			$sth->execute($args->{dashboard_name});
+		}
+		else {
+			$query = 'SELECT * FROM v_dashboards WHERE dashboard_id=? ORDER BY x,y';
+			$sth = $self->db->prepare($query);
+			$sth->execute($args->{dashboard_id});
+		}
+		while (my $row = $sth->fetchrow_hashref){
+			push @rows, $row;
+		}
 	}
 	
-	while (my $row = $sth->fetchrow_hashref){
+	foreach my $row (@rows){
 		next unless defined $row->{chart_id};
 		$ret->[ $row->{y} ] ||= { title => '', charts => [] };
 		$ret->[ $row->{y} ]->{charts}->[ $row->{x} ] ||= { 
@@ -650,7 +659,7 @@ sub _get_rows {
 			type => $row->{chart_type}, 
 			queries => [], 
 			chart_id => $row->{chart_id}, 
-			chart_options => $row->{chart_options} ? $self->json->decode($row->{chart_options}) : undef,
+			chart_options => $row->{chart_options} ? (ref($row->{chart_options}) ? $row->{chart_options} : $self->json->decode($row->{chart_options})) : undef,
 			x => $row->{x},
 			y => $row->{y}, 
 		};
