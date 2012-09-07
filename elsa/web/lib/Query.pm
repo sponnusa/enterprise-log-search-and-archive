@@ -31,7 +31,8 @@ has 'groupby' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required
 has 'timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'cancelled' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'archive' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
-has 'datasource' => (is => 'rw', isa => 'Str', required => 1, default => 'sphinx'); 
+#has 'datasource' => (is => 'rw', isa => 'Str', required => 1, default => 'sphinx'); 
+has 'datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { { sphinx => 1 } });
 has 'analytics' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'system' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'batch' => (is => 'rw', isa => 'Bool', required => 1, default => 0, trigger => \&_set_batch);
@@ -80,7 +81,7 @@ sub BUILDARGS {
 		$params{meta_params} = delete $params{query_meta_params};
 	}
 	
-	foreach my $property qw(groupby timeout archive analytics datasource nobatch){
+	foreach my $property qw(groupby timeout archive analytics datasources nobatch){
 		if ($params{meta_params}->{$property}){
 			$params{$property} = delete $params{meta_params}->{$property};
 		}
@@ -786,8 +787,9 @@ sub _parse_query_term {
 				next;
 			}
 			elsif (lc($term_hash->{field}) eq 'datasource'){
-				$self->datasource($term_hash->{value});
-				$self->log->trace("Set datasource " . $self->datasource);
+				delete $self->datasources->{sphinx}; # no longer using our normal datasource
+				$self->datasources->{ $term_hash->{value} } = 1;
+				$self->log->trace("Set datasources " . Dumper($self->datasources));
 				next;
 			}
 			elsif (lc($term_hash->{field}) eq 'nobatch'){

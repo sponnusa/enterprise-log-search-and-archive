@@ -1,3 +1,4 @@
+### DEPRECATED ###
 package Web::Dashboard;
 use Moose;
 extends 'Web';
@@ -67,35 +68,7 @@ sub call {
 	else {
 		$args->{end_time} = time;
 	}
-		
-#	my $config = $self->api->conf->get('dashboards/' . $dashboard_name);
-#	foreach my $key (keys %$config){
-#		$args->{$key} = $config->{$key};
-#	}
-#		
-#	$args->{api} = $self->api;
-#	if ($config->{auth} eq 'none'){
-#		$args->{user} = $self->api->get_user('system');
-#	}
-#	else {
-#		$args->{user} = $self->api->get_user($req->user);
-#	}
-#	
-#	my $dashboard;
-#	eval {
-#		$self->api->freshen_db;
-#	
-#		$self->plugins();
-#		#$self->api->log->trace('creating dashboard from args: ' . Dumper($args));
-#		my $start_time = time();
-#		$dashboard = $config->{package}->new($args);
-#		$self->api->log->trace('created dashboard in ' . (time() - $start_time) . ' seconds');
-#		
-#		unless ($dashboard->data){
-#			die('no data: ' . $self->api->last_error);
-#		}
-#	};
-
+	
 	my ($query, $sth);
 	$query = 'SELECT * FROM v_dashboards WHERE uid=? AND alias=? ORDER BY x,y';
 	$sth = $self->api->db->prepare($query);

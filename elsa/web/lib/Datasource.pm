@@ -19,4 +19,11 @@ sub query {
 	return $q;	
 }
 
+sub _is_authorized {
+	my $self = shift;
+	my $q = shift;
+	
+	return 1;
+}
+
 1;

@@ -328,7 +328,7 @@ sub resolve_value {
 		$col =~ s/\_id$//;
 		$field_order = $Field_to_order->{$col};
 		unless ($field_order){
-			$self->log->warn('No field_order not found for col ' . $col);
+			$self->log->warn('No field_order found for col ' . $col);
 			return $value;
 		}
 	}
