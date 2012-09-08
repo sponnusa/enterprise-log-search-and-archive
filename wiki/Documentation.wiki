@@ -491,3 +491,38 @@ Take care when creating charts that the queries used do not tax the system too m
 =Troubleshooting=
 || *Symptom* || *Resolution* ||
 || Chronic warnings in the web UI for "couldn't connect to MySQL" || This can be caused if a web frontend has issues and the MySQL server decides it no longer wishes to speak to the server because of too many dropped connections.  To fix it, you need to log into the node referred to in the message and issue: {{{ mysqladmin flush-hosts }}} which will cause the MySQL daemon to once again accept connections from the "flaky" frontend. ||
+
+=Datasources=
+ELSA can be configured to query external datasources with the same framework as native ELSA data.  Datasources are defined by plugins.  The only plugin currently available is for databases.  Database datasources are added under the "datasource" configuration section, like this:
+{{{
+"datasources": {                 
+  "database": { 
+    "hr_database": { 
+      "alias": "hr",
+      "dsn": "dbi:Oracle:Oracle_HR_database", 
+      "username": "scott", 
+      "password": "tiger", 
+      "query_template": "SELECT %s FROM (SELECT person AS name, dept AS department, email_address AS email) derived WHERE %s %s ORDER BY %s LIMIT %d,%d", 
+      "fields": [ 
+        { "name": "name" }, 
+        { "name": "department" },
+        { "name": "email" }
+      ] 
+}}}
+
+The configuration items for a database datasource are as follows:
+|| *Item* || *Purpose* ||
+|| alias || What the datasource will be referred to when querying ||
+|| dsn || Connection string for Perl ||
+|| username || User ||
+|| password || Password ||
+|| query_template || sprintf formatted query with the placeholders listed below ||
+|| fields || A list of hashes containing name (required), type (optional, default is char), and alias which functions as both an alternative name for the field as well as the special aliases "count" to refer to the column to use for summation and "timestamp" which defines the column to use in time-based charts. ||
+
+Query_template parameters (all are required):
+ # The columns for SELECT
+ # The expression for WHERE
+ # The column for GROUP BY
+ # The column for ORDER BY
+ # OFFSET
+ # LIMIT
