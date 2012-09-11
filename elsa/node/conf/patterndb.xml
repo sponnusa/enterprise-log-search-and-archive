@@ -1044,4 +1044,23 @@
 	    	</rule>
     	</rules>
     </ruleset>
+    <!--<ruleset name="CEF">
+    	<rules>
+    		<rule provider="ELSA" class="32" id="32">
+    			<pattern>CEF:@NUMBER::@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@NUMBER:i0:@|@ANYSTRING:s5:@</pattern>
+    			<examples>
+	    			<example>
+	    				<test_message program="">CEF:0|security|threatmanager|1.0|100|worm successfully stopped|10|src=10.0.0.1 dst=2.1.2.2 spt=1232</test_message>
+	    				<test_value name="i0">10</test_value>
+	    				<test_value name="s0">security</test_value>
+	    				<test_value name="s1">threatmanager</test_value>
+	    				<test_value name="s2">1.0</test_value>
+	    				<test_value name="s3">100</test_value>
+	    				<test_value name="s4">worm successfully stopped</test_value>
+	    				<test_value name="s5">src=10.0.0.1 dst=2.1.2.2 spt=1232</test_value>
+	    			</example>
+	    		</examples>
+	    	</rule>
+    	</rules>
+	</ruleset>-->
 </patterndb>
