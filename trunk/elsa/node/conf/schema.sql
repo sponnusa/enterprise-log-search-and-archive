@@ -41,6 +41,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(28, "BARRACUDA_SEND", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(30, "EXCHANGE", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(31, "LOG2TIMELINE", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(32, "CEF", 0);*/
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -147,6 +148,13 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("macb", "string", "
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sourcetype", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("desc", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("notes", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("version", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("vendor", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("product", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_id", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("name", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("severity", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("extension", "string", "QSTRING");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -377,6 +385,14 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="LOG2TIMELINE"), (SELECT id FROM fields WHERE field="desc"), 15);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="LOG2TIMELINE"), (SELECT id FROM fields WHERE field="notes"), 16);*/
 
+/*INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="severity"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="version"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="vendor"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="product"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="sig_id"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="name"), 15);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="extension"), 16);*/
+
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -484,3 +500,16 @@ CREATE TABLE IF NOT EXISTS buffers (
 CREATE OR REPLACE VIEW v_indexes AS
 SELECT id, type, FROM_UNIXTIME(start) AS start, FROM_UNIXTIME(end) AS end, last_id-first_id AS records, locked_by
 FROM indexes;
+
+CREATE TABLE IF NOT EXISTS livetail (
+	qid INT UNSIGNED NOT NULL PRIMARY KEY,
+	query BLOB
+);
+
+CREATE TABLE IF NOT EXISTS livetail_results (
+	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	qid INT UNSIGNED NOT NULL,
+	line TEXT,
+	timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (qid) REFERENCES livetail (qid) ON DELETE CASCADE ON UPDATE CASCADE
+);
