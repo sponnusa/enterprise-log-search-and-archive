@@ -18,6 +18,7 @@ use Mail::Internet;
 use Email::LocalDelivery;
 use Carp;
 use Log::Log4perl::Level;
+use Storable qw(freeze thaw);
 
 use User;
 use Query;
@@ -1680,7 +1681,7 @@ sub query {
 
 	my ($query, $sth);
 	
-	unless ($q->system){
+	unless ($q->system or $q->livetail){
 		my $is_batch = 0;	
 		if ($q->analytics or $q->archive){
 			# Find estimated query time
@@ -1733,6 +1734,9 @@ sub query {
 	# Execute search
 	if (not $q->datasources->{sphinx}){
 		$self->_external_query($q);
+	}
+	elsif ($q->livetail){
+		$self->_livetail_query($q);
 	}
 	elsif ($q->archive){
 		$self->_archive_query($q);
@@ -1967,7 +1971,8 @@ sub _sphinx_query {
 			foreach my $query (@{ $queries }){
 				my $search_query = 'SELECT *, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where};
 				if (exists $query->{groupby}){
-					$search_query .= ' GROUP BY ' . $query->{groupby} . ' ORDER BY @count DESC';
+					$search_query = 'SELECT *, COUNT(*) AS _count, ' . $query->{groupby} . ' AS _groupby, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where} .
+						' GROUP BY ' . $query->{groupby} . ' ORDER BY _count DESC';
 				}
 				$search_query .= ' LIMIT ?,? OPTION ranker=none';
 				if ($q->cutoff){
@@ -2105,7 +2110,7 @@ sub _sphinx_query {
 					next;
 				}
 				foreach my $sphinx_row (@{ $ret->{$node}->{sphinx_rows} }){
-					# Resolve the @groupby col with the mysql col
+					# Resolve the _groupby col with the mysql col
 					unless (exists $ret->{$node}->{results}->{ $sphinx_row->{id} }){
 						$self->log->warn('mysql row for sphinx id ' . $sphinx_row->{id} . ' did not exist');
 						next;
@@ -2113,7 +2118,7 @@ sub _sphinx_query {
 					my $key;
 					if (exists $Fields::Time_values->{ $groupby }){
 						# We will resolve later
-						$key = $sphinx_row->{'@groupby'};
+						$key = $sphinx_row->{'_groupby'};
 					}
 					elsif ($groupby eq 'program'){
 						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{program};
@@ -2124,7 +2129,7 @@ sub _sphinx_query {
 					elsif (exists $Fields::Field_to_order->{ $groupby }){
 						# Resolve normally
 						$key = $self->resolve_value($sphinx_row->{class_id}, 
-							$sphinx_row->{'@groupby'}, $groupby);
+							$sphinx_row->{'_groupby'}, $groupby);
 					}
 					else {
 						# Resolve with the mysql row
@@ -2134,7 +2139,7 @@ sub _sphinx_query {
 						$key = $self->resolve_value($sphinx_row->{class_id}, $key, $Fields::Field_order_to_field->{$field_order});
 						$self->log->trace('field_order: ' . $field_order . ' key ' . $key);
 					}
-					$agg{ $key } += $sphinx_row->{'@count'};	
+					$agg{ $key } += $sphinx_row->{'_count'};	
 				}
 			}
 			if (exists $Fields::Time_values->{ $groupby }){
@@ -2155,8 +2160,8 @@ sub _sphinx_query {
 						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($unixtime)));
 					push @tmp, { 
 						intval => $unixtime, 
-						'@groupby' => epoch2iso($unixtime), #$self->resolve_value(0, $key, $groupby), 
-						'@count' => $agg{$key}
+						'_groupby' => epoch2iso($unixtime), #$self->resolve_value(0, $key, $groupby), 
+						'_count' => $agg{$key}
 					};
 				}
 				
@@ -2170,9 +2175,9 @@ sub _sphinx_query {
 						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
 							#$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
 							push @zero_filled, { 
-								'@groupby' => epoch2iso($j),
+								'_groupby' => epoch2iso($j),
 								intval => $j,
-								'@count' => 0
+								'_count' => 0
 							};
 							last OUTER if scalar @zero_filled >= $q->limit;
 						}
@@ -2185,7 +2190,7 @@ sub _sphinx_query {
 				my @tmp;
 				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
 					$total_records += $agg{$key};
-					push @tmp, { intval => $agg{$key}, '@groupby' => $key, '@count' => $agg{$key} };
+					push @tmp, { intval => $agg{$key}, '_groupby' => $key, '_count' => $agg{$key} };
 					last if scalar @tmp >= $q->limit;
 				}
 				$results{$groupby} = [ @tmp ];
@@ -2249,7 +2254,8 @@ sub _sphinx_query {
 	my %keyword_stats;
 	foreach my $node (keys %$ret){
 		foreach my $key (keys %{ $ret->{$node}->{meta} }){
-			$key =~ /^([\w\_]+)\[(\d+)\]/;
+			$key =~ /^([\w\_\.\@]+)\[(\d+)\]/;
+			next unless defined $1 and defined $2;
 			$keyword_stats{ $keywords{$2} } ||= {};
 			$keyword_stats{ $keywords{$2} }->{$1} += $ret->{$node}->{meta}->{$key} unless $1 eq 'keyword';
 		}
@@ -2798,7 +2804,7 @@ sub format_results {
 		if ($args->{groupby}){
 			foreach my $groupby (@{ $args->{groupby} }){
 				foreach my $row (@{ $args->{results}->{$groupby} }){
-					print join("\t", $row->{'@groupby'}, $row->{'@count'}) . "\n";
+					print join("\t", $row->{'_groupby'}, $row->{'_count'}) . "\n";
 				}
 			}
 		}
@@ -2874,7 +2880,7 @@ sub transform {
 		$transform_args->{groupby} = $q->groupby;
 		foreach my $groupby ($q->results->all_groupbys){
 			foreach my $datum (@{ $q->results->groupby($groupby) }){
-				push @{ $transform_args->{results} }, { $groupby => $datum->{'@groupby'}, count => $datum->{'@count'} };
+				push @{ $transform_args->{results} }, { $groupby => $datum->{'_groupby'}, count => $datum->{'_count'} };
 			}
 		}
 		$self->log->trace('new results: ' . Dumper($transform_args->{results}));
@@ -3069,7 +3075,7 @@ sub transform {
 					$transform_args->{groupby} = $subq->groupby;
 					foreach my $groupby ($subq->results->all_groupbys){
 						foreach my $datum (@{ $subq->results->groupby($groupby) }){
-							push @{ $transform_args->{results} }, { $groupby => $datum->{'@groupby'} };
+							push @{ $transform_args->{results} }, { $groupby => $datum->{'_groupby'} };
 						}
 					}
 				}
@@ -3171,7 +3177,7 @@ sub transform {
 									foreach my $data_attr (keys %{ $row->{transforms}->{$transform}->{$field} }){
 										$add_on_str .= ' ' . $data_attr . '=' .  $row->{transforms}->{$transform}->{$field}->{$data_attr};
 									}
-									push @groupby_results, { '@count' => $row->{count}, '@groupby' => ($row->{$groupby} . ' ' . $add_on_str) };
+									push @groupby_results, { '_count' => $row->{count}, '_groupby' => ($row->{$groupby} . ' ' . $add_on_str) };
 								}
 								# If it's an array, we want to concatenate all fields together.
 								elsif (ref($row->{transforms}->{$transform}->{$field}) eq 'ARRAY'){
@@ -3181,7 +3187,7 @@ sub transform {
 								}
 							}
 							if ($arr_add_on_str ne ''){
-								push @groupby_results, { '@count' => $row->{count}, '@groupby' => ($row->{$groupby} . ' ' . $arr_add_on_str) };
+								push @groupby_results, { '_count' => $row->{count}, '_groupby' => ($row->{$groupby} . ' ' . $arr_add_on_str) };
 							}
 						}
 					}
@@ -3740,6 +3746,9 @@ sub _archive_query {
 						if ($query->{groupby} eq 'program_id' or $query->{groupby} eq 'class_id'){
 							$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby}, $query->{groupby_field}\n";
 						}
+						elsif ($query->{groupby} eq 'host_id'){
+							$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby}, INET_NTOA($query->{groupby}) AS $query->{groupby_field}\n";
+						}
 						else {
 							$search_query = "SELECT COUNT(*) AS count, class_id, $query->{groupby} AS \"$query->{groupby_field}\"\n";
 						}
@@ -3878,8 +3887,8 @@ sub _archive_query {
 					my $unixtime = ($key * $Fields::Time_values->{ $groupby });
 					push @tmp, { 
 						intval => $unixtime, 
-						'@groupby' => $self->resolve_value(0, $key, $groupby), 
-						'@count' => $agg{$key}
+						'_groupby' => $self->resolve_value(0, $key, $groupby), 
+						'_count' => $agg{$key}
 					};
 				}
 				
@@ -3893,9 +3902,9 @@ sub _archive_query {
 						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
 							$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
 							push @zero_filled, { 
-								'@groupby' => epoch2iso($j), 
+								'_groupby' => epoch2iso($j), 
 								intval => $j,
-								'@count' => 0
+								'_count' => 0
 							};
 							last OUTER if scalar @zero_filled >= $limit;
 						}
@@ -3909,7 +3918,7 @@ sub _archive_query {
 				# Sort these in descending value order
 				my @tmp;
 				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
-					push @tmp, { intval => $agg{$key}, '@groupby' => $key, '@count' => $agg{$key} };
+					push @tmp, { intval => $agg{$key}, '_groupby' => $key, '_count' => $agg{$key} };
 					last if scalar @tmp >= $limit;
 				}
 				foreach (@tmp){
@@ -4033,6 +4042,233 @@ sub _external_query {
 		die('datasource ' . $plugin_fqdn . ' not found');
 	}
 	return $q;
+}
+
+sub _livetail_query {
+	my ($self, $q) = @_;
+	
+	my ($query, $sth);
+	
+	# First check to see if we already have a livetail going (this is a poll)
+	$query = 'SELECT ';
+	
+	# Take archive query terms and turn into livetail query terms
+	my $eval_str = '';
+	my $queries = $self->_build_livetail_query($q);
+	
+	$query = 'INSERT INTO livetail (qid, query) VALUES (?,?)';
+	foreach my $node (keys %{ $q->node_info->{nodes} }){
+		my $dbh = DBI->connect_cached(@{ $q->node_info->{nodes}->{$node}->{dbh}->db_args }) or die($DBI::errstr);
+		$sth = $dbh->prepare($query);
+		$sth->execute($q->qid, $queries);
+		$sth->finish;
+	}
+	return $q;
+}
+
+sub _build_livetail_query {
+	my $self = shift;
+	my $q = shift;
+	
+	my @queries;
+	my %clauses = ( 
+		classes => [], 
+		and => [], 
+		or => [], 
+		not => [],
+		permissions => [],
+	);
+	
+	# Create permissions clauses
+	foreach my $attr qw(class_id host_id program_id node_id){
+		# Get field name
+		my $line_pos;
+		foreach my $idx (keys %{ $Fields::Field_order_to_attr }){
+			if ($Fields::Field_order_to_attr->{$idx} eq $attr){
+				$line_pos = $idx;
+				last;
+			}
+		}
+		
+		foreach my $id (keys %{ $q->user->permissions->{$attr} }){
+			next unless $id;
+			$self->log->trace("Adding id $id to $attr based on permissions");
+			$clauses{permissions}->[$line_pos] ||= [];
+			if ($Fields::IP_fields->{$attr} and $id =~ /^(\d+)\-(\d+)$/){
+				my ($min, $max) = ($1, $2);
+				push @{ $clauses{permissions}->[$line_pos] }, 'sub { $_[1] >= ' . $min . ' and $_[1] <= ' . $max . ' }';
+			}
+			else {
+				push @{ $clauses{permissions}->[$line_pos] }, 'sub { $_[1] == ' . $id . ' }';
+			}
+		}
+	}
+	
+	foreach my $class_id (keys %{ $q->user->permissions->{fields} }){
+		foreach my $perm_hash (@{ $q->user->permissions->{fields}->{$class_id} }){
+			my ($name, $value) = @{ $perm_hash->{attr} };
+			if ($value =~ /^(\d+)\-(\d+)$/){
+				my ($min, $max) = ($1, $2);
+				push @{ $clauses{permissions}->[ $Fields::Field_to_order->{$name} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1] >= ' . $min . ' $_[1] <= ' . $max . ' }';
+			}
+			else {
+				push @{ $clauses{permissions}->[ $Fields::Field_to_order->{$name} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1] eq ' . $value . ' }';
+			}			
+		}
+	}
+
+	#push @{ $clauses{classes} }, 'sub { my $classes = { map { $_ => 1 } (' . join(',', (keys %{ $q->classes->{distinct} })) . ') }; exists $classes->{ $_[0] } }';
+	my @terms;
+	foreach my $class_id (keys %{ $q->classes->{distinct} }){
+		push @terms, '$_[0] == ' . $class_id;
+	}
+	push @{ $clauses{classes} }, 'sub { return ' . join(' or ', @terms) . ' }'; 
+	
+	#push @{ $clauses{classes} }, 'sub { my $classes = { map { $_ => 1 } (' . join(',', (keys %{ $q->classes->{excluded} })) . ') }; not exists $classes->{ $_[0] } }';
+	if (scalar keys %{ $q->classes->{excluded} }){
+		@terms = ();
+		foreach my $class_id (keys %{ $q->classes->{excluded} }){
+			push @terms, '$_[0] != ' . $class_id;
+		}
+		push @{ $clauses{classes} }, 'sub { return ' . join(' and ', @terms) . ' }';
+	}
+	
+	# Handle our basic equalities
+	foreach my $boolean (qw(and or not)){
+		foreach my $field (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{'='} }){
+			my @clause;
+			foreach my $class_id (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{'='}->{$field} }){
+				next unless $q->classes->{distinct}->{$class_id} or $class_id eq 0
+					or exists $q->classes->{partially_permitted}->{$class_id};
+				foreach my $attr (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{'='}->{$field}->{$class_id} }){
+					foreach my $value (@{ $q->terms->{attr_terms}->{$boolean}->{'='}->{$field}->{$class_id}->{$attr} }){
+						if ($class_id){
+							my $field = $attr;
+							$field =~ s/^attr\_//; 
+							push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1] eq ' . $value . ' }';
+							#push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, '%1$d == ' . $class_id . ' and $2$d eq ' . $value;
+						}
+						else {
+							push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[1] == ' . $value . ' }';
+							#push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, '%1$d == ' . $value;
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	# Ranges are tougher: First sort by field name so we can group the ranges for the same field together in an OR
+	my %ranges;
+	foreach my $boolean qw(and or not){
+		foreach my $op (sort keys %{ $q->terms->{attr_terms}->{$boolean} }){
+			next unless $op =~ /\<|\>/;
+			foreach my $field (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{$op} }){
+				foreach my $class_id (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field} }){		
+					next unless $q->classes->{distinct}->{$class_id} or $class_id eq 0;
+					foreach my $attr (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id} }){
+						$ranges{$boolean} ||= {};
+						$ranges{$boolean}->{$field} ||= {};
+						$ranges{$boolean}->{$field}->{$attr} ||= {};
+						$ranges{$boolean}->{$field}->{$attr}->{$class_id} ||= {};
+						$ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} ||= [];
+						foreach my $value (sort { $a < $b } @{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id}->{$attr} }){
+							push @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} }, $value;
+						}					
+					}
+				}				
+			}
+		}
+	}
+	
+	# Then divine which range operators go together by sorting them and dequeuing the appropriate operator until there are none left
+	foreach my $boolean qw(and or not){
+		foreach my $field (sort keys %{ $ranges{$boolean} }){
+			my @clause;
+			foreach my $attr (sort keys %{ $ranges{$boolean}->{$field} }){
+				foreach my $class_id (sort keys %{ $ranges{$boolean}->{$field}->{$attr} }){
+					while (scalar keys %{ $ranges{$boolean}->{$field}->{$attr}->{$class_id} }){
+						my ($min, $max, $min_op, $max_op);
+						$min = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'>'} };
+						$min_op = '>';
+						unless ($min){
+							$min = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'>='} };
+							$min_op = '>=';
+						}
+						unless ($min){
+							$min = 0;
+						}
+						$max = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'<'} };
+						$max_op = '<';
+						unless ($max){
+							$max = shift @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{'<='} };
+							$max_op = '<=';
+						}
+						unless ($max){
+							$max = 2**32;
+						}						
+						if ($class_id){
+							push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1] ' . $min . ' and $_[1] <= ' . $max . ' }';
+							#push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, '%1$d == ' . $class_id . ' and %2$d >= ' . $min . ' and %2$d <= ' . $max;
+						}
+						else {
+							push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, 'sub { $_[1] >= ' . $min . ' and $_[1] <= ' . $max . ' }';
+							#push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, '%1$d >= ' . $min . ' and %1$d <= ' . $max;
+						}
+						foreach my $op ('>', '<', '>=', '<='){
+							if (exists $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op}){
+								delete $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op}
+									unless scalar @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} };
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	foreach my $boolean (keys %{ $q->terms->{any_field_terms} }){
+		$clauses{'any_field_terms_' . $boolean} ||= [];
+		foreach my $term (keys %{ $q->terms->{any_field_terms}->{$boolean} }){
+			push @{ $clauses{'any_field_terms_' . $boolean} }, 'sub { $_[1] =~ qr/' . $term . '/io }';
+			#push @{ $clauses{'any_field_terms_' . $boolean} }, sub { package main; $_[0] =~ qr/$term/o };
+		}
+	}
+	
+	
+	foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
+		# First, the ANDs
+		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
+			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
+				push @{ $clauses{and}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1] =~ qr/' . $value . '/io }';
+				#push @{ $clauses{and}->[ $Fields::Field_to_order->{$field} ] }, sub { package main; $_[0] =~ qr/$value/o };
+			}
+		}
+				
+		# Then, the NOTs
+		foreach my $field (sort keys %{ $q->terms->{field_terms}->{not}->{$class_id} }){
+			foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$field} }){
+				push @{ $clauses{not}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[0] != ' . $class_id . ' or $_[1] !~ qr/' . $value . '/io }';
+				#push @{ $clauses{not}->[ $Fields::Field_to_order->{$field} ] }, sub { package main; $_[0] !~ qr/$value/o };
+			}
+		}
+		
+		# Then, the ORs
+		foreach my $field (sort keys %{ $q->terms->{field_terms}->{or}->{$class_id} }){
+			foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$field} }){
+				push @{ $clauses{or}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1]  =~ qr/' . $value . '/io }';
+				#push @{ $clauses{or}->[ $Fields::Field_to_order->{$field} ] }, sub { package main; $_[0] =~ qr/$value/o };
+			}
+		}
+	}
+		
+	$Storable::Deparse = 1;
+	
+	my $ret = freeze(\%clauses);
+	
+	$Storable::Deparse = 0;
+	
+	return $ret;
 }
 
 sub cancel_query {

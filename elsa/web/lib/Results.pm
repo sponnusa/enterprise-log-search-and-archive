@@ -198,8 +198,8 @@ sub add_result {
 	
 	my $added = 0;
 	foreach my $existing_record (@{ $self->results->{$groupby} }){
-		if ($existing_record->{'@groupby'} eq $record->{'@groupby'}){
-			$existing_record->{'@count'} += $record->{'@count'};
+		if ($existing_record->{_groupby} eq $record->{_groupby}){
+			$existing_record->{_count} += $record->{_count};
 			$added++;
 			last;
 		}

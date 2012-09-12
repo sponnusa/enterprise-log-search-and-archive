@@ -84,14 +84,14 @@ sub call {
 					my $tz = DateTime::TimeZone->new( name => "local");
 					foreach my $row (@{ $ret->results->results->{$groupby} }){
 						$self->api->log->debug('row: ' . Dumper($row));
-						$datatable->add_rows([ { v => DateTime->from_epoch(epoch => $row->{'intval'}, time_zone => $tz) }, { v => $row->{'@count'} } ]);
+						$datatable->add_rows([ { v => DateTime->from_epoch(epoch => $row->{'intval'}, time_zone => $tz) }, { v => $row->{_count} } ]);
 					}
 				}
 				else {
 					$datatable->add_columns({id => 'key', label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
 					foreach my $row (@{ $ret->results->results->{$groupby} }){
 						$self->api->log->debug('row: ' . Dumper($row));
-						$datatable->add_rows([ { v => $row->{'@groupby'} }, { v => $row->{'@count'} } ]);
+						$datatable->add_rows([ { v => $row->{_groupby} }, { v => $row->{_count} } ]);
 					}
 				}
 			}

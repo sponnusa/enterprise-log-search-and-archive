@@ -88,9 +88,9 @@ sub BUILD {
 		if (exists $self->data->[$i]->{transforms}->{$Name}){
 			delete $self->data->[$i]->{transforms}->{$Name}; # no need to clutter our final results
 			push @$ret, { 
-				'@groupby' => $self->data->[$i]->{ $self->groupby }, 
+				_groupby => $self->data->[$i]->{ $self->groupby }, 
 				intval => $self->data->[$i]->{count}, 
-				'@count' => $self->data->[$i]->{count},
+				_count => $self->data->[$i]->{count},
 				count => $self->data->[$i]->{count},
 				$self->groupby => $self->data->[$i]->{ $self->groupby },
 			};
