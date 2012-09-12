@@ -53,11 +53,12 @@ YAHOO.ELSA.main = function () {
 				YAHOO.ELSA.Error('Start time greater than end time');
 				return;
 			}
-			logger.log('submitting query: ', oQuery);
-						
-			var oResults = new YAHOO.ELSA.Results.Tabbed.Live(YAHOO.ELSA.tabView, oQuery);
-			logger.log('got query results:', oResults);
-			YAHOO.ELSA.currentQuery.resetTerms();
+//			logger.log('submitting query: ', oQuery);
+//						
+//			var oResults = new YAHOO.ELSA.Results.Tabbed.Live(YAHOO.ELSA.tabView, oQuery);
+//			logger.log('got query results:', oResults);
+//			YAHOO.ELSA.currentQuery.resetTerms();
+			oQuery.submit();
 		} catch(e) { YAHOO.ELSA.Error(e); }
 	}	
 	
@@ -335,6 +336,7 @@ YAHOO.ELSA.main = function () {
 			logger.log('oButton:', oButton);
 			
 			if (sText == YAHOO.ELSA.Labels.index){
+				YAHOO.ELSA.currentQuery.delMeta('livetail');
 				YAHOO.ELSA.currentQuery.delMeta('archive');
 				YAHOO.ELSA.currentQuery.delMeta('analytics');
 				YAHOO.ELSA.currentQuery.delMeta('connector');
@@ -342,19 +344,29 @@ YAHOO.ELSA.main = function () {
 			}
 			else if (sText == YAHOO.ELSA.Labels.archive){
 				YAHOO.ELSA.currentQuery.addMeta('archive', 1);
+				YAHOO.ELSA.currentQuery.delMeta('livetail');
 				YAHOO.ELSA.currentQuery.delMeta('analytics');
 				YAHOO.ELSA.currentQuery.delMeta('connector');
 				YAHOO.ELSA.currentQuery.delMeta('connector_params');
 			}
 			else if (sText == YAHOO.ELSA.Labels.index_analytics){
+				YAHOO.ELSA.currentQuery.delMeta('livetail');
 				YAHOO.ELSA.currentQuery.delMeta('archive');
 				YAHOO.ELSA.currentQuery.addMeta('analytics', 1);
 				YAHOO.ELSA.showAddConnectorDialog();
 			}
 			else if (sText == YAHOO.ELSA.Labels.archive_analytics){
+				YAHOO.ELSA.currentQuery.delMeta('livetail');
 				YAHOO.ELSA.currentQuery.addMeta('archive', 1);
 				YAHOO.ELSA.currentQuery.addMeta('analytics', 1);
 				YAHOO.ELSA.showAddConnectorDialog();
+			}
+			else if (sText == YAHOO.ELSA.Labels.livetail){
+				YAHOO.ELSA.currentQuery.addMeta('livetail', 1);
+				YAHOO.ELSA.currentQuery.delMeta('archive');
+				YAHOO.ELSA.currentQuery.delMeta('analytics');
+				YAHOO.ELSA.currentQuery.delMeta('connector');
+				YAHOO.ELSA.currentQuery.delMeta('connector_params');
 			}
 		}
 		
@@ -374,7 +386,11 @@ YAHOO.ELSA.main = function () {
 			{
 				text: 'Archive Analytics (Map/Reduce)',
 				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.archive_analytics }
-			}
+			}/*,
+			{
+				text: 'Live Tail',
+				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.livetail }
+			}*/
 		];
 		
 		var oArchiveButtonCfg = {
