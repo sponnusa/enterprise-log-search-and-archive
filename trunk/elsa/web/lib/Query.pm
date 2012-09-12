@@ -31,7 +31,7 @@ has 'groupby' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required
 has 'timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'cancelled' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'archive' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
-#has 'datasource' => (is => 'rw', isa => 'Str', required => 1, default => 'sphinx'); 
+has 'livetail' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { { sphinx => 1 } });
 has 'analytics' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'system' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
@@ -81,7 +81,7 @@ sub BUILDARGS {
 		$params{meta_params} = delete $params{query_meta_params};
 	}
 	
-	foreach my $property qw(groupby timeout archive analytics datasources nobatch){
+	foreach my $property qw(groupby timeout archive analytics datasources nobatch livetail){
 		if ($params{meta_params}->{$property}){
 			$params{$property} = delete $params{meta_params}->{$property};
 		}
@@ -795,6 +795,12 @@ sub _parse_query_term {
 			elsif (lc($term_hash->{field}) eq 'nobatch'){
 				$self->meta_params->{nobatch} = 1;
 				$self->log->trace("Set batch override.");
+				next;
+			}
+			elsif (lc($term_hash->{field}) eq 'livetail'){
+				$self->meta_params->{livetail} = 1;
+				$self->livetail(1);
+				$self->log->trace("Set livetail.");
 				next;
 			}
 			

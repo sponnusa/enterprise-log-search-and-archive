@@ -86,7 +86,7 @@ sub BUILD {
 	}
 	my $ret = [];
 	foreach my $key (keys %$sums){
-		push @$ret, { '@groupby' => $key, intval => $sums->{$key}, '@count' => $sums->{$key} };
+		push @$ret, { _groupby => $key, intval => $sums->{$key}, _count => $sums->{$key} };
 	}
 	
 	# Sort

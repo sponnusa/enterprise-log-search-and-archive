@@ -142,11 +142,11 @@ sub _get_index_body {
 		var aY = [];
 		for (var j in oResults){
 			var oRec = oResults[j];
-			if (oRec['@groupby'] > iAlarm){
+			if (oRec['_groupby'] > iAlarm){
 				sBgcolor = '#FF0000';
 			}
-			aX.push(oRec['@groupby']);
-			aY.push(oRec['@count']);
+			aX.push(oRec['_groupby']);
+			aY.push(oRec['_count']);
 		}
 		var oChartData = {
 			x: aX
