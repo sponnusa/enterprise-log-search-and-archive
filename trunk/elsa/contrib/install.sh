@@ -259,7 +259,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -307,8 +307,11 @@ disable_service(){
 build_sphinx(){
 	# Get and build sphinx on nodes
 	cd $TMP_DIR &&
-	svn --non-interactive --trust-server-cert --force export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn &&
-	cd sphinx-svn &&
+	#svn --non-interactive --trust-server-cert --force export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn &&
+	#cd sphinx-svn &&
+	curl http://sphinxsearch.com/files/sphinx-2.0.5-release.tar.gz > sphinx-2.0.5-release.tar.gz &&
+	tar xzvf sphinx-2.0.5-release.tar.gz &&
+	cd sphinx-2.0.5-release &&
 	./configure --enable-id64 "--prefix=$BASE_DIR/sphinx" && make && make install &&
 	mkdir -p $BASE_DIR/etc &&
 	touch "$BASE_DIR/etc/sphinx_stopwords.txt"
@@ -409,6 +412,8 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_path"), 15)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_target"), 15)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS host_stats (host_id INT UNSIGNED NOT NULL, class_id SMALLINT UNSIGNED NOT NULL, count MEDIUMINT UNSIGNED NOT NULL DEFAULT 0, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (timestamp, host_id, class_id)) ENGINE=MyISAM;'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS livetail ( qid INT UNSIGNED NOT NULL PRIMARY KEY, query BLOB) ENGINE=InnoDB'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS livetail_results (qid INT UNSIGNED NOT NULL, `id` bigint unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT, `timestamp` INT UNSIGNED NOT NULL DEFAULT 0, `host_id` INT UNSIGNED NOT NULL DEFAULT '1', `program_id` INT UNSIGNED NOT NULL DEFAULT '1', `class_id` SMALLINT unsigned NOT NULL DEFAULT '1', msg TEXT, i0 INT UNSIGNED, i1 INT UNSIGNED, i2 INT UNSIGNED, i3 INT UNSIGNED, i4 INT UNSIGNED, i5 INT UNSIGNED, s0 VARCHAR(255), s1 VARCHAR(255), s2 VARCHAR(255), s3 VARCHAR(255), s4 VARCHAR(255), s5 VARCHAR(255), FOREIGN KEY (qid) REFERENCES livetail (qid) ON DELETE CASCADE ON UPDATE CASCADE) ENGINE=InnoDB'
 }
 
 init_elsa(){
