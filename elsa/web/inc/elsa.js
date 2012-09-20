@@ -34,7 +34,7 @@ YAHOO.ELSA.initLogger = function(){
 	if (YAHOO.ELSA.viewMode == 'dev'){
 		YAHOO.widget.Logger.categories.push('elsa');
 		logger = new YAHOO.ELSA.ConsoleProvider();
-		if (typeof(console) == 'undefined'){
+		//if (typeof(console) == 'undefined'){
 			var myLogReader = new YAHOO.widget.LogReader("logger");
 			myLogReader.collapse();
 			var tildeKeyListener = function(event){
@@ -55,7 +55,7 @@ YAHOO.ELSA.initLogger = function(){
 			}catch(e){
 				logger.log('Error subscribing document keyup', e);
 			}
-		}
+		//}
 	}
 	else {
 		// Just create dummy logging functionality
@@ -820,7 +820,7 @@ YAHOO.ELSA.Results = function(){
 			var msg = cloneVar(oRecord.getData().msg);
 			var re;
 			
-			if (oSelf.results.highlights){
+			if (typeof(oSelf.results.highlights) != 'undefined'){
 				//apply highlights
 				for (var sHighlight in oSelf.results.highlights){
 					sHighlight = sHighlight.replace(/^["']*/, '');
@@ -871,7 +871,7 @@ YAHOO.ELSA.Results = function(){
 				a.setAttribute('href', '#');//Will jump to the top of page. Could be annoying
 				a.setAttribute('class', 'value');
 				
-				if (oSelf.results.highlights){
+				if (typeof(oSelf.results.highlights) != 'undefined'){
 					for (var sHighlight in oSelf.results.highlights){
 						sHighlight = sHighlight.replace(/^["']*/, '');
 						sHighlight = sHighlight.replace(/["']*$/, '');
@@ -904,6 +904,7 @@ YAHOO.ELSA.Results = function(){
 		}
 		catch (e){
 			logger.log('exception while parsing field:', e);
+			logger.log(e.stack);
 			return '';
 		}
 	}
@@ -1414,7 +1415,11 @@ YAHOO.ELSA.Results = function(){
 	    }
 	}
 	
-	this.createPollingDataTable = function(p_oQuery, p_oElContainer){
+	this.createPollingDataTable = function(p_oQuery){
+		var p_oElContainer = document.createElement('div');
+		p_oElContainer.id = 'livetail';
+		this.window.document.body.appendChild(p_oElContainer);
+		
 		var oSelf = this;
 		var oFields = [
 			{ key:'id', parser:parseInt },
@@ -1428,7 +1433,7 @@ YAHOO.ELSA.Results = function(){
 		];
 		
 		var oColumns = [
-			{ key:'info', label:'', sortable:true, formatter:this.formatInfoButton }
+			//{ key:'info', label:'', sortable:true, formatter:this.formatInfoButton }
 		];
 		
 		if (YAHOO.ELSA.formParams && YAHOO.ELSA.formParams.additional_display_columns){
@@ -1442,84 +1447,92 @@ YAHOO.ELSA.Results = function(){
 		oColumns.push({ key:'_fields', label:'Fields', sortable:true, formatter:this.formatFields }); //formatter adds highlights
 		
 		// DataSource instance
-		this.dataSource = new YAHOO.util.DataSource();
-		//this.dataSource = new YAHOO.util.DataSource('Query/query?q=' + encodeURIComponent(this.sentQuery));
-	    this.dataSource.maxCacheEntries = 4; //cache these
+		this.base_query = 'Query/query?q=' + encodeURIComponent(this.sentQuery);
+		this.dataSource = new YAHOO.util.DataSource(this.base_query);
+		this.dataSource.maxCacheEntries = 4; //cache these
 	    this.dataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
 	    this.dataSource.responseSchema = {
 	        resultsList: 'results',
 	        fields: oFields,
 	        metaFields: {
-	            totalRecords: 'totalRecords', // Access to value in the server response
+	            totalRecords: 'totalRecords',
 	            recordsReturned: 'recordsReturned',
-	            startIndex: 'startIndex'
+	            startIndex: 'startIndex',
+	            qid: 'qid',
+	            highlights: 'highlights'
 	        }
 	    };
 	    
-	    this.paginator = new YAHOO.widget.Paginator({
-	        pageLinks          : 10,
-	        rowsPerPage        : 15,
-	        rowsPerPageOptions : [15,50,100],
-	        template           : '{CurrentPageReport} {FirstPageLink} {PreviousPageLink} {PageLinks} {NextPageLink} {LastPageLink} {RowsPerPageDropdown}',
-	        pageReportTemplate : '<strong>Records: {totalRecords} / ' + this.dataSource.liveData.totalRecords + ' </strong> '
-	        	+ this.dataSource.liveData.totalTime + ' ms <a href="#" id="explain_query_' + this.dataSource.liveData.qid + '">?</a>'
+	    this.dataSource.subscribe('requestEvent', function(){ 
+	    	logger.log('requestEvent', arguments);
+	    	if (typeof(oSelf.qid) != 'undefined'){
+	    		oSelf.dataSource.liveData = oSelf.base_query + '&qid=' + oSelf.qid;
+	    	}
 	    });
 	    
-	    var generateRequest = function(oState, oSelf){
-	    	logger.log('oState', oState);
-	    	logger.log('oSelf', oSelf);
-	    }
-	    
 	    var oTableCfg = {
-	    	//initialRequest: 'Query/query?q=' + encodeURIComponent(this.sentQuery),
-	    	initialRequest: 'asdf',
-	    	generateRequest: generateRequest,
-	    	paginator: this.paginator,
-	        dynamicData: true,
+	    	dynamicData: true,
 	        sortedBy : {key:"timestamp", dir:YAHOO.widget.DataTable.CLASS_DESC},
 	    };
 	    
 	    this.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
 			logger.log('handleDataReturnPayload args', arguments);
 			var oNow = new Date();
-			logger.log('sent timestamp: ' + this.getDataSource()._sent_timestamp);
-			var iTimeTaken = oNow.getTime() - this.getDataSource()._sent_timestamp;
-			this.configs.paginator.set('pageReportTemplate', '<strong>Total Records: {totalRecords}</strong> ' + iTimeTaken + ' ms');
 			if (oPayload){
 				oPayload.totalRecords = oResponse.meta.totalRecords;
 			}
 			else {
 				oPayload = { totalRecords: oResponse.meta.totalRecords };
 			}
-			if (oResponse.meta.totalRecords > 0){
-				YAHOO.util.Dom.removeClass(this.container, 'hiddenElement');
-			}
-			else {
-				YAHOO.util.Dom.addClass(this.container, 'hiddenElement');
-			}
+			oSelf.qid = oResponse.meta.qid;
+			logger.log('set qid to ' + oSelf.qid);
+			oSelf.results = oResponse.meta;
+			oSelf.results.results = oResponse.results;
 			
 			return oPayload;
 		}
-	    
+		
+		this.scroll = true;
+		
+		this.scrollToBottom = function(){
+			if (this.scroll){
+				this.window.scrollTo(0,this.window.document.body.scrollHeight);
+			}
+		}
+			    
 	    try{
 	    	logger.log('About to create DT with ', "dt" + p_oElContainer, oColumns, this.dataSource, oTableCfg);
 	    	this.dataTable = new YAHOO.widget.DataTable(p_oElContainer, oColumns, this.dataSource, oTableCfg);
 	    	this.dataTable.handleDataReturnPayload = this.handleDataReturnPayload;
 	    	logger.log('datatable: ', this.dataTable);
 	  	 	YAHOO.util.Dom.removeClass(p_oElContainer, 'hiddenElement');
-	  	 	this.dataSource.setInterval(5000, null, {
-				success: this.dataTable.onDataReturnInitializeTable,
-				failure: function(){ YAHOO.ELSA.Error('got error during setInterval: ', arguments) },
+	  	 	this.dataSource.setInterval((YAHOO.ELSA.formParams.livetail_poll_interval * 1000), null, {
+				success: function(){ 
+					this.dataTable.onDataReturnAppendRows(arguments[0], arguments[1], arguments[2]); 
+					this.scrollToBottom(); 
+				},
+				//success: oSelf.dataTable.onDataReturnAppendRows,
+				failure: function(){ logger.log(oSelf); YAHOO.ELSA.Error('got error during setInterval: ', arguments) },
 				scope: this
 			});
+			this.dataSource.subscribe('dataReturnEvent', function(){ logger.log('dataReturnEvent', arguments)});
 			
 			// Stop the polling when window is closed
 			YAHOO.util.Event.addListener(this.window, 'beforeunload', function(){
 				logger.log('window closed', arguments);
 				oSelf.dataSource.clearAllIntervals();
+				YAHOO.ELSA.async('Query/cancel_livetail?qid=' + oSelf.qid, function(){ logger.log('Livetail stopped.'); });
 			});
 			
+			// Stop scrolling when we have the pointer over the follow tail window
+			YAHOO.util.Event.addListener(this.window, 'mouseover', function(){
+				oSelf.scroll = false;
+			});
+			YAHOO.util.Event.addListener(this.window, 'mouseout', function(){
+				oSelf.scroll = true;
+			});
 			
+		
 	    }catch(e){
 	    	logger.log('No datatable because: ' + e.toString());
 	    	for (var term in e){
@@ -1543,10 +1556,86 @@ YAHOO.ELSA.Results.LiveTail = function(p_oQuery){
 	
 	this.sentQuery = p_oQuery.toString(); //set this opaque string for later use
 	this.query = p_oQuery;
-	this.window = window.open('', 'Live Tail ' + this.sentQuery, 'left=20,top=20,width=1024,height=768,toolbar=0,resizable=1,status=0');
-	logger.log(this.window);
+	var oSelf = this;
 	
-	this.createPollingDataTable(p_oQuery, this.window.document.body);
+	this.formatFields = function(p_elCell, oRecord, oColumn, p_oData){
+		//logger.log('called formatFields on ', oRecord);
+		try {
+			var msg = cloneVar(oRecord.getData().msg);
+			var re;	
+			if (oRecord.getData()['class'] == 'NONE'){
+				var msgDiv = document.createElement('div');
+				msgDiv.setAttribute('class', 'msg');
+				
+				if (typeof(oSelf.results.highlights) != 'undefined'){
+					//apply highlights
+					for (var sHighlight in oSelf.results.highlights){
+						sHighlight = sHighlight.replace(/^["']*/, '');
+						sHighlight = sHighlight.replace(/["']*$/, '');
+						re = new RegExp('(' + sHighlight + ')', 'ig');
+						var aMatches = msg.match(re);
+						if (aMatches != null){
+							var sReplacement = '<span style="background-color:yellow">' + escapeHTML(aMatches[0]) + '</span>';
+							msg = msg.replace(re, sReplacement);
+						}
+					}
+				}
+				msgDiv.innerHTML = msg;
+				p_elCell.appendChild(msgDiv);
+			}
+			else {
+			
+				var oDiv = document.createElement('div');
+				var oTempWorkingSet = cloneVar(p_oData);
+				
+				for (var i in oTempWorkingSet){
+					var fieldHash = oTempWorkingSet[i];
+					fieldHash.value_with_markup = escapeHTML(fieldHash.value);
+					
+					var oHighlightDiv = document.createElement('span');
+									
+					if (typeof(oSelf.results.highlights) != 'undefined'){
+						for (var sHighlight in oSelf.results.highlights){
+							sHighlight = sHighlight.replace(/^["']*/, '');
+							sHighlight = sHighlight.replace(/["']*$/, '');
+							var re = new RegExp('(' + sHighlight + ')', 'ig');
+							logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
+							if (fieldHash['value_with_markup']){
+								var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
+								var aMatches = msg.match(re);
+								if (aMatches != null){
+									var sReplacement = '<span style="background-color:yellow">' + escapeHTML(aMatches[0]) + '</span>';
+									fieldHash['value_with_markup'] = fieldHash['field'] + '=' + fieldHash['value_with_markup'].replace(re, sReplacement);
+									logger.log('matched and showing: ' + fieldHash['value_with_markup']);
+								}
+							}
+							else {
+								fieldHash['value_with_markup'] = fieldHash['field'] + '=';
+							}
+						}
+						oHighlightDiv.innerHTML = fieldHash['value_with_markup'];
+					}
+					else {
+						logger.log('no highlights, using ' + fieldHash.value_with_markup);
+						oHighlightDiv.innerHTML = fieldHash['field'] + '=' + fieldHash.value_with_markup;
+						logger.log('oHighlightDiv.innerHTML: ' + oHighlightDiv.innerHTML);
+					}
+					oDiv.appendChild(oHighlightDiv);
+									
+					oDiv.appendChild(document.createTextNode(' '));
+					
+				}
+				p_elCell.appendChild(oDiv);
+			}
+		}
+	catch (e){
+			logger.log('exception while parsing field:', e);
+			return '';
+		}
+	}
+	
+	this.window = window.open('', 'Live Tail ' + this.sentQuery, 'left=20,top=20,width=1024,height=768,toolbar=0,resizable=1,status=0');
+	this.createPollingDataTable(p_oQuery);
 };
 
 YAHOO.ELSA.Results.Given = function(p_oResults){
@@ -2135,10 +2224,12 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 					if (typeof(this.results.stats) != 'undefined'){
 						// Set query explain stats
 						var aKeywordStats = [];
-						for (var i in this.results.stats.keywords){
-							if (this.results.stats.keywords[i].docs > 0){
-								aKeywordStats.push('keyword: ' + i + ', docs: ' + this.results.stats.keywords[i].docs 
-									+ ' (' + Number(this.results.stats.keywords[i].percentage).toFixed(1) + '%)');
+						var aSorted = sortByKeyDesc(this.results.stats.keywords, 'docs');
+						for (var i in aSorted){
+							var sKeyword = aSorted[i];
+							if (this.results.stats.keywords[sKeyword].docs > 0){
+								aKeywordStats.push('keyword: ' + sKeyword + ', docs: ' + this.results.stats.keywords[sKeyword].docs 
+									+ ' (' + Number(this.results.stats.keywords[sKeyword].percentage).toFixed(1) + '%)');
 							}
 						}
 						if (aKeywordStats.length == 0){

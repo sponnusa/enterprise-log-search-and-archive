@@ -27,6 +27,7 @@ use AsyncMysql;
 
 our $Max_limit = 1000;
 our $Max_query_terms = 128;
+our $Livetail_poll_interval = 5;
 
 has 'ldap' => (is => 'rw', isa => 'Object', required => 0);
 has 'last_error' => (is => 'rw', isa => 'Str', required => 1, default => '');
@@ -170,6 +171,11 @@ sub BUILD {
 	
 	# init plugins
 	$self->plugins();
+	
+	# Update livetail_poll_interval if necessary
+	if ($self->conf->get('livetail/poll_interval')){
+		$Livetail_poll_interval = $self->conf->get('livetail/poll_interval');
+	}
 	
 	return $self;
 }
@@ -1094,6 +1100,7 @@ sub get_form_params {
 		groups => $user->groups,
 		additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
 		totals => $self->node_info->{totals},
+		livetail_poll_interval => $Livetail_poll_interval,
 	};
 	
 	# You can change the default start time displayed to web users by changing this config setting
@@ -1661,7 +1668,13 @@ sub query {
 			$self->node_info($self->_get_node_info($args->{user}));
 		}
 		if ($args->{q}){
-			$q = new Query(conf => $self->conf, user => $args->{user}, q => $args->{q}, node_info => $self->node_info);
+			if ($args->{qid}){
+				$self->log->level($ERROR);
+				$q = new Query(conf => $self->conf, user => $args->{user}, q => $args->{q}, node_info => $self->node_info, qid => $args->{qid});
+			}
+			else {
+				$q = new Query(conf => $self->conf, user => $args->{user}, q => $args->{q}, node_info => $self->node_info);
+			}
 		}
 		elsif ($args->{query_string}){
 			$q = new Query(
@@ -1692,7 +1705,7 @@ sub query {
 				$query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
 			}
 			if ($estimated_query_time > $query_time_batch_threshold){
-				$is_batch = 'Batching because estimated query time is ' . $estimated_query_time . '.';
+				$is_batch = 'Batching because estimated query time is ' . int($estimated_query_time) . ' seconds.';
 				$self->log->info($is_batch);
 			}
 		}
@@ -1705,7 +1718,7 @@ sub query {
 			
 		if ($is_batch){
 			# Check to see if this user is already running an archive query
-			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND ISNULL(num_results)';
+			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND (ISNULL(num_results) OR num_results=-1)';
 			$sth = $self->db->prepare($query);
 			$sth->execute();
 			my $counter = 0;
@@ -1750,7 +1763,7 @@ sub query {
 	
 	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
 	
-	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
 
 	# Apply transforms
 	if ($q->has_transforms){	
@@ -2110,6 +2123,11 @@ sub _sphinx_query {
 					next;
 				}
 				foreach my $sphinx_row (@{ $ret->{$node}->{sphinx_rows} }){
+					# Be backwards compatible with older sphinxes
+					if (exists $sphinx_row->{'@groupby'}){
+						$sphinx_row->{_groupby} = delete $sphinx_row->{'@groupby'};
+						$sphinx_row->{_count} = delete $sphinx_row->{'@count'};
+					}
 					# Resolve the _groupby col with the mysql col
 					unless (exists $ret->{$node}->{results}->{ $sphinx_row->{id} }){
 						$self->log->warn('mysql row for sphinx id ' . $sphinx_row->{id} . ' did not exist');
@@ -3049,7 +3067,7 @@ sub transform {
 					delete $transform_args->{groupby};
 				}
 				$self->log->debug('groupby ' . Dumper($transform_args->{groupby}));
-				$self->log->debug('got subsearch results: ' . Dumper($transform_args->{results}));
+				$self->log->debug('got subsearch results: ' . Dumper($subq->results->results));
 				$num_found++;
 				
 				if (not $subq->has_groupby and $transform_counter != ((scalar @{ $transform_args->{transforms} }) - 1)){
@@ -3084,6 +3102,7 @@ sub transform {
 					$q->results($subq->results);
 					$q->groupby($subq->groupby);
 				}
+				$q->stats($subq->stats);
 			}
 			$self->log->trace('new results after subsearch: ' . Dumper($transform_args->{results}));
 		}
@@ -3551,6 +3570,8 @@ sub run_schedule {
 		$sth = $self->db->prepare($query);
 		$sth->execute($cur_time);
 	}
+	
+	$self->expire_livetails($args);
 	
 	return $counter;
 }
@@ -4050,7 +4071,42 @@ sub _livetail_query {
 	my ($query, $sth);
 	
 	# First check to see if we already have a livetail going (this is a poll)
-	$query = 'SELECT ';
+	$query = 'SELECT qid, query FROM query_log WHERE uid=? AND num_results=-3 AND archive=1';
+	$sth = $self->db->prepare($query);
+	$sth->execute($q->user->uid);
+	my $row = $sth->fetchrow_hashref;
+	if ($row){
+		$self->log->trace('Found running live tail: ' . Dumper($row));
+		# Is this a new query?
+		my $query_hash = $self->json->decode($row->{query});
+		if ($query_hash->{query_string} ne $q->query_string){
+			$self->log->info('Starting new query, cancelling old one');
+			$self->cancel_livetail({ qid => $row->{qid}, user => $q->user});
+		}
+		else {
+			$self->log->debug('my qid: ' . $q->qid . ', running qid: ' . $row->{qid});
+			# Drop our new one in favor of the already-running one
+			if ($q->qid ne $row->{qid}){
+				$self->cancel_livetail({ qid => $q->qid, user => $q->user});
+				$q->qid($row->{qid});
+			}
+			# Get latest results
+			$q->start(int(time() - $Livetail_poll_interval));
+			$self->_get_livetail_results($q);
+			# Mark that we're still running
+			$query = 'UPDATE query_log SET milliseconds = (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(timestamp))*1000 WHERE qid=? AND uid=?';
+			$sth = $self->db->prepare($query);
+			$sth->execute($q->qid, $q->user->uid);
+			return $q;
+		}
+	}
+	else {
+		$self->log->debug('no livetail for uid ' . $q->user->uid);
+	}
+	
+	# Set batch/livetail mode
+	$q->batch(1);
+	$q->mark_livetail_start();
 	
 	# Take archive query terms and turn into livetail query terms
 	my $eval_str = '';
@@ -4062,8 +4118,63 @@ sub _livetail_query {
 		$sth = $dbh->prepare($query);
 		$sth->execute($q->qid, $queries);
 		$sth->finish;
+		$self->log->debug('added livetail ' . $q->qid . ' to node ' . $node);
 	}
 	return $q;
+}
+
+sub _get_livetail_results {
+	my ($self, $q) = @_;
+	my ($query,$sth);
+	my $ret = {};
+	foreach my $node (keys %{ $q->node_info->{nodes} }){
+		my $node_info = $q->node_info->{nodes}->{$node};
+		$query = "SELECT main.id,\n" .
+			"\"" . $node . "\" AS node,\n" .
+			"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
+			"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+			"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+			"FROM livetail_results main\n" .
+			"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
+			"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
+			'WHERE qid=? AND timestamp >= ? ORDER BY timestamp DESC';
+		
+		$ret->{$node} = [];
+		my $dbh = DBI->connect_cached(@{ $q->node_info->{nodes}->{$node}->{dbh}->db_args }) or die($DBI::errstr);
+		$sth = $dbh->prepare($query);
+		$sth->execute($q->qid, $q->start);
+		$self->log->debug('query: ' . $query . "\nargs: " . $q->qid . " " . $q->start);
+		while (my $row = $sth->fetchrow_hashref){
+			push @{ $ret->{$node} }, $row;
+		}
+		$sth->finish;
+	}
+	
+	my @tmp; # we need to sort chronologically
+	NODE_LOOP: foreach my $node (keys %$ret){
+		foreach my $row (@{ $ret->{$node} }){
+			$row->{_fields} = [
+					{ field => 'host', value => $row->{host}, class => 'any' },
+					{ field => 'program', value => $row->{program}, class => 'any' },
+					{ field => 'class', value => $row->{class}, class => 'any' },
+				];
+			# Resolve column names for fields
+			foreach my $col qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5){
+				my $value = delete $row->{$col};
+				# Swap the generic name with the specific field name for this class
+				my $field = $self->node_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
+				if (defined $value and $field){
+					# See if we need to apply a conversion
+					$value = $self->resolve_value($row->{class_id}, $value, $col);
+					push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $self->node_info->{classes_by_id}->{ $row->{class_id} } };
+				}
+			}
+			push @tmp, $row;
+		}
+	}
+	foreach my $row (sort { $a->{timestamp} cmp $b->{timestamp} } @tmp){
+		$q->results->add_result($row);
+	}
 }
 
 sub _build_livetail_query {
@@ -4117,20 +4228,18 @@ sub _build_livetail_query {
 		}
 	}
 
-	#push @{ $clauses{classes} }, 'sub { my $classes = { map { $_ => 1 } (' . join(',', (keys %{ $q->classes->{distinct} })) . ') }; exists $classes->{ $_[0] } }';
 	my @terms;
 	foreach my $class_id (keys %{ $q->classes->{distinct} }){
 		push @terms, '$_[0] == ' . $class_id;
 	}
-	push @{ $clauses{classes} }, 'sub { return ' . join(' or ', @terms) . ' }'; 
+	push @{ $clauses{classes} }, 'sub { ' . join(' or ', @terms) . ' }'; 
 	
-	#push @{ $clauses{classes} }, 'sub { my $classes = { map { $_ => 1 } (' . join(',', (keys %{ $q->classes->{excluded} })) . ') }; not exists $classes->{ $_[0] } }';
 	if (scalar keys %{ $q->classes->{excluded} }){
 		@terms = ();
 		foreach my $class_id (keys %{ $q->classes->{excluded} }){
 			push @terms, '$_[0] != ' . $class_id;
 		}
-		push @{ $clauses{classes} }, 'sub { return ' . join(' and ', @terms) . ' }';
+		push @{ $clauses{classes} }, 'sub { ' . join(' and ', @terms) . ' }';
 	}
 	
 	# Handle our basic equalities
@@ -4146,11 +4255,9 @@ sub _build_livetail_query {
 							my $field = $attr;
 							$field =~ s/^attr\_//; 
 							push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1] eq ' . $value . ' }';
-							#push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, '%1$d == ' . $class_id . ' and $2$d eq ' . $value;
 						}
 						else {
 							push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[1] == ' . $value . ' }';
-							#push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, '%1$d == ' . $value;
 						}
 					}
 				}
@@ -4209,11 +4316,9 @@ sub _build_livetail_query {
 						}						
 						if ($class_id){
 							push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1] ' . $min . ' and $_[1] <= ' . $max . ' }';
-							#push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, '%1$d == ' . $class_id . ' and %2$d >= ' . $min . ' and %2$d <= ' . $max;
 						}
 						else {
 							push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, 'sub { $_[1] >= ' . $min . ' and $_[1] <= ' . $max . ' }';
-							#push @{ $clauses{$boolean}->[ $Fields::Field_to_order->{$attr} ] }, '%1$d >= ' . $min . ' and %1$d <= ' . $max;
 						}
 						foreach my $op ('>', '<', '>=', '<='){
 							if (exists $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op}){
@@ -4231,7 +4336,6 @@ sub _build_livetail_query {
 		$clauses{'any_field_terms_' . $boolean} ||= [];
 		foreach my $term (keys %{ $q->terms->{any_field_terms}->{$boolean} }){
 			push @{ $clauses{'any_field_terms_' . $boolean} }, 'sub { $_[1] =~ qr/' . $term . '/io }';
-			#push @{ $clauses{'any_field_terms_' . $boolean} }, sub { package main; $_[0] =~ qr/$term/o };
 		}
 	}
 	
@@ -4241,7 +4345,6 @@ sub _build_livetail_query {
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
 				push @{ $clauses{and}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1] =~ qr/' . $value . '/io }';
-				#push @{ $clauses{and}->[ $Fields::Field_to_order->{$field} ] }, sub { package main; $_[0] =~ qr/$value/o };
 			}
 		}
 				
@@ -4249,7 +4352,6 @@ sub _build_livetail_query {
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{not}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$field} }){
 				push @{ $clauses{not}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[0] != ' . $class_id . ' or $_[1] !~ qr/' . $value . '/io }';
-				#push @{ $clauses{not}->[ $Fields::Field_to_order->{$field} ] }, sub { package main; $_[0] !~ qr/$value/o };
 			}
 		}
 		
@@ -4257,7 +4359,6 @@ sub _build_livetail_query {
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{or}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$field} }){
 				push @{ $clauses{or}->[ $Fields::Field_to_order->{$field} ] }, 'sub { $_[0] == ' . $class_id . ' and $_[1]  =~ qr/' . $value . '/io }';
-				#push @{ $clauses{or}->[ $Fields::Field_to_order->{$field} ] }, sub { package main; $_[0] =~ qr/$value/o };
 			}
 		}
 	}
@@ -4279,6 +4380,99 @@ sub cancel_query {
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid}, $args->{user}->uid);
 	return { ok => 1 };
+}
+
+sub cancel_livetail {
+	my ($self, $args) = @_;
+	
+	my ($query, $sth);
+	
+	if ($args->{user}->is_admin){
+		$query = 'UPDATE query_log SET num_results=-4 WHERE qid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{qid});
+		die('Invalid qid') unless $sth->rows;
+	}
+	else {
+		$query = 'UPDATE query_log SET num_results=-4 WHERE qid=? AND uid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{qid}, $args->{user}->uid);
+		die('Invalid qid/uid') unless $sth->rows;
+	}
+	
+	# Get our node info
+	if (not $self->node_info->{updated_at} 
+		or ($self->conf->get('node_info_cache_timeout') and ((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout')))
+		or not $args->{user}->is_admin){
+		$self->node_info($self->_get_node_info($args->{user}));
+	}
+	
+	$query = 'DELETE FROM livetail WHERE qid=?';
+	foreach my $node (keys %{ $self->node_info->{nodes} }){
+		$self->log->debug('cancelling livetail for qid ' . $args->{qid} . ' on node ' . $node);
+		my $dbh = DBI->connect_cached(@{ $self->node_info->{nodes}->{$node}->{dbh}->db_args }) or die($DBI::errstr);
+		$sth = $dbh->prepare($query);
+		$sth->execute($args->{qid});
+		$sth->finish;
+	}
+		
+	return { ok => 1 };
+}
+
+sub cancel_all_livetails {
+	my ($self, $args) = @_;
+	
+	die('Insufficient permission') unless $args->{user}->is_admin;
+	
+	my ($query, $sth);
+	$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND num_results=-3';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	
+	my $cancelled = 0;
+	while (my $row = $sth->fetchrow_hashref){
+		my $ret = $self->cancel_livetail({user => $args->{user}, qid => $row->{qid}});
+		$cancelled++ if $ret and $ret->{ok};
+	}
+	return { ok => $cancelled };
+}
+
+sub expire_livetails {
+	my ($self, $args) = @_;
+	
+	die('Insufficient permission') unless $args->{user}->is_admin;
+	
+	my ($query, $sth);
+	$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND num_results=-3 AND milliseconds > (? * 1000)';
+	$sth = $self->db->prepare($query);
+	$sth->execute($self->conf->get('livetail/time_limit') ? $self->conf->get('livetail/time_limit') : 3600);
+	
+	my $cancelled = 0;
+	while (my $row = $sth->fetchrow_hashref){
+		my $ret = $self->cancel_livetail({user => $args->{user}, qid => $row->{qid}});
+		$cancelled++ if $ret and $ret->{ok};
+	}
+	return { ok => $cancelled };
+}
+
+sub get_livetails {
+	my ($self, $args) = @_;
+	
+	die('Insufficient permission') unless $args->{user}->is_admin;
+	
+	my ($query, $sth);
+	$query = 'SELECT * FROM query_log WHERE archive=1 AND num_results=-3';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	
+	my $ret = { results => [] };
+	while (my $row = $sth->fetchrow_hashref){
+		$row->{query} = $self->json->decode($row->{query});
+		$row->{query_string} = $row->{query}->{query_string};
+		$row->{query_meta_params} = $row->{query}->{query_meta_params};
+		push @{ $ret->{results} }, $row;
+	}
+	return $ret;
 }
 
 __PACKAGE__->meta->make_immutable;

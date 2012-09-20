@@ -386,11 +386,11 @@ YAHOO.ELSA.main = function () {
 			{
 				text: 'Archive Analytics (Map/Reduce)',
 				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.archive_analytics }
-			}/*,
+			},
 			{
 				text: 'Live Tail',
 				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.livetail }
-			}*/
+			}
 		];
 		
 		var oArchiveButtonCfg = {
@@ -582,6 +582,12 @@ YAHOO.ELSA.main = function () {
 							text: 'Stats',
 							helptext: 'Query and load statistics',
 							url: 'dashboard/_system',
+							target: '_blank'
+						},
+						{
+							text: 'Cancel All Livetails',
+							helptext: 'Stop any running livetails from all users',
+							url: 'Query/cancel_all_livetails',
 							target: '_blank'
 						}
 					]
