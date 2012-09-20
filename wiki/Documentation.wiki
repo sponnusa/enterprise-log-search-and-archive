@@ -526,3 +526,14 @@ Query_template parameters (all are required):
  # The column for ORDER BY
  # OFFSET
  # LIMIT
+
+=Livetail=
+ELSA has the ability to allow each user to get a live feed of a given search delivered to a browser window.  Livetail allows you to use full PCRE to search incoming logs without impacting logging performance.  This is done by forking a separate process on each node that reads the text file being written by the main logging process, ensuring that no extra load is put on the main process and therefore avoiding log loss in high volume situations.
+
+==Starting a Livetail==
+To start a livetail, simply choose the "Livetail" option from the "Index" button, which will open a new window.  Your search will begin immediately and results will be displayed from all nodes as they are available.  Your browser window will poll the server every five seconds for new results.  The window will scroll with new results.  If you keep your mouse pointer over the window, it will cease scrolling.
+
+==Ending a Livetail==
+Livetails will automatically be cancelled when you close the browser window.  If the browser crashes and the livetail continues, it will be replaced by any livetail you start again, or will timeout after an hour.  An administrator can cancel all livetails by choosing "Cancel Livetails" from the "Admin" menu.
+
+Livetail results are temporary and cannot be saved.  You can copy and paste data from the window, or run a normal ELSA search to save the data.
