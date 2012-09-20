@@ -9,6 +9,8 @@ use String::CRC32;
 use Log::Log4perl;
 use DBI;
 use FindBin;
+use Storable qw(thaw);
+use IO::File;
 
 # Include the directory this script is in
 use lib $FindBin::Bin;
@@ -16,6 +18,29 @@ use lib $FindBin::Bin;
 use Indexer;
 use Reader;
 use Writer;
+
+use constant LIVETAIL_QID => 0;
+use constant LIVETAIL_CLASSES => 1;
+use constant LIVETAIL_PERMISSIONS => 2;
+use constant LIVETAIL_AND => 3;
+use constant LIVETAIL_OR => 4;
+use constant LIVETAIL_NOT => 5;
+use constant LIVETAIL_ANY_AND => 6;
+use constant LIVETAIL_ANY_OR => 7;
+use constant LIVETAIL_ANY_NOT => 8;
+
+my $Field_to_sub = {
+	classes => LIVETAIL_CLASSES,
+	and => LIVETAIL_AND,
+	or => LIVETAIL_OR,
+	not => LIVETAIL_NOT,
+	permissions => LIVETAIL_PERMISSIONS,
+	any_field_terms_and => LIVETAIL_ANY_AND,
+	any_field_terms_or => LIVETAIL_ANY_OR,
+	any_field_terms_not => LIVETAIL_ANY_NOT,
+};
+
+my @String_fields = (Reader::FIELD_MSG, Reader::FIELD_S0, Reader::FIELD_S1, Reader::FIELD_S2, Reader::FIELD_S3, Reader::FIELD_S4, Reader::FIELD_S5);
 
 my %Opts;
 getopts('onlc:f:', \%Opts);
@@ -163,7 +188,6 @@ sub _process_batch {
 	my $filename = shift;
 	
 	my $args = { run => 1 };
-	
 	my $fh = \*STDIN;
 	if ($filename){
 		open($fh, $filename) or die 'Unable to open file: ' . $!;
@@ -179,18 +203,23 @@ sub _process_batch {
 		unless -d $Conf->{buffer_dir};
 		
 	$args->{start_time} = Time::HiRes::time();
-		
-	$args->{tempfile} = File::Temp->new( DIR => $Conf->{buffer_dir}, UNLINK => 0 );
-	unless ($args->{tempfile}){
-		$Log->error('Unable to create tempfile: ' . $!);
-		return 0;
-	}
-	$args->{tempfile}->autoflush(1);
 	$args->{batch_counter} = 0;
 	$args->{error_counter} = 0;
 	
 	# Reset the miss cache
 	$args->{cache_add} = {};
+#	my $tempfile = File::Temp->new( DIR => $Conf->{buffer_dir}, UNLINK => 0 );
+#	unless ($tempfile){
+#		$Log->error('Unable to create tempfile: ' . $!);
+#		return 0;
+#	}
+#	$tempfile->autoflush(1);
+	my $tempfile_name = $Conf->{buffer_dir} . '/' . CORE::time();
+	
+	my $tail_watcher = _fork_livetail_manager($tempfile_name);
+	
+	# Open the file now that we've forked
+	my $tempfile = IO::File->new('> ' . $tempfile_name);
 	
 	# End the loop after index_interval seconds
 	local $SIG{ALRM} = sub {
@@ -207,7 +236,7 @@ sub _process_batch {
 	
 	while (<$fh>){	
 		eval { 
-			$args->{tempfile}->print(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
+			$tempfile->print(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
 			$args->{batch_counter}++;
 		};
 		if ($@){
@@ -219,9 +248,10 @@ sub _process_batch {
 		}
 		last unless $args->{run};
 	}
-	
+			
 	# Update args to be results
-	$args->{file} = $args->{tempfile}->filename();
+	#$args->{file} = $tempfile->filename();
+	$args->{file} = $tempfile_name;
 	$args->{start} = $args->{offline_processing} ? $reader->offline_processing_times->{start} : $args->{start_time};
 	$args->{end} = $args->{offline_processing} ? $reader->offline_processing_times->{end} : Time::HiRes::time();
 	$args->{total_processed} = $args->{batch_counter};
@@ -231,19 +261,23 @@ sub _process_batch {
 	$Log->debug("Finished job process_batch with cache hits: $args->{batch_counter} and " . (scalar keys %{ $args->{cache_add} }) . ' new programs');
 	$Log->debug('Total errors: ' . $args->{error_counter} . ' (%' . (($args->{error_counter} / $args->{batch_counter}) * 100) . ')' ) if $args->{batch_counter};
 	
-	my ($query, $sth);
 	if (scalar keys %{ $reader->to_add }){
 		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 		$indexer->add_programs($reader->to_add);
 		$reader->to_add({});
 	}
 	
+	my ($query,$sth);
 	if ($args->{batch_counter}){
 		$query = 'INSERT INTO buffers (filename) VALUES (?)';
 		$sth = $Dbh->prepare($query);
 		$sth->execute($args->{file});
 		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter});
 	}
+	
+	# Kill the livetail forker
+	kill SIGTERM, $tail_watcher;
+	$Log->trace("Ending child tail manager $tail_watcher");
 		
 	# Reset the run marker
 	$args->{run} = 1;
@@ -319,4 +353,221 @@ sub _init_cache {
 	while (my $row = $sth->fetchrow_hashref){
 		$Cache->{ $row->{program} } = $row->{id};
 	}
+}
+
+sub _fork_livetail_manager {
+	my $filename = shift;
+	my $pid = fork();
+	if ($pid){
+		$Log->trace('Forked livetail manager to pid ' . $pid . ' with filename ' . $filename);
+		return $pid;
+	}
+	else {
+		# Safety to exit after twice the normal batch time
+		local $SIG{ALRM} = sub {
+			$Log->trace("Emergency tail child exit");
+			exit; 
+		};
+		alarm($Conf->{sphinx}->{index_interval} * 2);
+		
+		my $start_time = time();
+		my %livetails;
+		
+		local $SIG{TERM} = sub {
+			$Log->trace("Livetail manager received TERM signal");
+			foreach my $qid (keys %livetails){
+				$Log->trace('Killing ' . $livetails{$qid});
+				kill SIGTERM, $livetails{$qid};
+			}
+			exit;
+		};
+		
+		# Get active livetail queries
+		my ($query,$sth);
+		do {
+			$query = 'SELECT qid, query FROM livetail';
+			$sth = $Dbh->prepare($query);
+			$sth->execute;
+			my %active_tails;
+			while (my $row = $sth->fetchrow_hashref){
+				$active_tails{ $row->{qid} } = $row;
+			}
+			$sth->finish; # finish this so the child doesn't pick it up
+			foreach my $qid (keys %livetails){
+				unless (exists $active_tails{$qid}){
+					$Log->info('Removing inactive tail ' . $qid . ' at pid ' . $livetails{$qid});
+					my $killed = kill SIGTERM, $livetails{$qid};
+					if ($killed){
+						$Log->trace('killed ' . $killed . ' procs');
+						delete $livetails{$qid};
+					}
+					else {
+						$Log->error('Unable to kill pid ' . $livetails{$qid});
+					}
+				}
+			}
+			foreach my $qid (keys %active_tails){
+				next if $livetails{ $qid };
+				my $livetail = _get_livetail($active_tails{$qid});
+				$livetails{$qid} = _livetail($livetail, $filename);
+				$Log->info('Added livetail ' . $qid . ' at pid ' . $livetails{$qid} . ' with filename ' . $filename);
+			}
+			sleep 1;
+		} while ((time() - $Conf->{sphinx}->{index_interval}) < $start_time);
+		
+		$Log->trace("Livetail manager finished loop");
+		foreach my $qid (keys %livetails){
+			$Log->trace('Killing ' . $livetails{$qid});
+			kill SIGTERM, $livetails{$qid};
+		}
+		exit;
+	}
+}
+
+sub _livetail {
+	my $livetail = shift;
+	my $filename = shift;
+	
+	unless (-f $filename){
+		$Log->error('Invalid filename ' . $filename);
+		return;
+	}
+	
+	my $pid = fork();
+	if ($pid){
+		$Log->trace('Forked livetail to pid ' . $pid);
+		return $pid;
+	}
+	else {
+		# Override parent's TERM
+		local $SIG{TERM} = sub {
+			$Log->trace("Livetail received TERM signal");
+			exit;
+		};
+		
+		my $writer = new Writer(log => $Log, conf => $Config_json);
+		my $io = new IO::File($filename);
+		$io->seek(0, SEEK_END);
+		while (1){
+			last unless stat($filename);
+			while( my $line = $io->getline() ){
+				_livetail_match_line($writer, $livetail, split(/\t/, $line));
+			}
+			sleep 1;
+		}
+		exit;
+	}
+}
+
+sub _livetail_match_line {
+	my $writer = shift;
+	my $livetail_ref = shift;
+	my @livetail = @$livetail_ref;
+	my @line = @_;
+	shift(@line); # burn off the 0 id
+	
+	foreach my $test (@{ $livetail[LIVETAIL_CLASSES] }){
+		return unless $test->($line[Reader::FIELD_CLASS_ID]);
+	}
+		
+	my $or_hits = 0;
+	my $or_tests = 0;
+	for (my $i = 0; $i <= Reader::FIELD_S5; $i++){
+		next if $i == Reader::FIELD_CLASS_ID; # already handled above
+		foreach my $test (@{ $livetail[LIVETAIL_PERMISSIONS]->[$i] }){
+			return unless $test->($line[ Reader::FIELD_CLASS_ID ], $line[$i]);
+		}
+		foreach my $test (@{ $livetail[LIVETAIL_AND]->[$i] }){
+			return unless $test->($line[ Reader::FIELD_CLASS_ID ], $line[$i]);
+		}
+		foreach my $test (@{ $livetail[LIVETAIL_NOT]->[$i] }){
+			return if $test->($line[ Reader::FIELD_CLASS_ID ], $line[$i]);
+		}
+		foreach my $test (@{ $livetail[LIVETAIL_OR]->[$i] }){
+			$or_tests++;
+			$or_hits++ and last if $test->($line[ Reader::FIELD_CLASS_ID ], $line[$i]);
+		}
+	}
+	if ($or_tests){
+		return unless ($or_hits);
+	}
+	
+	foreach my $test (@{ $livetail[LIVETAIL_ANY_AND] }){
+		my $and_hits = 0;
+		foreach my $i (@String_fields){
+			next unless defined $line[$i];
+			if ($test->($line[ Reader::FIELD_CLASS_ID ], $line[$i])){
+				$and_hits++;
+				next;
+			}
+		}
+		return unless ($and_hits);
+	}
+	
+	$or_tests = 0;
+	$or_hits = 0;
+	foreach my $i (@String_fields){
+		next unless defined $line[$i];
+		foreach my $test (@{ $livetail[LIVETAIL_ANY_NOT]}){
+			return if $test->($line[ Reader::FIELD_CLASS_ID ], $line[$i]);
+		}
+		
+		foreach my $test (@{ $livetail[LIVETAIL_ANY_OR] }){
+			$or_tests++;
+			$or_hits++ and last if $test->($line[ Reader::FIELD_CLASS_ID ], $line[$i]);
+		}
+	}
+	if ($or_tests){
+		return unless ($or_hits);
+	}
+	
+	$line[0] = time();
+	# Explicitly place undefs for otherwise non-existent fields to make sure there are a static number of values for placeholders
+	for (my $i = Reader::FIELD_S0; $i <= Reader::FIELD_S5; $i++){
+		unless ($line[$i] ne ''){
+			$line[$i] = undef;
+		}
+	}
+	unless (scalar @line == (Reader::FIELD_S5 + 1)){
+		$Log->error('Invalid line passed match: ' . join(',', @line));
+		return;
+	}
+	
+	$writer->livetail_insert($livetail[LIVETAIL_QID], 0, @line);
+}
+
+sub _get_livetail {
+	my $livetail = shift;
+	my ($query, $sth);
+	$livetail->{query} = thaw($livetail->{query});
+	$Log->info('Livetail qid: ' . $livetail->{qid} . ', query: ' . Dumper($livetail->{query}));
+	my @livetail_arr = ($livetail->{qid});
+	
+	foreach my $clause (qw(any_field_terms_and any_field_terms_or any_field_terms_not classes)){
+		my @arr;
+		foreach my $expression (@{ $livetail->{query}->{$clause} }){
+			push @arr, eval($expression);
+			if ($@){
+				$Log->error('Failed to eval expression: ' . Dumper($expression));
+				shift(@arr);
+			}
+		}
+		$livetail_arr[ $Field_to_sub->{$clause} ] = [ @arr ];
+	}
+	foreach my $clause (qw(and or not permissions)){
+		for (my $i = 0; $i < scalar @{ $livetail->{query}->{$clause} }; $i++){
+			my @arr;
+			foreach my $expression (@{ $livetail->{query}->{$clause}->[$i] }){
+				push @arr, eval($expression);
+				if ($@){
+					$Log->error('Failed to eval expression: ' . $@ . ' ' . Dumper($expression));
+					shift(@arr);
+				}
+			}
+			$livetail_arr[ $Field_to_sub->{$clause} ] ||= [];
+			$livetail_arr[ $Field_to_sub->{$clause} ]->[$i] = [ @arr ];
+		}
+	}
+
+	return \@livetail_arr;
 }

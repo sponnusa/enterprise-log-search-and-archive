@@ -10,6 +10,7 @@ use Data::Dumper;
 use Search::QueryParser;
 use Storable qw(dclone);
 use Socket;
+use Log::Log4perl::Level;
 
 # Object for dealing with user queries
 
@@ -116,6 +117,14 @@ sub BUILD {
 		$self->system(1);
 	}
 	
+	# Set known values here
+	if ($self->meta_params->{archive}){
+		$self->archive(1);
+	}
+	if ($self->meta_params->{livetail}){
+		$self->livetail(1);
+	}
+	
 	$self->log->trace("Using timeout of " . $self->timeout);
 		
 	# Parse first to see if limit gets set which could incidate a batch job
@@ -125,11 +134,20 @@ sub BUILD {
 		$self->results( new Results::Groupby() );
 	}
 	
-	unless ($self->qid){
+	if ($self->qid){
+		# Verify that this user owns this qid
+		$query = 'SELECT qid FROM query_log WHERE qid=? AND uid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($self->qid, $self->user->uid);
+		my $row = $sth->fetchrow_hashref;
+		die('User is not authorized for this qid') unless $row;
+		$self->log->level($ERROR);
+	}
+	else {
 		# Log the query
 		$self->db->begin_work;
 		$query = 'INSERT INTO query_log (uid, query, system, archive) VALUES (?, ?, ?, ?)';
-		$sth   = $self->db->prepare($query);
+		$sth = $self->db->prepare($query);
 		$sth->execute( $self->user->uid, $self->raw_query ? $self->raw_query : $self->json->encode({ query_string => $self->query_string, query_meta_params => $self->meta_params }), 
 			$self->system, 0 ); # set batch later
 		$query = 'SELECT MAX(qid) AS qid FROM query_log';
@@ -171,6 +189,7 @@ sub _term_to_regex {
 	$regex =~ s/\s{2,}$/\ /;
 	$regex =~ s/\s/\./g;
 	$regex =~ s/\\{2,}/\\/g;
+	$regex =~ s/[^a-zA-Z0-9\.\_\-\@]//g;
 	return $regex;
 }
 
@@ -800,11 +819,16 @@ sub _parse_query_term {
 			elsif (lc($term_hash->{field}) eq 'livetail'){
 				$self->meta_params->{livetail} = 1;
 				$self->livetail(1);
+				$self->archive(1);
 				$self->log->trace("Set livetail.");
 				next;
 			}
 			
-			if ($self->archive){
+			if ($self->livetail){
+				# Escape any slashes since this will become a regex
+				$term_hash->{value} =~ s/\//\\\//g;
+			}
+			elsif ($self->archive){
 				# Escape any special chars
 				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])/\\$1/g;
 			}
@@ -819,9 +843,11 @@ sub _parse_query_term {
 					# need to quote
 					$term_hash->{value} = '"' . $term_hash->{value} . '"';
 				}
+				# Escape any hyphens
+				$term_hash->{value} =~ s/\-/\\\\\-/g;
 				# Escape any free-standing hypens
-				$term_hash->{value} =~ s/^\-$/\\\-/g;
-				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])\-([^a-zA-Z0-9\.\_\-\@]*)/$1\\\\\-$2/g;
+				#$term_hash->{value} =~ s/^\-$/\\\-/g;
+				#$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])\-([^a-zA-Z0-9\.\_\-\@]*)/$1\\\\\-$2/g;
 				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
 				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
 					die('Integer search terms must be 15 or fewer digits, received ' 
@@ -946,6 +972,16 @@ sub mark_batch_start {
 	# Record that we're starting so no one else starts it
 	my ($query, $sth);
 	$sth = $self->db->prepare('UPDATE query_log SET num_results=-1 WHERE qid=?');
+	$sth->execute($self->qid);
+	return $sth->rows;
+}
+
+sub mark_livetail_start {
+	my $self = shift;
+	# Record that we're starting so no one else starts it
+	$self->log->trace('marked livetail start');
+	my ($query, $sth);
+	$sth = $self->db->prepare('UPDATE query_log SET num_results=-3 WHERE qid=?');
 	$sth->execute($self->qid);
 	return $sth->rows;
 }

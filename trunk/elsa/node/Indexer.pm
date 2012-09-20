@@ -23,6 +23,7 @@ our $Index_retry_limit = 3;
 our $Index_retry_time = 5;
 our $Data_db_name = 'syslog_data';
 our $Peer_id_multiplier = 2**40;
+our $Min_expected_num_hosts = 2;
 
 has 'locks' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
@@ -87,6 +88,7 @@ sub BUILDARGS {
 sub BUILD {
 	my $self = shift;
 	$Data_db_name = $self->conf->get('database/data_db') ? $self->conf->get('database/data_db') : 'syslog_data';
+	$Min_expected_num_hosts = $self->conf->get('min_expected_hosts') if $self->conf->get('min_expected_hosts');
 	
 	#$self->log->debug('db id: ' . $self->dbh_id);		
 }
@@ -437,7 +439,7 @@ sub _validate_directory {
 	}
 	
 	for (my $i = 1 ; $i <= $self->conf->get('num_indexes'); $i++){
-		foreach my $type qw(temporary permanent){
+		foreach my $type (qw(temporary permanent)){
 			my $index_name = $self->_get_index_name($type, $i);
 			unless ($existing{ $index_name }){
 				$self->log->debug('Wiping via index ' . $index_name);
@@ -1979,14 +1981,14 @@ sub record_host_stats {
 		}
 	);
 	
-	$query = 'SELECT @count, host_id FROM ' . $index . ' GROUP BY host_id LIMIT 9999';
+	$query = 'SELECT COUNT(*) AS _count, host_id FROM ' . $index . ' GROUP BY host_id LIMIT 9999';
 	$sth = $dbh_sphinx->prepare($query);
 	$sth->execute;
 	my %hosts;
 	while (my $row = $sth->fetchrow_hashref){
 		$hosts{ $row->{host_id} } = {};
 	}
-	if (scalar keys %hosts < 100){
+	if (scalar keys %hosts < $Min_expected_num_hosts){
 		my $msg = "Only found " . (scalar keys %hosts) . " hosts in $index";
 		$self->log->trace($msg);
 		sleep 5;
@@ -2005,12 +2007,12 @@ sub record_host_stats {
 	my $load_file = $self->conf->get('buffer_dir') . 'host_stats.tsv';
 	open(TSV, '> ' . $load_file);
 	foreach my $host (keys %hosts){
-		$query = 'SELECT @count, class_id FROM ' . $index . ' WHERE MATCH(\'@host ' . $host . '\') GROUP BY class_id LIMIT 9999';
+		$query = 'SELECT COUNT(*) AS _count, class_id FROM ' . $index . ' WHERE MATCH(\'@host ' . $host . '\') GROUP BY class_id LIMIT 9999';
 		$sth = $dbh_sphinx->prepare($query);
 		$sth->execute();
 		while (my $row = $sth->fetchrow_hashref){
-			print TSV join("\t", $host, $row->{class_id}, $row->{'@count'}) . "\n";
-			$total += $row->{'@count'};
+			print TSV join("\t", $host, $row->{class_id}, $row->{'_count'}) . "\n";
+			$total += $row->{'_count'};
 		}
 	}
 	

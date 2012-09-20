@@ -98,7 +98,7 @@ ubuntu_get_node_packages(){
 	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections &&
 	
 	# Install required packages
-	apt-get -qy install curl subversion gcc g++ mysql-server libmysqlclient-dev pkg-config libglib2.0-dev libpcre3-dev libcap-dev libnet1-dev libssl-dev make libmodule-build-perl cpanminus &&
+	apt-get -qy install curl subversion gcc g++ mysql-server libmysqlclient-dev pkg-config libglib2.0-dev libpcre3-dev libcap-dev libnet1-dev libssl-dev make libmodule-build-perl &&
 	
 	# Make debconf interactive again
 	echo "debconf debconf/frontend select readline" | debconf-set-selections
@@ -232,16 +232,28 @@ get_elsa(){
 	return $?
 }
 
+get_cpanm(){
+	if [ \! -f /usr/local/bin/cpanm ]; then
+		cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
+		if [ \! -f /usr/local/bin/cpanm ]; then
+			echo "Downloading from cpanmin.us failed, downloading from xrl.us"
+			curl -LO http://xrl.us/cpanm &&
+	    	chmod +x cpanm &&
+	    	mv cpanm /usr/local/bin/cpanm
+		fi
+	fi
+	CPANM=$(which cpanm);
+	if [ \! -f "$CPANM" ]; then
+		echo "ERROR: Unable to find cpanm"
+		return 1;
+	fi
+	return 0
+}
+
 build_node_perl(){
 	# Install required Perl modules
-	
-	if [ \! -f /usr/local/bin/cpanm ]; then
-	#	cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
-		curl -LO http://xrl.us/cpanm
-    	chmod +x cpanm
-    	mv cpanm /usr/local/bin/cpanm
-	fi
-	
+	exec_func get_cpanm;
+		
 	# FreeBSD has trouble testing with the current version of ExtUtils
 	if [ "$DISTRO" = "freebsd" ]; then
 		cpanm -n ExtUtils::MakeMaker
@@ -534,12 +546,7 @@ freebsd_get_web_packages(){
 build_web_perl(){
 	# Install required Perl modules
 	
-	if [ \! -f /usr/local/bin/cpanm ]; then
-	#	cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
-		curl -LO http://xrl.us/cpanm
-    	chmod +x cpanm
-    	mv cpanm /usr/local/bin/cpanm
-	fi
+	get_cpanm;
 	
 	# FreeBSD has trouble testing with the current version of ExtUtils
 	if [ "$DISTRO" = "freebsd" ]; then

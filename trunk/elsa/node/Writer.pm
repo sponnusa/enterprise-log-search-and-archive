@@ -8,6 +8,7 @@ use Indexer;
 use Reader;
 
 our $Batch_limit = 0;
+our $Livetail_batch_limit = 0;
 our $Meta_update_ratio; # after how many batch inserts we check to see if we need a new table and index
 our $Log;
 our $Writer;
@@ -34,6 +35,11 @@ has 'current_archive_table' => (is => 'rw', isa => 'Str');
 has 'counter' => (traits => [qw(Counter)], is => 'rw', isa => 'Num', required => 1, default => 0,
 	handles => { inc_counter => 'inc' });
 has 'tempfile' => (is => 'rw', isa => 'Object');
+has 'livetail_queue' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
+	handles => { livetail_queue_length => 'count' });
+
+our $Livetail_query = 'INSERT INTO livetail_results VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
+our $Livetail_sth;
 
 sub BUILDARGS {
 	my $class = shift;
@@ -119,7 +125,7 @@ sub _sql_error_handler {
 	my $dbh = shift;
 	my $query = $dbh->{Statement};
 	my $full_errstr = 'SQL_ERROR: ' . $errstr . ', query: ' . $query; 
-	$Log->error($full_errstr);
+	$Log->error($full_errstr) unless $errstr =~ /livetail_results_ibfk_1/; # This error is expected when the tail has gone away
 	return 1; # Stops RaiseError
 	#die($full_errstr);
 }
@@ -129,6 +135,7 @@ sub BUILD {
 	my $self = shift;
 
 	$Batch_limit = $self->conf->get('realtime/batch_limit');
+	$Livetail_batch_limit = $self->conf->get('livetail/batch_limit') if $self->conf->get('livetail/batch_limit');
 	$Meta_update_ratio = $self->conf->get('realtime/update_ratio') ? $self->conf->get('realtime/update_ratio') : 10;
 	
 	if ($Writer eq '_file_write'){
@@ -138,6 +145,9 @@ sub BUILD {
 	else {
 		$self->_set_table_info();
 	}
+	
+	# Prepare our insert query for later use
+	$Livetail_sth = $self->db->prepare($Livetail_query);
 	
 	return $self;
 }
@@ -332,6 +342,42 @@ sub realtime_batch_insert {
 	$self->queue([]);
 	
 	$self->update_directory();
+}
+
+#sub livetail_write {
+#	my $self = shift;
+#	push @{ $self->livetail_queue }, shift;
+#	if ($self->livetail_queue_length > $Livetail_batch_limit){
+#		#$self->log->debug('normal batch insert');
+#		$self->livetail_batch_insert();
+#	}
+#}
+#
+#sub livetail_batch_insert {
+#	my $self = shift;
+#	
+#	return unless $self->livetail_queue_length;
+#	
+#	my $query = 'INSERT INTO livetail_results VALUES';
+#	my $placeholder_template = '(?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?)';
+#	
+#	my @to_insert = map { @$_ } @{ $self->livetail_queue };
+#	$query .= join(',', map { $placeholder_template } @{ $self->livetail_queue });
+#	$Livetail_sth = $self->db->prepare($query);
+#	$Livetail_sth->execute(map { @$_ } @{ $self->livetail_queue });
+#	
+#	$self->log->debug('cleared queue after insert ' . $Livetail_sth->rows . ' rows');
+#	$self->livetail_queue([]);
+#}
+
+sub livetail_insert {
+	my $self = shift;
+	unless (defined $_[Reader::FIELD_CLASS_ID + 2] and defined $_[Reader::FIELD_MSG + 2]){
+		$self->log->error('Received invalid line: ' . join(',', @_));
+		return;
+	}
+	$_[2] = time(); # override time value (necessary if this is coming from reading a flat file and not live data)
+	$Livetail_sth->execute(@_);
 }
 
 sub update_directory {

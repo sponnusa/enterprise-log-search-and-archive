@@ -11,9 +11,43 @@ function keys(obj){
 	return ks;
 }
 
+function values(obj){
+	var ks = [];
+	for(var k in obj){
+		ks.push(obj[k]);
+	}
+	return ks;
+}
+
+function sortByValueDesc(obj){
+	var aRet = values(obj);
+	aRet.sort(sortNumberDesc);
+	return aRet;
+}
+
+function sortByKeyDesc(obj,key){
+	var aTuples = [];
+	for (var i in obj){
+		aTuples.push([i, obj[i][key]]);
+	}
+	aTuples.sort(function(a, b) {
+	    a = a[1];
+	    b = b[1];
+	
+	    return a > b ? -1 : (a < b ? 1 : 0);
+	});
+	var aRet = [];
+	for (var i in aTuples){
+		aRet.push(aTuples[i][0]);
+	}
+	return aRet;
+}
 
 function sortNumberAsc(a, b){
 	return a - b;
+}
+function sortNumberDesc(a, b){
+	return b - a;
 }
 
 /**
