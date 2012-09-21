@@ -250,10 +250,7 @@ get_cpanm(){
 	return 0
 }
 
-build_node_perl(){
-	# Install required Perl modules
-	exec_func get_cpanm;
-		
+build_node_perl(){	
 	# FreeBSD has trouble testing with the current version of ExtUtils
 	if [ "$DISTRO" = "freebsd" ]; then
 		cpanm -n ExtUtils::MakeMaker
@@ -271,7 +268,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -504,7 +501,7 @@ ubuntu_get_web_packages(){
 	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections &&
 	
 	# Install required packages
-	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libgeo-ip-perl libexpat1-dev libmodule-build-perl cpanminus libauthen-pam-perl &&
+	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libgeo-ip-perl libexpat1-dev libmodule-build-perl libauthen-pam-perl &&
 	
 	# Make debconf interactive again
 	echo "debconf debconf/frontend select readline" | debconf-set-selections
@@ -544,10 +541,6 @@ freebsd_get_web_packages(){
 }	
 
 build_web_perl(){
-	# Install required Perl modules
-	
-	get_cpanm;
-	
 	# FreeBSD has trouble testing with the current version of ExtUtils
 	if [ "$DISTRO" = "freebsd" ]; then
 		cpanm -n ExtUtils::MakeMaker
@@ -826,7 +819,7 @@ restart_apache(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "get_elsa" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
@@ -838,7 +831,7 @@ if [ "$INSTALL" = "node" ]; then
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
