@@ -1997,9 +1997,9 @@ sub record_host_stats {
 		while (my $row = $sth->fetchrow_hashref){
 			$hosts{ $row->{host_id} } = {};
 		}
-		if (scalar keys %hosts <= 1){
+		if (scalar keys %hosts < 1){
 			$self->log->trace($msg);
-			die("$msg");
+			#die("$msg");
 		}
 	}
 	
