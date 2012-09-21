@@ -9,7 +9,8 @@ use String::CRC32;
 use Log::Log4perl;
 use DBI;
 use FindBin;
-use Storable qw(thaw);
+#use Storable qw(thaw);
+use JSON;
 use IO::File;
 
 # Include the directory this script is in
@@ -219,7 +220,10 @@ sub _process_batch {
 	my $tail_watcher = _fork_livetail_manager($tempfile_name);
 	
 	# Open the file now that we've forked
-	my $tempfile = IO::File->new('> ' . $tempfile_name);
+#	my $tempfile = IO::File->new('> ' . $tempfile_name);
+#	$tempfile->autoflush(1);
+	my $tempfile;
+	sysopen($tempfile, $tempfile_name, O_RDWR|O_CREAT);
 	
 	# End the loop after index_interval seconds
 	local $SIG{ALRM} = sub {
@@ -236,7 +240,7 @@ sub _process_batch {
 	
 	while (<$fh>){	
 		eval { 
-			$tempfile->print(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
+			$tempfile->syswrite(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
 			$args->{batch_counter}++;
 		};
 		if ($@){
@@ -382,45 +386,52 @@ sub _fork_livetail_manager {
 			exit;
 		};
 		
-		# Get active livetail queries
-		my ($query,$sth);
-		do {
-			$query = 'SELECT qid, query FROM livetail';
-			$sth = $Dbh->prepare($query);
-			$sth->execute;
-			my %active_tails;
-			while (my $row = $sth->fetchrow_hashref){
-				$active_tails{ $row->{qid} } = $row;
-			}
-			$sth->finish; # finish this so the child doesn't pick it up
-			foreach my $qid (keys %livetails){
-				unless (exists $active_tails{$qid}){
-					$Log->info('Removing inactive tail ' . $qid . ' at pid ' . $livetails{$qid});
-					my $killed = kill SIGTERM, $livetails{$qid};
-					if ($killed){
-						$Log->trace('killed ' . $killed . ' procs');
-						delete $livetails{$qid};
-					}
-					else {
-						$Log->error('Unable to kill pid ' . $livetails{$qid});
+		# Safety in case something goes horribly wrong to avoid forkbomb
+		eval {
+			# Get active livetail queries
+			my ($query,$sth);
+			do {
+				$query = 'SELECT qid, query FROM livetail';
+				$sth = $Dbh->prepare($query);
+				$sth->execute;
+				my %active_tails;
+				while (my $row = $sth->fetchrow_hashref){
+					$active_tails{ $row->{qid} } = $row;
+				}
+				$sth->finish; # finish this so the child doesn't pick it up
+				foreach my $qid (keys %livetails){
+					unless (exists $active_tails{$qid}){
+						$Log->info('Removing inactive tail ' . $qid . ' at pid ' . $livetails{$qid});
+						my $killed = kill SIGTERM, $livetails{$qid};
+						if ($killed){
+							$Log->trace('killed ' . $killed . ' procs');
+							delete $livetails{$qid};
+						}
+						else {
+							$Log->error('Unable to kill pid ' . $livetails{$qid});
+						}
 					}
 				}
+				foreach my $qid (keys %active_tails){
+					next if $livetails{ $qid };
+					my $livetail = _get_livetail($active_tails{$qid});
+					$livetails{$qid} = _livetail($livetail, $filename);
+					$Log->info('Added livetail ' . $qid . ' at pid ' . $livetails{$qid} . ' with filename ' . $filename);
+				}
+				sleep 1;
+			} while ((time() - $Conf->{sphinx}->{index_interval}) < $start_time);
+			
+			$Log->trace("Livetail manager finished loop");
+			foreach my $qid (keys %livetails){
+				$Log->trace('Killing ' . $livetails{$qid});
+				kill SIGTERM, $livetails{$qid};
 			}
-			foreach my $qid (keys %active_tails){
-				next if $livetails{ $qid };
-				my $livetail = _get_livetail($active_tails{$qid});
-				$livetails{$qid} = _livetail($livetail, $filename);
-				$Log->info('Added livetail ' . $qid . ' at pid ' . $livetails{$qid} . ' with filename ' . $filename);
-			}
+			exit;
+		};
+		if ($@){
+			$Log->error("Error in fork manager: $@");
 			sleep 1;
-		} while ((time() - $Conf->{sphinx}->{index_interval}) < $start_time);
-		
-		$Log->trace("Livetail manager finished loop");
-		foreach my $qid (keys %livetails){
-			$Log->trace('Killing ' . $livetails{$qid});
-			kill SIGTERM, $livetails{$qid};
 		}
-		exit;
 	}
 }
 
@@ -539,7 +550,8 @@ sub _livetail_match_line {
 sub _get_livetail {
 	my $livetail = shift;
 	my ($query, $sth);
-	$livetail->{query} = thaw($livetail->{query});
+#	$livetail->{query} = thaw($livetail->{query});
+	$livetail->{query} = decode_json($livetail->{query});
 	$Log->info('Livetail qid: ' . $livetail->{qid} . ', query: ' . Dumper($livetail->{query}));
 	my @livetail_arr = ($livetail->{qid});
 	

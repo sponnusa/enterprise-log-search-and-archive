@@ -4363,13 +4363,14 @@ sub _build_livetail_query {
 		}
 	}
 		
-	$Storable::Deparse = 1;
-	
-	my $ret = freeze(\%clauses);
-	
-	$Storable::Deparse = 0;
-	
-	return $ret;
+	return $self->json->encode(\%clauses);
+#	$Storable::Deparse = 1;
+#	
+#	my $ret = freeze(\%clauses);
+#	
+#	$Storable::Deparse = 0;
+#	
+#	return $ret;
 }
 
 sub cancel_query {
