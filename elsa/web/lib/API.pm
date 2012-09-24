@@ -1985,7 +1985,7 @@ sub _sphinx_query {
 				my $search_query = 'SELECT *, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where};
 				if (exists $query->{groupby}){
 					$search_query = 'SELECT *, COUNT(*) AS _count, ' . $query->{groupby} . ' AS _groupby, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where} .
-						' GROUP BY ' . $query->{groupby} . ' ORDER BY _count DESC';
+						' GROUP BY ' . $query->{groupby};
 				}
 				$search_query .= ' LIMIT ?,? OPTION ranker=none';
 				if ($q->cutoff){
