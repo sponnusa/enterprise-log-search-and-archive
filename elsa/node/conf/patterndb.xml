@@ -1063,4 +1063,72 @@
 	    	</rule>
     	</rules>
 	</ruleset>-->
+	<ruleset name="Watchguard Firewall">
+		<pattern>firewall</pattern>
+		<rules>
+			<rule provider="ELSA" class="2" id="2">
+				<pattern>Deny @ESTRING:s0: @@ESTRING:s1: @@NUMBER::@ @ESTRING:i0: @@NUMBER::@ @NUMBER::@ @ESTRING:i1: @@ESTRING:i3: @@ESTRING:i2: @@ESTRING:i4: @</pattern>
+				<examples>
+					<example>
+						<test_message program="firewall">Deny 0-External Firebox 1340 tcp 20 56 74.125.225.143 10.0.1.1 443 3449 offset 5 A 451109382 win 257 (Unhandled External Packet-00)</test_message>
+						<test_value name="i0">tcp</test_value>
+						<test_value name="i1">74.125.225.143</test_value>
+						<test_value name="i2">443</test_value>
+						<test_value name="i3">10.0.1.1</test_value>
+						<test_value name="i4">3449</test_value>
+						<test_value name="s0">0-External</test_value>
+						<test_value name="s1">Firebox</test_value>
+					</example>
+				</examples>
+			</rule>
+			<rule provider="ELSA" class="3" id="3">
+				<pattern>Allow @ESTRING:s1: @@ESTRING:s0: @@NUMBER::@ @ESTRING:i0: @@NUMBER::@ @NUMBER::@ @ESTRING:i1: @@ESTRING:i3: @@ESTRING:i2: @@ESTRING:i4: @</pattern>
+				<examples>
+					<example>
+						<test_message program="firewall">Allow 1-Trusted 0-External 52 tcp 20 127 192.168.1.31 96.60.118.121 55185 8005 offset 8 S 1125590318 win 32 (ATSBDR-00)</test_message>
+						<test_value name="i0">tcp</test_value>
+						<test_value name="i1">192.168.1.31</test_value>
+						<test_value name="i2">55185</test_value>
+						<test_value name="i3">96.60.118.121</test_value>
+						<test_value name="i4">8005</test_value>
+						<test_value name="s0">0-External</test_value>
+						<test_value name="s1">1-Trusted</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="Watchguard URL">
+		<pattern>http-proxy</pattern>
+		<rules>
+			<rule provider="ELSA" class="7" id="7">
+				<pattern>Deny @ESTRING:: @@ESTRING:: @tcp @ESTRING:i0: @@ESTRING:i1: @@NUMBER::@ @NUMBER::@ msg="@ESTRING::"@ proxy_act="@ESTRING::"@ op="@ESTRING:s0:"@ dstname="@ESTRING:s1:"@ arg="@ESTRING:s2:"@ sent_bytes="@NUMBER::@" rcvd_bytes="@NUMBER:i3:@</pattern>
+				<examples>
+					<example>
+						<test_message program="http-proxy">Deny 1-Trusted 0-External tcp 192.168.1.17 23.21.13.155 62115 80 msg="HTTP Request" proxy_act="HTTP-Client.1" op="" dstname="23.21.13.155" arg="" sent_bytes="1" rcvd_bytes="0" (HTTP-proxy-ExceptLunch-00)</test_message>
+						<test_value name="i0">192.168.1.17</test_value>
+						<test_value name="i1">23.21.13.155</test_value>
+						<test_value name="i3">0</test_value>
+						<test_value name="s0"></test_value>
+						<test_value name="s1">23.21.13.155</test_value>
+						<test_value name="s2"></test_value>
+					</example>
+				</examples>
+			</rule>
+			<rule provider="ELSA" class="7" id="7">
+				<pattern>Allow @ESTRING:: @@ESTRING:: @tcp @ESTRING:i0: @@ESTRING:i1: @@NUMBER::@ @NUMBER::@ msg="@ESTRING::"@ proxy_act="@ESTRING::"@ op="@ESTRING:s0:"@ dstname="@ESTRING:s1:"@ arg="@ESTRING:s2:"@ sent_bytes="@NUMBER::@" rcvd_bytes="@NUMBER:i3:@</pattern>
+				<examples>
+					<example>
+						<test_message program="http-proxy">Allow 1-Trusted 0-External tcp 192.168.1.22 74.125.142.95 2597 80 msg="HTTP Request" proxy_act="HTTP-Client.1" op="GET" dstname="ajax.googleapis.com" arg="/ajax/libs/jquery/1.5/jquery.min.js" sent_bytes="363" rcvd_bytes="30368" (HTTP-proxy-ExceptLunch-00)</test_message>
+						<test_value name="i0">192.168.1.22</test_value>
+						<test_value name="i1">74.125.142.95</test_value>
+						<test_value name="i3">30368</test_value>
+						<test_value name="s0">GET</test_value>
+						<test_value name="s1">ajax.googleapis.com</test_value>
+						<test_value name="s2">/ajax/libs/jquery/1.5/jquery.min.js</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
