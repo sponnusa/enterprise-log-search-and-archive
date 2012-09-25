@@ -589,6 +589,13 @@ YAHOO.ELSA.main = function () {
 							helptext: 'Stop any running livetails from all users',
 							url: 'Query/cancel_all_livetails',
 							target: '_blank'
+						},
+						{
+							text: 'View All Alerts',
+							helptext: 'See alerts from all users',
+							onclick: {
+								fn: YAHOO.ELSA.getQueryScheduleAdmin
+							}
 						}
 					]
 				}

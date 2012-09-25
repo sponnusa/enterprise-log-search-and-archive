@@ -28,6 +28,7 @@ use AsyncMysql;
 our $Max_limit = 1000;
 our $Max_query_terms = 128;
 our $Livetail_poll_interval = 5;
+our $Scheduled_query_cols = { map { $_ => 1 } (qw(id username query frequency start end connector params enabled last_alert alert_threshold)) };
 
 has 'ldap' => (is => 'rw', isa => 'Object', required => 0);
 has 'last_error' => (is => 'rw', isa => 'Str', required => 1, default => '');
@@ -1176,6 +1177,14 @@ sub get_scheduled_queries {
 	if ( $args->{results} ) {
 		$limit = sprintf( "%d", $args->{results} );
 	}
+	my $orderby = 'id';
+	if ($args->{sort} and $Scheduled_query_cols->{ $args->{sort} }){
+		$orderby = $args->{sort};
+	}
+	my $dir = 'DESC';
+	if ($args->{dir} eq 'asc'){
+		$dir = 'ASC';
+	}
 	
 	my ($query, $sth);
 	
@@ -1189,10 +1198,67 @@ sub get_scheduled_queries {
 	$query = 'SELECT t1.id, query, frequency, start, end, connector, params, enabled, UNIX_TIMESTAMP(last_alert) As last_alert, alert_threshold' . "\n" .
 		'FROM query_schedule t1' . "\n" .
 		'WHERE uid=?' . "\n" .
-		'ORDER BY t1.id DESC' . "\n" .
+		'ORDER BY ' . $orderby . ' ' . $dir . "\n" .
 		'LIMIT ?,?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{user}->uid, $offset, $limit);
+	my @rows;
+	while (my $row = $sth->fetchrow_hashref){
+		push @rows, $row;
+	}
+	my $ret = {
+		'results' => [ @rows ],
+		'totalRecords' => $totalRecords,
+		'recordsReturned' => scalar @rows,
+	};
+	return $ret;
+}
+
+sub get_all_scheduled_queries {
+	my ($self, $args) = @_;
+	
+	if ($args and ref($args) ne 'HASH'){
+		$self->_error('Invalid args: ' . Dumper($args));
+		return;
+	}
+	elsif (not $args){
+		$args = {};
+	}
+	
+	die('Admin required') unless $args->{user}->is_admin;
+	
+	my $offset = 0;
+	if ( $args->{startIndex} ){
+		$offset = sprintf('%d', $args->{startIndex});
+	}
+	my $limit = 10;
+	if ( $args->{results} ) {
+		$limit = sprintf( "%d", $args->{results} );
+	}
+	my $orderby = 'id';
+	if ($args->{sort} and $Scheduled_query_cols->{ $args->{sort} }){
+		$orderby = $args->{sort};
+	}
+	my $dir = 'DESC';
+	if ($args->{dir} eq 'asc'){
+		$dir = 'ASC';
+	}
+	
+	my ($query, $sth);
+	
+	$query = 'SELECT COUNT(*) AS totalRecords FROM query_schedule';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	my $row = $sth->fetchrow_hashref;
+	my $totalRecords = $row->{totalRecords};
+
+	$query = 'SELECT t1.id, username, query, frequency, start, end, connector, params, enabled, UNIX_TIMESTAMP(last_alert) As last_alert, alert_threshold' . "\n" .
+		'FROM query_schedule t1' . "\n" .
+		'JOIN users t2 ON (t1.uid=t2.uid)' . "\n" .
+		'ORDER BY ' . $orderby . ' ' . $dir . "\n" .
+		'LIMIT ?,?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($offset, $limit);
 	my @rows;
 	while (my $row = $sth->fetchrow_hashref){
 		push @rows, $row;
