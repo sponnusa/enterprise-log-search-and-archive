@@ -2016,7 +2016,8 @@ sub record_host_stats {
 		}
 	}
 	
-	$self->db->do('LOAD DATA CONCURRENT LOCAL INFILE "' . $load_file . '" INTO TABLE host_stats');
+	$self->db->do('LOAD DATA CONCURRENT LOCAL INFILE "' . $load_file . '" INTO TABLE host_stats') or
+		$self->log->error('Error loading stats file: ' . $DBI::errstr);
 	
 	$self->log->trace("Finished in " . (Time::HiRes::time() - $overall_start) . " with $total records counted");
 }
