@@ -29,57 +29,34 @@ sub BUILD {
 	
 	$self->db(DBI->connect($self->dsn, $self->username, $self->password, { RaiseError => 1 }));
 	my ($query, $sth);
-
-	if ($self->dsn =~ /mysql/){
-		$self->query_template =~ /FROM\s+([\w\_]+)/;
-#		my $table = $1;
-#		$self->dsn =~ /database=([\w\_]+)/;
-#		my $database = $1;
-#		$query = 'SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema=? AND table_name=?';
-#		$sth = $self->db->prepare($query);
-#		$sth->execute($database, $table);
-		my %cols;
-		
-#		while (my $row = $sth->fetchrow_hashref){
-#			next if $Fields::Reserved_fields->{ lc($row->{column_name}) };
-#			next unless grep @{ $self->fields }, $row->{column_name};
-#			if ($row->{data_type} =~ /char/){
-#				$cols{ $row->{column_name} } = { name => $row->{column_name}, type => $row->{data_type}, fuzzy_op => 'LIKE', fuzzy_not_op => 'NOT LIKE' };
-#			}
-#			else {
-#				$cols{ $row->{column_name} } = { name => $row->{column_name}, type => $row->{data_type} };
-#			}
-#		}
-		
-		foreach my $row (@{ $self->fields }){
-			if (not $row->{type}){
-				$row->{fuzzy_op} = 'LIKE';
-				$row->{fuzzy_not_op} = 'NOT LIKE';
-			}
-			else {
-				$row->{fuzzy_not_op} = '<=';
-			}
-			my $col_name = $row->{name};
-			if ($row->{alias}){
-				if ($row->{alias} eq 'timestamp'){
-					$self->timestamp_column($row->{name});
-				}
-				#$row->{name} .= ' AS ' . $row->{alias};
-				$col_name = $row->{alias};
-			}
-			$cols{$col_name} = $row;
+	
+	$self->query_template =~ /FROM\s+([\w\_]+)/;
+	my %cols;
+	foreach my $row (@{ $self->fields }){
+		if (not $row->{type}){
+			$row->{fuzzy_op} = 'LIKE';
+			$row->{fuzzy_not_op} = 'NOT LIKE';
 		}
-				
-		foreach my $field (keys %$Fields::Reserved_fields){
-		 	$cols{$field} = { name => $field, callback => sub { '1=1' } };
+		else {
+			$row->{fuzzy_not_op} = '<=';
 		}
-		
-		$self->log->debug('cols ' . Dumper(\%cols));
-		$self->parser(Search::QueryParser::SQL->new(columns => \%cols, fuzzify2 => 1));
-	} 
-	else {
-		$self->parser(Search::QueryParser::SQL->new(columns => $self->fields, fuzzify2 => 1, like => 'LIKE'));
+		my $col_name = $row->{name};
+		if ($row->{alias}){
+			if ($row->{alias} eq 'timestamp'){
+				$self->timestamp_column($row->{name});
+			}
+			#$row->{name} .= ' AS ' . $row->{alias};
+			$col_name = $row->{alias};
+		}
+		$cols{$col_name} = $row;
 	}
+			
+	foreach my $field (keys %$Fields::Reserved_fields){
+	 	$cols{$field} = { name => $field, callback => sub { '1=1' } };
+	}
+	
+	$self->log->debug('cols ' . Dumper(\%cols));
+	$self->parser(Search::QueryParser::SQL->new(columns => \%cols, fuzzify2 => 1));
 	
 	return $self;
 }
