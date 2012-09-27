@@ -1472,7 +1472,7 @@ YAHOO.ELSA.Results = function(){
 	    
 	    var oTableCfg = {
 	    	dynamicData: true,
-	        sortedBy : {key:"timestamp", dir:YAHOO.widget.DataTable.CLASS_DESC},
+	        sortedBy : {key:"timestamp", dir:YAHOO.widget.DataTable.CLASS_DESC}
 	    };
 	    
 	    this.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
