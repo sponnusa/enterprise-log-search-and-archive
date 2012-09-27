@@ -34,8 +34,14 @@ sub BUILD {
 	my %cols;
 	foreach my $row (@{ $self->fields }){
 		if (not $row->{type}){
-			$row->{fuzzy_op} = 'LIKE';
-			$row->{fuzzy_not_op} = 'NOT LIKE';
+			if ($self->dsn =~ /dbi:Pg/){
+				$row->{fuzzy_op} = 'ILIKE';
+				$row->{fuzzy_not_op} = 'NOT ILIKE';
+			}
+			else {
+				$row->{fuzzy_op} = 'LIKE';
+				$row->{fuzzy_not_op} = 'NOT LIKE';
+			}
 		}
 		else {
 			$row->{fuzzy_not_op} = '<=';
