@@ -109,6 +109,7 @@ sub BUILDARGS {
 					mysql_multi_statements => 1,
 					mysql_bind_type_guessing => 1,
 					HandleError => \&_sql_error_handler,
+					mysql_local_infile => 1,
 				}
 			) or die 'connection failed ' . $! . ' ' . $DBI::errstr;
 		$Writer = '_realtime_write';

@@ -1981,7 +1981,7 @@ sub record_host_stats {
 		}
 	);
 	
-	$query = 'SELECT COUNT(*) AS _count, host_id FROM ' . $index . ' GROUP BY host_id LIMIT 9999';
+	$query = 'SELECT *, COUNT(*) AS _count, host_id FROM ' . $index . ' GROUP BY host_id LIMIT 9999';
 	$sth = $dbh_sphinx->prepare($query);
 	$sth->execute;
 	my %hosts;
@@ -2007,14 +2007,16 @@ sub record_host_stats {
 	my $load_file = $self->conf->get('buffer_dir') . 'host_stats.tsv';
 	open(TSV, '> ' . $load_file);
 	foreach my $host (keys %hosts){
-		$query = 'SELECT COUNT(*) AS _count, class_id FROM ' . $index . ' WHERE MATCH(\'@host ' . $host . '\') GROUP BY class_id LIMIT 9999';
+		$query = 'SELECT *, COUNT(*) AS _count, class_id FROM ' . $index . ' WHERE MATCH(\'@host ' . $host . '\') GROUP BY class_id LIMIT 9999';
 		$sth = $dbh_sphinx->prepare($query);
 		$sth->execute();
 		while (my $row = $sth->fetchrow_hashref){
+			$row->{_count} = delete $row->{'@count'} if exists $row->{'@count'};
 			print TSV join("\t", $host, $row->{class_id}, $row->{'_count'}) . "\n";
 			$total += $row->{'_count'};
 		}
 	}
+	close(TSV);
 	
 	$self->db->do('LOAD DATA CONCURRENT LOCAL INFILE "' . $load_file . '" INTO TABLE host_stats') or
 		$self->log->error('Error loading stats file: ' . $DBI::errstr);

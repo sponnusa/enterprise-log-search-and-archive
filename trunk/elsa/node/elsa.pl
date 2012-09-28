@@ -84,6 +84,7 @@ my $Dbh = DBI->connect(($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'
 		PrintError => 0,
 		mysql_auto_reconnect => 1, 
 		HandleError => \&_sql_error_handler,
+		mysql_local_infile => 1,
 	}) 
 	or die 'connection failed ' . $! . ' ' . $DBI::errstr;
 
