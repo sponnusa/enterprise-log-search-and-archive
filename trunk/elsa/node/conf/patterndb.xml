@@ -1135,4 +1135,46 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="Sidewinder Firewall">
+		<pattern>auditd</pattern>
+		<rules>
+			<rule provider="ELSA" class="2" id="2">
+				<pattern>date@ESTRING::event=@ACL deny@ESTRING::srcip=@@IPv4:i1:@,srcport=@NUMBER:i2:@,srcburb=@ESTRING:s1:,@dstip=@IPv4:i3:@,dstport=@NUMBER:i4:@,dstburb=@ESTRING:s0:,@protocol=@NUMBER:i0:@</pattern>
+				<pattern>date@ESTRING::event=@ACL deny@ESTRING::srcip=@@IPv4:i1:@,srcburb=@ESTRING:s1:,@dstip=@IPv4:i3:@,dstburb=@ESTRING:s0:,@protocol=@NUMBER:i0:@</pattern>
+				<pattern>date@ESTRING::type=@t_attack@ESTRING::srcip=@@IPv4:i1:@,srcport=@NUMBER:i2:@,srcburb=@ESTRING:s1:,@@ESTRING::protocol=@@NUMBER:i0:@@ESTRING::dstip=@@IPv4:i3:@,dstport=@NUMBER:i4:@,dstburb=@ESTRING:s0:,@</pattern>
+				<pattern>date@ESTRING::type=@t_netprobe@ESTRING::srcip=@@IPv4:i1:@,srcport=@NUMBER:i2:@,srcburb=@ESTRING:s1:,@dstip=@IPv4:i3:@,dstport=@NUMBER:i4:@,protocol=@NUMBER:i0:@,interface=@ESTRING:s0:,@</pattern>
+				<examples>
+					<example>
+						<test_message program="auditd">date="Oct 1 16:24:57 2012 UTC",fac=f_kernel_ipfilter,area=a_general_area,type=t_ipftraffic,pri=p_major,pid=0,ruid=0,euid=0,pgid=0,logid=0,cmd=kernel,domain=htpp,edomain=htpp,hostname=localhost,event=IP Filter session open,rule_name=myrule-out,srcip=1.1.1.1,srcport=1,srcburb=internal2,dstip=2.2.2.2,dstport=2,dstburb=external1,protocol=6,netsessid=5069c3d9000c7831</test_message>
+						<test_value name="i0">6</test_value>
+						<test_value name="i1">1.1.1.1</test_value>
+						<test_value name="i2">1</test_value>
+						<test_value name="i3">2.2.2.2</test_value>
+						<test_value name="i4">2</test_value>
+						<test_value name="s0">external1</test_value>
+						<test_value name="s1">internal2</test_value>
+					</example>
+				</examples>
+			</rule>
+			<rule provider="ELSA" class="3" id="3">
+				<pattern>date@ESTRING::event=@proxy traffic end@ESTRING::srcip=@@IPv4:i1:@,srcport=@NUMBER:i2:@,srcburb=@ESTRING:s1:,@protocol=@NUMBER:i0:@,dstip=@IPv4:i3:@,dstport=@NUMBER:i4:@,dstburb=@ESTRING:s0:,@bytes_written_to_client=@NUMBER:i5:@</pattern>
+				<pattern>date@ESTRING::event=@proxy traffic end@ESTRING::srcip=@@IPv4:i1:@,srcburb=@ESTRING:s1:,@protocol=@NUMBER:i0:@,dstip=@IPv4:i3:@,dstburb=@ESTRING:s0:,@bytes_written_to_client=@NUMBER:i5:@</pattern>
+				<pattern>date@ESTRING::event=@IP Filter session close@ESTRING::srcip=@@IPv4:i1:@,srcport=@NUMBER:i2:@,srcburb=@ESTRING:s1:,@dstip=@IPv4:i3:@,dstport=@NUMBER:i4:@,dstburb=@ESTRING:s0:,@bytes_written_to_client=@NUMBER:i5:@@ESTRING::protocol=@@NUMBER:i0:@</pattern>
+				<pattern>date@ESTRING::event=@IP Filter session timeout@ESTRING::srcip=@@IPv4:i1:@,srcport=@NUMBER:i2:@,srcburb=@ESTRING:s1:,@dstip=@IPv4:i3:@,dstport=@NUMBER:i4:@,dstburb=@ESTRING:s0:,@bytes_written_to_client=@NUMBER:i5:@@ESTRING::protocol=@@NUMBER:i0:@</pattern>
+				<examples>
+					<example>
+						<test_message program="auditd">date="Oct 1 16:24:57 2012 UTC",fac=f_http_proxy,area=a_libproxycommon,type=t_nettraffic,pri=p_major,pid=28529,ruid=0,euid=0,pgid=28529,logid=0,cmd=httpp,domain=htpp,edomain=htpp,hostname=localhost,event=proxy traffic end,service_name=http,netsessid=5069c3d9000ab8ce,srcip=1.1.1.1,srcport=1,srcburb=internal2,protocol=6,dstip=2.2.2.2,dstport=2,dstburb=external1,bytes_written_to_client=1297,bytes_written_to_server=421,rule_name=www.isa.webproxy,cache_hit=0,request_status=0,start_time="Mon Oct 1 11:24:57 2012"</test_message>
+						<test_value name="i0">6</test_value>
+						<test_value name="i1">1.1.1.1</test_value>
+						<test_value name="i2">1</test_value>
+						<test_value name="i3">2.2.2.2</test_value>
+						<test_value name="i4">2</test_value>
+						<test_value name="s0">external1</test_value>
+						<test_value name="s1">internal2</test_value>
+						<test_value name="i5">1297</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
