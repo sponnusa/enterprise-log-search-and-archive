@@ -3305,6 +3305,10 @@ sub transform {
 		#$self->log->debug('results: ' . Dumper($q->results->results));
 		for (my $i = 0; $i < scalar @{ $transform_args->{results} }; $i++){
 			my $transform_row = $transform_args->{results}->[$i];
+			unless (exists $transform_row->{id}){
+				push @final, $transform_row;
+				next;
+			}
 			for (my $j = 0; $j < $q->results->records_returned; $j++){
 				my $results_row = $q->results->idx($j);
 				if ($results_row->{id} eq $transform_row->{id}){
@@ -3353,10 +3357,10 @@ sub transform {
 							elsif (ref($transform_row->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'){
 								foreach my $value (@{ $transform_row->{transforms}->{$transform}->{$transform_field} }){
 									push @{ $results_row->{_fields} }, { 
-											field => $transform . '.' . $transform_field, 
-											value => $value,
-											class => 'Transform.' . $transform,
-										};
+										field => $transform . '.' . $transform_field, 
+										value => $value,
+										class => 'Transform.' . $transform,
+									};
 								}
 							}
 						}
@@ -3365,7 +3369,8 @@ sub transform {
 					last;
 				}
 			}
-		}	
+		}
+		#$self->log->debug('final: ' . Dumper(\@final));
 		$q->results(Results->new(results => [ @final ]));
 		$q->groupby([]);
 	}
