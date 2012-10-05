@@ -42,6 +42,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(30, "EXCHANGE", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(31, "LOG2TIMELINE", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(32, "CEF", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(33, "WEB_CONTENT_FILTER", 0);*/
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -392,6 +393,17 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="sig_id"), 14);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="name"), 15);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CEF"), (SELECT id FROM fields WHERE field="extension"), 16);*/
+
+/*INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="dstip"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="status_code"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="user"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="site"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="uri"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="category"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="user_agent"), 15);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="action"), 16);*/
+
 
 
 CREATE TABLE table_types (

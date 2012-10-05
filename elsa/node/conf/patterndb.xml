@@ -1177,4 +1177,53 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="Websense">
+		<program></program>
+		<rules>
+			<rule provider="ELSA" class="33" id="33">
+				<pattern>vendor=Websense@ESTRING::action=@@ESTRING:s5: @severity=@ESTRING::category=@@ESTRING:s3: @user=@ESTRING:s0: @src_host=@IPv4:i0:@@ESTRING::dst_host=@@ESTRING:s1: @dst_ip=@IPv4:i1:@@ESTRING::http_response=@@NUMBER:i2:@@ESTRING::http_user_agent=@@ESTRING:s4: @@ESTRING::disposition=@@ESTRING:s3: @@ESTRING:://@@ESTRING::/@@ANYSTRING:s2:@</pattern>
+				<pattern>vendor=Websense@ESTRING::action=@@ESTRING:s5: @severity=@ESTRING::category=@@ESTRING:s3: @user=@ESTRING:s0: @src_host=@IPv4:i0:@@ESTRING::dst_host=@@ESTRING:s1: @dst_ip=@IPv4:i1:@@ESTRING::http_response=@@NUMBER:i2:@@ESTRING::http_user_agent=@@ESTRING:s4: @@ESTRING::disposition=@@ESTRING:s3: @</pattern>
+				<values>
+					<value name="s2">/$s2</value>
+				</values>
+				<examples>
+					<example>
+						<test_message program="">vendor=Websense product=Security product_version=7.7.0 action=permitted severity=1 category=153 user=- src_host=10.64.134.74 src_port=62189 dst_host=mail.google.com dst_ip=74.125.224.53 dst_port=443 bytes_out=197 bytes_in=76 http_response=200 http_method=CONNECT http_content_type=- http_user_agent=Mozilla/5.0_(Windows;_U;_Windows_NT_6.1;_en-US;_rv:1.9.2.23)_Gecko/20110920_Firefox/3.6.23 http_proxy_status_code=200 reason=- disposition=1034 policy=- role=8 duration=0 url=https://mail.google.com/index.html</test_message>
+						<test_value name="i0">10.64.134.74</test_value>
+						<test_value name="i1">74.125.224.53</test_value>
+						<test_value name="i2">200</test_value>
+						<test_value name="s0">-</test_value>
+						<test_value name="s1">mail.google.com</test_value>
+						<test_value name="s2">/index.html</test_value>
+						<test_value name="s3">1034</test_value>
+						<test_value name="s4">Mozilla/5.0_(Windows;_U;_Windows_NT_6.1;_en-US;_rv:1.9.2.23)_Gecko/20110920_Firefox/3.6.23</test_value>
+						<test_value name="s5">permitted</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="McAfee SmartFilter">
+		<program></program>
+		<rules>
+			<rule provider="ELSA" class="33" id="33">
+				<pattern>@IPv4:i0@ - @ESTRING:s0: @@ESTRING::"@@ESTRING:://@@ESTRING:s1:/@@ESTRING:s2:"@ @NUMBER:i2:@ @ESTRING:s5: @@QSTRING:s3:"@</pattern>
+				<values>
+					<value name="s2">/$s2</value>
+				</values>
+				<examples>
+					<example>
+						<test_message program="">1.1.1.1 - username  [03/Oct/2012:06:52:51 +0100]  "GET http://a.nice.url/some/uri?parameters=go&amp;in=here" 200 ALLOW "Blogs/Wiki, Entertainment"</test_message>
+						<test_value name="i0">1.1.1.1</test_value>
+						<test_value name="i2">200</test_value>
+						<test_value name="s0">username</test_value>
+						<test_value name="s1">a.nice.url</test_value>
+						<test_value name="s2">/some/uri?parameters=go&amp;in=here</test_value>
+						<test_value name="s3">Blogs/Wiki, Entertainment</test_value>
+						<test_value name="s5">ALLOW</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
