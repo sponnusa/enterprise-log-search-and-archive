@@ -806,10 +806,16 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 			}
 		}
 		
-		oSelf.draw();
+		if (oSelf.dataTable.getDistinctValues(0).length == 0){
+			logger.log('No data found in dataTable column range, not drawing chart.');
+			oSelf.dashboard_el.innerText = 'No Data Available';
+		}
+		else {
+			oSelf.draw();
+		}
 		
 		oSelf.queries_received++;
-		
+				
 		if (oSelf.queries_received == oSelf.queries.length || p_bRedraw){
 			logger.log('received all (' + oSelf.queries.length + ') with query id ' + p_iQueryNum + ' chart data for chart ' + oSelf.id);
 			
@@ -1052,12 +1058,6 @@ YAHOO.ELSA.Chart.prototype.cloneChart = function(p_oWrapper){
 }
 
 YAHOO.ELSA.Chart.prototype.makeTimeChart = function(){
-//	if (this.google_dashboard){
-//		this.wrapper.draw(this.dataTable);
-//		this.google_dashboard.bind(this.control, this.wrapper);
-//		this.google_dashboard.draw(this.dataTable);
-//		return;
-//	}
 	this.google_dashboard = new google.visualization.Dashboard(YAHOO.util.Dom.get(this.dashboard_el));
 	var oRange = this.dataTable.getColumnRange(0);
 	logger.log('oRange', oRange);
