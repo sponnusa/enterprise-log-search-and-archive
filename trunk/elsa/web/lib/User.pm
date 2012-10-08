@@ -77,6 +77,9 @@ sub BUILD {
 	elsif (lc($self->conf->get('auth/method')) eq 'security_onion'){
 		$self->_init_security_onion();
 	}
+	elsif (lc($self->conf->get('auth/method')) eq 'kerberos' ) {
+		$self->_init_kerberos();
+	}
 	else {
 		die('No auth_method');
 	}
@@ -201,6 +204,27 @@ sub _init_ldap {
 			}
 		}
 	}
+}
+
+sub _init_kerberos {
+	my $self = shift;
+	$self->email($self->username . '@' . $self->conf->get('kerberos/realm'));
+	$self->permissions({
+		class_id => {
+			0 => 1,
+		},
+		host_id => {
+			0 => 1,
+		},
+		program_id => {
+			0 => 1,
+		},
+		node_id => {
+			0 => 1,
+		},
+		filter => '',
+	});
+	$self->is_admin(1);
 }
 
 sub _init_local {

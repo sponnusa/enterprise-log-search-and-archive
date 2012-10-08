@@ -100,6 +100,13 @@ elsif ($api->conf->get('auth/method') eq 'security_onion'){
 		statement => ' ', #hardcoded in module above
 	);
 }
+if (lc($api->conf->get('auth/method')) eq 'kerberos' and $api->conf->get('kerberos')){
+	require Authen::Simple::Kerberos;
+	$auth = Authen::Simple::Kerberos->new(
+		realm => $api->conf->get('kerberos/realm'),
+		log => $api->log,
+	);
+}
 else {
 	die('No auth method, please configure one!');
 }
