@@ -388,7 +388,7 @@
 					<test_value name="i4">10.0.0.0</test_value>
 				</example>
 			</rule>
-			<rule provider="ELSA" class='8' id='8'>
+			<rule provider="Laurel" class='8' id='8'>
 				<!-- Rules for logs with interface included -->
 				<patterns>
 					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>
