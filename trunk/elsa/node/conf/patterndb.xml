@@ -136,6 +136,90 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="Cisco IOS XE Translations" id='3'>
+		<pattern>%IOSXE-6-PLATFORM</pattern>
+		<rules>
+			<rule provider="ELSA" class='3' id='3'>
+				<patterns>
+					<pattern>@ESTRING::%NAT-6-LOG_TRANSLATION: Created Translation @@ESTRING:i0: @@IPv4:i1:@:@NUMBER:i2:@ @IPv4::@:@NUMBER::@ @IPv4::@:@NUMBER::@ @IPv4:i3:@:@NUMBER:i4:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%IOSXE-6-PLATFORM">F0: cpp_cp: QFP:0.0 Thread:031 TS:00000428205839105179 %NAT-6-LOG_TRANSLATION: Created Translation TCP 1.1.1.1:4227 1.1.1.1:1043 2.2.2.2:80 2.2.2.2:80 0</test_message>
+						<test_values>
+							<test_value name="i0">TCP</test_value>
+							<test_value name="i1">1.1.1.1</test_value>
+							<test_value name="i2">1043</test_value>
+							<test_value name="i3">2.2.2.2</test_value>
+							<test_value name="i4">80</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="Cisco IOS XE Denies" id='2'>
+		<pattern>%SEC-6-IPACCESSLOGS</pattern>
+		<rules>
+			<rule provider="ELSA" class='2' id='2'>
+				<patterns>
+					<pattern>list @ESTRING::denied @@IPv4:i3:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%SEC-6-IPACCESSLOGS">list REMOTE-MGMT denied 1.1.1.1 1 packet [0x7EAD30FB]</test_message>
+						<test_values>
+							<test_value name="i3">1.1.1.1</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="Cisco IOS XE Denies" id='2'>
+		<pattern>%FMANFP-6-IPACCESSLOGP</pattern>
+		<rules>
+			<rule provider="ELSA" class='2' id='2'>
+				<patterns>
+					<pattern>F@ESTRING::denied @@ESTRING:i0: @@IPv4:i1:@(@NUMBER:i2:@) -&gt; @IPv4:i3:@(@NUMBER:i4:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%FMANFP-6-IPACCESSLOGP">F0: fman_fp_image: list IPV4-INTERNET-OUTBOUND denied udp 1.1.1.1(49610) -&gt; 2.2.2.2(53), 1 packet</test_message>
+						<test_values>
+							<test_value name="i0">udp</test_value>
+							<test_value name="i1">1.1.1.1</test_value>
+							<test_value name="i2">49610</test_value>
+							<test_value name="i3">2.2.2.2</test_value>
+							<test_value name="i4">53</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="Cisco IOS XE Denies" id='2'>
+		<pattern>%FMANFP-6-IPV6ACCESSLOGP</pattern>
+		<rules>
+			<rule provider="ELSA" class='2' id='2'>
+				<patterns>
+					<pattern>F@ESTRING::denied @@ESTRING:i0: @@ESTRING:s0:(@@NUMBER:i2:@) -&gt; @ESTRING:s1:(@@NUMBER:i4:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%FMANFP-6-IPV6ACCESSLOGP">F0: fman_fp_image: list IPV6-INTERNET-INBOUND denied udp ffe:4e0::(38346) -&gt; ffe:4e0::(40322), 1 packet</test_message>
+						<test_values>
+							<test_value name="i0">udp</test_value>
+							<test_value name="s0">ffe:4e0::</test_value>
+							<test_value name="i2">38346</test_value>
+							<test_value name="s1">ffe:4e0::</test_value>
+							<test_value name="i4">40322</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 	<ruleset name="Windows_Snare" id='4'>
 		<pattern>MSWinEventLog</pattern>
 		<pattern>Application</pattern>
