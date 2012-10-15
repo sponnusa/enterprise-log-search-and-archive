@@ -40,7 +40,10 @@ fi
 OP="ALL"
 if [ "a$2" != "a" ]; then
 	OP=$2
-fi 
+fi
+
+THIS_FILE=$(basename "$0")
+SELF=$(cd `dirname "$0"` && pwd)/$THIS_FILE
 
 DISTRO="ubuntu"
 MYSQL_SERVICE_NAME="mysql"
@@ -224,12 +227,28 @@ set_date(){
 }
 
 get_elsa(){
+	# Find our current md5
+	BEFORE_MD5=$(md5sum $SELF | cut -f1 -d\ )
+	echo "Current MD5: $BEFORE_MD5"
 	# Get the latest code from Google Code
 	cd $BASE_DIR
 	svn --non-interactive --trust-server-cert --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" &&
 	mkdir -p "$BASE_DIR/elsa/node/tmp/locks" && 
 	touch "$BASE_DIR/elsa/node/tmp/locks/directory"
-	return $?
+	UPDATE_OK=$?
+	
+	DOWNLOADED="$BASE_DIR/elsa/contrib/$THIS_FILE"
+	AFTER_MD5=$(md5sum $DOWNLOADED | cut -f1 -d\ )
+	echo "Latest MD5: $AFTER_MD5"
+	
+	if [ "$BEFORE_MD5" != "$AFTER_MD5" ]; then
+		echo "Restarting with updated install.sh..."
+		echo "$_ $DOWNLOADED $INSTALL $OP"
+		$_ $DOWNLOADED $INSTALL $OP;
+		exit;
+	else
+		return $UPDATE_OK
+	fi
 }
 
 get_cpanm(){
