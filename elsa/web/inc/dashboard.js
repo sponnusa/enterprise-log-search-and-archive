@@ -756,6 +756,8 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 		+ ';out:json&q=' + encodeURIComponent(JSON.stringify(oQuery));
 	logger.log('sReqId: ' + sReqId + ', reqStr: ' + this.reqStr);
 	var oDSQuery = new google.visualization.Query(this.reqStr);
+	// Disable errors showing up on the chart
+	google.visualization.errors.addError = function(){ logger.log('error: ', arguments); };
 	var oSelf = this;
 	
 	var fnStoreResult = function(p_oResponse){

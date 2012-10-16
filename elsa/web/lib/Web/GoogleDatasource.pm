@@ -36,9 +36,9 @@ sub call {
 	 });
 
 	my $ret;
+	my $query_args;
 	eval {
 		my $check_args = $self->api->json->decode($args->{q});
-		my $query_args;
 		if ($args->{user}->is_admin){
 			$self->api->log->debug('$check_args: ' . Dumper($check_args));
 			# Trust admin
@@ -88,10 +88,38 @@ sub call {
 					}
 				}
 				else {
-					$datatable->add_columns({id => 'key', label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
-					foreach my $row (@{ $ret->results->results->{$groupby} }){
-						$self->api->log->debug('row: ' . Dumper($row));
-						$datatable->add_rows([ { v => $row->{_groupby} }, { v => $row->{_count} } ]);
+					if ($query_args->{query_meta_params}->{type} and $query_args->{query_meta_params}->{type} =~ /geo/i){
+						# See if we have lat/long
+#						if ($ret->results->results->{$groupby}->[0] and $ret->results->results->{$groupby}->[0]->{_groupby} =~ /latitude/){
+#							$datatable->add_columns({id => 'latitude', label => 'latitude', type => 'number'}, {id => 'longitude', label => 'longitude', type => 'number'}, {id => 'value', label => $label, type => 'number'});
+#							foreach my $row (@{ $ret->results->results->{$groupby} }){
+#								$self->api->log->debug('row: ' . Dumper($row));
+#								$row->{_groupby} =~ /latitude=(\-?\d+)/;
+#								my $lat = $1;
+#								$row->{_groupby} =~ /longitude=(\-?\d+)/;
+#								my $long = $1;
+#								$datatable->add_rows([ { v => $lat }, { v => $long }, { v => $row->{_count} } ]);
+#							}
+#						}
+#						else {
+							# Hope for country code
+							$datatable->add_columns({id => 'key', label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
+							foreach my $row (@{ $ret->results->results->{$groupby} }){
+								my $cc = $row->{_groupby};
+								$self->api->log->debug('row: ' . Dumper($row));
+								if ($row->{_groupby} =~ /cc=(\w{2})/i){
+									$cc = $1;
+								}
+								$datatable->add_rows([ { v => $cc }, { v => $row->{_count} } ]);
+							}
+#						}
+					}
+					else {
+						$datatable->add_columns({id => 'key', label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
+						foreach my $row (@{ $ret->results->results->{$groupby} }){
+							$self->api->log->debug('row: ' . Dumper($row));
+							$datatable->add_rows([ { v => $row->{_groupby} }, { v => $row->{_count} } ]);
+						}
 					}
 				}
 			}
