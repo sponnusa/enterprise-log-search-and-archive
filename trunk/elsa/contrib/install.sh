@@ -510,7 +510,7 @@ set_logrotate(){
 suse_get_web_packages(){
 	# Install required packages
 	zypper -n update &&
-	zypper -qn install curl subversion make gcc gcc-c++ mysql-community-server-client libmysqlclient-devel apache2-prefork apache2-mod_perl apache2-mod_perl-devel libexpat-devel perl-Module-Build
+	zypper -qn install curl subversion make gcc gcc-c++ mysql-community-server-client libmysqlclient-devel apache2-prefork apache2-mod_perl apache2-mod_perl-devel libexpat-devel perl-Module-Build krb5-devel
 	return $?
 }
 
@@ -520,7 +520,7 @@ ubuntu_get_web_packages(){
 	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections &&
 	
 	# Install required packages
-	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libgeo-ip-perl libexpat1-dev libmodule-build-perl libauthen-pam-perl &&
+	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libgeo-ip-perl libexpat1-dev libmodule-build-perl libauthen-pam-perl libkrb5-dev &&
 	
 	# Make debconf interactive again
 	echo "debconf debconf/frontend select readline" | debconf-set-selections
@@ -529,7 +529,7 @@ ubuntu_get_web_packages(){
 
 centos_get_web_packages(){
 	yum -y update &&
-	yum -yq install curl subversion make gcc gcc-c++ mysql mysql-libs mysql-devel httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python
+	yum -yq install curl subversion make gcc gcc-c++ mysql mysql-libs mysql-devel httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python krb5-devel
 	return $?
 }
 
