@@ -253,8 +253,14 @@ sub normalize_value {
 	}
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
 		and $self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
-		$self->log->trace("Converting $value to country_code");
-		return join('', unpack('c*', pack('A*', uc($value))));
+		if ($Field_order_to_attr->{$field_order} =~ /attr_s/){
+			$self->log->trace("Converting $value to CRC of country_code");
+			return crc32(join('', unpack('c*', pack('A*', uc($value)))));
+		}
+		else {
+			$self->log->trace("Converting $value to country_code");
+			return join('', unpack('c*', pack('A*', uc($value))));
+		}
 	}
 	elsif ($Field_order_to_attr->{$field_order} eq 'program_id'){
 		$self->log->trace("Converting $value to attr");
@@ -353,7 +359,12 @@ sub resolve_value {
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
 		and $self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
 		my @arr = $value =~ /(\d{2})(\d{2})/;
-		return unpack('A*', pack('c*', @arr));
+		if (@arr){
+			return unpack('A*', pack('c*', @arr));
+		}
+		else {
+			return $value;
+		}
 	}
 	elsif ($Field_order_to_attr->{$field_order} eq 'class_id'){
 		return $self->node_info->{classes_by_id}->{$class_id};
