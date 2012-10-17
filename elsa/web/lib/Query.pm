@@ -912,7 +912,11 @@ sub _parse_query_term {
 				foreach my $class_id (keys %{ $values->{attrs} }){
 					# If not a range search, not already a field term, and not a class 0 attr, add text to any field search
 					if ($term_hash->{op} !~ /[\<\>]/ and not exists $self->terms->{field_terms}->{$boolean}->{$class_id}
-						and lc($term_hash->{field}) ne 'country_code'){ # one-off for weird way country_code works
+						and $term_hash->{field} =~ /country_code/i){ # one-off for weird way country_code works
+						push @{ $self->terms->{any_field_terms}->{$boolean} },
+							join('', unpack('c*', pack('A*', uc($term_hash->{value}))));
+					}
+					elsif ($term_hash->{op} !~ /[\<\>]/ and not exists $self->terms->{field_terms}->{$boolean}->{$class_id}){
 						push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value} if $class_id; #skip class 0
 					}
 					my $field_info = $self->get_field($term_hash->{field})->{$class_id};
