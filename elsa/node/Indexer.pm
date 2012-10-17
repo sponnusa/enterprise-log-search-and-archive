@@ -2004,7 +2004,7 @@ sub record_host_stats {
 	}
 	
 	my $total = 0;
-	my $load_file = $self->conf->get('buffer_dir') . 'host_stats.tsv';
+	my $load_file = $self->conf->get('buffer_dir') . '/host_stats.tsv';
 	open(TSV, '> ' . $load_file);
 	foreach my $host (keys %hosts){
 		$query = 'SELECT *, COUNT(*) AS _count, class_id FROM ' . $index . ' WHERE MATCH(\'@host ' . $host . '\') GROUP BY class_id LIMIT 9999';
