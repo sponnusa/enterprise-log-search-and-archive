@@ -31,6 +31,8 @@ sub BUILDARGS {
 
 sub BUILD {
 	my $self = shift;
+	$self->log->debug('field: ' . Dumper($self->field));
+	$self->log->debug('regex: ' . Dumper($self->regex));
 	
 	DATUM_LOOP: foreach my $datum (@{ $self->data }){
 		foreach my $key (keys %$datum){
@@ -43,7 +45,7 @@ sub BUILD {
 			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
 				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
 					foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
-						next unless $key =~ $self->field;
+						next unless "$transform.$transform_field.$key" =~ $self->field;
 						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
 							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{$key} }){
 								$self->_check($datum, $value) and next DATUM_LOOP;

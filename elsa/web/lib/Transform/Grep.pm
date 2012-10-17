@@ -45,7 +45,7 @@ sub BUILD {
 			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
 				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
 					foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
-						next unless ($transform . '. ' . $transform_field . '.' . $key) =~ $self->field;
+						next unless "$transform.$transform_field.$key" =~ $self->field;
 						#$self->log->trace('passed field ' . $transform_field . '.' . $key);
 						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
 							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{$key} }){
