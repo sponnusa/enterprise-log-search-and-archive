@@ -11,6 +11,7 @@ use Search::QueryParser;
 use Storable qw(dclone);
 use Socket;
 use Log::Log4perl::Level;
+use Date::Manip;
 
 # Object for dealing with user queries
 
@@ -82,7 +83,7 @@ sub BUILDARGS {
 		$params{meta_params} = delete $params{query_meta_params};
 	}
 	
-	foreach my $property qw(groupby timeout archive analytics datasources nobatch livetail){
+	foreach my $property (qw(groupby timeout archive analytics datasources nobatch livetail)){
 		if ($params{meta_params}->{$property}){
 			$params{$property} = delete $params{meta_params}->{$property};
 		}
@@ -164,7 +165,7 @@ sub BUILD {
 	$self->hash($self->get_hash($self->qid));
 	
 	# Find highlights to inform the web client
-	foreach my $boolean qw(and or){
+	foreach my $boolean (qw(and or)){
 		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
 			foreach my $field_name (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
 				foreach my $term (@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field_name} }){
@@ -299,12 +300,12 @@ sub _parse_query_string {
 		$self->log->debug("Set limit " . $self->limit);
 	}
 	
-	foreach my $type qw(field_terms attr_terms){
-		foreach my $boolean qw(and or not){
+	foreach my $type (qw(field_terms attr_terms)){
+		foreach my $boolean (qw(and or not)){
 			$self->terms->{$type}->{$boolean} = {};
 		}
 	}
-	foreach my $boolean qw(and or not){
+	foreach my $boolean (qw(and or not)){
 		$self->terms->{any_field_terms}->{$boolean} = [];
 	}
 		
@@ -323,7 +324,7 @@ sub _parse_query_string {
 	}
 	
 	# One-off for dealing with hosts as fields
-	foreach my $boolean qw(and or not){
+	foreach my $boolean (qw(and or not)){
 		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
 			if ($self->terms->{attr_terms}->{$boolean}->{$op}->{host} 
 				and $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}
@@ -369,7 +370,7 @@ sub _parse_query_string {
 		$self->classes->{permitted} = { %{ $self->user->permissions->{class_id} } };
 		
 		# Drop any query terms that wanted to use a forbidden class
-		foreach my $boolean qw(and or not range_and range_not range_or){
+		foreach my $boolean (qw(and or not range_and range_not range_or)){
 			foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
 				foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
 					foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
@@ -461,7 +462,7 @@ sub _parse_query_string {
 	my $num_removed_terms = 0;
 	
 	# Adjust hosts/programs based on permissions
-	foreach my $attr qw(host_id program_id node_id){
+	foreach my $attr (qw(host_id program_id node_id)){
 		# Do we have a blanket allow permission?
 		if ($self->user->permissions->{$attr}->{0}){
 			$self->log->debug('Permissions grant access to any ' . $attr);
@@ -477,7 +478,7 @@ sub _parse_query_string {
 			}
 			
 			# Remove items not explicitly whitelisted
-			foreach my $boolean qw(and or){
+			foreach my $boolean (qw(and or)){
 				foreach my $op ('', '='){
 					next unless $self->terms->{attr_terms}->{$boolean}
 						and $self->terms->{attr_terms}->{$boolean}->{$op}
@@ -494,7 +495,7 @@ sub _parse_query_string {
 	}
 	
 	# Optimization: for the any-term fields, only search on the first term and use the rest as filters if the fields are int fields
-	foreach my $boolean qw(and not){
+	foreach my $boolean (qw(and not)){
 		unless (scalar @{ $self->terms->{any_field_terms}->{$boolean} }){
 			$self->terms->{any_field_terms}->{$boolean} = {};
 			next;
@@ -531,7 +532,7 @@ sub _parse_query_string {
 	# Check all field terms to see if they are a stopword and warn if necessary
 	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
 		$self->log->debug('checking terms against ' . (scalar keys %$stopwords) . ' stopwords');
-		foreach my $boolean qw(and or not){
+		foreach my $boolean (qw(and or not)){
 			foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
 				foreach my $raw_field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
 					next unless $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
@@ -571,7 +572,7 @@ sub _parse_query_string {
 	$self->log->debug('field_terms: ' . Dumper($self->terms->{field_terms}));
 	$self->log->debug('any_field_terms: ' . Dumper($self->terms->{any_field_terms}));
 	my $host_is_filter = 0;
-	foreach my $boolean qw(and or){
+	foreach my $boolean (qw(and or)){
 		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
 			next unless $class_id;
 			$host_is_filter++;
@@ -583,7 +584,7 @@ sub _parse_query_string {
 	}
 	if ($host_is_filter){
 		$self->log->trace('Using host as a filter because there were ' . $host_is_filter . ' query terms.');
-		foreach my $boolean qw(or and not){
+		foreach my $boolean (qw(or and not)){
 			foreach my $term (sort keys %{ $self->terms->{any_field_terms}->{$boolean} }){
 				if ($term =~ /^\(\@host \d+\)$/){
 					$self->log->trace('Deleted term ' . $term);
@@ -623,8 +624,15 @@ sub _parse_query_string {
 	# Verify that we're still going to actually have query terms after the filtering has taken place	
 	my $query_term_count = 0;
 		
-	foreach my $boolean qw(or and){
+	foreach my $boolean (qw(or and)){
 		$query_term_count += scalar keys %{ $self->terms->{any_field_terms}->{$boolean} }; 
+	}
+	foreach my $boolean (qw(or and)){
+		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
+			foreach my $field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
+				$query_term_count += scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field} };
+			}
+		}
 	}
 	
 	# we might have a class-only query
