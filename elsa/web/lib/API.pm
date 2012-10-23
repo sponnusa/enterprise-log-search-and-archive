@@ -3260,7 +3260,12 @@ sub transform {
 								if (ref($row->{transforms}->{$transform}->{$field}) eq 'HASH'){
 									my $add_on_str = '';
 									foreach my $data_attr (keys %{ $row->{transforms}->{$transform}->{$field} }){
-										$add_on_str .= ' ' . $data_attr . '=' .  $row->{transforms}->{$transform}->{$field}->{$data_attr};
+										if (ref($row->{transforms}->{$transform}->{$field}->{$data_attr}) eq 'ARRAY'){
+											$add_on_str .= ' ' . $data_attr . '=' . join(',', @{ $row->{transforms}->{$transform}->{$field}->{$data_attr} }); 
+										}
+										else {
+											$add_on_str .= ' ' . $data_attr . '=' .  $row->{transforms}->{$transform}->{$field}->{$data_attr};
+										}
 									}
 									push @groupby_results, { '_count' => $row->{count}, '_groupby' => ($row->{$groupby} . ' ' . $add_on_str) };
 								}
