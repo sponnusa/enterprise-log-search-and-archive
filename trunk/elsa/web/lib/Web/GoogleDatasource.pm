@@ -76,7 +76,7 @@ sub call {
 		my $datatable = Data::Google::Visualization::DataTable->new();
 	
 		if ($ret->has_groupby){
-			$self->api->log->debug('ret: ' . Dumper($ret));
+			#$self->api->log->debug('ret: ' . Dumper($ret));
 			foreach my $groupby ($ret->all_groupbys){
 				my $label = $ret->meta_params->{comment} ? $ret->meta_params->{comment} : 'count'; 
 				if ($Fields::Time_values->{$groupby}){
