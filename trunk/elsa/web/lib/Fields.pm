@@ -115,7 +115,15 @@ has 'node_info' => (is => 'rw', isa => 'HashRef', required => 1, default => sub 
 
 sub epoch2iso {
 	my $epochdate = shift;
-	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($epochdate);
+	my $use_gm_time = shift;
+	
+	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst);
+	if ($use_gm_time){
+		($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = gmtime($epochdate);
+	}
+	else {
+		($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($epochdate);
+	}
 	my $date = sprintf("%04d-%02d-%02d %02d:%02d:%02d", 
 		$year + 1900, $mon + 1, $mday, $hour, $min, $sec);
 	return $date;
