@@ -70,13 +70,28 @@ elsif ($api->conf->get('auth/method') eq 'local'){
 		
 		my $ssh = new Net::SSH::Expect( host => $host, user => $username, password => $password,
 			ssh_option => '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no');
-		my $result_string = $ssh->login();
+		eval {
+			$ssh->login();
+		};
+		$self->log->debug('error: ' . $@);
 		
-		unless ( $result_string =~ /\Q$match_on_success\E/i) {
-			$self->log->error("Failed to find $match_on_success in $result_string") if $self->log;
+		my $peek = $ssh->peek(1);
+		if ($peek =~ /denied/){
 			return 0;
 		}
-		return 1;
+		elsif ($@ =~ 'SSHConnectionAborted'){
+			return 1;
+		}
+		else {
+			return 0;
+		}
+#		my $result_string = $ssh->login();
+#		
+#		unless ( $result_string =~ /\Q$match_on_success\E/i) {
+#			$self->log->error("Failed to find $match_on_success in $result_string") if $self->log;
+#			return 0;
+#		}
+#		return 1;
     }
 
 	package main;
