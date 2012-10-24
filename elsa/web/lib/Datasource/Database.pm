@@ -185,12 +185,13 @@ sub _query {
 			if (exists $Fields::Time_values->{ $groupby }){
 				# Sort these in ascending label order
 				my $increment = $Fields::Time_values->{ $groupby };
+				my $use_gmt = $increment >= 86400 ? 1 : 0;
 				my %agg; 
 				foreach my $row (@rows){
 					my $unixtime = $row->{_groupby};
 					my $value = $unixtime * $increment;
 										
-					$self->log->trace('$value: ' . epoch2iso($value) . ', increment: ' . $increment . 
+					$self->log->trace('$value: ' . epoch2iso($value, 1) . ', increment: ' . $increment . 
 						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($value)));
 					$row->{intval} = $value;
 					$agg{ $row->{intval} } += $row->{_count};
@@ -199,7 +200,7 @@ sub _query {
 				foreach my $key (sort { $a <=> $b } keys %agg){
 					push @tmp, { 
 						intval => $key, 
-						_groupby => epoch2iso($key), 
+						_groupby => epoch2iso($key, $use_gmt), 
 						_count => $agg{$key}
 					};
 				}	
@@ -214,7 +215,7 @@ sub _query {
 						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
 							#$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
 							push @zero_filled, { 
-								_groupby => epoch2iso($j),
+								_groupby => epoch2iso($j, $use_gmt),
 								intval => $j,
 								_count => 0
 							};
@@ -227,12 +228,13 @@ sub _query {
 			elsif (UnixDate($rows[0]->{_groupby}, '%s')){
 				# Sort these in ascending label order
 				my $increment = 86400 * 30;
+				my $use_gmt = $increment >= 86400 ? 1 : 0;
 				my %agg; 
 				foreach my $row (@rows){
 					my $unixtime = UnixDate($row->{_groupby}, '%s');
 					my $value = $unixtime - ($unixtime % $increment);
 										
-					$self->log->trace('key: ' . epoch2iso($value) . ', tv: ' . $increment . 
+					$self->log->trace('key: ' . epoch2iso($value, $use_gmt) . ', tv: ' . $increment . 
 						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($value)));
 					$row->{intval} = $value;
 					$agg{ $row->{intval} } += $row->{_count};
@@ -241,7 +243,7 @@ sub _query {
 				foreach my $key (sort { $a <=> $b } keys %agg){
 					push @tmp, { 
 						intval => $key, 
-						_groupby => epoch2iso($key), #$self->resolve_value(0, $key, $groupby), 
+						_groupby => epoch2iso($key, 1), #$self->resolve_value(0, $key, $groupby), 
 						_count => $agg{$key}
 					};
 				}	
@@ -258,7 +260,7 @@ sub _query {
 						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
 							$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
 							push @zero_filled, { 
-								_groupby => epoch2iso($j),
+								_groupby => epoch2iso($j, 1),
 								intval => $j,
 								_count => 0
 							};

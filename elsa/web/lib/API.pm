@@ -2230,6 +2230,7 @@ sub _sphinx_query {
 				# Sort these in ascending label order
 				my @tmp;
 				my $increment = $Fields::Time_values->{ $groupby };
+				my $use_gmt = $increment >= 86400 ? 1 : 0;
 				#my $gmt_offset = timegm(localtime)-timelocal(localtime); 
 				foreach my $key (sort { $a <=> $b } keys %agg){
 					$total_records += $agg{$key};
@@ -2244,7 +2245,7 @@ sub _sphinx_query {
 						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($unixtime)));
 					push @tmp, { 
 						intval => $unixtime, 
-						'_groupby' => epoch2iso($unixtime), #$self->resolve_value(0, $key, $groupby), 
+						'_groupby' => epoch2iso($unixtime, $use_gmt), #$self->resolve_value(0, $key, $groupby), 
 						'_count' => $agg{$key}
 					};
 				}
@@ -2259,7 +2260,7 @@ sub _sphinx_query {
 						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
 							#$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
 							push @zero_filled, { 
-								'_groupby' => epoch2iso($j),
+								'_groupby' => epoch2iso($j, $use_gmt),
 								intval => $j,
 								'_count' => 0
 							};
