@@ -68,7 +68,8 @@ elsif ($api->conf->get('auth/method') eq 'local'){
 
 		my ( $host, $port, $match_on_success ) = ( $self->host, $self->port, $self->match );
 		
-		my $ssh = new Net::SSH::Expect( host => $host, user => $username, password => $password);
+		my $ssh = new Net::SSH::Expect( host => $host, user => $username, password => $password,
+			ssh_option => '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no');
 		my $result_string = $ssh->login();
 		
 		unless ( $result_string =~ /\Q$match_on_success\E/i) {
