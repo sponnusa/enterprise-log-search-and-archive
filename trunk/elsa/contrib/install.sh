@@ -24,6 +24,11 @@ SYSLOG_VER="3.2.4"
 GEOIP_DIR="/usr/share/GeoIP/"
 APACHE="apache2"
 
+# Include local config
+if [ -f /etc/elsa_vars.sh ]; then
+	. /etc/elsa_vars.sh
+fi
+
 ########################################
 
 # Determine type of install
