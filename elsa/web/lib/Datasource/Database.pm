@@ -133,7 +133,6 @@ sub _query {
 		}
 	}
 	
-	my $orderby;
 	foreach my $row (@{ $self->fields }){
 		if ($row->{alias}){
 			push @select, $row->{name} . ' AS ' . $row->{alias};
@@ -144,13 +143,25 @@ sub _query {
 				else {
 					$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
 				}
-				push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);				
-				$orderby = $row->{alias} ? $row->{alias} : $row->{name};
+				push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);
 			}
 		}
 		else {
 			push @select, $row->{name};
 		}
+	}
+
+	my $orderby;
+	if ($q->has_groupby){
+		if ($time_select_conversions->{ $q->groupby->[0] }){
+			$orderby = '_groupby ASC';
+		}
+		else {
+			$orderby = '_count DESC';
+		}
+	}
+	else {
+		$orderby = '1';
 	}
 	
 	$query = sprintf($self->query_template, join(', ', @select), $where, $groupby, $orderby, $q->offset, $q->limit);
