@@ -124,13 +124,35 @@ elsif ($api->conf->get('auth/method') eq 'none'){
 	$auth = Authen::Simple::Null->new(log => $api->log);
 }
 elsif ($api->conf->get('auth/method') eq 'db'){
-	require Authen::Simple::DBI;
-	$auth = Authen::Simple::DBI->new(
+	package Authen::Simple::ELSADB;
+	use base qw(Authen::Simple::DBI);
+	
+	sub check {
+		my ( $self, $username, $password ) = @_;
+		my ( $dsn, $dbh, $sth ) = ( $self->dsn, undef, undef );
+
+		unless ( $dbh = DBI->connect_cached( $dsn, $self->username, $self->password, $self->attributes ) ) {
+			my $error = DBI->errstr;
+			$self->log->error( qq/Failed to connect to database using dsn '$dsn'. Reason: '$error'/ ) if $self->log;
+		}
+		
+		$sth = $dbh->prepare($self->statement);
+		$sth->execute($username, $password);
+		my $row = $sth->fetchrow_arrayref;
+		if ($row){
+			return 1;
+		}
+		
+		return 0;
+    }
+    
+	package main;
+	$auth = Authen::Simple::ELSADB->new(
 		dsn => $api->conf->get('auth_db/dsn') ? $api->conf->get('auth_db/dsn') : $api->conf->get('meta_db/dsn'),
 		username =>	$api->conf->get('auth_db/username') ? $api->conf->get('auth_db/username') : $api->conf->get('meta_db/username'),
 		password => defined $api->conf->get('auth_db/password') ? $api->conf->get('auth_db/password') : $api->conf->get('meta_db/password'),
 		log => $api->log,
-		statement => $api->conf->get('auth_db/auth_statement') ? $api->conf->get('auth_db/auth_statement') : 'SELECT password FROM users WHERE username=?',
+		statement => $api->conf->get('auth_db/auth_statement') ? $api->conf->get('auth_db/auth_statement') : 'SELECT uid FROM users WHERE username=? AND password=PASSWORD(?)',
 	);
 }
 elsif ($api->conf->get('auth/method') eq 'security_onion'){
