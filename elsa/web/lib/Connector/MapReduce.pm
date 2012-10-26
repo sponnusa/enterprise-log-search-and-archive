@@ -23,7 +23,7 @@ sub BUILDARGS {
 	
 	if (ref($params{results}) eq 'HASH' and $params{results}->{results}){
 		$params{records_returned} = $params{results}->{recordsReturned};
-		foreach my $attr qw(qid query_string query_meta_params){
+		foreach my $attr (qw(qid query_string query_meta_params)){
 			if (exists $params{results}->{$attr}){
 				$params{$attr} = $params{results}->{$attr};
 			}

@@ -329,6 +329,41 @@ YAHOO.ELSA.getRunningArchiveQuery = function(){
 
 YAHOO.ELSA.Query = function(){
 	
+	this.save = function(p_sName){
+		logger.log('saveSearch', this);
+		
+		var callback = {
+			success: function(oResponse){
+				oSelf = oResponse.argument[0];
+				if (oResponse.responseText){
+					var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+					if (typeof oReturn === 'object'){
+						if (oReturn['error']){
+							YAHOO.ELSA.Error(oReturn['error']);
+						}
+						else if (oReturn == 1) {
+							logger.log('search saved successfully');
+						}
+					}
+					else {
+						logger.log(oReturn);
+						YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
+					}
+				}
+				else {
+					YAHOO.ELSA.Error('No response text');
+				}
+			},
+			failure: function(oResponse){
+				YAHOO.ELSA.Error('Error saving result.');
+			},
+			argument: [this]
+		};
+		
+		logger.log('sending: ', 'name=' + p_sName + '&value=' + encodeURIComponent(this.stringifyTerms()));
+		var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/preference', callback, 
+			'action=add&type=saved_query&name=' + p_sName + '&value=' + encodeURIComponent(this.stringifyTerms()));
+	};
 	
 	this.terms = {};
 	this.metas = {
@@ -2271,7 +2306,8 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			{text:'Export Results...', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportResults, obj:this.id }},
 			{text:'Alert or schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}},
 			{text:'Send to connector...', value:'sendToConnector', onclick:{ fn:YAHOO.ELSA.sendToConnector, obj:this.id}},
-			{text:'Add to Dashboard...', value:'addToDashboard', onclick:{ fn:YAHOO.ELSA.addQueryToChart}}
+			{text:'Add to Dashboard...', value:'addToDashboard', onclick:{ fn:YAHOO.ELSA.addQueryToChart}},
+			{text:'Save Search...', value:'saveSearch', onclick:{ fn:YAHOO.ELSA.saveSearch, obj:this.id}}
 		];
 		
 		var oMenuButtonCfg = {
@@ -2520,91 +2556,101 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 
 
 YAHOO.ELSA.getPreviousQueries = function(){
-	if (!YAHOO.ELSA.previousQueriesDataSource){
-		var formatMenu = function(elLiner, oRecord, oColumn, oData){
-			// Create menu for our menu button
-			var oButtonMenuCfg = [
-				{ 
-					text: 'Alert or schedule', 
-					value: 'schedule', 
-					onclick:{
-						fn: YAHOO.ELSA.scheduleQuery,
-						obj: oRecord.getData().qid
-					}
-				}
-			];
-			
-			var oButton = new YAHOO.widget.Button(
-				{
-					type:'menu', 
-					label:'Actions',
-					name: 'action_button_' + oRecord.getData().qid,
-					menu: oButtonMenuCfg,
-					container: elLiner
-				});
-		};
-		YAHOO.ELSA.previousQueriesDataSource = new YAHOO.util.DataSource('Query/get_previous_queries?');
-		YAHOO.ELSA.previousQueriesDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
-		YAHOO.ELSA.previousQueriesDataSource.responseSchema = {
-			resultsList: "results",
-			fields: ["qid", "query", "timestamp", "num_results", "milliseconds" ],
-			metaFields: {
-				totalRecords: 'totalRecords',
-				recordsReturned: 'recordsReturned'
-			}
-		};
-			
-	}
 	
-	// Build the panel if necessary
-	if (!YAHOO.ELSA.previousQueriesPanel){
-		var oPanel = new YAHOO.ELSA.Panel('previous_queries');
-		YAHOO.ELSA.previousQueriesPanel = oPanel.panel;
-		YAHOO.ELSA.previousQueriesPanel.setHeader('Query History');
+	var setAsCurrentSearch = function(p_sType, p_aArgs, p_a){
+		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
+		var oData = p_oRecord.getData();
+		YAHOO.util.Dom.get('q').value += ' ' + oData.query;
+		oPanel.panel.hide();
+	}
+			
+	var formatMenu = function(elLiner, oRecord, oColumn, oData){
+		// Create menu for our menu button
+		var oButtonMenuCfg = [
+			{ 
+				text: 'Add to Current Search', 
+				value: 'add', 
+				onclick:{
+					fn: setAsCurrentSearch,
+					obj: [oRecord,this]
+				}
+			},
+			{ 
+				text: 'Alert or schedule', 
+				value: 'schedule', 
+				onclick:{
+					fn: YAHOO.ELSA.scheduleQuery,
+					obj: oRecord.getData().qid
+				}
+			}
+		];
 		
-		YAHOO.ELSA.previousQueriesPanel.renderEvent.subscribe(function(){
-			var myColumnDefs = [
-				{ key:'menu', label:'Action', formatter:formatMenu },
-				{ key:"qid", label:"QID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
-				{ key:"query", label:"Query", sortable:true },
-				{ key:"timestamp", label:"Timestamp", editor:"date", formatter:YAHOO.ELSA.Query.formatDate, sortable:true },
-				{ key:"num_results", label:"Results", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
-				{ key:"milliseconds", label:"MS Taken", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true }
-			];
-			var oPaginator = new YAHOO.widget.Paginator({
-			    pageLinks          : 10,
-		        rowsPerPage        : 5,
-		        rowsPerPageOptions : [5,20],
-				template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
-		        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
-		    });
-		    
-		    var oDataTableCfg = {
-		    	initialRequest: 'startIndex=0&results=5',
-		    	dynamicData:true,
-		    	sortedBy : {key:"qid", dir:YAHOO.widget.DataTable.CLASS_DESC},
-		    	paginator: oPaginator
-		    };
-		    var dtDiv = document.createElement('div');
-			dtDiv.id = 'previous_queries_dt';
-			document.body.appendChild(dtDiv);
-			try {	
-				YAHOO.ELSA.prevSearchDT = new YAHOO.widget.DataTable(dtDiv, 
-					myColumnDefs, YAHOO.ELSA.previousQueriesDataSource, oDataTableCfg );
-				YAHOO.ELSA.prevSearchDT.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
-					oPayload.totalRecords = oResponse.meta.totalRecords;
-					return oPayload;
-				}
-				YAHOO.ELSA.previousQueriesPanel.setBody(dtDiv);
-			}
-			catch (e){
-				logger.log('Error:', e);
-			}
-		});
-	}
+		var oButton = new YAHOO.widget.Button(
+			{
+				type:'menu', 
+				label:'Actions',
+				name: 'action_button_' + oRecord.getData().qid,
+				menu: oButtonMenuCfg,
+				container: elLiner
+			});
+	};
+	var oDataSource = new YAHOO.util.DataSource('Query/get_previous_queries?');
+	oDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
+	oDataSource.responseSchema = {
+		resultsList: "results",
+		fields: ["qid", "query", "timestamp", "num_results", "milliseconds" ],
+		metaFields: {
+			totalRecords: 'totalRecords',
+			recordsReturned: 'recordsReturned'
+		}
+	};
+		
+	var oPanel = new YAHOO.ELSA.Panel('previous_queries');
+	oPanel.panel.setHeader('Query History');
 	
-	YAHOO.ELSA.previousQueriesPanel.render();
-	YAHOO.ELSA.previousQueriesPanel.show();
+	oPanel.panel.renderEvent.subscribe(function(){
+		var myColumnDefs = [
+			{ key:'menu', label:'Action', formatter:formatMenu },
+			{ key:"qid", label:"QID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
+			{ key:"query", label:"Query", sortable:true },
+			{ key:"timestamp", label:"Timestamp", editor:"date", formatter:YAHOO.ELSA.Query.formatDate, sortable:true },
+			{ key:"num_results", label:"Results", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
+			{ key:"milliseconds", label:"MS Taken", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true }
+		];
+		var oPaginator = new YAHOO.widget.Paginator({
+		    pageLinks          : 10,
+	        rowsPerPage        : 5,
+	        rowsPerPageOptions : [5,20],
+			template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
+	        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
+	    });
+	    
+	    var oDataTableCfg = {
+	    	initialRequest: 'startIndex=0&results=5',
+	    	dynamicData:true,
+	    	sortedBy : {key:"qid", dir:YAHOO.widget.DataTable.CLASS_DESC},
+	    	paginator: oPaginator
+	    };
+	    var dtDiv = document.createElement('div');
+		dtDiv.id = 'previous_queries_dt';
+		document.body.appendChild(dtDiv);
+		try {	
+			var oDataTable = new YAHOO.widget.DataTable(dtDiv, 
+				myColumnDefs, oDataSource, oDataTableCfg );
+			oDataTable.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
+				oPayload.totalRecords = oResponse.meta.totalRecords;
+				return oPayload;
+			}
+			oPanel.panel.setBody(dtDiv);
+		}
+		catch (e){
+			logger.log('Error:', e);
+		}
+	});
+
+	
+	oPanel.panel.render();
+	oPanel.panel.show();
 };
 
 YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
@@ -2753,6 +2799,56 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 	oPanel.panel.show();
 	oPanel.panel.bringToTop();
 }
+
+YAHOO.ELSA.saveSearch = function(p_sType, p_aArgs, p_iId){
+	logger.log('p_iId:', p_iId);
+	var iLocalResultId = YAHOO.ELSA.getLocalResultIdFromQueryId(p_iId);
+	logger.log('localResultId: ' + iLocalResultId);
+	
+	var handleSubmit = function(p_sType, p_oDialog){
+		var sName = YAHOO.util.Dom.get('save_search_name').value;
+		logger.log('saving search: ' + sName + ' for qid ' + p_iId);
+		YAHOO.ELSA.currentQuery.save(sName);
+		//this.hide();
+		this.destroy();
+	};
+	var handleCancel = function(){
+		//this.hide();
+		this.destroy();
+	};
+	var dialogDiv = document.createElement('div');
+	dialogDiv.id = 'save_results';
+	document.body.appendChild(dialogDiv);
+	var oDialog = new YAHOO.widget.Dialog(dialogDiv, {
+		underlay: 'none',
+		visible:true,
+		context: ['q', 'tl', 'bl' ],
+		constraintoviewport: true,
+		preventcontextoverlap: true,
+		//fixedcenter:true,
+		draggable:true,
+		buttons : [ { text:"Submit", handler:{ fn:handleSubmit }, isDefault:true },
+			{ text:"Cancel", handler:handleCancel } ]
+	});
+	
+	var oFormGridCfg = {
+		form_attrs:{
+			id: 'save_search_form'
+		},
+		grid: [
+			[ {type:'text', args:'Name'}, {type:'input', args:{id:'save_search_name', name:'name', size:80}} ]
+		]
+	};
+
+	// We need to do the initial render to auto-generate the form so we can hand that object to YAHOO.ELSA.Form
+	oDialog.setHeader('Save Search');
+	oDialog.setBody('');
+	oDialog.render();
+	
+	// Now build a new form using the element auto-generated by widget.Dialog
+	var oForm = new YAHOO.ELSA.Form(oDialog.form, oFormGridCfg);
+	oDialog.show();
+};
 
 YAHOO.ELSA.saveResults = function(p_sType, p_aArgs, p_iId){
 	logger.log('p_iId:', p_iId);
@@ -4087,6 +4183,218 @@ YAHOO.ELSA.getDashboards = function(){
 			return oPayload;
 		}
 		YAHOO.ELSA.getDashboards.dataTable.subscribe("cellClickEvent", onEventShowCellEditor);
+		
+		//oPanel.panel.setBody(oElDiv);
+		oPanel.panel.body.appendChild(oElDiv);
+	}
+	catch (e){
+		logger.log('Error:', e);
+	}
+	
+	//oPanel.panel.render();
+	oPanel.panel.show();
+};
+
+YAHOO.ELSA.getSavedSearches = function(){
+	
+	var oPanel = new YAHOO.ELSA.Panel('saved_searches');
+	oPanel.panel.setHeader('Saved Searches');
+	oPanel.panel.render();
+	
+	var setAsCurrentSearch = function(p_sType, p_aArgs, p_a){
+		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
+		var oData = p_oRecord.getData();
+		YAHOO.util.Dom.get('q').value += ' ' + oData.value;
+		oPanel.panel.hide();
+	}
+	
+	var deleteSearch = function(p_sType, p_aArgs, p_a){
+		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
+		var oData = p_oRecord.getData();
+		oData.recordSetId = p_oRecord.getId();
+		logger.log('oData', oData);
+		var oConfirmationPanel = new YAHOO.ELSA.Panel.Confirmation(function(p_oEvent, p_oData){
+			var oPanel = this;
+			oPanel.hide();
+			
+			var removeCallback = {
+				success: function(oResponse){
+					var oData = oResponse.argument[0];
+					if (oResponse.responseText){
+						var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+						if (typeof oReturn === 'object'){
+							if (oReturn['error']){
+								YAHOO.ELSA.Error(oReturn['error']);
+							}
+							else {
+								logger.log('deleted search ' + oData.id);
+								// find the row in the data table and delete it
+								p_oDataTable.deleteRow(oData.recordSetId);
+							}
+						}
+						else {
+							logger.log(oReturn);
+							YAHOO.ELSA.Error('Could not parse responseText: ' + oResponse.responseText);
+						}
+					}
+					else {
+						YAHOO.ELSA.Error('No response text');
+					}
+				},
+				failure: function(oResponse){ YAHOO.ELSA.Error('Error deleting search ' + oData.id); },
+				argument: [oData]
+			};
+			var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/preference', removeCallback,
+				'action=remove&id=' + p_oData.id);
+		}, oData, 'Really delete dashboard?');
+	}
+	
+	var formatMenu = function(elLiner, oRecord, oColumn, oData){
+		// Create menu for our menu button
+		var oButtonMenuCfg = [
+			{ 
+				text: 'Add to Current Search', 
+				value: 'view', 
+				onclick:{
+					fn: setAsCurrentSearch,
+					obj: [oRecord,this]
+				}
+			},
+			{ 
+				text: 'Delete', 
+				value: 'delete', 
+				onclick:{
+					fn: deleteSearch,
+					obj: [oRecord,this]
+				}
+			}
+		];
+		
+		var oButton = new YAHOO.widget.Button(
+			{
+				type:'menu', 
+				label:'Actions',
+				menu: oButtonMenuCfg,
+				name: 'saved_search_menu',
+				container: elLiner
+			});
+	};
+		    
+    var oElDiv = document.createElement('div');
+	oElDiv.id = 'saved_searches_dt';
+	oPanel.panel.body.appendChild(oElDiv);
+	
+	var asyncSubmitter = function(p_fnCallback, p_oNewValue){
+		// called in the scope of the editor
+		logger.log('editor this: ', this);
+		var oEditor = this;
+		logger.log('p_oNewValue:', p_oNewValue);
+		
+		var oRecord = this.getRecord(),
+			oColumn = this.getColumn(),
+			sOldValue = this.value,
+			oDatatable = this.getDataTable();
+		logger.log('sOldValue:', sOldValue);
+		logger.log('oColumn.getKey()', oColumn.getKey());
+		
+		var oNewValue = p_oNewValue;
+		var oSendValue = oNewValue;
+		
+		YAHOO.ELSA.async('Query/preference?action=update&id=' + oRecord.getData().id + '&col=' + oColumn.getKey() + '&val=' + oSendValue, function(p_oReturn){
+			if (p_oReturn.ok && p_oReturn.ok > 0){
+				// update the edit queries datatable
+				oDatatable.updateCell(oRecord, oColumn, oNewValue);
+				p_fnCallback(true,oNewValue);
+			}
+			else {
+				p_fnCallback(false);
+			}
+		});
+	};
+	
+	var cellEditorValidatorQuery = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
+		return p_sInputValue;
+	};
+	
+	var onEventShowCellEditor = function(p_oArgs){
+		logger.log('p_oArgs', p_oArgs);
+		var oEl = new YAHOO.util.Element(p_oArgs.target);
+		if (!oEl.hasClass('yui-dt-editable')){
+			return;
+		}
+		this.onEventShowCellEditor(p_oArgs);
+		if (YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor().value != null && typeof(YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor().value) == 'object'){
+			YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor().textarea.value = YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor().value.query_string;
+		}
+		
+		// increase the size of the textbox, if we have one
+		if (YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor() && YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor().textbox){				
+			YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor().textbox.setAttribute('size', 20);
+			YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor().textbox.removeAttribute('style');
+			// create key listener for the submit
+			var enterKeyListener = new YAHOO.util.KeyListener(
+					YAHOO.ELSA.getSavedSearches.dataTable.getCellEditor().textbox,
+					{ keys: 13 },
+					{ 	fn: function(eName, p_aArgs){
+							var oEvent = p_aArgs[1];
+							// Make sure we don't submit the form
+							YAHOO.util.Event.stopEvent(oEvent);
+							var tgt=(oEvent.target ? oEvent.target : 
+								(oEvent.srcElement ? oEvent.srcElement : null)); 
+							try{
+								tgt.blur();
+							}
+							catch(e){}
+							var op = '=';
+							this.getCellEditor().save();
+						},
+						scope: YAHOO.ELSA,
+						correctScope: false
+					}
+			);
+			enterKeyListener.enable();
+		}
+	}
+	
+	var oDataSource = new YAHOO.util.DataSource('Query/get_saved_searches');
+	oDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
+	oDataSource.responseSchema = {
+		resultsList: 'results',
+		fields: ['id', 'name', 'value' ],
+		metaFields: {
+			totalRecords: 'totalRecords',
+			recordsReturned: 'recordsReturned'
+		}
+	};
+				
+	var oColumnDefs = [
+		{ key:'remove', label:'Remove', formatter:formatMenu },
+		{ key:"id", label:"ID", formatter:YAHOO.widget.DataTable.formatNmber, sortable:true },
+		{ key:"name", label:"Name", sortable:true,
+			editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter}) },
+		{ key:"value", label:"Value", sortable:true,
+			editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter}) }
+	];
+	var oPaginator = new YAHOO.widget.Paginator({
+	    pageLinks          : 10,
+        rowsPerPage        : 5,
+        rowsPerPageOptions : [5,20],
+        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
+        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
+    });
+    
+    var oDataTableCfg = {
+    	sortedBy : {key:"id", dir:YAHOO.widget.DataTable.CLASS_DESC},
+    	paginator: oPaginator
+    };
+	
+	try {
+		YAHOO.ELSA.getSavedSearches.dataTable = new YAHOO.widget.DataTable(oElDiv,	oColumnDefs, oDataSource, oDataTableCfg);
+		YAHOO.ELSA.getSavedSearches.dataTable.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
+			oPayload.totalRecords = oResponse.meta.totalRecords;
+			return oPayload;
+		}
+		YAHOO.ELSA.getSavedSearches.dataTable.subscribe("cellClickEvent", onEventShowCellEditor);
 		
 		//oPanel.panel.setBody(oElDiv);
 		oPanel.panel.body.appendChild(oElDiv);

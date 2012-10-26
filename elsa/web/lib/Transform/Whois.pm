@@ -40,7 +40,7 @@ sub BUILD {
 		$self->cv->end;
 		$self->cv->recv;
 		
-		foreach my $key qw(srcip dstip){
+		foreach my $key (qw(srcip dstip)){
 			if ($datum->{transforms}->{$Name}->{$key} and $datum->{transforms}->{$Name}->{$key}->{is_local}){
 				my $deleted = delete $datum->{transforms}->{$Name}->{$key};
 				$datum->{transforms}->{$Name}->{$key}->{customer} = $deleted->{customer};
@@ -76,7 +76,7 @@ sub _lookup {
 			if ($start_int <= $ip_int and unpack('N*', inet_aton($known_subnets->{$start}->{end})) >= $ip_int){
 				#$datum->{customer} = $known_subnets->{$start}->{org};
 				$ret->{customer} = $known_subnets->{$start}->{org};
-				foreach my $key qw(name descr org cc country state city){
+				foreach my $key (qw(name descr org cc country state city)){
 					$ret->{$key} = $known_orgs->{ $known_subnets->{$start}->{org} }->{$key};
 				}
 				$self->log->trace('using local org');
@@ -321,7 +321,7 @@ sub _lookup_org {
 		eval {
 			my $whois = decode_json($body);
 			$self->log->trace('decoded whois: ' . Dumper($whois));
-			foreach my $key qw(org customer){
+			foreach my $key (qw(org customer)){
 				next unless $whois->{$key};
 				if ($whois->{$key}->{'iso3166-1'}){
 					$ret->{cc} = $whois->{$key}->{'iso3166-1'}->{code2}->{'$'};

@@ -205,7 +205,7 @@ sub parse_line {
     	$line[FIELD_CLASS_ID] = $Default_class_id;
     }
     		        
-	# If we're configured to do so, we'll tolerate missing a missing field and make up a default
+	# If we're configured to do so, we'll tolerate missing a field and make up a default
 	if ($Missing_field_tolerance){
 		my $missing_fields = 0;
 		# Make sure that we've got the basics--things we don't want to fake

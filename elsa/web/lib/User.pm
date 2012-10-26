@@ -15,6 +15,7 @@ has 'username' => (is => 'ro', isa => 'Str', required => 1);
 
 has 'uid' => (is => 'rw', isa => 'Num');
 has 'permissions' => (is => 'rw', isa => 'HashRef');
+has 'preferences' => (is => 'rw', isa => 'HashRef');
 has 'email' => (is => 'rw', isa => 'Str');
 has 'ldap' => (is => 'rw', isa => 'Object');
 
@@ -29,7 +30,10 @@ sub BUILDARGS {
 	my %params = @_;
 	
 	unless ($params{username}){
-		if ($params{conf}->get('auth/method') eq 'none'){
+		if (exists $ENV{HTTP_USER}){
+			$params{username} = $ENV{HTTP_USER};
+		}
+		elsif ($params{conf}->get('auth/method') eq 'none'){
 			$params{username} = 'user';
 		}
 	}
@@ -120,30 +124,66 @@ sub BUILD {
 		or ($self->log->error('Unable to get permissions') and return 0);
 	$self->log->debug('got permissions: ' . Dumper($self->permissions));
 	
+	$self->preferences($self->_get_preferences());
+	
 	return $self;
 }
 
 sub _init_none {
 	my $self = shift;
 	
-	$self->uid(2);
-	$self->is_admin(1);
-	$self->permissions({
-		class_id => {
-			0 => 1,
-		},
-		host_id => {
-			0 => 1,
-		},
-		program_id => {
-			0 => 1,
-		},
-		node_id => {
-			0 => 1,
-		},
-		filter => '',
-	});
-	$self->email($self->conf->get('email/to') ? $self->conf->get('email/to') : 'root@localhost');
+	if ($self->username ne 'user'){
+		# Assume that we were given authentication via setting env var HTTP_USER (like via Apache built-in authentication) and use local database for settings
+		die('No db given') unless $self->db;
+		die('No admin groups listed in admin_groups') unless $self->conf->get('admin_groups');
+		my ($query, $sth);
+		$query = 'SELECT groupname FROM groups t1 JOIN users_groups_map t2 ON (t1.gid=t2.gid) JOIN users t3 ON (t2.uid=t3.uid) WHERE t3.username=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($self->username);
+		while (my $row = $sth->fetchrow_hashref){
+			push @{ $self->groups }, $row->{groupname};
+		}
+		# Is the group this user is a member of a designated admin group?
+		foreach my $group (@{ $self->groups }){
+			my @admin_groups = qw(root admin);
+			if ($self->conf->get('admin_groups')){
+				@admin_groups = @{ $self->conf->get('admin_groups') };
+			}
+			if ( grep { $group eq $_ } @admin_groups ){
+				$self->log->debug( 'user ' . $self->username . ' is an admin');
+				$self->is_admin(1);
+				last;
+			}
+		}
+				
+		$query = 'SELECT email FROM users WHERE username=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($self->username);
+		my $row = $sth->fetchrow_arrayref;
+		if ($row){
+			$self->email($row->[0]);
+		}
+	}
+	else {
+		$self->uid(2);
+		$self->is_admin(1);
+		$self->permissions({
+			class_id => {
+				0 => 1,
+			},
+			host_id => {
+				0 => 1,
+			},
+			program_id => {
+				0 => 1,
+			},
+			node_id => {
+				0 => 1,
+			},
+			filter => '',
+		});
+		$self->email($self->conf->get('email/to') ? $self->conf->get('email/to') : 'root@localhost');
+	}
 }
 
 sub _init_ldap {
@@ -365,7 +405,7 @@ sub _get_permissions {
 		
 	# Find group permissions
 	my %permissions;
-	ATTR_LOOP: foreach my $attr qw(class_id host_id program_id node_id){
+	ATTR_LOOP: foreach my $attr (qw(class_id host_id program_id node_id)){
 		if ($self->is_admin){
 			$permissions{$attr} = { 0 => 1 };
 			next ATTR_LOOP;
@@ -395,7 +435,7 @@ sub _get_permissions {
 				push @arr, $row->{attr_id};
 			}
 			# Special case for program/node which defaults to allow
-			foreach my $allow_attr qw(program_id node_id){
+			foreach my $allow_attr (qw(program_id node_id)){
 				if (scalar @arr == 0 and $attr eq $allow_attr){
 					$permissions{$attr} = { 0 => 1 };
 					next ATTR_LOOP;
@@ -454,6 +494,32 @@ sub _get_permissions {
 	return \%permissions;
 }
 
+sub _get_preferences {
+	my $self = shift;
+	
+	my ($query, $sth);
+	$query = 'SELECT * FROM preferences WHERE uid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($self->uid);
+	
+	my $prefs = {};
+	my @grid;
+	while (my $row = $sth->fetchrow_hashref){
+		push @grid, $row;
+		$prefs->{ $row->{type} } ||= {};
+		if ($row->{value} =~ /^[\[\{]/){
+			eval {
+				$row->{value} = $self->json->decode($row->{value});
+			};
+			if ($@){
+				$self->log->error('Error decoding preference value ' . $row->{value} . ': ' . $@);
+			}
+		}
+		$prefs->{ $row->{type} }->{ $row->{name} } = $row->{value};
+	}
+	return { tree => $prefs, grid => \@grid };
+}
+
 sub TO_JSON {
 	my $self = shift;
 	my $export = {};
@@ -478,7 +544,7 @@ sub is_permitted {
 	elsif ($class_id){
 		if (exists $self->permissions->{fields}->{$class_id}){	
 			foreach my $hash (@{ $self->permissions->{fields}->{$class_id} }){
-				foreach my $type qw(attr field){
+				foreach my $type (qw(attr field)){
 					if ($attr eq $hash->{$type}->[0] and $attr_id eq $hash->{$type}->[1]){
 						return 1;
 					}
