@@ -9,12 +9,12 @@ use API;
 use LWP::UserAgent;
 use Date::Manip;
 my %Opts;
-getopts('c:f:s:e:ht', \%Opts);
+getopts('q:c:f:s:e:ht', \%Opts);
 
 if ($Opts{h} or not $Opts{f}){
 	print <<EOT
 Usage:
-perl bulk_query.pl -f <file containing terms> [ -c <config file> ] [ -s <start time> ] [ -e <end time> ] [ -t (format TSV) ]
+perl bulk_query.pl -f <file containing terms> [ -c <config file> ] [ -s <start time> ] [ -e <end time> ] [ -t (format TSV) ] [ -q <query filter terms to add to each query> ]
 EOT
 ;
 }
@@ -45,23 +45,27 @@ if ($Opts{e}){
 }
 
 my $api = API->new(config_file => $config_file);
-my $user_info = $api->get_user_info('system');
+my $user = $api->get_user('system');
 
 my $stats_start = time();
 for (my $i = 0; $i < @terms; $i += 30){
 	my $query_string = join(' ', @terms[$i..($i+30)]);
+	if ($Opts{q}){
+		$query_string .= ' ' . $Opts{q};
+	}
 	print $query_string . "\n";
-	my $result = $api->query({query_string => $query_string, 
+	
+	my $query = $api->query({query_string => $query_string, 
 		query_meta_params => { start => $start, end => $end }, 
-		user_info => $user_info});
+		user => $user});
 	my $duration = time() - $stats_start;
-	next unless $result and ref($result) eq 'HASH' and $result->{results} and ref($result->{results});
-	$result->{format} = $Opts{t} ? 'tsv' : 'json';
-	if ($result->{errors}){
-		foreach (@{ $result->{errors} }){
+	next unless $query and $query->results->records_returned;
+	my $format = $Opts{t} ? 'tsv' : 'json';
+	if ($query->has_warnings){
+		foreach (@{ $query->warnings }){
 			print "$_\n";
 		}
 	}
-	print $api->format_results($result) . "\n" if $result->{totalRecords};
+	print $api->format_results({ format => $format, results => $query->results->results, groupby => $query->has_groupby ? $query->groupby : undef }) . "\n";
 }
 
