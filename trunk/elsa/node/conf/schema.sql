@@ -43,6 +43,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(31, "LOG2TIMELINE", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(32, "CEF", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(33, "WEB_CONTENT_FILTER", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(34, "NETFLOW", 0);*/
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -156,6 +157,10 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_id", "string",
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("name", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("severity", "int", "NUMBER");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("extension", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("asn", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("city", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("latitude", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("longitude", "string", "QSTRING");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -405,6 +410,18 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="user_agent"), 15);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WEB_CONTENT_FILTER"), (SELECT id FROM fields WHERE field="action"), 16);*/
 
+/*INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="proto"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="srcip"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="srcport"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="dstip"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="dstport"), 9);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="conn_bytes"), 10);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="asn"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="country"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="city"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="latitude"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="longitude"), 15);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="desc"), 16);*/
 
 
 CREATE TABLE table_types (
