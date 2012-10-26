@@ -1333,4 +1333,35 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="Netflow" id='Netflow'>
+		<pattern>netflow_syslog</pattern>
+		<rules>
+			<rule provider="ELSA" class='34' id='34'>
+				<patterns>
+					<pattern>@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@@ESTRING:i5:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ANYSTRING:s5:@</pattern>
+					<pattern>@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@@ESTRING:i5:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@</pattern>
+					<pattern>@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:i4:|@@ESTRING:i5:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="netflow_syslog">tcp|192.85.128.47|35843|1.1.1.1|443|30486|2173|US|Palo Alto, CA|37.376202|-122.182602|HPES - Hewlett-Packard Company</test_message>
+						<test_values>
+							<test_value name="i0">tcp</test_value>
+							<test_value name="i1">192.85.128.47</test_value>
+							<test_value name="i2">35843</test_value>
+							<test_value name="i3">1.1.1.1</test_value>
+							<test_value name="i4">443</test_value>
+							<test_value name="i5">30486</test_value>
+							<test_value name="s0">2173</test_value>
+							<test_value name="s1">US</test_value>
+							<test_value name="s2">Palo Alto, CA</test_value>
+							<test_value name="s3">37.376202</test_value>
+							<test_value name="s4">-122.182602</test_value>
+							<test_value name="s5">HPES - Hewlett-Packard Company</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
