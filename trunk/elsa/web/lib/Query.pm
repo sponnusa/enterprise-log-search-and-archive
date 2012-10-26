@@ -129,7 +129,7 @@ sub BUILD {
 	$self->log->trace("Using timeout of " . $self->timeout);
 		
 	# Parse first to see if limit gets set which could incidate a batch job
-	$self->_parse_query_string();
+	$self->_parse_query();
 	
 	if ($self->has_groupby){
 		$self->results( new Results::Groupby() );
@@ -261,6 +261,31 @@ sub _set_time_taken {
 
 sub _parse_query_string {
 	my $self = shift;
+	my $raw_query = shift;
+	my $effective_operator = shift;
+	
+	my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
+	my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or die($qp->err);
+	$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
+	
+	my $parsed_query = dclone($orig_parsed_query); #dclone so recursion doesn't mess up original
+	
+	# Override any operators with the given effective operator
+	if ($effective_operator){
+		foreach my $op (keys %$parsed_query){
+			my $arr = delete $parsed_query->{$op}; 
+			$parsed_query->{$effective_operator} ||= [];
+			push @{ $parsed_query->{$effective_operator} }, @$arr;
+		}
+		$self->log->debug("$parsed_query: " . Dumper($parsed_query));
+	}
+	
+	# Recursively parse the query terms
+	$self->_parse_query_term($parsed_query);
+}
+
+sub _parse_query {
+	my $self = shift;
 	
 	my $raw_query = $self->query_string;
 	
@@ -310,14 +335,15 @@ sub _parse_query_string {
 	}
 		
 	if ($raw_query =~ /\S/){ # could be meta_attr-only
-		my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
-		my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or die($qp->err);
-		$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
-		
-		my $parsed_query = dclone($orig_parsed_query); #dclone so recursion doesn't mess up original
-		
-		# Recursively parse the query terms
-		$self->_parse_query_term($parsed_query);
+#		my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
+#		my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or die($qp->err);
+#		$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
+#		
+#		my $parsed_query = dclone($orig_parsed_query); #dclone so recursion doesn't mess up original
+#		
+#		# Recursively parse the query terms
+#		$self->_parse_query_term($parsed_query);
+		$self->_parse_query_string($raw_query);
 	}
 	else {
 		die('No query terms given');
@@ -741,6 +767,12 @@ sub _parse_query_term {
 				next;
 			}
 			
+			if ($term_hash->{value} =~ /^\$(\w+)/){
+				$self->log->debug('got macro ' . $1);
+				$self->_parse_query_string($self->_resolve_macro($1), $effective_operator);
+				next;
+			}
+			
 			# Escape any digit-dash-word combos (except for host or program)
 			#$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
 						
@@ -996,6 +1028,41 @@ sub mark_livetail_start {
 	$sth = $self->db->prepare('UPDATE query_log SET num_results=-3 WHERE qid=?');
 	$sth->execute($self->qid);
 	return $sth->rows;
+}
+
+sub _resolve_macro {
+	my $self = shift;
+	my $macro = shift;
+	
+	$macro = lc($macro);
+	
+	# Create whois-based built-ins
+	my %nets;
+	my $subnets = $self->conf->get('transforms/whois/known_subnets');
+	if ($subnets){
+		foreach my $start (keys %$subnets){
+			my $org = lc($subnets->{$start}->{org});
+			$org =~ s/[^\w\_]//g;
+			$nets{'src_' . $org } .= ' +srcip>=' . $start . ' +srcip<=' . $subnets->{$start}->{end};
+			$nets{'dst_' . $org } .= ' +dstip>=' . $start . ' +dstip<=' . $subnets->{$start}->{end};
+			$nets{$org} .= ' +srcip>=' . $start . ' +srcip<=' . $subnets->{$start}->{end} . ' +dstip>=' . $start . ' +dstip<=' . $subnets->{$start}->{end};
+			$nets{src_local} .= ' +srcip>=' . $start . ' +srcip<=' . $subnets->{$start}->{end};
+			$nets{dst_local} .= ' +dstip>=' . $start . ' +dstip<=' . $subnets->{$start}->{end};
+		}
+	}
+		
+	if ($self->user->preferences->{tree}->{saved_query} and 
+		$self->user->preferences->{tree}->{saved_query}->{$macro}){
+		return $self->user->preferences->{tree}->{saved_query}->{$macro};
+	}
+	elsif (exists $nets{$macro}){
+		return $nets{$macro};
+	}
+	else {
+		$self->log->debug('macros available: ' . Dumper($self->user->preferences->{tree}));
+		die('Invalid macro (saved search): ' . $macro);
+	}
+	
 }
 
 1;

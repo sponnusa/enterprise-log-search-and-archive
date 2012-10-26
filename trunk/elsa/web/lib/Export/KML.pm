@@ -35,7 +35,7 @@ sub BUILD {
 			 $xw->endTag('Placemark');
 		}
 		elsif ($row->{'srcip.latitude'}){
-			foreach my $dir qw(srcip dstip){
+			foreach my $dir (qw(srcip dstip)){
 				$xw->startTag('Placemark');
 				$xw->dataElement('name', $row->{$dir . '.city'} ? $row->{$dir . '.city'} : $row->{$dir . '.cc'});
 				$xw->dataElement('description', $row->{msg});

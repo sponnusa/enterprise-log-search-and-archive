@@ -560,6 +560,13 @@ YAHOO.ELSA.main = function () {
 							onclick: {
 								fn: YAHOO.ELSA.getDashboards
 							}
+						},
+						{
+							text: 'Saved Searches',
+							helptext: 'View/edit saved searches',
+							onclick: {
+								fn: YAHOO.ELSA.getSavedSearches
+							}
 						}
 					]
 				}

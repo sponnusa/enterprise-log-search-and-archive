@@ -2,6 +2,7 @@ CREATE TABLE users (
 	uid int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
 	username varchar(255) NOT NULL,
 	password varchar(255),
+	email varchar(255),
 	UNIQUE KEY (username)
 ) ENGINE=InnoDB;
 
@@ -134,3 +135,14 @@ LEFT JOIN chart_queries ON (charts.id=chart_queries.chart_id)
 JOIN users ON (dashboards.uid=users.uid)
 LEFT JOIN dashboard_auth ON (dashboards.id=dashboard_auth.dashboard_id)
 LEFT JOIN groups ON (dashboard_auth.gid=groups.gid);
+
+CREATE TABLE preferences (
+	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	uid INT UNSIGNED NOT NULL,
+	type VARCHAR(255),
+	name VARCHAR(255),
+	value TEXT,
+	UNIQUE KEY (uid, type, name),
+	FOREIGN KEY (uid) REFERENCES users (uid) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+	

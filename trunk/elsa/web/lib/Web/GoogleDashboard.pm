@@ -119,7 +119,7 @@ sub call {
 	
 	#$self->api->log->debug('dashboard args: ' . Dumper($args));
 	if (exists $args->{start}){
-		$args->{start_time} = UnixDate(ParseDate($args->{start}), '%s');
+		$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
 		$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
 	}
 	else {

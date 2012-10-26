@@ -11,9 +11,9 @@ use API;
 use API::Charts;
 use Web;
 use Web::Query;
-#use Web::Dashboard;
 use Web::GoogleDatasource;
 use Web::GoogleDashboard;
+use Web::Mobile;
 
 my $config_file = '/etc/elsa_web.conf';
 if ($ENV{ELSA_CONF}){
@@ -33,6 +33,12 @@ if (lc($api->conf->get('auth/method')) eq 'ldap' and $api->conf->get('ldap')){
 		basedn        => $api->conf->get('ldap/base'),
 		filter => '(&(objectClass=organizationalPerson)(objectClass=user)(sAMAccountName=%s))',
 		log => $api->log,
+	);
+}
+elsif ($api->conf->get('auth/method') eq 'local_ssh'){
+	require Authen::Simple::SSH;
+	$auth = Authen::Simple::SSH->new(
+		host => 'localhost'
 	);
 }
 elsif ($api->conf->get('auth/method') eq 'local'){
@@ -76,6 +82,7 @@ elsif ($api->conf->get('auth/method') eq 'local'){
 		$self->log->debug('error: ' . $@);
 		
 		my $peek = $ssh->peek(1);
+		$api->log->debug('peek: ' . $peek);
 		if ($peek =~ /denied/){
 			return 0;
 		}
@@ -191,9 +198,9 @@ builder {
 	mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
 	mount '/Query' => Web::Query->new(api => $api)->to_app;
 	mount '/datasource' => Web::GoogleDatasource->new(api => $charts_api)->to_app;
-	#mount '/dashboard' => Web::Dashboard->new(api => $api)->to_app;
 	mount '/dashboard' => Web::GoogleDashboard->new(api => $charts_api)->to_app;
 	mount '/Charts' => Web::Query->new(api => $charts_api)->to_app;
+	mount '/m' => Web::Mobile->new(api => $api)->to_app;
 	mount '/' => Web->new(api => $api)->to_app;
 };
 

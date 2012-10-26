@@ -692,6 +692,20 @@ LEFT JOIN dashboard_auth ON (dashboards.id=dashboard_auth.dashboard_id)
 LEFT JOIN groups ON (dashboard_auth.gid=groups.gid);
 	" > /dev/null 2>&1
 	
+mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "
+	CREATE TABLE IF NOT EXISTS preferences (
+	id INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	uid INT UNSIGNED NOT NULL,
+	type VARCHAR(255),
+	name VARCHAR(255),
+	value TEXT,
+	UNIQUE KEY (uid, type, name),
+	FOREIGN KEY (uid) REFERENCES users (uid) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB
+" > /dev/null 2>&1
+
+mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE users ADD COLUMN email VARCHAR(255)" > /dev/null 2>&1
+	
 	# The above can all fail for perfectly fine reasons
 	echo "Finished updating MySQL"
 	return 0

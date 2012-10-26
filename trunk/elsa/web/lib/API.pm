@@ -143,7 +143,7 @@ sub BUILD {
 			push @{ $self->system_datasources->{$datasource_type} }, $conf->{alias};
 		}
 	}
-	$self->log->debug('$self->system_datasources: ' . Dumper($self->system_datasources));
+	#$self->log->debug('$self->system_datasources: ' . Dumper($self->system_datasources));
 	
 	# Setup custom datasources
 	if ($self->conf->get('datasources')){
@@ -587,7 +587,7 @@ sub get_stats {
 		
 		my $cv = AnyEvent->condvar;
 		$cv->begin(sub { shift->send });
-		foreach my $item qw(load archive index){
+		foreach my $item (qw(load archive index)){
 			$load_stats->{$item} = {
 				data => {
 					x => [],
@@ -667,7 +667,7 @@ sub get_stats {
 	my $combined = {};
 	$self->log->debug('got stats: ' . Dumper($stats->{nodes}));
 	
-	foreach my $stat qw(load index archive){
+	foreach my $stat (qw(load index archive)){
 		$combined->{$stat} = { x => [], LogsPerSec => [], KBytesPerSec => [] };
 		foreach my $node (keys %{ $stats->{nodes} }){
 			if ($stats->{nodes}->{$node} and $stats->{nodes}->{$node}->{$stat}){ 
@@ -1102,6 +1102,7 @@ sub get_form_params {
 		additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
 		totals => $self->node_info->{totals},
 		livetail_poll_interval => $Livetail_poll_interval,
+		preferences => $user->preferences,
 	};
 	
 	# You can change the default start time displayed to web users by changing this config setting
@@ -1274,7 +1275,7 @@ sub get_all_scheduled_queries {
 sub schedule_query {
 	my ($self, $args) = @_;
 	
-	foreach my $item qw(qid days time_unit){	
+	foreach my $item (qw(qid days time_unit)){	
 		unless (defined $args->{$item}){
 			$self->_error('Invalid args, missing arg: ' . $item);
 			return;
@@ -1282,13 +1283,13 @@ sub schedule_query {
 	}
 	
 	# Make sure these params are ints
-	foreach my $item qw(qid days time_unit count){
+	foreach my $item (qw(qid days time_unit count)){
 		next unless $args->{$item};
 		$args->{$item} = sprintf('%d', $args->{$item});
 	}
 	$args->{uid} = sprintf('%d', $args->{user}->uid);
 	
-	my %standard_vars = map { $_ => 1 } qw(uid qid days time_unit count connector connector_params);
+	my %standard_vars = map { $_ => 1 } (qw(uid qid days time_unit count connector connector_params));
 	my $schedule_query_params = { params => {} };
 	foreach my $item (keys %{$args}){
 		if ($standard_vars{$item}){
@@ -1405,7 +1406,7 @@ sub update_scheduled_query {
 		return;
 	}
 	my $attr_map = {};
-	foreach my $item qw(query frequency start end connector params enabled alert_threshold){
+	foreach my $item (qw(query frequency start end connector params enabled alert_threshold)){
 		$attr_map->{$item} = $item;
 	}
 	my ($query, $sth);
@@ -1487,6 +1488,55 @@ sub _save_results {
 	return 1;
 }
 
+sub get_saved_searches {
+	my ($self, $args) = @_;
+	
+	if ($args and ref($args) ne 'HASH'){
+		$self->_error('Invalid args: ' . Dumper($args));
+		return;
+	}
+	elsif (not $args){
+		$args = {};
+	}
+	
+	my $offset = 0;
+	if ( $args->{startIndex} ){
+		$offset = sprintf('%d', $args->{startIndex});
+	}
+	my $limit = 10;
+	if ( $args->{results} ) {
+		$limit = sprintf( "%d", $args->{results} );
+	}
+	
+	my $uid = $args->{user}->uid;
+	if ($args->{uid}){
+		$uid = sprintf('%d', $args->{uid});
+	}
+	if ($uid ne $args->{user}->uid and not $args->{user}->is_admin){
+		$self->_error(q{You are not authorized to view another user's saved queries});
+		return;	
+	}
+	
+	my ($query, $sth);
+	$query = 'SELECT COUNT(*) AS totalRecords FROM preferences WHERE uid=? AND type="saved_query"';
+	$sth = $self->db->prepare($query);
+	$sth->execute($uid);
+	my $row = $sth->fetchrow_hashref;
+	my $totalRecords = $row->{totalRecords};
+	$query = 'SELECT * FROM preferences WHERE uid=? AND type="saved_query" ORDER BY id DESC LIMIT ?,?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($uid, $offset, $limit);
+	my $saved_queries = [];
+	while (my $row = $sth->fetchrow_hashref){
+		push @$saved_queries, $row;
+	}
+	$self->log->debug( "saved_queries: " . Dumper($saved_queries) );
+	return { 
+		totalRecords => $totalRecords,
+		recordsReturned => scalar @$saved_queries,
+		results => $saved_queries
+	};;
+}
 
 sub get_saved_queries {
 	my ($self, $args) = @_;
@@ -2296,7 +2346,7 @@ sub _sphinx_query {
 						{ field => 'class', value => $row->{class}, class => 'any' },
 					];
 				# Resolve column names for fields
-				foreach my $col qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5){
+				foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
 					my $value = delete $row->{$col};
 					# Swap the generic name with the specific field name for this class
 					my $field = $self->node_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
@@ -2641,7 +2691,7 @@ sub _build_query {
 	);
 	
 	# Create permissions clauses
-	foreach my $attr qw(class_id host_id program_id node_id){
+	foreach my $attr (qw(class_id host_id program_id node_id)){
 		foreach my $id (keys %{ $q->user->permissions->{$attr} }){
 			next unless $id;
 			$self->log->trace("Adding id $id to $attr based on permissions");
@@ -2711,7 +2761,7 @@ sub _build_query {
 	
 	# Ranges are tougher: First sort by field name so we can group the ranges for the same field together in an OR
 	my %ranges;
-	foreach my $boolean qw(and or not){
+	foreach my $boolean (qw(and or not)){
 		foreach my $op (sort keys %{ $q->terms->{attr_terms}->{$boolean} }){
 			next unless $op =~ /\<|\>/;
 			foreach my $field (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{$op} }){
@@ -2723,8 +2773,11 @@ sub _build_query {
 						$ranges{$boolean}->{$field}->{$attr} ||= {};
 						$ranges{$boolean}->{$field}->{$attr}->{$class_id} ||= {};
 						$ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} ||= [];
-						foreach my $value (sort { $a < $b } @{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id}->{$attr} }){
+						foreach my $value (sort { $a <=> $b } @{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id}->{$attr} }){
 							push @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} }, $value;
+							# resort in case this is added on
+							$ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} = 
+								[ sort { $a <=> $b } @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} } ];
 						}					
 					}
 				}				
@@ -2733,7 +2786,7 @@ sub _build_query {
 	}
 	
 	# Then divine which range operators go together by sorting them and dequeuing the appropriate operator until there are none left
-	foreach my $boolean qw(and or not){
+	foreach my $boolean (qw(and or not)){
 		foreach my $field (sort keys %{ $ranges{$boolean} }){
 			my @clause;
 			foreach my $attr (sort keys %{ $ranges{$boolean}->{$field} }){
@@ -2757,7 +2810,10 @@ sub _build_query {
 						}
 						unless ($max){
 							$max = 2**32;
-						}						
+						}
+						if ($max < $min){
+							die('max was less than min');
+						}
 						if ($class_id){
 							push @clause, '(class_id=? AND ' . $attr . $min_op . '? AND ' . $attr . $max_op . '?)';
 							push @{ $clauses{$boolean}->{vals} }, $class_id, $min, $max;
@@ -3000,7 +3056,7 @@ sub transform {
 		else {
 			foreach my $row ($q->results->all_results){
 				my $condensed_hash = { timestamp => UnixDate(ParseDate($row->{timestamp}), '%s') };
-				foreach my $base_col qw(id msg){
+				foreach my $base_col (qw(id msg)){
 					$condensed_hash->{$base_col} = $row->{$base_col};
 				}
 				foreach my $field_hash (@{ $row->{_fields} }){
@@ -4037,7 +4093,7 @@ sub _archive_query {
 						{ field => 'class', value => $row->{class}, class => 'any' },
 					];
 				# Resolve column names for fields
-				foreach my $col qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5){
+				foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
 					my $value = delete $row->{$col};
 					# Swap the generic name with the specific field name for this class
 					my $field = $self->node_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
@@ -4236,7 +4292,7 @@ sub _get_livetail_results {
 					{ field => 'class', value => $row->{class}, class => 'any' },
 				];
 			# Resolve column names for fields
-			foreach my $col qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5){
+			foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
 				my $value = delete $row->{$col};
 				# Swap the generic name with the specific field name for this class
 				my $field = $self->node_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
@@ -4268,7 +4324,7 @@ sub _build_livetail_query {
 	);
 	
 	# Create permissions clauses
-	foreach my $attr qw(class_id host_id program_id node_id){
+	foreach my $attr (qw(class_id host_id program_id node_id)){
 		# Get field name
 		my $line_pos;
 		foreach my $idx (keys %{ $Fields::Field_order_to_attr }){
@@ -4344,7 +4400,7 @@ sub _build_livetail_query {
 	
 	# Ranges are tougher: First sort by field name so we can group the ranges for the same field together in an OR
 	my %ranges;
-	foreach my $boolean qw(and or not){
+	foreach my $boolean (qw(and or not)){
 		foreach my $op (sort keys %{ $q->terms->{attr_terms}->{$boolean} }){
 			next unless $op =~ /\<|\>/;
 			foreach my $field (sort keys %{ $q->terms->{attr_terms}->{$boolean}->{$op} }){
@@ -4356,8 +4412,11 @@ sub _build_livetail_query {
 						$ranges{$boolean}->{$field}->{$attr} ||= {};
 						$ranges{$boolean}->{$field}->{$attr}->{$class_id} ||= {};
 						$ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} ||= [];
-						foreach my $value (sort { $a < $b } @{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id}->{$attr} }){
+						foreach my $value (sort { $a <=> $b } @{ $q->terms->{attr_terms}->{$boolean}->{$op}->{$field}->{$class_id}->{$attr} }){
 							push @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} }, $value;
+							# resort in case this is added on
+							$ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} = 
+								[ sort { $a <=> $b } @{ $ranges{$boolean}->{$field}->{$attr}->{$class_id}->{$op} } ];
 						}					
 					}
 				}				
@@ -4366,7 +4425,7 @@ sub _build_livetail_query {
 	}
 	
 	# Then divine which range operators go together by sorting them and dequeuing the appropriate operator until there are none left
-	foreach my $boolean qw(and or not){
+	foreach my $boolean (qw(and or not)){
 		foreach my $field (sort keys %{ $ranges{$boolean} }){
 			my @clause;
 			foreach my $attr (sort keys %{ $ranges{$boolean}->{$field} }){
@@ -4551,6 +4610,48 @@ sub get_livetails {
 		push @{ $ret->{results} }, $row;
 	}
 	return $ret;
+}
+
+sub preference {
+	my ($self, $args) = @_;
+	
+	die('No user') unless $args->{user};
+	
+	my ($query, $sth);
+	
+	# Lower case these vars
+	for my $var (qw(type name value)){
+		if (exists $args->{$var}){
+			$args->{$var} = lc($args->{$var});
+		}
+	}
+	
+	if ($args->{action} eq 'add'){
+		$query = 'INSERT INTO preferences (uid, type, name, value) VALUES (?,?,?,?)';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{user}->uid, $args->{type}, $args->{name}, $args->{value});
+	}
+	elsif ($args->{action} eq 'remove'){
+		$query = 'DELETE FROM preferences WHERE uid=? AND id=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{user}->uid, $args->{id});
+	}
+	elsif ($args->{action} eq 'update'){
+		die('Need col/val') unless $args->{col} and defined $args->{val};
+		if ($args->{col} eq 'name'){
+			$query = 'UPDATE preferences SET name=? WHERE id=? AND uid=?';
+		}
+		elsif ($args->{col} eq 'value'){
+			$query = 'UPDATE preferences SET value=? WHERE id=? AND uid=?';
+		}	
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{val}, $args->{id}, $args->{user}->uid);
+	}
+	else {
+		die('Invalid action');
+	}
+	
+	return { ok => $sth->rows };
 }
 
 __PACKAGE__->meta->make_immutable;
