@@ -593,7 +593,7 @@ sub _parse_query {
 			}
 		}
 	}
-	
+			
 	# Determine if there are any other search fields.  If there are, then use host as a filter.
 	$self->log->debug('field_terms: ' . Dumper($self->terms->{field_terms}));
 	$self->log->debug('any_field_terms: ' . Dumper($self->terms->{any_field_terms}));
@@ -773,30 +773,33 @@ sub _parse_query_term {
 				next;
 			}
 			
+			# Make field lowercase
+			$term_hash->{field} = lc($term_hash->{field});
+			
 			# Escape any digit-dash-word combos (except for host or program)
 			#$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
 						
-			if (lc($term_hash->{field}) eq 'start'){
+			if ($term_hash->{field} eq 'start'){
 				# special case for start/end
 				$self->start(UnixDate($term_hash->{value}, "%s"));
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'end'){
+			elsif ($term_hash->{field} eq 'end'){
 				# special case for start/end
 				$self->end(UnixDate($term_hash->{value}, "%s"));
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'limit'){
+			elsif ($term_hash->{field} eq 'limit'){
 				# special case for limit
 				$self->limit(sprintf("%d", $term_hash->{value}));
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'offset'){
+			elsif ($term_hash->{field} eq 'offset'){
 				# special case for offset
 				$self->offset(sprintf("%d", $term_hash->{value}));
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'class'){
+			elsif ($term_hash->{field} eq 'class'){
 				# special case for class
 				my $class;
 				$self->log->trace('classes: ' . Dumper($self->node_info->{classes}));
@@ -817,7 +820,7 @@ sub _parse_query_term {
 				$self->log->debug("Set operator $effective_operator for given class " . $term_hash->{value});		
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'groupby'){
+			elsif ($term_hash->{field} eq 'groupby'){
 				my $field_infos = $self->get_field($term_hash->{value});
 				$self->log->trace('$field_infos ' . Dumper($field_infos));
 				if ($field_infos or $term_hash->{value} eq 'node'){
@@ -829,7 +832,7 @@ sub _parse_query_term {
 				}
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'node'){
+			elsif ($term_hash->{field} eq 'node'){
 				if ($term_hash->{value} =~ /^[\w\.]+$/){
 					if ($effective_operator eq '-'){
 						$self->nodes->{excluded}->{ $term_hash->{value} } = 1;
@@ -840,23 +843,23 @@ sub _parse_query_term {
 				}
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'cutoff'){
+			elsif ($term_hash->{field} eq 'cutoff'){
 				$self->limit($self->cutoff(sprintf("%d", $term_hash->{value})));
 				$self->log->trace("Set cutoff " . $self->cutoff);
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'datasource'){
+			elsif ($term_hash->{field} eq 'datasource'){
 				delete $self->datasources->{sphinx}; # no longer using our normal datasource
 				$self->datasources->{ $term_hash->{value} } = 1;
 				$self->log->trace("Set datasources " . Dumper($self->datasources));
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'nobatch'){
+			elsif ($term_hash->{field} eq 'nobatch'){
 				$self->meta_params->{nobatch} = 1;
 				$self->log->trace("Set batch override.");
 				next;
 			}
-			elsif (lc($term_hash->{field}) eq 'livetail'){
+			elsif ($term_hash->{field} eq 'livetail'){
 				$self->meta_params->{livetail} = 1;
 				$self->livetail(1);
 				$self->archive(1);
@@ -864,6 +867,7 @@ sub _parse_query_term {
 				next;
 			}
 			
+			my $orig_value = $term_hash->{value};
 			if ($self->livetail){
 				# Escape any slashes since this will become a regex
 				$term_hash->{value} =~ s/\//\\\//g;
@@ -896,10 +900,18 @@ sub _parse_query_term {
 				if($term_hash->{quote}){
 					$term_hash->{value} = $self->normalize_quoted_value($term_hash->{value});
 				}
+				
+				if ($term_hash->{value} =~ /^"?\s+"?$/){
+					my $err = 'Term ' . $orig_value . ' was comprised of only non-indexed chars and removed';
+					$self->add_warning($err);
+					$self->log->warn($err);
+					next;
+				}
 			}
+			
 			$self->log->debug('term_hash value now: ' . $term_hash->{value});
 			
-			
+						
 			my $boolean = 'or';
 				
 			# Reverse if necessary
