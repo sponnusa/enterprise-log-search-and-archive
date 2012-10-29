@@ -537,3 +537,22 @@ To start a livetail, simply choose the "Livetail" option from the "Index" button
 Livetails will automatically be cancelled when you close the browser window.  If the browser crashes and the livetail continues, it will be replaced by any livetail you start again, or will timeout after an hour.  An administrator can cancel all livetails by choosing "Cancel Livetails" from the "Admin" menu.
 
 Livetail results are temporary and cannot be saved.  You can copy and paste data from the window, or run a normal ELSA search to save the data.
+=Saved Searches (Macros)=
+Any completed search can be saved by clicking the "Results" button and choosing "Save Search."  This will bring up a dialog box asking for a name to save the search as.  The name must be alphanumeric plus underscore.  You can view and edit all saved searches using the "Saved Searches" menu option in the "ELSA" menu at in the upper-left-hand part of the menu bar at the top of the ELSA page.
+==Macros==
+Any saved search can be invoked inside of another query by using the dollar-sign-name convention.  For example, if there is a saved search named "trojan" which was saved with a query like this: {{{ +sig_msg:trojan }}}, then you can invoke that query within any other query like this: {{{srcip:1.1.1.1 $trojan}}}.  The query will be interpolated and fully evaluate to {{{srcip:1.1.1.1 +sig_msg:trojan}}}.
+==Built-in Macros==
+The system will auto-populate some network-based macros for convenience if the whois transform configuration has been entered.  ELSA ships with default values of RFC1918 IP space:
+{{{
+"whois": {
+  "known_subnets": {
+    "10.0.0.0": {
+      "end": "10.255.255.255",
+      "org": "MyOrg"
+  },
+}}}
+Edit the "known_subnets" stanza to add your local org-specific values.  ELSA will use these values to create macros for srcip and dstip such that the macros {{{ $myorg}}}, {{{$src_myorg}}}, and {{{$dst_myorg}}} will be available automatically and will resolve to {{{srcip>10.0.0.0 srcip<10.255.255.255 dstip>10.0.0.0 dstip<10.255.255.255}}} for {{{$myorg}}}, and the src and dst versions for the {{{$src_myorg}}} and {{{$dst_myorg}}}, respectively.
+
+Having these macros available can greatly aid searching for IDS events, HTTP events, among many others.  For instance, you can easily find HTTP POST's to your org by searching {{{+method:POST +$dst_myorg}}}.
+
+These built-in macros will be overridden by user-created macros of the same name.
