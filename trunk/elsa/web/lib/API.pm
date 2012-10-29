@@ -1807,6 +1807,9 @@ sub query {
 		}
 	}
 	
+	foreach my $warning (@{ $q->warnings }){
+		$self->add_warning($warning);
+	}
 
 	my ($query, $sth);
 	
