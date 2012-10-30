@@ -289,7 +289,7 @@ sub normalize_value {
 sub get_field {
 	my $self = shift;
 	my $raw_field = shift;
-		
+			
 	# Account for FQDN fields which come with the class name
 	my ($class, $field) = split(/\./, $raw_field);
 	
@@ -414,12 +414,14 @@ sub resolve_field_permissions {
 										
 		# Set attributes for searching
 		foreach my $class_id (keys %{ $field_infos }){
-			my $attr_name = $Field_order_to_attr->{ $field_infos->{$class_id}->{field_order } };
-			my $field_name = $Field_order_to_field->{ $field_infos->{$class_id}->{field_order } };
+			my $attr_name = $Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} };
+			my $field_name = $Field_order_to_field->{ $field_infos->{$class_id}->{field_order} };
 			my $attr_value = $value;
-			if ($field_infos->{$class_id}->{field_type} eq 'string'){
-				$attr_value = crc32($value);
-			}
+			$attr_value = $self->normalize_value($class_id, $attr_value, $field_infos->{$class_id}->{field_order});			
+#			if ($field_infos->{$class_id}->{field_type} eq 'string'){
+#				$attr_value = crc32($value);
+#			}
+			
 			$permissions{$class_id} ||= [];
 			push @{ $permissions{$class_id} }, 
 				{ name => $field, attr => [ $attr_name, $attr_value ], field => [ $field_name, $value ] };
