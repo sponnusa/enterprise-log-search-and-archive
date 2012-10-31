@@ -2793,7 +2793,7 @@ YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 	oInputEl.id = sConnectorId;
 	oInputEl.setAttribute('type', 'hidden');
 	oInputEl.setAttribute('name', 'connector');
-	oInputEl.setAttribute('value', 'Email');
+	oInputEl.setAttribute('value', 'Email()');
 	oFormEl.appendChild(oInputEl);
 	
 	oPanel.panel.show();
