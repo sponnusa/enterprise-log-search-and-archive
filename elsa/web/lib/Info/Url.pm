@@ -2,7 +2,6 @@ package Info::Url;
 use Moose;
 use Data::Dumper;
 extends 'Info';
-has 'plugins' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [qw(getPcap)] });
 
 sub BUILD {
 	my $self = shift;

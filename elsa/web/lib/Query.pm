@@ -19,12 +19,10 @@ our $Default_limit = 100;
 our $Implicit_plus = 0;
 
 # Required
-has 'query_string' => (is => 'rw', isa => 'Str', required => 1);
-has 'meta_params' => (is => 'rw', isa => 'HashRef', required => 1);
 has 'user' => (is => 'rw', isa => 'User', required => 1);
-has 'node_info' => (is => 'rw', isa => 'HashRef', required => 1);
 
 # Required with defaults
+has 'meta_params' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'type' => (is => 'rw', isa => 'Str', required => 1, default => 'index');
 has 'results' => (is => 'rw', isa => 'Results', required => 1);
 has 'start_time' => (is => 'ro', isa => 'Num', required => 1, default => sub { Time::HiRes::time() });
@@ -61,12 +59,14 @@ has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', require
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 
 # Optional
+has 'query_string' => (is => 'rw', isa => 'Str');
 has 'qid' => (is => 'rw', isa => 'Int');
 has 'schedule_id' => (is => 'rw', isa => 'Int');
 has 'raw_query' => (is => 'rw', isa => 'Str');
 has 'comments' => (is => 'rw', isa => 'Str');
 has 'time_taken' => (is => 'rw', isa => 'Num', trigger => \&_set_time_taken);
 has 'batch_message' => (is => 'rw', isa => 'Str');
+has 'node_info' => (is => 'rw', isa => 'HashRef');
 
 sub BUILDARGS {
 	my $class = shift;
@@ -95,6 +95,11 @@ sub BUILDARGS {
 		$params{timeout} = sprintf("%d", ($params{conf}->get('query_timeout') * 1000));
 	}
 	
+	unless ($params{user}){
+		$params{user} = new User(username => 'system', conf => $params{conf});
+		$params{log}->info('Defaulting user to system');
+	}
+		
 	return \%params;
 }
  
@@ -118,6 +123,15 @@ sub BUILD {
 		$self->system(1);
 	}
 	
+	unless (defined $self->query_string){
+		# We may just be constructing this query as scaffolding for other things
+		return $self;
+	}
+	
+	unless ($self->node_info){
+		$self->node_info($self->_get_node_info($self->user));
+	}	
+		
 	# Set known values here
 	if ($self->meta_params->{archive}){
 		$self->archive(1);

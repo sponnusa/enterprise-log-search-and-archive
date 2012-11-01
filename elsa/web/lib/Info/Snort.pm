@@ -5,7 +5,6 @@ extends 'Info';
 has 'sid' => (is => 'rw', isa => 'Int', required => 1);
 has 'gid' => (is => 'rw', isa => 'Int');
 has 'rev' => (is => 'rw', isa => 'Int');
-has 'plugins' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [qw(getPcap)] });
 
 sub BUILDARGS {
 	my ($class, %args) = @_;

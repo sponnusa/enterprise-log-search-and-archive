@@ -251,7 +251,8 @@ sub normalize_value {
 		}
 	}
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{'IPv4'}
-		and $self->node_info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}){
+		and $self->node_info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
+		and $value =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 		return unpack('N', inet_aton($value));
 	}
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{PROTO} 
@@ -417,7 +418,7 @@ sub resolve_field_permissions {
 			my $attr_name = $Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} };
 			my $field_name = $Field_order_to_field->{ $field_infos->{$class_id}->{field_order} };
 			my $attr_value = $value;
-			$attr_value = $self->normalize_value($class_id, $attr_value, $field_infos->{$class_id}->{field_order});			
+			$attr_value = $self->normalize_value($class_id, $attr_value, $field_infos->{$class_id}->{field_order});
 #			if ($field_infos->{$class_id}->{field_type} eq 'string'){
 #				$attr_value = crc32($value);
 #			}

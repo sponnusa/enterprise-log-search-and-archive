@@ -24,6 +24,16 @@ has 'cache_stats' => (is => 'rw', isa => 'HashRef', required => 1, default => su
 sub BUILD {
 	my $self = shift;
 	
+	my $keys = {};
+	if (scalar @{ $self->args }){
+		foreach my $arg (@{ $self->args }){
+			$keys->{$arg} = 1;
+		}
+	}
+	else {
+		$keys = { srcip => 1, dstip => 1, site => 1 };
+	}
+	
 	foreach my $datum (@{ $self->data }){
 		$datum->{transforms}->{$Name} = {};
 		
@@ -31,7 +41,7 @@ sub BUILD {
 		$self->cv->begin;
 		
 		foreach my $key (keys %{ $datum }){
-			if ($key =~ /srcip/ or $key =~ /dstip/){
+			if ($keys->{$key}){
 				$datum->{transforms}->{$Name}->{$key} = {};
 				$self->_lookup($datum, $key, $datum->{$key});
 			}

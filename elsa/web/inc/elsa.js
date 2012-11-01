@@ -4426,6 +4426,22 @@ YAHOO.ELSA.getSavedResult = function(p_sType, p_aArgs, p_iQid){
 	var oSavedResults = new YAHOO.ELSA.Results.Tabbed.Saved(YAHOO.ELSA.tabView, p_iQid);
 };
 
+YAHOO.ELSA.blockIp = function(p_sType, p_aArgs, p_oRecord){
+	logger.log('p_oRecord', p_oRecord);
+	
+	if (!p_oRecord){
+		YAHOO.ELSA.Error('Need a record selected to get pcap for.');
+		return;
+	}
+	
+	if (!p_oRecord.getData()._remote_ip){
+		YAHOO.ELSA.Error('No remote IP in record');
+		return;
+	}
+	
+	var oWindow = window.open(YAHOO.ELSA.blockUrl + '/' + p_oRecord.getData()._remote_ip + '?data=' + encodeURIComponent(YAHOO.lang.JSON.stringify(p_oRecord.getData())));
+}
+
 YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	logger.log('p_oRecord', p_oRecord);
 	
@@ -4656,6 +4672,8 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 	oTr.appendChild(oTd);
 	
 	YAHOO.ELSA.logInfoDialog.body.appendChild(oTable);
+
+	p_oRecord.setData('_remote_ip', p_oData.remote_ip);
 
 	//	Create an array of YAHOO.widget.MenuItem configuration properties
 	var aPluginMenuSources = [ ];
