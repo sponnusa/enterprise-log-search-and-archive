@@ -37,6 +37,12 @@
 .yui-skin-sam .yui-log-container { position:absolute;top:1em;right:1em; }
 
 /* buttons */
+.yui-skin-sam button {
+	font-style: normal;
+	display: block;
+	text-align: left;
+	white-space: nowrap;
+}
 .yui-skin-sam .yui-log input {
     margin:0;padding:0;
     font-family:arial;
