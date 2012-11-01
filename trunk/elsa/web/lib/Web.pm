@@ -9,6 +9,7 @@ use URI::Escape qw(uri_unescape);
 use Encode;
 use MIME::Base64;
 use YUI;
+use Query;
 
 use API;
 
@@ -175,6 +176,11 @@ EOHTML
 		# Set the URL for getPcap if applicable
 		if ($self->api->conf->get('pcap_url')){
 			$HTML .= 'YAHOO.ELSA.pcapUrl = "' . $self->api->conf->get('pcap_url') . '"' . "\n";
+		}
+		
+		# Set the URL for Block if applicable
+		if ($self->api->conf->get('block_url')){
+			$HTML .= 'YAHOO.ELSA.blockUrl = "' . $self->api->conf->get('block_url') . '"' . "\n";
 		}
 	}
 	
@@ -384,6 +390,9 @@ sub transform {
 			$self->api->log->trace('args: ' . Dumper($args));
 			$args->{transforms} = $self->api->json->decode(uri_unescape($args->{transforms}));
 			$self->api->log->trace('transforms: ' . Dumper($args->{transforms}));
+			foreach my $transform (@{ $args->{transforms} }){
+				die('subsearch not allowed') if $transform eq 'subsearch';
+			}
 			$args->{results} = $self->api->json->decode(uri_unescape(delete $args->{data}));
 			$self->api->log->debug( "Decoded $args as : " . Dumper($args) );
 		};
@@ -392,10 +401,11 @@ sub transform {
 			return { error => 'Unable to build results object from args' };
 		}
 		
-		
-		
-		$self->api->transform($args);
-		my $results = $args->{results};
+		my $res = new Results(results => $args->{results}->{results});
+		$self->api->log->debug('res: ' . Dumper($res));
+		my $q = new Query(conf => $self->api->conf, results => $res, transforms => $args->{transforms});
+		$self->api->transform($q);
+		my $results = $q->results->results;
 		
 		$self->api->log->debug( "Got results: " . Dumper($results) );
 		

@@ -489,7 +489,7 @@ sub _get_permissions {
 		}
 	}
 		
-	$self->log->debug('permissions: ' . Dumper(\%permissions));
+	#$self->log->debug('permissions: ' . Dumper(\%permissions));
 	
 	return \%permissions;
 }
