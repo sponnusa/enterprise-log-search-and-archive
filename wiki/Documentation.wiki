@@ -506,6 +506,7 @@ This is the Sphinx searchd daemon log and will contain info on index rotation.
 ==Common Troubleshooting Symptoms==
 || *Symptom* || *Resolution* ||
 || Chronic warnings in the web UI for "couldn't connect to MySQL" || This can be caused if a web frontend has issues and the MySQL server decides it no longer wishes to speak to the server because of too many dropped connections.  To fix it, you need to log into the node referred to in the message and issue: {{{ mysqladmin flush-hosts }}} which will cause the MySQL daemon to once again accept connections from the "flaky" frontend. ||
+|| "Query Failed" red error message || This is a low-level error indicating that there is a connectivity or permissions problem between the web server and the MySQL/Sphinx daemons on the node.  It will also show up in the node.log as "No nodes available."  You can verify database connectivity by manually running: {{{mysql -h<node IP> -uelsa -p syslog}}} and {{{mysql -h<node IP> -P9306}}}.  If both work, then the problem may be something more specific with either MySQL or Sphinx.  To troubleshoot that, run {{{tcpdump -i eth0 -n -s0 -X "port 3306 or port 9306"}}} and watch the traffic to see what's occurring when you run a query. ||
 
 =Datasources=
 ELSA can be configured to query external datasources with the same framework as native ELSA data.  Datasources are defined by plugins.  The only plugin currently available is for databases.  Database datasources are added under the "datasource" configuration section, like this:
