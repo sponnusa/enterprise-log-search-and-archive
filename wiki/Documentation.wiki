@@ -70,6 +70,9 @@ unzip yui_2.9.0.zip
 }}}
 Edit the elsa_web.conf file and set yui/local to be "inc" and comment out "version" and "modifier."
 
+===Caveats for Local File Hosting===
+If Internet access is not available, some plugins will not function correctly.  In particular the whois plugin uses an external web service to do lookups, and these will not be possible without Internet connectivity.  In addition, dashboards will not work if the client's browser does not have connectivity to Google to pull down their graphing library.
+
 =Web Server=
 
 The web frontend is typically served with Apache, but the Plack Perl module allows for any web server to be used, including a standalone server called Starman which can be downloaded from CPAN.  Any implementation will still have all authentication features available because they are implemented in the underlying Perl.
