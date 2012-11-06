@@ -13,8 +13,9 @@ CREATE TABLE groups (
 ) ENGINE=InnoDB;
 
 CREATE TABLE users_groups_map (
-	uid int UNSIGNED NOT NULL PRIMARY KEY,
+	uid int UNSIGNED NOT NULL,
 	gid int UNSIGNED NOT NULL,
+	PRIMARY KEY (uid, gid),
 	FOREIGN KEY (uid) REFERENCES users (uid)  ON UPDATE CASCADE,
 	FOREIGN KEY (gid) REFERENCES groups (gid)  ON UPDATE CASCADE
 ) ENGINE=InnoDB;
