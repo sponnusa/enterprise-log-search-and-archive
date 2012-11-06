@@ -9,6 +9,7 @@ use URL::Encode qw(url_encode);
 use Time::HiRes;
 use Search::QueryParser::SQL;
 use Date::Manip;
+use Socket;
 extends 'Datasource';
 with 'Fields';
 
@@ -43,6 +44,10 @@ sub BUILD {
 				$row->{fuzzy_not_op} = 'NOT LIKE';
 			}
 		}
+		elsif ($row->{type} eq 'int' or $row->{type} eq 'ip_int'){
+			$row->{fuzzy_op} = '=';
+			$row->{fuzzy_not_op} = '!=';
+		}
 		else {
 			$row->{fuzzy_not_op} = '<=';
 		}
@@ -53,6 +58,13 @@ sub BUILD {
 			}
 			#$row->{name} .= ' AS ' . $row->{alias};
 			$col_name = $row->{alias};
+		}
+		
+		if ($row->{type} and $row->{type} eq 'ip_int'){
+			$row->{callback} = sub {
+				my ($col, $op, $val) = @_;
+				return "$col $op " . unpack('N*', inet_aton($val));
+			};
 		}
 		$cols{$col_name} = $row;
 	}
@@ -291,7 +303,7 @@ sub _query {
 	}
 	else {
 		foreach my $row (@rows){
-			my $ret = { timestamp => $row->{timestamp}, class => 'NONE', host => '0.0.0.0', 'program' => 'NA' };
+			my $ret = { timestamp => $row->{timestamp}, class => 'NONE', host => '0.0.0.0', 'program' => 'NA', datasource => $self->name };
 			$ret->{_fields} = [
 				{ field => 'host', value => '0.0.0.0', class => 'any' },
 				{ field => 'program', value => 'NA', class => 'any' },
