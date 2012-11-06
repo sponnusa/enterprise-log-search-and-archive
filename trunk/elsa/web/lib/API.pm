@@ -58,8 +58,9 @@ has 'node_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', r
 	_system_event_rates => { 
 		alias => '_node_stats_%d',
 		dsn => 'dbi:mysql:host=%s;port=%d;database=%s',
-		query_template => 'SELECT %s FROM (SELECT INET_NTOA(host_id) AS host, timestamp, class, count FROM host_stats t1 JOIN classes t2 ON (t1.class_id=t2.id) WHERE %s) derived %s ORDER BY %s LIMIT %d,%d',
+		query_template => 'SELECT %s FROM (SELECT host_id, INET_NTOA(host_id) AS host, timestamp, class, count FROM host_stats t1 JOIN classes t2 ON (t1.class_id=t2.id) WHERE %s) derived %s ORDER BY %s LIMIT %d,%d',
 		fields => [
+			{ name => 'host_id', type => 'ip_int' },
 			{ name => 'host' },
 			{ name => 'timestamp', type => 'timestamp', alias => 'timestamp' },
 			{ name => 'class' },
@@ -761,65 +762,72 @@ sub get_form_params {
 	};
 	if ($@){
 		$self->add_warning($@);
+		$self->log->error($@);
 		return;
 	}
 	#$self->log->trace('got node_info: ' . Dumper($self->node_info));
+	my $form_params;
 	
-	my $form_params = {
-		start => $self->node_info->{indexes_min} ? epoch2iso($self->node_info->{indexes_min}) : epoch2iso($self->node_info->{archive_min}),
-		start_int => $self->node_info->{indexes_min} ? $self->node_info->{indexes_min} : $self->node_info->{archive_min},
-		display_start_int => $self->node_info->{indexes_min} ? $self->node_info->{indexes_min} : $self->node_info->{archive_min},
-		archive_start => epoch2iso($self->node_info->{archive_min}),
-		archive_start_int => $self->node_info->{archive_min},
-		archive_display_start_int => $self->node_info->{archive_min},
-		end => $self->node_info->{indexes_max} ? epoch2iso($self->node_info->{indexes_max}) : epoch2iso($self->node_info->{archive_max}),
-		end_int => $self->node_info->{indexes_max} ? $self->node_info->{indexes_max} : $self->node_info->{archive_max},
-		archive_end => epoch2iso($self->node_info->{archive_max}),
-		archive_end_int => $self->node_info->{archive_max},
-		classes => $self->node_info->{classes},
-		classes_by_id => $self->node_info->{classes_by_id},
-		fields => $self->node_info->{fields},
-		nodes => [ keys %{ $self->node_info->{nodes} } ],
-		groups => $user->groups,
-		additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
-		totals => $self->node_info->{totals},
-		livetail_poll_interval => $Livetail_poll_interval,
-		preferences => $user->preferences,
-	};
-	
-	# You can change the default start time displayed to web users by changing this config setting
-	if ($self->conf->get('default_start_time_offset')){
-		$form_params->{display_start_int} = ($form_params->{end_int} - (86400 * $self->conf->get('default_start_time_offset')));
-	}
-	
-	
-	if ($user->username ne 'system'){
-		# this is for a user, restrict what gets sent back
-		unless ($user->permissions->{class_id}->{0}){
-			foreach my $class_id (keys %{ $form_params->{classes} }){
-				unless ($user->permissions->{class_id}->{$class_id}){
-					delete $form_params->{classes}->{$class_id};
-				}
-			}
+	eval {			
+		$form_params = {
+			start => $self->node_info->{indexes_min} ? epoch2iso($self->node_info->{indexes_min}) : epoch2iso($self->node_info->{archive_min}),
+			start_int => $self->node_info->{indexes_min} ? $self->node_info->{indexes_min} : $self->node_info->{archive_min},
+			display_start_int => $self->node_info->{indexes_min} ? $self->node_info->{indexes_min} : $self->node_info->{archive_min},
+			archive_start => epoch2iso($self->node_info->{archive_min}),
+			archive_start_int => $self->node_info->{archive_min},
+			archive_display_start_int => $self->node_info->{archive_min},
+			end => $self->node_info->{indexes_max} ? epoch2iso($self->node_info->{indexes_max}) : epoch2iso($self->node_info->{archive_max}),
+			end_int => $self->node_info->{indexes_max} ? $self->node_info->{indexes_max} : $self->node_info->{archive_max},
+			archive_end => epoch2iso($self->node_info->{archive_max}),
+			archive_end_int => $self->node_info->{archive_max},
+			classes => $self->node_info->{classes},
+			classes_by_id => $self->node_info->{classes_by_id},
+			fields => $self->node_info->{fields},
+			nodes => [ keys %{ $self->node_info->{nodes} } ],
+			groups => $user->groups,
+			additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
+			totals => $self->node_info->{totals},
+			livetail_poll_interval => $Livetail_poll_interval,
+			preferences => $user->preferences,
+		};
 		
-			my $possible_fields = [ @{ $form_params->{fields} } ];
-			$form_params->{fields} = [];
-			for (my $i = 0; $i < scalar @$possible_fields; $i++){
-				my $field_hash = $possible_fields->[$i];
-				my $class_id = $field_hash->{class_id};
-				if ($user->permissions->{class_id}->{$class_id}){
-					push @{ $form_params->{fields} }, $field_hash;
+		# You can change the default start time displayed to web users by changing this config setting
+		if ($self->conf->get('default_start_time_offset')){
+			$form_params->{display_start_int} = ($form_params->{end_int} - (86400 * $self->conf->get('default_start_time_offset')));
+		}
+		
+		
+		if ($user->username ne 'system'){
+			# this is for a user, restrict what gets sent back
+			unless ($user->permissions->{class_id}->{0}){
+				foreach my $class_id (keys %{ $form_params->{classes} }){
+					unless ($user->permissions->{class_id}->{$class_id}){
+						delete $form_params->{classes}->{$class_id};
+					}
+				}
+			
+				my $possible_fields = [ @{ $form_params->{fields} } ];
+				$form_params->{fields} = [];
+				for (my $i = 0; $i < scalar @$possible_fields; $i++){
+					my $field_hash = $possible_fields->[$i];
+					my $class_id = $field_hash->{class_id};
+					if ($user->permissions->{class_id}->{$class_id}){
+						push @{ $form_params->{fields} }, $field_hash;
+					}
 				}
 			}
 		}
+		
+		# Tack on the "ALL" and "NONE" special types
+		unshift @{$form_params->{fields}}, 
+			{'value' => 'ALL', 'text' => 'ALL', 'class_id' => 0 }, 
+			{'value' => 'NONE', 'text' => 'NONE', 'class_id' => 1 };
+		
+		$form_params->{schedule_actions} = $self->_get_schedule_actions($user);
+	};
+	if ($@){
+		$self->log->error('Error getting form params: ' . $@);
 	}
-	
-	# Tack on the "ALL" and "NONE" special types
-	unshift @{$form_params->{fields}}, 
-		{'value' => 'ALL', 'text' => 'ALL', 'class_id' => 0 }, 
-		{'value' => 'NONE', 'text' => 'NONE', 'class_id' => 1 };
-	
-	$form_params->{schedule_actions} = $self->_get_schedule_actions($user);
 		
 	return $form_params;
 }
@@ -2051,6 +2059,7 @@ sub _sphinx_query {
 			$total_records += $ret->{$node}->{meta}->{total_found};
 			foreach my $id (sort { $a <=> $b } keys %{ $ret->{$node}->{results} }){
 				my $row = $ret->{$node}->{results}->{$id};
+				$row->{datasource} = 'Sphinx';
 				$row->{_fields} = [
 						{ field => 'host', value => $row->{host}, class => 'any' },
 						{ field => 'program', value => $row->{program}, class => 'any' },
@@ -2281,7 +2290,17 @@ sub _build_sphinx_match_str {
 	}
 	
 	my @class_match_strs;
-	foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
+	
+	# Merge distinct and partially_permitted
+	my %classes;
+	foreach my $class_id (keys %{ $q->classes->{distinct} }){
+		$classes{$class_id} = 1;
+	}
+	foreach my $class_id (keys %{ $q->classes->{partially_permitted} }){
+		$classes{$class_id} = 1;
+	}
+	#foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
+	foreach my $class_id (sort keys %classes){
 		(%and, %or, %not) = ();
 		my $class_match_str = '';
 		# First, the ANDs
@@ -3171,7 +3190,7 @@ sub send_to {
 			$q = new Query(conf => $self->conf, user => $args->{user}, query_string => $args->{query}->{query_string}, 
 				node_info => $self->node_info, connectors => $args->{connectors}, 
 				meta_params => $args->{query}->{query_meta_params}, qid => $args->{qid} ? $args->{qid} : 0);
-			$q->results(new Results(results => $args->{results}));
+			$q->results(new Results(results => ( ref($args->{results}) eq 'ARRAY' ? $args->{results} : $args->{results}->{results})));
 		}
 		else {
 			$self->_error('Invalid args, no Query, args->{query}');
@@ -3800,6 +3819,7 @@ sub _archive_query {
 		NODE_LOOP: foreach my $node (keys %$ret){
 			#$total_records += scalar @{ $ret->{$node}->{rows} };
 			foreach my $row (@{ $ret->{$node}->{rows} }){
+				$row->{datasource} = 'Archive';
 				$row->{_fields} = [
 						{ field => 'host', value => $row->{host}, class => 'any' },
 						{ field => 'program', value => $row->{program}, class => 'any' },
@@ -3999,6 +4019,7 @@ sub _get_livetail_results {
 	my @tmp; # we need to sort chronologically
 	NODE_LOOP: foreach my $node (keys %$ret){
 		foreach my $row (@{ $ret->{$node} }){
+			$row->{datasource} = 'Livetail';
 			$row->{_fields} = [
 					{ field => 'host', value => $row->{host}, class => 'any' },
 					{ field => 'program', value => $row->{program}, class => 'any' },
