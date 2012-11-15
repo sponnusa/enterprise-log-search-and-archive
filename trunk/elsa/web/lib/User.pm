@@ -221,7 +221,7 @@ sub _init_ldap {
 	my $attr_map    = $self->conf->get('ldap/attr_map');
 	my $extra_attrs = $self->conf->get('ldap/extra_attrs');
 	ATTR_LOOP: foreach my $attr ( $entry->attributes() ) {
-		$self->log->debug('checking attr: ' . $attr . ', val: ' . $entry->get_value($attr));
+		$self->log->debug('checking attr: ' . $attr . ', val: ' . join(', ', $entry->get_value($attr)));
 		if ($attr eq $attr_map->{email}){
 			$self->email($entry->get_value($attr));
 		}
@@ -244,6 +244,8 @@ sub _init_ldap {
 			}
 		}
 	}
+	
+	$self->_add_groups();
 }
 
 sub _init_kerberos {
@@ -398,6 +400,30 @@ sub _create_user {
 	return 1;
 }
 
+sub _add_groups {
+	my $self = shift;
+	my ( $query, $sth );
+	return 0 unless scalar @{ $self->groups };
+	
+	$query = 'SELECT groupname FROM groups WHERE ' . join(' OR ', map { 'groupname=?' } @{ $self->groups });
+	$sth = $self->db->prepare($query);
+	$sth->execute(@{ $self->groups });
+	my %existing;
+	while (my $row = $sth->fetchrow_hashref){
+		$existing{ $row->{groupname} } = 1;
+	}
+	
+	$query = 'INSERT IGNORE INTO groups (groupname) VALUES (?)';
+	$sth   = $self->db->prepare($query);
+	foreach my $groupname (@{ $self->groups }){
+		next if exists $existing{$groupname};
+		$sth->execute($groupname);
+		$self->log->info('Added group ' . $groupname);
+	}
+	
+	return 1;
+}	
+
 sub _get_permissions {
 	my ($self) = @_;
 	
@@ -444,25 +470,6 @@ sub _get_permissions {
 			$permissions{$attr} = { map { $_ => 1 } @arr };
 		}
 	}
-		
-#	# Get filters using the values/placeholders found above
-#	my @values;
-#	my @placeholders;
-#	foreach my $group ( @{ $self->groups } ) {
-#		push @values,       '?';
-#		push @placeholders, $group;
-#	}
-#	$query =
-#	    'SELECT filter FROM filters ' . "\n"
-#	  . 'JOIN groups ON (filters.gid=groups.gid) ' . "\n"
-#	  . 'WHERE groupname IN (';
-#	$query .= join( ', ', @values ) . ')';
-#	$sth = $self->db->prepare($query);
-#	$sth->execute(@placeholders);
-#	$permissions{filter} = '';
-#	while ( my $row = $sth->fetchrow_hashref ) {
-#		$permissions{filter} .= ' ' . $row->{filter};
-#	}
 	
 	# Find field permissions
 	$permissions{fields} = {};
@@ -485,7 +492,8 @@ sub _get_permissions {
 		while (my $row = $sth->fetchrow_hashref){
 			my $field = $row->{attr};
 			my $value = $row->{attr_id};
-			$permissions{fields}->{$field} = $value;
+			$permissions{fields}->{$field} ||= [];
+			push @{ $permissions{fields}->{$field} }, $value;
 		}
 	}
 		
