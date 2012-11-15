@@ -33,6 +33,7 @@ sub BUILD {
 	
 	$self->query_template =~ /FROM\s+([\w\_]+)/;
 	my %cols;
+	my $is_fuzzy = 1;
 	foreach my $row (@{ $self->fields }){
 		if (not $row->{type}){
 			if ($self->dsn =~ /dbi:Pg/){
@@ -51,22 +52,27 @@ sub BUILD {
 		else {
 			$row->{fuzzy_not_op} = '<=';
 		}
-		my $col_name = $row->{name};
-		if ($row->{alias}){
-			if ($row->{alias} eq 'timestamp'){
-				$self->timestamp_column($row->{name});
-			}
-			#$row->{name} .= ' AS ' . $row->{alias};
-			$col_name = $row->{alias};
-		}
-		
+				
 		if ($row->{type} and $row->{type} eq 'ip_int'){
+			$is_fuzzy = 0;
 			$row->{callback} = sub {
 				my ($col, $op, $val) = @_;
 				return "$col $op " . unpack('N*', inet_aton($val));
 			};
 		}
-		$cols{$col_name} = $row;
+		
+		#my $col_name = $row->{name};
+		if ($row->{alias}){
+			if ($row->{alias} eq 'timestamp'){
+				$self->timestamp_column($row->{name});
+			}
+			#$row->{name} .= ' AS ' . $row->{alias};
+			#$col_name = $row->{alias};
+			$cols{ $row->{alias} } = $row;
+		}
+		
+		#$cols{$col_name} = $row;
+		$cols{ $row->{name} } = $row;
 	}
 			
 	foreach my $field (keys %$Fields::Reserved_fields){
@@ -74,7 +80,7 @@ sub BUILD {
 	}
 	
 	$self->log->debug('cols ' . Dumper(\%cols));
-	$self->parser(Search::QueryParser::SQL->new(columns => \%cols, fuzzify2 => 1));
+	$self->parser(Search::QueryParser::SQL->new(columns => \%cols, fuzzify2 => $is_fuzzy));
 	
 	return $self;
 }
@@ -133,7 +139,12 @@ sub _query {
 						push @select, 'SUM(' . $count_field . ') AS _count', $field->{name} . ' AS _groupby';
 					}
 					else {
-						push @select, 'COUNT(*) AS _count', $field->{name} . ' AS _groupby';
+						if ($field->{type} eq 'ip_int'){
+							push @select, 'COUNT(*) AS _count', 'INET_NTOA(' . $field->{name} . ')' . ' AS _groupby';
+						}
+						else {
+							push @select, 'COUNT(*) AS _count', $field->{name} . ' AS _groupby';
+						}
 					}
 					$groupby = 'GROUP BY ' . join(',', @{ $q->groupby });
 					last;
@@ -147,7 +158,12 @@ sub _query {
 	
 	foreach my $row (@{ $self->fields }){
 		if ($row->{alias}){
-			push @select, $row->{name} . ' AS ' . $row->{alias};
+			if ($row->{type} eq 'ip_int'){
+				push @select, 'INET_NTOA(' . $row->{name} . ')' . ' AS ' . $row->{alias};
+			}
+			else {
+				push @select, $row->{name} . ' AS ' . $row->{alias};
+			}
 			if ($row->{alias} eq 'timestamp'){
 				if ($where and $where ne ' '){
 					$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
