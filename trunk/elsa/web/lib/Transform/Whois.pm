@@ -31,7 +31,7 @@ sub BUILD {
 		}
 	}
 	else {
-		$keys = { srcip => 1, dstip => 1, site => 1 };
+		$keys = { srcip => 1, dstip => 1, site => 1, ip => 1 };
 	}
 	
 	foreach my $datum (@{ $self->data }){
