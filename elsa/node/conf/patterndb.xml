@@ -806,6 +806,7 @@
 			<rule provider="ELSA" class='22' id='22'>
 				<patterns>
 					<pattern>date=@ESTRING:: @time=@ESTRING:: @devname=@ESTRING:: @device_id=@ESTRING:: @log_id=@ESTRING:: @subtype=@ESTRING:: @type=traffic pri=@ESTRING:: @vd=@ESTRING:: @dir_disp=@ESTRING:: @tran_disp=@ESTRING:: @src=@IPv4:i0:@ srcname=@ESTRING:: @src_port=@NUMBER:i1:@ dst=@IPv4:i2:@ dstname=@ESTRING:: @dst_port=@NUMBER:i3:@ tran_ip=@ESTRING:: @tran_port=@ESTRING:: @service=@ESTRING:: @proto=@NUMBER:i4@ app_type=@ESTRING:: @duration=@NUMBER:i5@ rule=@ESTRING:: @policyid=@ESTRING:: @identidx=@ESTRING:: @sent=@ESTRING:: @rcvd=@ESTRING:: @shaper_drop_sent=@ESTRING:: @shaper_drop_rcvd=@ESTRING:: @perip_drop=@ESTRING:: @sent_pkt=@ESTRING:: @rcvd_pkt=@ESTRING:: @src_int=@ESTRING:: @dst_int=@ESTRING:: @SN=@ESTRING:: @app=@ESTRING:: @app_cat=@ESTRING:: @carrier_ep=@ESTRING:: @vpn=@ESTRING:: @status=@ESTRING:: @user=@ESTRING:: @group=@ESTRING:: @shaper_sent_name=@ESTRING:: @shaper_rcvd_name=@ESTRING:: @perip_name</pattern>
+					<pattern>date=@ESTRING:: @time=@ESTRING:: @devname=@ESTRING:: @devid=@ESTRING:: @logid=@ESTRING:: @type=traffic subtype=@ESTRING:: @level=@ESTRING:: @vd=@ESTRING:: @srcip=@IPv4:i0:@ srcport=@NUMBER:i1:@ srcintf=@QSTRING::""@ dstip=@IPv4:i2:@ dstport=@NUMBER:i3:@ dstintf=@QSTRING::""@ sessionid=@ESTRING:: @status=@ESTRING:: @policyid=@ESTRING:: @dstcountry=@QSTRING::""@ srccountry=@QSTRING::""@ trandisp=@ESTRING:: @tranip=@ESTRING:: @tranport=@ESTRING:: @service=@ESTRING:: @proto=@NUMBER:i4:@ duration=@NUMBER:i5:@ sentbyte=@ESTRING:: @rcvdbyte=@ESTRING:: @sentpkt=@ESTRING:: @rcvdpkt</pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -1359,6 +1360,37 @@
 							<test_value name="s3">37.376202</test_value>
 							<test_value name="s4">-122.182602</test_value>
 							<test_value name="s5">HPES - Hewlett-Packard Company</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="BIND">
+		<pattern>BIND</pattern>
+		<rules>
+			<rule provider="ELSA" class='35' id='35'>
+				<patterns>
+					<pattern>@ESTRING::client @@ESTRING:i0:#@@NUMBER::@: query: @ESTRING:s0: @IN @ESTRING:s1: @@ESTRING:: @(@ESTRING:s2:)@</pattern>
+					<pattern>@ESTRING::client @@ESTRING:i0:#@@NUMBER::@ (@ESTRING::)@: query: @ESTRING:s0: @IN @ESTRING:s1: @@ESTRING:: @(@ESTRING:s2:)@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="BIND-DNS">02-Nov-2012 15:49:58.516 queries: info: client 198.211.94.24#55557: query: 174.2.219.178.in-addr.arpa IN PTR + (198.211.94.23)</test_message>
+						<test_values>
+							<test_value name="i0">198.211.94.24</test_value>
+							<test_value name="s0">174.2.219.178.in-addr.arpa</test_value>
+							<test_value name="s1">PTR</test_value>
+							<test_value name="s2">198.211.94.23</test_value>
+						</test_values>
+					</example>
+					<example>
+						<test_message program="BIND-DNS">02-Nov-2012 16:01:27.731 client 10.10.10.185#49999 (10.10.10.185): query: p.twitter.com IN A + (10.10.210.210)</test_message>
+						<test_values>
+							<test_value name="i0">10.10.10.185</test_value>
+							<test_value name="s0">p.twitter.com</test_value>
+							<test_value name="s1">A</test_value>
+							<test_value name="s2">10.10.210.210</test_value>
 						</test_values>
 					</example>
 				</examples>
