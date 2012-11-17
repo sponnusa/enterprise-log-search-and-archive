@@ -561,6 +561,10 @@ YAHOO.ELSA.Query = function(){
 	
 	this.delMeta = function(p_sField){
 		logger.log('removing current query meta:' + p_sField);
+		if (YAHOO.util.Dom.get('q').value){
+			var re = new RegExp('\\W?' + p_sField + '[\\:\\=]([\\w\\.]+)', 'i');
+			YAHOO.util.Dom.get('q').value = YAHOO.util.Dom.get('q').value.replace(re, '');
+		}
 		delete this.metas[p_sField];
 		return true;
 	}
