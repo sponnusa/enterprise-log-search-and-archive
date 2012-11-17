@@ -43,6 +43,14 @@ Batch load (by default every minute):
 
 Raw text file → MySQL → Sphinx
 
+=Installation=
+Installation is done by running the install.sh file obtained either by downloading from the sources online or grabbing from the install tarball featured on the ELSA Google Code home page.  When install.sh runs, it will check for the existence of /etc/elsa_vars.sh to see if there are any local customizations, such as passwords, file locations, etc. to apply.  The install.sh script will update itself if it finds a newer version online, so be sure to store any changes in /etc/elsa_vars.sh.  The install.sh script should be run separately for a node install and a web install.  You can install both like this: {{{ sh install.sh node && sh install.sh web}}}.  Installation will attempt to download and install all prerequisites and initialize databases and folders.  It does not require any interaction.  
+
+Currently, Linux and FreeBSD 8.x are supported, with Linux distros based on Debian (including Ubuntu), RedHat (including CentOS), and SuSE tested.  install.sh should run and succeed on these distributions, assuming that the defaults are chosen and that no existing configurations will conflict.
+
+==Updates==
+Updating an installation is done via the install.sh file: {{{sh install.sh node update && sh install.sh web update}}}.  This will check the web for any updates and apply them locally, taking into account local customizations in /etc/elsa_vars.sh.
+
 =Plugins=
 ELSA ships with several plugins:
  * Windows logs from [http://eventlog-to-syslog.googlecode.com Eventlog-to-Syslog]
