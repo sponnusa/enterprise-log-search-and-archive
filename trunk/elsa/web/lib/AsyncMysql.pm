@@ -160,6 +160,11 @@ sub sphinx {
 	}
 	
 	eval {
+		$dbh->{HandleError} = sub {
+			my $errstr = shift;
+			#$cb->(undef, $errstr, 0);
+			$cb->(1, { rows => [], meta => { warning => $errstr } }, 1);
+		};
 		my $sth = $dbh->prepare($query, { async => 1 });
 		$sth->execute(@values);
 		my $id = $self->next_id;
