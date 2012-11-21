@@ -4446,6 +4446,44 @@ YAHOO.ELSA.blockIp = function(p_sType, p_aArgs, p_oRecord){
 	var oWindow = window.open(YAHOO.ELSA.blockUrl + '/' + p_oRecord.getData()._remote_ip + '?data=' + encodeURIComponent(YAHOO.lang.JSON.stringify(p_oRecord.getData())));
 }
 
+YAHOO.ELSA.getStream = function(p_sType, p_aArgs, p_oRecord){
+	logger.log('p_oRecord', p_oRecord);
+	
+	if (!p_oRecord){
+		YAHOO.ELSA.Error('Need a record selected to get pcap for.');
+		return;
+	}
+	
+	var oData = {};
+	for (var i in p_oRecord.getData()['_fields']){
+		oData[ p_oRecord.getData()['_fields'][i].field ] =  p_oRecord.getData()['_fields'][i].value;
+	}
+	var oIps = {};
+	var aQuery = [];
+	
+	//if (defined(oData.proto) && oData.proto.toLowerCase() != 'tcp'){
+	//	YAHOO.ELSA.Error('Only TCP is supported for pcap retrieval.');
+	//}
+	
+	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport' ];
+	for (var i in aQueryParams){
+		var sParam = aQueryParams[i];
+		if (defined(oData[sParam])){
+			aQuery.push(sParam + '=' + oData[sParam]);
+		}
+	}
+	var sQuery = aQuery.join('&');
+	
+	// tack on the start/end +/- one minute
+	var oStart = new Date( p_oRecord.getData().timestamp );
+	oStart.setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
+	var oEnd = new Date( p_oRecord.getData().timestamp );
+	oEnd.setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
+	sQuery += '&start=' + getISODateTime(oStart) + '&end=' + getISODateTime(oEnd);
+	
+	var oPcapWindow = window.open(YAHOO.ELSA.streamdbUrl + '/?' + sQuery);
+}
+
 YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	logger.log('p_oRecord', p_oRecord);
 	
