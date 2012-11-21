@@ -9,6 +9,9 @@ has 'summary' => (is => 'rw', isa => 'Str', required => 1, default => '');
 
 sub BUILD {
 	my $self = shift;
+	if ($self->conf->get('streamdb_url')){
+		push @{ $self->plugins }, 'getStream';
+	}
 	if ($self->conf->get('pcap_url')){
 		push @{ $self->plugins }, 'getPcap';
 	}
