@@ -1014,10 +1014,16 @@ sub _parse_query_term {
 				
 			# Otherwise there was no field given, search all fields
 			elsif (defined $term_hash->{value}){
-				push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
 				# If the term is an IP, let's also search for its integer representation
 				if ($term_hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
-					push @{ $self->terms->{any_field_terms}->{$boolean} }, unpack('N*', inet_aton($term_hash->{value}));
+					push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . $term_hash->{value} . '|' . unpack('N*', inet_aton($term_hash->{value})) . ')';
+					if ($boolean ne 'not'){
+						push @{ $self->terms->{any_field_terms}->{or} }, $term_hash->{value};
+						push @{ $self->terms->{any_field_terms}->{or} }, unpack('N*', inet_aton($term_hash->{value}));
+					}
+				}
+				else {
+					push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
 				}
 			}
 			else {

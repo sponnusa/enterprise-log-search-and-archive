@@ -2354,17 +2354,32 @@ sub _build_archive_match_str {
 	my $match_str = '';
 	my (%and, %or, %not);
 	foreach my $term (keys %{ $q->terms->{any_field_terms}->{and} }){
-		$and{'msg LIKE "%' . $term . '%"'} = 1;
+		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
+			$and{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+		}
+		else {
+			$and{'msg LIKE "%' . $term . '%"'} = 1;
+		}
 	}
 		
 	my @or = ();
 	foreach my $term (keys %{ $q->terms->{any_field_terms}->{or} }){
-		$or{'msg LIKE "%' . $term . '%"'} = 1;
+		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
+			$or{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+		}
+		else {
+			$or{'msg LIKE "%' . $term . '%"'} = 1;
+		}
 	}
 	
 	my @not = ();
 	foreach my $term (keys %{ $q->terms->{any_field_terms}->{not} }){
-		$not{'msg LIKE "%' . $term . '%"'} = 1;
+		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
+			$not{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+		}
+		else {
+			$not{'msg LIKE "%' . $term . '%"'} = 1;
+		}
 	}
 	
 	foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
