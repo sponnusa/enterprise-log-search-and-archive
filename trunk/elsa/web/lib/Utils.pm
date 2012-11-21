@@ -64,7 +64,7 @@ around BUILDARGS => sub {
 		$Db_timeout = $params{conf}->get('db/timeout');
 	}
 	
-	$params{db} = DBI->connect(
+	$params{db} = DBI->connect_cached(
 		$params{conf}->get('meta_db/dsn'),
 		$params{conf}->get('meta_db/username'),
 		$params{conf}->get('meta_db/password'),
@@ -176,8 +176,7 @@ sub _get_node_info {
 			db => $nodes->{$node}->{db},
 			dbh => $nodes->{$node}->{dbh},
 		};
-		
-		
+				
 		# Get indexes
 		$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, 
 		UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records 
@@ -287,6 +286,7 @@ sub _get_node_info {
 	}
 	$cv->end;
 	
+	$self->log->debug('Blocking');
 	$cv->recv;
 	
 	my $time_ranges = { indexes => {}, archive => {} };
@@ -454,6 +454,7 @@ sub _get_nodes {
 			]);
 		};
 		if ($@){
+			$self->log->error($@);
 			$self->add_warning($@);
 			delete $nodes{$node};
 		}

@@ -1832,7 +1832,7 @@ sub _sphinx_query {
 				push @sphinx_queries, $search_query;
 			}
 			
-			$self->log->trace('multiquery: ' . join(';', @sphinx_queries));
+			$self->log->trace('sphinx query: ' . join(';', @sphinx_queries));
 			$self->log->trace('values: ' . join(',', @sphinx_values));
 			$cv->begin;
 			$nodes->{$node}->{sphinx}->sphinx(join(';SHOW META;', @sphinx_queries) . ';SHOW META', sub {
@@ -1866,7 +1866,7 @@ sub _sphinx_query {
 				my %tables;
 				ROW_LOOP: foreach my $row (@$rows){
 					foreach my $table_hash (@{ $self->node_info->{nodes}->{$node}->{tables}->{tables} }){
-						next unless $table_hash->{table_type} eq 'index';
+						next unless $table_hash->{table_type} eq 'index' or $table_hash->{table_type} eq 'import';
 						if ($table_hash->{min_id} <= $row->{id} and $row->{id} <= $table_hash->{max_id}){
 							$tables{ $table_hash->{table_name} } ||= [];
 							push @{ $tables{ $table_hash->{table_name} } }, $row->{id};
@@ -1933,7 +1933,7 @@ sub _sphinx_query {
 					# No results
 					$cv->end; #end sphinx query
 				}
-			}, @sphinx_values);
+			}, 0, @sphinx_values);
 		};
 		if ($@){
 			$ret->{$node}->{error} = 'sphinx query error: ' . $@;
@@ -2439,25 +2439,36 @@ sub _build_query {
 		push @{ $clauses{permissions}->{clauses} }, [ @clause ] if scalar @clause;
 	}
 	
+	my @perm_fields_clause;
 	foreach my $class_id (keys %{ $q->user->permissions->{fields} }){
-		#next unless exists $q->classes->{distinct}->{$class_id};
 		foreach my $perm_hash (@{ $q->user->permissions->{fields}->{$class_id} }){
 			my ($name, $value) = @{ $perm_hash->{attr} };
 			if ($value =~ /^(\d+)\-(\d+)$/){
 				my ($min, $max) = ($1, $2);
-				push @{ $clauses{permissions}->{clauses} }, [ '(class_id=? AND ' . $name . '>=? AND ' . $name . '<=?)' ];
-				push @{ $clauses{permissions}->{vals} }, $class_id, $min, $max;
+				if ($class_id){
+					push @perm_fields_clause, '(class_id=? AND ' . $name . '>=? AND ' . $name . '<=?)';
+					push @{ $clauses{permissions}->{vals} }, $class_id, $min, $max;
+				}
+				else {
+					push @perm_fields_clause, '(' . $name . '>=? AND ' . $name . '<=?)';
+					push @{ $clauses{permissions}->{vals} }, $min, $max;
+				}
 			}
 			else {
-				push @{ $clauses{permissions}->{clauses} }, [ '(class_id=? AND ' . $name . '=?)' ];
-				push @{ $clauses{permissions}->{vals} }, $class_id, $value;
+				if ($class_id){
+					push @perm_fields_clause, '(class_id=? AND ' . $name . '=?)';
+					push @{ $clauses{permissions}->{vals} }, $class_id, $value;
+				}
+				else {
+					push @perm_fields_clause, $name . '=?';
+					push @{ $clauses{permissions}->{vals} }, $value;
+				}
 			}
-			
 		}
 	}
+	push @{ $clauses{permissions}->{clauses} }, [ @perm_fields_clause ] if scalar @perm_fields_clause;
 
 	foreach my $class_id (keys %{ $q->classes->{distinct} }){
-		#next if exists $q->classes->{partially_permitted}->{$class_id};
 		push @{ $clauses{classes}->{clauses} }, [ 'class_id=?' ];
 		push @{ $clauses{classes}->{vals} }, $class_id;
 	}
@@ -2822,6 +2833,12 @@ sub transform {
 		$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
 		my $transform = lc($1);
 		my @given_transform_args = $2 ? split(/\,/, $2) : ();
+		# Remove any args which are all whitespace
+		for (my $i = 0; $i < @given_transform_args; $i++){
+			if ($given_transform_args[$i] =~ /^\s+$/){
+				splice(@given_transform_args, $i, 1);
+			}
+		}
 		
 		if ($transform eq 'subsearch'){
 			unless ($transform_args->{groupby}){
@@ -3105,7 +3122,12 @@ sub transform {
 			}
 			for (my $j = 0; $j < $q->results->records_returned; $j++){
 				my $results_row = $q->results->idx($j);
-				if ($results_row->{id} eq $transform_row->{id}){
+				$self->log->debug('results_row: ' . Dumper($results_row));
+				$self->log->debug('transform_row: ' . Dumper($transform_row));
+				# If id's match or there is no id (like from an external datasource) and the msg matches or no id/msg
+				if ((exists $results_row->{id} and exists $transform_row->{id} and $results_row->{id} eq $transform_row->{id})
+					or (not exists $results_row->{id} and exists $results_row->{msg} and exists $transform_row->{msg} and $results_row->{msg} eq $transform_row->{msg})
+					or (not defined $transform_row->{msg} and not defined $results_row->{id})){
 					foreach my $transform (sort keys %{ $transform_row->{transforms} }){
 						next unless ref($transform_row->{transforms}->{$transform}) eq 'HASH';
 						foreach my $transform_field (sort keys %{ $transform_row->{transforms}->{$transform} }){
@@ -3211,7 +3233,8 @@ sub send_to {
 		}
 		else {
 			$connector = $raw;
-			@connector_args = $q->connector_params_idx($i);
+			my $cargs = $q->connector_params_idx($i);
+			@connector_args = @{ $cargs } if $cargs;
 		}
 		
 		my $plugin_fqdn = 'Connector::' . $connector;
