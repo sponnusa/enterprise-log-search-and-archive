@@ -241,7 +241,7 @@ sub normalize_value {
 			}
 		}
 		else {
-			die 'Invalid host given: ' . $value;
+			die 'Invalid host given: ' . Dumper($value);
 		}
 		if (wantarray){
 			return @ret;
@@ -410,22 +410,20 @@ sub resolve_field_permissions {
 	
 	my %permissions;
 	foreach my $field (keys %{ $user->permissions->{fields} }){
-		my $value = $user->permissions->{fields}->{$field};
-		my $field_infos = $self->get_field($field);
-										
-		# Set attributes for searching
-		foreach my $class_id (keys %{ $field_infos }){
-			my $attr_name = $Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} };
-			my $field_name = $Field_order_to_field->{ $field_infos->{$class_id}->{field_order} };
-			my $attr_value = $value;
-			$attr_value = $self->normalize_value($class_id, $attr_value, $field_infos->{$class_id}->{field_order});
-#			if ($field_infos->{$class_id}->{field_type} eq 'string'){
-#				$attr_value = crc32($value);
-#			}
-			
-			$permissions{$class_id} ||= [];
-			push @{ $permissions{$class_id} }, 
-				{ name => $field, attr => [ $attr_name, $attr_value ], field => [ $field_name, $value ] };
+		foreach my $value (@{ $user->permissions->{fields}->{$field} }){
+			my $field_infos = $self->get_field($field);
+											
+			# Set attributes for searching
+			foreach my $class_id (keys %{ $field_infos }){
+				my $attr_name = $Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} };
+				my $field_name = $Field_order_to_field->{ $field_infos->{$class_id}->{field_order} };
+				my $attr_value = $value;
+				$attr_value = $self->normalize_value($class_id, $attr_value, $field_infos->{$class_id}->{field_order});
+				
+				$permissions{$class_id} ||= [];
+				push @{ $permissions{$class_id} }, 
+					{ name => $field, attr => [ $attr_name, $attr_value ], field => [ $field_name, $value ] };
+			}
 		}
 	}
 	$user->permissions->{fields} = \%permissions;
