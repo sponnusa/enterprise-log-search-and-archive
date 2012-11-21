@@ -46,10 +46,10 @@ has 'transforms' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', requi
 	handles => { has_transforms => 'count', all_transforms => 'elements', num_transforms => 'count' });
 has 'connectors' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { has_connectors => 'count', all_connectors => 'elements', num_connectors => 'count',
-		connector_idx => 'get' });
+		connector_idx => 'get', add_connector => 'push' });
 has 'connector_params' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { has_connector_params => 'count', all_connector_params => 'elements', num_connector_params => 'count',
-		connector_params_idx => 'get' });
+		connector_params_idx => 'get', add_connector_params => 'push' });
 has 'terms' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'nodes' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { { given => {}, excluded => {} } });
 has 'hash' => (is => 'rw', isa => 'Str', required => 1, default => '');
@@ -316,6 +316,19 @@ sub _parse_query {
 #		$filtered_raw_query .= ' ' . $self->user->permissions->{filter};
 #	}
 	
+	# Strip off any connectors and apply later
+	($raw_query, my @connectors) = split(/\s*\>\s+/, $raw_query);
+	my @connector_params;
+	foreach my $raw_connector (@connectors){
+		$raw_connector =~ /([^\(]+)(\(?[^\)]+\))?/;
+		$self->add_connector($1);
+		$self->log->trace("Added connector $1");
+		my $raw_params = $2;
+		if ($raw_params){
+			$self->add_connector_params([split(/\s*,\s*/, $raw_params)]);
+		}
+	}
+		
 	# Strip off any transforms and apply later
 	($raw_query, my @transforms) = split(/\s*\|\s+/, $raw_query);
 	$self->log->trace('query: ' . $raw_query . ', transforms: ' . join(' ', @transforms));
@@ -324,10 +337,10 @@ sub _parse_query {
 	# See if there are any connectors given
 	if ($self->meta_params->{connector}){
 		my $connector = $self->meta_params->{connector};
-		$self->connectors([ $connector ]);
-		$self->connector_params([ $self->meta_params->{connector_params} ]);
-	}	
-	
+		$self->add_connector($connector);
+		$self->add_connector_params([$self->meta_params->{connector_params}]);
+	}
+		
 	# Check to see if the class was given in meta params
 	if ($self->meta_params->{class}){
 		$self->classes->{given}->{ sprintf("%d", $self->node_info->{classes}->{ uc($self->meta_params->{class}) }) } = 1;
@@ -1002,6 +1015,10 @@ sub _parse_query_term {
 			# Otherwise there was no field given, search all fields
 			elsif (defined $term_hash->{value}){
 				push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
+				# If the term is an IP, let's also search for its integer representation
+				if ($term_hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
+					push @{ $self->terms->{any_field_terms}->{$boolean} }, unpack('N*', inet_aton($term_hash->{value}));
+				}
 			}
 			else {
 				die "no field or value given: " . Dumper($term_hash);
