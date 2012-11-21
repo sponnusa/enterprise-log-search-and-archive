@@ -93,81 +93,84 @@ has 'system_dashboards' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', 
 
 sub call {
 	my ($self, $env) = @_;
-    $self->session(Plack::Session->new($env));
+	
 	my $req = Plack::Request->new($env);
-	my $res = $req->new_response(200); # new Plack::Response
-	$res->content_type('text/html');
-	$res->header('Access-Control-Allow-Origin' => '*');
-	$self->path_to_inc('../');
-	
-	my $dashboard_name = $self->_extract_method($req->request_uri);
-	$self->api->log->debug('method: ' . $dashboard_name);
-	
-	my $user = $self->api->get_user($req->user);
-	if ($user){
-		$self->session->set('user', $user->freeze);
-		$self->session->set('user_info', $user->TO_JSON);
-	}
-	
 	my $args = $req->parameters->as_hashref;
-	$args->{alias} = $dashboard_name;
-	
-	if ($req->request_uri =~ /[\?\&]edit[=]?/){
-		$args->{edit} = 1;
-		$self->api->log->trace('edit mode');
-	}
-	
-	#$self->api->log->debug('dashboard args: ' . Dumper($args));
-	if (exists $args->{start}){
-		$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
-		$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
-	}
-	else {
-		$args->{start_time} = (time() - (86400*7));
-	}
-	if (exists $args->{end}){
-		$args->{end_time} = UnixDate(ParseDate(delete $args->{end}), '%s');
-		$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
-	}
-	else {
-		$args->{end_time} = time;
-	}
-	
-	my $time_units = {
-		seconds => { groupby => 'timestamp', multiplier => 1 },
-		minutes => { groupby => 'minute', multiplier => 60 },
-		hours => { groupby => 'hour', multiplier => 3600 },
-		days => { groupby => 'day', multiplier => 86400 },
-		months => { groupby => 'month', multiplier => 2592000 },
-		years => { groupby => 'year', multiplier => 946080000 },
-	};
-	
-	$args->{groupby} = 'hour';
-	
-	foreach my $arg (keys %$args){
-		if (exists $time_units->{ $arg }){
-			$args->{groupby} = $time_units->{ $arg }->{groupby};
-			if ($args->{$arg}){
-				if ($args->{start}){
-					$args->{end_time} = ($args->{start_time} + ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
-					$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
-				}
-				else {
-					$args->{start_time} = ($args->{end_time} - ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
-					$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
-				}
-			}
-			last;
-		}
-	}
-	foreach my $plural_unit (keys %$time_units){
-		if ($time_units->{$plural_unit}->{groupby} eq $args->{groupby}){
-			$args->{limit} = ($args->{end_time} - $args->{start_time}) / $time_units->{$plural_unit}->{multiplier};
-		}
-	}
-	
+	my $res = $req->new_response(200); # new Plack::Response
 	my $ret = [];
+	
 	eval {
+	    $self->session(Plack::Session->new($env));
+		$res->content_type('text/html');
+		$res->header('Access-Control-Allow-Origin' => '*');
+		$self->path_to_inc('../');
+		
+		my $dashboard_name = $self->_extract_method($req->request_uri);
+		$self->api->log->debug('method: ' . $dashboard_name);
+		
+		my $user = $self->api->get_user($req->user);
+		if ($user){
+			$self->session->set('user', $user->freeze);
+			$self->session->set('user_info', $user->TO_JSON);
+		}
+		
+		$args->{alias} = $dashboard_name;
+		
+		if ($req->request_uri =~ /[\?\&]edit[=]?/){
+			$args->{edit} = 1;
+			$self->api->log->trace('edit mode');
+		}
+		
+		#$self->api->log->debug('dashboard args: ' . Dumper($args));
+		if (exists $args->{start}){
+			$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
+			$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+		}
+		else {
+			$args->{start_time} = (time() - (86400*7));
+		}
+		if (exists $args->{end}){
+			$args->{end_time} = UnixDate(ParseDate(delete $args->{end}), '%s');
+			$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+		}
+		else {
+			$args->{end_time} = time;
+		}
+		
+		my $time_units = {
+			seconds => { groupby => 'timestamp', multiplier => 1 },
+			minutes => { groupby => 'minute', multiplier => 60 },
+			hours => { groupby => 'hour', multiplier => 3600 },
+			days => { groupby => 'day', multiplier => 86400 },
+			months => { groupby => 'month', multiplier => 2592000 },
+			years => { groupby => 'year', multiplier => 946080000 },
+		};
+		
+		$args->{groupby} = 'hour';
+		
+		foreach my $arg (keys %$args){
+			if (exists $time_units->{ $arg }){
+				$args->{groupby} = $time_units->{ $arg }->{groupby};
+				if ($args->{$arg}){
+					if ($args->{start}){
+						$args->{end_time} = ($args->{start_time} + ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
+						$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+					}
+					else {
+						$args->{start_time} = ($args->{end_time} - ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
+						$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+					}
+				}
+				last;
+			}
+		}
+		foreach my $plural_unit (keys %$time_units){
+			if ($time_units->{$plural_unit}->{groupby} eq $args->{groupby}){
+				$args->{limit} = ($args->{end_time} - $args->{start_time}) / $time_units->{$plural_unit}->{multiplier};
+			}
+		}
+	
+	
 		$self->api->freshen_db;
 		my ($query, $sth);
 		

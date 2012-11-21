@@ -14,30 +14,31 @@ with 'Fields';
 
 sub call {
 	my ($self, $env) = @_;
-    $self->session(Plack::Session->new($env));
+    
 	my $req = Plack::Request->new($env);
-	my $res = $req->new_response(200); # new Plack::Response
-	$res->content_type('text/plain');
-	$res->header('Access-Control-Allow-Origin' => '*');
-	
-	$self->api->clear_warnings;
-	
 	my $args = $req->parameters->as_hashref;
-	if ($self->session->get('user')){
-		$args->{user} = $self->api->get_stored_user($self->session->get('user'));
-	}
-	else {
-		$args->{user} = $self->api->get_user($req->user);
-	}
-
 	my $datasource = Data::Google::Visualization::DataSource->new({
 	    tqx => $args->{tqx},
 	    xda => ($req->header('X-DataSource-Auth') || undef)
-	 });
-
+	});
+	my $res = $req->new_response(200); # new Plack::Response
 	my $ret;
 	my $query_args;
 	eval {
+		$self->session(Plack::Session->new($env));
+		$res->content_type('text/plain');
+		$res->header('Access-Control-Allow-Origin' => '*');
+		
+		$self->api->clear_warnings;
+		
+		
+		if ($self->session->get('user')){
+			$args->{user} = $self->api->get_stored_user($self->session->get('user'));
+		}
+		else {
+			$args->{user} = $self->api->get_user($req->user);
+		}		
+	
 		my $check_args = $self->api->json->decode($args->{q});
 		if ($args->{user}->is_admin){
 			$self->api->log->debug('$check_args: ' . Dumper($check_args));
