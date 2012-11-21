@@ -178,6 +178,11 @@ EOHTML
 			$HTML .= 'YAHOO.ELSA.pcapUrl = "' . $self->api->conf->get('pcap_url') . '"' . "\n";
 		}
 		
+		# Set the URL for getStream if applicable
+		if ($self->api->conf->get('streamdb_url')){
+			$HTML .= 'YAHOO.ELSA.streamdbUrl = "' . $self->api->conf->get('streamdb_url') . '"' . "\n";
+		}
+		
 		# Set the URL for Block if applicable
 		if ($self->api->conf->get('block_url')){
 			$HTML .= 'YAHOO.ELSA.blockUrl = "' . $self->api->conf->get('block_url') . '"' . "\n";
@@ -201,6 +206,7 @@ EOHTML
 		$HTML .= 'var formParams = ' . $self->api->json->encode($form_params) . ';';
 	}
 	else {
+		$self->api->log->error('Unable to get form params: ' . Dumper($form_params));
 		$HTML .= q/alert('Error contacting log server(s)');/;
 	}
 	
@@ -401,7 +407,7 @@ sub transform {
 			return { error => 'Unable to build results object from args' };
 		}
 		
-		my $res = new Results(results => $args->{results}->{results});
+		my $res = new Results(results => (ref($args->{results}) eq 'ARRAY' ? $args->{results} : $args->{results}->{results}));
 		$self->api->log->debug('res: ' . Dumper($res));
 		my $q = new Query(conf => $self->api->conf, results => $res, transforms => $args->{transforms});
 		$self->api->transform($q);
