@@ -843,7 +843,7 @@ sub _get_schedule_actions {
 			}
 			my $desc = $plugin->description;
 			$self->log->debug('plugin: ' . $plugin . ', desc: ' . "$desc");
-			push @ret, { action => $1, description => $desc };
+			push @ret, { action => $1 . '()', description => $desc };
 		}
 	}
 	return \@ret;
@@ -995,6 +995,9 @@ sub schedule_query {
 	my @connector_params = split(/,/, $schedule_query_params->{connector_params});
 	foreach (@connector_params){
 		$_ =~ s/[^a-zA-Z0-9\.\_\-\ ]//g;
+	}
+	if ($schedule_query_params->{connector} =~ s/\(([^\)]*)\)$//){
+		unshift @connector_params, split(/,/, $1);
 	}
 	$schedule_query_params->{connector} .= '(' . join(',', @connector_params) . ')';
 		
