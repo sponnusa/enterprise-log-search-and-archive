@@ -590,3 +590,18 @@ Logs can be directly imported into ELSA using the named pipes {{{/data/elsa/tmp/
 For example, to import the Apache web log into ELSA, you would issue this command on the log node:
 
 {{{cat /var/log/apache2/access_log > /data/elsa/tmp/import}}}
+
+=Host Checks=
+It is often helpful to know if a host has not sent logs to ELSA within a given timeframe.  This is possible if you configure the {{{host_checks}}} config in {{{elsa_web.conf}}} like this:
+{{{
+  "host_checks": {
+    "127.0.0.1": 60,
+    "192.168.1.1": 900
+  },
+  "admin_email_address": "sysadmin_team@example.com",
+}}}
+The above will configure ELSA to send an email to "sysadmin_team@example.com" if there are no logs within 60 seconds from 127.0.0.1 or 900 seconds (15 minutes) of 192.168.1.1.
+
+Host checks are run via the cron.pl script which runs every minute, so an interval of less than 60 seconds will be nonsensical.  The interval is padded with 60 seconds to make sure that the log loading batch job is completed on each node, so specifying an interval of 60 seconds will really be 120 seconds, but 900 seconds would be 960 seconds.
+
+There is currently no threshold for number of alerts sent, so you will get an email each minute until the logs start again or the configuration is changed.
