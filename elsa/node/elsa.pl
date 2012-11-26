@@ -99,6 +99,12 @@ unless (-f $Conf->{sphinx}->{config_file}){
 	_create_sphinx_conf();
 }
 
+if ($Opts{f}){
+	print "Processing file $Opts{f}...\n";
+	_process_batch($Opts{f});
+	exit;
+}
+
 unless ($Opts{n}){
 	print "Validating directory...\n";
 	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
@@ -109,12 +115,6 @@ if ($Opts{l}){
 	print "Loading existing buffers\n";
 	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 	$indexer->load_buffers();
-	exit;
-}
-
-if ($Opts{f}){
-	print "Processing file $Opts{f}...\n";
-	_process_batch($Opts{f});
 	exit;
 }
 
@@ -189,12 +189,15 @@ sub _create_sphinx_conf {
 sub _process_batch {
 	my $filename = shift;
 	
-	my $args = { run => 1 };
+	my $args = {};
 	my $fh = \*STDIN;
+	my $offline_processing;
 	if ($filename){
-		open($fh, $filename) or die 'Unable to open file: ' . $!;
-		$Log->debug('Reading from file ' . $filename);
-		$args->{offline_processing} = 1;
+		unless ($filename eq '__IMPORT__'){
+			open($fh, $filename) or die 'Unable to open file: ' . $!;
+			$Log->debug('Reading from file ' . $filename);
+		}
+		$args->{offline_processing} = $offline_processing = 1;
 		$args->{offline_processing_start} = time();
 		$args->{offline_processing_end} = 0;
 	}
@@ -205,7 +208,6 @@ sub _process_batch {
 		unless -d $Conf->{buffer_dir};
 		
 	$args->{start_time} = Time::HiRes::time();
-	$args->{batch_counter} = 0;
 	$args->{error_counter} = 0;
 	
 	# Reset the miss cache
@@ -218,7 +220,7 @@ sub _process_batch {
 #	$tempfile->autoflush(1);
 	my $tempfile_name = $Conf->{buffer_dir} . '/' . CORE::time();
 	
-	my $tail_watcher = _fork_livetail_manager($tempfile_name);
+	my $tail_watcher = _fork_livetail_manager($tempfile_name) unless $Opts{o} or $args->{offline_processing};
 	
 	# Open the file now that we've forked
 #	my $tempfile = IO::File->new('> ' . $tempfile_name);
@@ -226,10 +228,11 @@ sub _process_batch {
 	my $tempfile;
 	sysopen($tempfile, $tempfile_name, O_RDWR|O_CREAT);
 	
+	my $run = 1;
 	# End the loop after index_interval seconds
 	local $SIG{ALRM} = sub {
 		$Log->trace("ALARM");
-		$args->{run} = 0;
+		$run = 0;
 		# safety in case we don't receive any logs, we'll still do post_proc and restart loop
 		$fh->blocking(0); 
 	};
@@ -239,10 +242,11 @@ sub _process_batch {
 	
 	my $reader = new Reader(log => $Log, conf => $Config_json, cache => $Cache, offline_processing => $args->{offline_processing});
 	
+	my $batch_counter = 0; # we make this a standard variable instead of using $arg->{batch_counter} to save the hash deref in loop
 	while (<$fh>){	
 		eval { 
 			$tempfile->syswrite(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
-			$args->{batch_counter}++;
+			$batch_counter++;
 		};
 		if ($@){
 			my $e = $@;
@@ -251,11 +255,14 @@ sub _process_batch {
 				$Log->error($e) 
 			}
 		}
-		last unless $args->{run};
+		last unless $run;
+		# If importing, we want to stop as soon as we're done processing the file
+		alarm(1) if $offline_processing;
 	}
 			
 	# Update args to be results
 	#$args->{file} = $tempfile->filename();
+	$args->{batch_counter} = $batch_counter;
 	$args->{file} = $tempfile_name;
 	$args->{start} = $args->{offline_processing} ? $reader->offline_processing_times->{start} : $args->{start_time};
 	$args->{end} = $args->{offline_processing} ? $reader->offline_processing_times->{end} : Time::HiRes::time();
@@ -281,12 +288,11 @@ sub _process_batch {
 	}
 	
 	# Kill the livetail forker
-	kill SIGTERM, $tail_watcher;
-	$Log->trace("Ending child tail manager $tail_watcher");
+	if ($tail_watcher){
+		kill SIGTERM, $tail_watcher;
+		$Log->trace("Ending child tail manager $tail_watcher");
+	}
 		
-	# Reset the run marker
-	$args->{run} = 1;
-	
 	# Fork our post-batch processor
 	return $args->{batch_counter} unless $args->{batch_counter};
 	my $pid = fork();
@@ -298,7 +304,7 @@ sub _process_batch {
 	$Log->trace('Child started');
 	eval {
 		my $indexer = new Indexer(log => $Log, conf => $Config_json);
-		$indexer->load_buffers();
+		$indexer->load_buffers($filename eq '__IMPORT__' ? 1 : 0);
 	};
 	if ($@){
 		$Log->error('Child encountered error: ' . $@);

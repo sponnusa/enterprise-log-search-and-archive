@@ -156,12 +156,59 @@ sub _get_current_index_size {
 	$self->log->debug("Current size of indexed logs in database is $db_size");
 	
 	# Find current size of Sphinx indexes
-	my $index_size = 0;
-	find(sub { $index_size += -s $File::Find::name; }, 
-		$self->conf->get('sphinx/index_path'));
-	$self->log->debug("Found index size of $index_size");
+	$query = 'SELECT CONCAT(LEFT(type, 4), "_", id) FROM v_directory WHERE table_type="index"';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	my @files;
+	while (my $row = $sth->fetchrow_arrayref){
+		push @files, $row->[0];
+	}
+	my $size = 0;
+	find(sub { 
+		foreach my $file (@files){
+			if ($File::Find::name =~ $file){
+				$size += -s $File::Find::name;
+			}
+		}		
+	}, $self->conf->get('sphinx/index_path'));
 	
-	return $db_size + $index_size;
+	return $db_size + $size;
+}
+
+sub _get_current_import_size {
+	my $self = shift;
+	
+	my ($query, $sth);
+	
+	# Find current size of logs in database
+	$query = "SELECT SUM(index_length+data_length) AS total_bytes\n" .
+		"FROM INFORMATION_SCHEMA.tables\n" .
+		"WHERE table_schema=? AND table_name LIKE \"syslogs\_import\_%\"";
+	$sth = $self->db->prepare($query);
+	$sth->execute($Data_db_name);
+	my $row = $sth->fetchrow_hashref;
+	my $db_size = $row->{total_bytes};
+	$self->log->debug("Current size of imported logs in database is $db_size");
+	
+	# Find current size of Sphinx indexes
+	$query = 'SELECT CONCAT(LEFT(type, 4), "_", id) FROM v_directory WHERE table_type="import"';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	my @files;
+	while (my $row = $sth->fetchrow_arrayref){
+		push @files, $row->[0];
+	}
+	my $size = 0;
+	find(sub { 
+		foreach my $file (@files){
+			if ($File::Find::name =~ $file){
+				$size += -s $File::Find::name;
+			}
+		}		
+	}, $self->conf->get('sphinx/index_path'));
+	$self->log->debug("Found imported log size of $size");
+	
+	return $db_size + $size;
 }
 
 # Generic log rotate command for external use
@@ -527,7 +574,39 @@ sub _oversize_log_rotate {
 		# _drop_indexes drops the table as necessary
 		$self->_drop_indexes($entry->{type}, [$entry->{id}]);
 	}
-			
+	
+	# Drop oldest import data if we're oversize
+	my $import_log_size_limit = $self->conf->get('log_size_limit') * .5; # default to 50% for sanity check
+	if ($self->conf->get('import_log_size_limit')){
+		$import_log_size_limit = $self->conf->get('import_log_size_limit');
+	}
+	while ($self->_get_current_import_size() > $import_log_size_limit){
+		$self->_get_lock('directory');
+		
+		# Get our latest entry
+		$query = "SELECT id, first_id, last_id, type, table_type, table_name FROM v_directory\n" .
+			"WHERE table_type=\"import\" AND ISNULL(locked_by)\n" .
+			"ORDER BY start ASC LIMIT 1";
+		$sth = $self->db->prepare($query);
+		$sth->execute();
+		my $entry = $sth->fetchrow_hashref;
+		
+		$self->log->debug("Dropping old entries because current log size larger than " . $import_log_size_limit);
+		unless ($entry){
+			$self->log->error("no entries, current log size: " . $self->_get_current_import_size());
+			$self->_release_lock('directory');
+			last;
+		}
+		
+		$query = 'UPDATE indexes SET locked_by=? WHERE id=? AND type=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($$, $entry->{id}, $entry->{type});
+		$self->_release_lock('directory');
+		
+		$self->log->info("Dropping index " . $entry->{id});
+		# _drop_indexes drops the table as necessary
+		$self->_drop_indexes($entry->{type}, [$entry->{id}]);
+	}			
 	return 1;
 }
 
@@ -595,30 +674,32 @@ sub _check_consolidate {
 		$self->log->warn('Over the temp index limit, engaging emergency consolidation');
 		
 		# Find out how many temp indexes we've got
-		$query = "SELECT MIN(first_id) AS min_id, MAX(last_id) AS max_id,\n" .
-			"MIN(start) AS start, MAX(end) AS end\n" .
-			"FROM indexes WHERE ISNULL(locked_by) AND type=\"temporary\"";
-		$sth = $self->db->prepare($query);
-		$sth->execute();
-		my $row = $sth->fetchrow_hashref;
-		my ($min_id, $max_id) = (0,0);
-		if ($row){
-			$self->log->trace('got row: ' . Dumper($row));
-			$min_id = $row->{min_id};
-			$max_id = $row->{max_id};
-			
-			# We need to run the aggregate indexing to create permanent indexes from temp indexes	
-			# Recurse and index the greater swath of records.  This will mean there will be indexes replaced.
-			$self->consolidate_indexes({ first_id => $min_id, last_id => $max_id });
+		foreach my $table_type (qw(index import)){
+			$query = "SELECT MIN(first_id) AS min_id, MAX(last_id) AS max_id,\n" .
+				"MIN(start) AS start, MAX(end) AS end\n" .
+				"FROM v_directory WHERE table_type=? AND ISNULL(locked_by) AND type=\"temporary\"";
+			$sth = $self->db->prepare($query);
+			$sth->execute($table_type);
+			my $row = $sth->fetchrow_hashref;
+			my ($min_id, $max_id) = (0,0);
+			if ($row and $row->{min_id}){
+				$self->log->trace('got row: ' . Dumper($row));
+				$min_id = $row->{min_id};
+				$max_id = $row->{max_id};
+				
+				# We need to run the aggregate indexing to create permanent indexes from temp indexes	
+				# Recurse and index the greater swath of records.  This will mean there will be indexes replaced.
+				$self->consolidate_indexes({ first_id => $min_id, last_id => $max_id, type => $table_type });
+			}
 		}
 	}
 	
 	# Check to see if we need to consolidate any tables
 	$self->db->begin_work;
 	$query = 'SELECT table_name, type, SUM(locked_by) AS locked, COUNT(DISTINCT id) AS num_indexes, ' . "\n"
-		. 'min_id, max_id, max_id-min_id AS num_rows ' . "\n"
+		. 'min_id, max_id, max_id-min_id AS num_rows, table_type ' . "\n"
 		. 'FROM v_directory' . "\n"
-		. 'WHERE ISNULL(table_locked_by) AND table_type="index"' . "\n"
+		. 'WHERE ISNULL(table_locked_by) AND (table_type="index" OR table_type="import")' . "\n"
 		. 'GROUP BY table_name' . "\n"
 		. 'HAVING ISNULL(locked) AND num_rows > ? AND (num_indexes > 1 OR type="realtime") FOR UPDATE';
 	$sth = $self->db->prepare($query);
@@ -633,7 +714,7 @@ sub _check_consolidate {
 		$upd_sth->execute($$, $row->{table_name});
 		$self->log->debug('Locked table ' . $row->{table_name});
 		$self->log->debug('Locked table ' . Dumper($row));
-		push @to_consolidate, { first_id => $row->{min_id}, last_id => $row->{max_id} };
+		push @to_consolidate, { first_id => $row->{min_id}, last_id => $row->{max_id}, type => $row->{table_type} };
 	}
 	$self->db->commit;
 	$self->_release_lock('directory');
@@ -644,7 +725,7 @@ sub _check_consolidate {
 }
 
 sub load_buffers {
-	my ($self) = @_;
+	my ($self, $is_import) = @_;
 	
 	my ($query, $sth);
 		
@@ -665,9 +746,12 @@ sub load_buffers {
 	foreach my $row (@rows){	
 		# Send to index load records
 		if ($self->conf->get('sphinx/perm_index_size')){
-			my $batch_ids  = $self->load_records({ file => $row->{filename} });
+			my $batch_ids  = $self->load_records({ file => $row->{filename}, import => $is_import });
 			$first_id ||= $batch_ids->{first_id};
 			$last_id = $batch_ids->{last_id};
+			if ($is_import){
+				$batch_ids->{import} = 1;
+			}
 			if (scalar @rows == 1){
 				# Standard case, just do the indexing
 				$self->index_records($batch_ids);
@@ -686,7 +770,7 @@ sub load_buffers {
 		}
 		
 		# Send to archive
-		if ($self->conf->get('archive/percentage')){
+		if (not $is_import and $self->conf->get('archive/percentage')){
 			$self->archive_records({ file => $row->{filename} })
 		}
 	}
@@ -710,10 +794,6 @@ sub load_records {
 	die 'Invalid args: ' . Dumper($args)
 		unless $args->{file} and -f $args->{file};
 	
-	my $load_only = 0;
-	if ($args->{load_only}){
-		$load_only = 1;
-	}
 	$self->log->debug("args: " . Dumper($args));
 	
 	$self->_get_lock('directory') or die 'Unable to obtain lock';
@@ -927,6 +1007,9 @@ sub _get_table {
 	if ($args->{archive}){
 		$table_type = 'archive';
 	}
+	elsif ($args->{import}){
+		$table_type = 'import';
+	}
 	$args->{table_type} = $table_type;
 	
 	my ($query, $sth, $row);
@@ -1091,9 +1174,9 @@ sub consolidate_indexes {
 	
 	$query = 'SELECT table_name, table_locked_by FROM v_directory ' . "\n" .
 			#'WHERE table_type="index" AND min_id >= ? AND max_id <= ?';
-			'WHERE table_type="index" AND (? BETWEEN min_id AND max_id OR ? BETWEEN min_id AND max_id)';
+			'WHERE table_type=? AND (? BETWEEN min_id AND max_id OR ? BETWEEN min_id AND max_id)';
 	$sth = $self->db->prepare($query);
-	$sth->execute($first_id, $last_id);
+	$sth->execute($args->{type}, $first_id, $last_id);
 	$row = $sth->fetchrow_hashref;
 	unless ($row){
 		$self->log->warn('Rows not found');
@@ -1105,7 +1188,7 @@ sub consolidate_indexes {
 	$self->_release_lock('directory');
 	
 	# Do the indexing
-	my $replaced = $self->index_records({first_id => $first_id, last_id => $last_id});
+	my $replaced = $self->index_records({ first_id => $first_id, last_id => $last_id, import => $args->{type} eq 'import' ? 1 : 0 });
 	
 #	$self->_get_lock('directory') or die 'Unable to obtain lock';
 #	
@@ -1232,17 +1315,21 @@ sub index_records {
 	
 	# Find the table(s) we'll be indexing
 	my $table;
+	my $table_type = 'index';
+	if ($args->{import}){
+		$table_type = 'import';
+	}
 	$query = "SELECT DISTINCT table_id AS id, table_name, IF(min_id < ?, ?, min_id) AS min_id,\n" .
 		"IF(max_id > ?, ?, max_id) AS max_id\n" .
 		"FROM v_directory\n" .
-		"WHERE table_type=\"index\" AND (? BETWEEN min_id AND max_id\n" .
+		"WHERE table_type=? AND (? BETWEEN min_id AND max_id\n" .
 		"OR ? BETWEEN min_id AND max_id\n" .
 		"OR (min_id > ? AND max_id < ?))\n" .
 		"ORDER BY id ASC";
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{first_id}, $args->{first_id},
 	 	$args->{last_id},$args->{last_id},
-		$args->{first_id}, 
+	 	$table_type, $args->{first_id}, 
 		$args->{last_id}, 
 		$args->{first_id}, $args->{last_id});
 	my @tables_needed;
@@ -1275,7 +1362,7 @@ sub index_records {
 		my $tmp_hash = $sth->fetchall_hashref('id');
 		$self->_release_lock('directory');
 		die "No tables found for first_id $args->{first_id} and last_id $args->{last_id}" .
-		 ", tables in database: " . Dumper($tmp_hash);
+		 ", tables in database: " . Dumper($tmp_hash) . "\n table_type: $table_type\n" . Dumper($args);
 	}
 	
 	my ($count, $start, $end);
@@ -1524,7 +1611,7 @@ sub _drop_indexes {
 		
 		my $index_name = $self->_get_index_name($type, $id);
 		if ($type eq 'realtime'){
-			my $sphinx_dbh = DBI->connect('dbi:mysql:host=' . $self->conf->get('sphinx/host') . ';port=' . $self->conf->get('sphinx/mysql_port'), 
+			my $sphinx_dbh = DBI->connect('dbi:mysql:host=' . ($self->conf->get('sphinx/host') ? $self->conf->get('sphinx/host') : '127.0.0.1') . ';port=' . ($self->conf->get('sphinx/mysql_port') ? $self->conf->get('sphinx/mysql_port') : 9306), 
 				undef, undef, 
 				{
 					RaiseError => 1, 
