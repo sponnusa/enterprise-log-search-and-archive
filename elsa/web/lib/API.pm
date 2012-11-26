@@ -3467,6 +3467,52 @@ sub run_schedule {
 		}
 	}
 	
+	# Verify we've received logs from hosts specified in the config file
+	if ($self->conf->get('host_checks')){
+		my $admin_email = $self->conf->get('admin_email_address');
+		if ($admin_email){
+			my %intervals;
+			foreach my $host (keys %{ $self->conf->get('host_checks') }){
+				my $interval = $self->conf->get('host_checks')->{$host};
+				$intervals{$interval} ||= [];
+				push @{ $intervals{$interval} }, $host;
+			}
+			
+			# For each unique interval, run all the hosts in a batch via groupby:host
+			foreach my $interval (keys %intervals){
+				my $query_params = { 
+					query_string => join(' ', map { 'host:' . $_ } @{ $intervals{$interval} }) . ' groupby:host', 
+					meta_params => { 
+						start => (time() - $interval - 60), # 60 second grace period for batch load
+						limit => scalar @{ $intervals{$interval} },
+					},
+					system => 1,
+					user => $args->{user},
+				};
+				$self->log->debug('query_params: ' . Dumper($query_params));
+				my $result = $self->query($query_params);
+				my %not_found = map { $_ => 1 } @{ $intervals{$interval} };
+				foreach my $row (@{ $result->results->all_results }){
+					$self->log->trace('Found needed results for ' . $row->{_groupby} . ' in interval ' . $interval);
+					delete $not_found{ $row->{_groupby} };
+				}
+				foreach my $host (keys %not_found){
+					my $errmsg = 'Did not find entries for host ' . $host . ' within interval ' . $interval;
+					$self->log->error($errmsg);
+					my $headers = {
+						To => $self->conf->get('admin_email_address'),
+						From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
+						Subject => sprintf('Host inactivity alert: %s', $host),
+					};
+					$self->send_email({ headers => $headers, body => $errmsg });
+				}
+			}
+		}
+		else {
+			$self->log->error('Configured to do host checks via host_checks but no admin_email_address found in config file');
+		}	
+	}
+	
 	# Update our bookmark to the current run
 	$query = 'UPDATE schedule_bookmark SET last_run=FROM_UNIXTIME(?)';
 	$sth = $self->db->prepare($query);
