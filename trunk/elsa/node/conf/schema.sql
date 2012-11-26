@@ -430,6 +430,7 @@ CREATE TABLE table_types (
 ) ENGINE=InnoDB;
 INSERT INTO table_types (id, table_type) VALUES (1, "index");
 INSERT INTO table_types (id, table_type) VALUES (2, "archive");
+INSERT INTO table_types (id, table_type) VALUES (3, "import");
 
 CREATE TABLE tables (
 	id SMALLINT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT,

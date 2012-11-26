@@ -29,6 +29,20 @@ if [ -f /etc/elsa_vars.sh ]; then
 	. /etc/elsa_vars.sh
 fi
 
+if [ "x$SHELL"=="x" ]; then
+	SHELL="/bin/bash"
+fi
+if [ ! -f $SHELL ]; then
+	SHELL="/bin/dash"
+	if [ ! -f $SHELL ]; then
+		SHELL="/bin/csh"
+		if [ ! -f $SHELL ]; then
+			echo "Unable to determine our shell (not /bin/bash, /bin/dash, or /bin/csh), please set in /etc/elsa_vars.sh"
+			exit;
+		fi
+	fi
+fi
+
 ########################################
 
 # Determine type of install
@@ -242,14 +256,24 @@ get_elsa(){
 	touch "$BASE_DIR/elsa/node/tmp/locks/directory"
 	UPDATE_OK=$?
 	
+	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
+		mkfifo $DATA_DIR/elsa/tmp/realtime;
+		UPDATE_OK=$?
+	fi
+	
+	if [ ! -p $DATA_DIR/elsa/tmp/import ]; then
+		mkfifo $DATA_DIR/elsa/tmp/import;
+		UPDATE_OK=$?
+	fi
+		
 	DOWNLOADED="$BASE_DIR/elsa/contrib/$THIS_FILE"
 	AFTER_MD5=$(md5sum $DOWNLOADED | cut -f1 -d\ )
 	echo "Latest MD5: $AFTER_MD5"
 	
 	if [ "$BEFORE_MD5" != "$AFTER_MD5" ]; then
 		echo "Restarting with updated install.sh..."
-		echo "$_ $DOWNLOADED $INSTALL $OP"
-		$_ $DOWNLOADED $INSTALL $OP;
+		echo "$SHELL $DOWNLOADED $INSTALL $OP"
+		$SHELL $DOWNLOADED $INSTALL $OP;
 		exit;
 	else
 		return $UPDATE_OK
@@ -446,7 +470,17 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="WINDOWS"), (SELECT id FROM fields WHERE field="share_target"), 15)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS host_stats (host_id INT UNSIGNED NOT NULL, class_id SMALLINT UNSIGNED NOT NULL, count MEDIUMINT UNSIGNED NOT NULL DEFAULT 0, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (timestamp, host_id, class_id)) ENGINE=MyISAM;'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS livetail ( qid INT UNSIGNED NOT NULL PRIMARY KEY, query BLOB) ENGINE=InnoDB'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'DELETE FROM livetail';
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS livetail_results (qid INT UNSIGNED NOT NULL, `id` bigint unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT, `timestamp` INT UNSIGNED NOT NULL DEFAULT 0, `host_id` INT UNSIGNED NOT NULL DEFAULT '1', `program_id` INT UNSIGNED NOT NULL DEFAULT '1', `class_id` SMALLINT unsigned NOT NULL DEFAULT '1', msg TEXT, i0 INT UNSIGNED, i1 INT UNSIGNED, i2 INT UNSIGNED, i3 INT UNSIGNED, i4 INT UNSIGNED, i5 INT UNSIGNED, s0 VARCHAR(255), s1 VARCHAR(255), s2 VARCHAR(255), s3 VARCHAR(255), s4 VARCHAR(255), s5 VARCHAR(255), FOREIGN KEY (qid) REFERENCES livetail (qid) ON DELETE CASCADE ON UPDATE CASCADE) ENGINE=InnoDB'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO table_types (id, table_type) VALUES (3, "import")'
+	return $?
+}
+
+update_syslogng(){
+	echo "Updating syslog-ng.conf..."
+	# Copy the syslog-ng.conf
+	cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+	return $?
 }
 
 init_elsa(){
@@ -862,7 +896,7 @@ if [ "$INSTALL" = "node" ]; then
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "update_node_mysql" "restart_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "update_node_mysql" "update_syslogng" "restart_elsa"; do
 			exec_func $FUNCTION
 		done
 	else
