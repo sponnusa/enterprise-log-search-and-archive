@@ -583,3 +583,10 @@ Edit the "known_subnets" stanza to add your local org-specific values.  ELSA wil
 Having these macros available can greatly aid searching for IDS events, HTTP events, among many others.  For instance, you can easily find HTTP POST's to your org by searching {{{+method:POST +$dst_myorg}}}.
 
 These built-in macros will be overridden by user-created macros of the same name.
+
+=Importing Logs=
+Logs can be directly imported into ELSA using the named pipes {{{/data/elsa/tmp/import}}} and {{{/data/elsa/tmp/realtime}}} on the log nodes.  You cannot currently import logs via the web interface, though this may change in the future.  The import pipe will use the timestamp already included in the log message and will go into special import tables and indexes which will not be rotated with other logs.  Imported logs are rotated when they reach a percentage specified in the elsa_node.conf for {{{import_log_size_limit}}} or 50% of {{{log_size_limit}}} if no {{{import_log_size_limit}}} is specified.  The realtime pipe will funnel any logs received into the main logging channel next to logs received on the wire.  The timestamp used will be the current time, just like logs on the wire.  The realtime pipe can be used for receiving logs with an external program, like a web service, and piping them directly into ELSA.
+
+For example, to import the Apache web log into ELSA, you would issue this command on the log node:
+
+{{{cat /var/log/apache2/access_log > /data/elsa/tmp/import}}}
