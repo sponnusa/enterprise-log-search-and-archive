@@ -521,8 +521,14 @@ sub _oversize_log_rotate {
 	my $self = shift;
 	
 	my ($query, $sth);
+	my $log_size_limit = $self->conf->get('log_size_limit');
+	if ($log_size_limit =~ /(\d+)\%$/){
+		my $limit_percent = $1;
+		my ($total, $available, $percentage) = $self->_current_disk_space_available();
+		$log_size_limit = $total * .01 * $limit_percent;
+	}
+	my $archive_size_limit = $log_size_limit * $self->conf->get('archive/percentage') * .01;
 	
-	my $archive_size_limit = $self->conf->get('log_size_limit') * $self->conf->get('archive/percentage') * .01;
 	while ($self->_get_current_archive_size() > $archive_size_limit){
 		$self->_get_lock('directory');
 		
@@ -545,7 +551,7 @@ sub _oversize_log_rotate {
 	}
 	
 	# Drop indexed data
-	while ($self->_get_current_index_size() > ($self->conf->get('log_size_limit') - $archive_size_limit)){
+	while ($self->_get_current_index_size() > ($log_size_limit - $archive_size_limit)){
 		$self->_get_lock('directory');
 		
 		# Get our latest entry
@@ -557,7 +563,7 @@ sub _oversize_log_rotate {
 		my $entry = $sth->fetchrow_hashref;
 		
 		$self->log->debug("Dropping old entries because current log size larger than " 
-			. ($self->conf->get('log_size_limit') - $archive_size_limit));
+			. ($log_size_limit - $archive_size_limit));
 		unless ($entry){
 			$self->log->error("no entries, current log size: " . $self->_get_current_index_size());
 			#$self->db->rollback();
@@ -576,7 +582,7 @@ sub _oversize_log_rotate {
 	}
 	
 	# Drop oldest import data if we're oversize
-	my $import_log_size_limit = $self->conf->get('log_size_limit') * .5; # default to 50% for sanity check
+	my $import_log_size_limit = $log_size_limit * .5; # default to 50% for sanity check
 	if ($self->conf->get('import_log_size_limit')){
 		$import_log_size_limit = $self->conf->get('import_log_size_limit');
 	}
@@ -2109,6 +2115,27 @@ sub record_host_stats {
 		$self->log->error('Error loading stats file: ' . $DBI::errstr);
 	
 	$self->log->trace("Finished in " . (Time::HiRes::time() - $overall_start) . " with $total records counted");
+}
+
+sub _current_disk_space_available {
+	my $self = shift;
+	my $data_dir = $self->conf->get('sphinx/index_path');
+	$data_dir =~ s/\/.*$//;
+	my @lines = qx(df -B 1);
+	my ($default, $total, $available, $percentage_used);
+	foreach my $line (@lines){
+		chomp($line);
+		(undef, $total, $available, $percentage_used, undef) = split(/\s+/, $line);
+		$percentage_used =~ s/\%$//;
+		if ($line =~ /^$data_dir/o){
+			return ($total, $available, $percentage_used);
+		}
+		elsif ($line =~ /^\/$/){
+			$default = [ $total, $available, $percentage_used ];
+		}
+	}
+	
+	return @$default;
 }
 
 __PACKAGE__->meta->make_immutable;
