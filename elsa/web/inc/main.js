@@ -252,11 +252,13 @@ YAHOO.ELSA.main = function () {
 			
 			// reset old values
 			YAHOO.ELSA.currentQuery.delMeta('groupby');
-			YAHOO.ELSA.currentQuery.delMeta('class');
-			YAHOO.ELSA.currentQuery.delMeta('limit');
+			//YAHOO.ELSA.currentQuery.delMeta('class');
+			//YAHOO.ELSA.currentQuery.delMeta('limit');
+			oButton.removeClass('elsa-accent');
 			
 			if (aClassVal[0] != YAHOO.ELSA.Labels.noGroupBy){
 				YAHOO.ELSA.currentQuery.addMeta('groupby', [sText]);
+				oButton.addClass('elsa-accent');
 			}
 			//else groupby is cleared by above delMetas
 		}
@@ -341,6 +343,7 @@ YAHOO.ELSA.main = function () {
 				YAHOO.ELSA.currentQuery.delMeta('analytics');
 				YAHOO.ELSA.currentQuery.delMeta('connector');
 				YAHOO.ELSA.currentQuery.delMeta('connector_params');
+				oButton.removeClass('elsa-accent');
 			}
 			else if (sText == YAHOO.ELSA.Labels.archive){
 				YAHOO.ELSA.currentQuery.addMeta('archive', 1);
@@ -348,18 +351,21 @@ YAHOO.ELSA.main = function () {
 				YAHOO.ELSA.currentQuery.delMeta('analytics');
 				YAHOO.ELSA.currentQuery.delMeta('connector');
 				YAHOO.ELSA.currentQuery.delMeta('connector_params');
+				oButton.addClass('elsa-accent');
 			}
 			else if (sText == YAHOO.ELSA.Labels.index_analytics){
 				YAHOO.ELSA.currentQuery.delMeta('livetail');
 				YAHOO.ELSA.currentQuery.delMeta('archive');
 				YAHOO.ELSA.currentQuery.addMeta('analytics', 1);
 				YAHOO.ELSA.showAddConnectorDialog();
+				oButton.addClass('elsa-accent');
 			}
 			else if (sText == YAHOO.ELSA.Labels.archive_analytics){
 				YAHOO.ELSA.currentQuery.delMeta('livetail');
 				YAHOO.ELSA.currentQuery.addMeta('archive', 1);
 				YAHOO.ELSA.currentQuery.addMeta('analytics', 1);
 				YAHOO.ELSA.showAddConnectorDialog();
+				oButton.addClass('elsa-accent');
 			}
 			else if (sText == YAHOO.ELSA.Labels.livetail){
 				YAHOO.ELSA.currentQuery.addMeta('livetail', 1);
@@ -367,6 +373,7 @@ YAHOO.ELSA.main = function () {
 				YAHOO.ELSA.currentQuery.delMeta('analytics');
 				YAHOO.ELSA.currentQuery.delMeta('connector');
 				YAHOO.ELSA.currentQuery.delMeta('connector_params');
+				oButton.addClass('elsa-accent');
 			}
 		}
 		
@@ -752,7 +759,7 @@ YAHOO.ELSA.main = function () {
 				}
 				
 				//set the archive button
-				if (typeof(YAHOO.ELSA.currentQuery.metas.groupby) == 'undefined'){
+				if (typeof(YAHOO.ELSA.currentQuery.metas.archive) == 'undefined'){
 					// groupby could've been set in query text instead of data struct
 					if (typeof(YAHOO.ELSA.localResults[iLocalResultId].results.query_meta_params) != 'undefined' &&
 						typeof(YAHOO.ELSA.localResults[iLocalResultId].results.query_meta_params.archive) != 'undefined'){
@@ -765,10 +772,12 @@ YAHOO.ELSA.main = function () {
 				if (YAHOO.ELSA.currentQuery.metas.archive){
 					oArchiveButton.set('label', YAHOO.ELSA.Labels.archive);
 					oArchiveButton.set('checked', true);
+					oArchiveButton.addClass('elsa-accent');
 				}
 				else {
 					oArchiveButton.set('label', YAHOO.ELSA.Labels.index);
 					oArchiveButton.set('checked', false);
+					oArchiveButton.removeClass('elsa-accent');
 				}
 			}
 			else {

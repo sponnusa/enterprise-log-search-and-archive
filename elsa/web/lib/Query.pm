@@ -223,6 +223,10 @@ sub TO_JSON {
 		highlights => $self->highlights,
 		stats => $self->stats,
 	};
+	
+	$ret->{query_meta_params}->{archive} = 1 if $self->archive;
+	$ret->{query_meta_params}->{livetail} = 1 if $self->livetail;
+	
 	unless ($ret->{groupby} and ref($ret->{groupby}) and ref($ret->{groupby}) eq 'ARRAY' and scalar @{ $ret->{groupby} }){
 		delete $ret->{groupby};
 	}
