@@ -255,17 +255,7 @@ get_elsa(){
 	mkdir -p "$BASE_DIR/elsa/node/tmp/locks" && 
 	touch "$BASE_DIR/elsa/node/tmp/locks/directory"
 	UPDATE_OK=$?
-	
-	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
-		mkfifo $DATA_DIR/elsa/tmp/realtime;
-		UPDATE_OK=$?
-	fi
-	
-	if [ ! -p $DATA_DIR/elsa/tmp/import ]; then
-		mkfifo $DATA_DIR/elsa/tmp/import;
-		UPDATE_OK=$?
-	fi
-		
+			
 	DOWNLOADED="$BASE_DIR/elsa/contrib/$THIS_FILE"
 	AFTER_MD5=$(md5sum $DOWNLOADED | cut -f1 -d\ )
 	echo "Latest MD5: $AFTER_MD5"
@@ -426,7 +416,10 @@ build_syslogng(){
 mk_node_dirs(){
 	# Make data directories on node
 	mkdir -p "$DATA_DIR/elsa/log" && mkdir -p "$DATA_DIR/elsa/tmp/buffers" &&
-	mkdir -p "$DATA_DIR/sphinx/log"
+	mkdir -p "$DATA_DIR/sphinx/log" &&
+	mkfifo $DATA_DIR/elsa/tmp/realtime &&
+	mkfifo $DATA_DIR/elsa/tmp/import;
+		
 	return $?
 }
 
@@ -893,7 +886,7 @@ restart_apache(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "get_elsa" "build_sphinx" "build_syslogng" "mk_node_dirs" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
