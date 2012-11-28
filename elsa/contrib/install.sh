@@ -416,11 +416,20 @@ build_syslogng(){
 mk_node_dirs(){
 	# Make data directories on node
 	mkdir -p "$DATA_DIR/elsa/log" && mkdir -p "$DATA_DIR/elsa/tmp/buffers" &&
-	mkdir -p "$DATA_DIR/sphinx/log" &&
-	mkfifo $DATA_DIR/elsa/tmp/realtime &&
-	mkfifo $DATA_DIR/elsa/tmp/import;
-		
-	return $?
+	mkdir -p "$DATA_DIR/sphinx/log"
+	UPDATE_OK=$?
+	
+	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
+		mkfifo $DATA_DIR/elsa/tmp/realtime;
+		UPDATE_OK=$?
+	fi
+	
+	if [ ! -p $DATA_DIR/elsa/tmp/import ]; then
+		mkfifo $DATA_DIR/elsa/tmp/import;
+		UPDATE_OK=$?
+	fi
+	
+	return $UPDATE_OK
 }
 
 set_node_mysql(){
