@@ -740,9 +740,11 @@ YAHOO.ELSA.main = function () {
 					else {
 						oGroupButton.set('label', YAHOO.ELSA.currentQuery.metas.groupby[0]);
 					}
+					oGroupButton.addClass('elsa-accent');
 				}
 				else {
 					oGroupButton.set('label', YAHOO.ELSA.Labels.defaultGroupBy);
+					oGroupButton.removeClass('elsa-accent');
 				}
 				// set times
 				if (YAHOO.ELSA.currentQuery.metas.start){
