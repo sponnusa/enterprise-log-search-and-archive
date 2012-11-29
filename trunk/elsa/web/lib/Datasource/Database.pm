@@ -53,7 +53,7 @@ sub BUILD {
 			$row->{fuzzy_not_op} = '<=';
 		}
 				
-		if ($row->{type} and $row->{type} eq 'ip_int'){
+		if ($row->{type} eq 'int' or $row->{type} and $row->{type} eq 'ip_int'){
 			$is_fuzzy = 0;
 			$row->{callback} = sub {
 				my ($col, $op, $val) = @_;
@@ -101,9 +101,9 @@ sub _query {
 	my @select;
 	my $groupby = '';
 	my $time_select_conversions = {
-		year => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400*365 AS unsigned)',
-		month => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400*30 AS unsigned)',
-		week => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400*7 AS unsigned)',
+		year => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*365) AS unsigned)',
+		month => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*30) AS unsigned)',
+		week => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*7) AS unsigned)',
 		day => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400 AS unsigned)',
 		hour => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/3600 AS unsigned)',
 		minute => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/60 AS unsigned)',
