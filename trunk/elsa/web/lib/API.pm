@@ -1231,7 +1231,7 @@ sub get_saved_searches {
 	};;
 }
 
-sub get_saved_queries {
+sub get_saved_results {
 	my ($self, $args) = @_;
 	
 	if ($args and ref($args) ne 'HASH'){

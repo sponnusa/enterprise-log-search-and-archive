@@ -1971,10 +1971,11 @@ YAHOO.ELSA.Query.Scheduled = function(p_oRecord){
 	}
 };
 
-YAHOO.ELSA.Results.Saved = function(p_iQid){
-	logger.log('building saved results with p_iQid:', p_iQid);
+YAHOO.ELSA.Results.Saved = function(p_iQid, p_oDataTable, p_bDeleteOnly){
+	logger.log('building saved results with p_iQid:', p_iQid, p_oDataTable);
 	this.superClass = YAHOO.ELSA.Results;
 	this.qid = p_iQid;
+	this.dataTable = p_oDataTable;
 	
 	this.receiveResponse = function(oResponse){
 		logger.log('response: ');
@@ -2020,14 +2021,14 @@ YAHOO.ELSA.Results.Saved = function(p_iQid){
 						else {
 							logger.log('deleted query ' + oSelf.qid);
 							// find the row in the data table and delete it
-							for (var i = 0; i < YAHOO.ELSA.getSavedQueries.dataTable.getRecordSet().getLength(); i++){
-								var oRecord = YAHOO.ELSA.getSavedQueries.dataTable.getRecordSet().getRecord(i);
+							for (var i = 0; i < oSelf.dataTable.getRecordSet().getLength(); i++){
+								var oRecord = oSelf.dataTable.getRecordSet().getRecord(i);
 								if (!oRecord){
 									continue;
 								}
 								if (oRecord.getData().qid == oSelf.qid){
 									logger.log('removing record ' + oRecord.getId() + ' from datatable');
-									YAHOO.ELSA.getSavedQueries.dataTable.deleteRow(oRecord.getId());
+									oSelf.dataTable.deleteRow(oRecord.getId());
 									break;
 								}
 							}
@@ -2049,18 +2050,19 @@ YAHOO.ELSA.Results.Saved = function(p_iQid){
 			'qid=' + this.qid);
 	};
 	
-	// Get the saved query data from the server
-	var request = YAHOO.util.Connect.asyncRequest('GET', 
-			'Query/get_saved_queries?qid=' + p_iQid,
-			{ 
-				success: this.receiveResponse,
-				failure:function(oResponse){
-					YAHOO.ELSA.Error('Query failed!'); return false;
-				},
-				argument: [this]
-			}
-	);
-	
+	if (!p_bDeleteOnly){
+		// Get the saved query data from the server
+		var request = YAHOO.util.Connect.asyncRequest('GET', 
+				'Query/get_saved_result?qid=' + p_iQid,
+				{ 
+					success: this.receiveResponse,
+					failure:function(oResponse){
+						YAHOO.ELSA.Error('Query failed!'); return false;
+					},
+					argument: [this]
+				}
+		);
+	}
 	
 };
 
@@ -2139,6 +2141,7 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		if (YAHOO.util.Dom.get('same_tab_checkbox').checked && oActiveTab){
 			logger.log('removing tab with tabid: ' + iActiveTabId);
 			var iLocalResultId = YAHOO.ELSA.getLocalResultId(oActiveTab);
+			logger.log('iLocalResultId ' + iLocalResultId + ' for active tab', oActiveTab);
 			YAHOO.ELSA.localResults.splice(iLocalResultId, 1);
 			this.tabView.deselectTab(iActiveTabId);
 			this.tabView.removeTab(oActiveTab);
@@ -2657,7 +2660,8 @@ YAHOO.ELSA.getPreviousQueries = function(){
 	oPanel.panel.show();
 };
 
-YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
+//YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
+YAHOO.ELSA.scheduleQuery = function(p_iQid){
 	var handleSubmit = function(){
 		this.submit();
 	};
@@ -3285,52 +3289,166 @@ YAHOO.ELSA.Error = function(p_sError){
 	oNotificationPanel.panel.show();
 };
 
-YAHOO.ELSA.getSavedQueries = function(){
-	if (!YAHOO.ELSA.getSavedQueries.dataSource){
-		var formatMenu = function(elLiner, oRecord, oColumn, oData){
-			// Create menu for our menu button
-			var oButtonMenuCfg = [
-				{ 
-					text: 'Get Results', 
-					value: 'get', 
-					onclick:{
-						fn: YAHOO.ELSA.getSavedResult,
-						obj: oRecord.getData().qid
-					}
-				},
-				{ 
-					text: 'Alert or schedule', 
-					value: 'schedule', 
-					onclick:{
-						fn: YAHOO.ELSA.scheduleQuery,
-						obj: oRecord.getData().qid
-					}
-				},
-				{ 
-					text: 'Delete', 
-					value: 'delete', 
-					onclick:{
-						fn: function(p_sType, p_aArgs, p_iQid){
-							oSavedQuery = new YAHOO.ELSA.Results.Saved(p_iQid);
+YAHOO.ELSA.getSavedResults = function(){
+	var oDataTable;
+	
+//	var formatMenu = function(elLiner, oRecord, oColumn, oData){
+//		// Create menu for our menu button
+//		var oButtonMenuCfg = [
+//			{ 
+//				text: 'Get Results', 
+//				value: 'get', 
+//				onclick:{
+//					fn: YAHOO.ELSA.getSavedResult,
+//					obj: [oRecord.getData().qid, oDataTable]
+//				}
+//			},
+//			{ 
+//				text: 'Alert or schedule', 
+//				value: 'schedule', 
+//				onclick:{
+//					fn: YAHOO.ELSA.scheduleQuery,
+//					obj: [oRecord.getData().qid, oDataTable]
+//				}
+//			},
+//			{ 
+//				text: 'Delete', 
+//				value: 'delete', 
+//				onclick:{
+//					fn: function(p_sType, p_aArgs, p_a){
+//						var p_iQid = p_a[0];
+//						var p_oDataTable = p_a[1];
+//						var oSavedQuery = new YAHOO.ELSA.Results.Saved(p_iQid, p_oDataTable);
+//						oSavedQuery.remove();
+//					},
+//					obj: [oRecord.getData().qid, oDataTable]
+//				}
+//			}
+//		];
+//		
+//		var oButton = new YAHOO.widget.Button(
+//			{
+//				type:'menu', 
+//				label:'Actions',
+//				name: 'action_button_' + oRecord.getData().qid,
+//				menu: oButtonMenuCfg,
+//				container: elLiner
+//			});
+//	};
+	
+	var formatPermaLink = function(elLiner, oRecord, oColumn, oData){
+		elLiner.innerHTML = '<a href="get_results?qid=' + oRecord.getData().qid + '&hash=' + oRecord.getData().hash + '" target="_blank">permalink</a>';
+	}
+		
+	// Build the panel if necessary
+	
+	var oPanel = new YAHOO.ELSA.Panel('saved_results');
+	oPanel.panel.setHeader('Saved Results');
+		
+	oPanel.panel.renderEvent.subscribe(function(){
+		// Create action button
+		var oButtonMenuCfg = [
+			{ 
+				text: 'Get Results', 
+				value: 'get', 
+				onclick:{
+					fn: function(p_sType, p_aArgs, p_oDataTable){
+						var aIds = oDataTable.getSelectedRows();
+						var aResults = [];
+						for (var i in aIds){
+							var oRecord = oDataTable.getRecord(aIds[i]);
+							logger.log('getting record', oRecord);
+							aResults.push(new YAHOO.ELSA.Results.Tabbed.Saved(YAHOO.ELSA.tabView, oRecord.getData().qid));
+						}
+					},
+					obj: oDataTable
+				}
+			},
+			{ 
+				text: 'Alert or schedule', 
+				value: 'schedule', 
+				onclick:{
+					fn: function(p_sType, p_aArgs, p_oDataTable){
+						var aIds = oDataTable.getSelectedRows();
+						var oRecord = oDataTable.getRecord(aIds[0]);
+						logger.log('alerting with record', oRecord);
+						YAHOO.ELSA.scheduleQuery(oRecord.getData().qid);
+					},
+					obj: oDataTable
+				}
+			},
+			{ 
+				text: 'Delete', 
+				value: 'delete', 
+				onclick:{
+					fn: function(p_sType, p_aArgs, p_oDataTable){
+						var aIds = oDataTable.getSelectedRows();
+						for (var i in aIds){
+							var oRecord = oDataTable.getRecord(aIds[i]);
+							logger.log('getting record', oRecord);
+							var oSavedQuery = new YAHOO.ELSA.Results.Saved(oRecord.getData().qid, oDataTable, true);
 							oSavedQuery.remove();
-						},
-						obj: oRecord.getData().qid
+						}
+					},
+					obj: oDataTable
+				}
+			}
+		];
+		
+		var oButtonTable = document.createElement('table');
+		var oTbody = document.createElement('tbody');
+		oButtonTable.appendChild(oTbody);
+		var oTr = document.createElement('tr');
+		oTbody.appendChild(oTr);
+		oPanel.panel.body.appendChild(oButtonTable);
+		
+		// Checked rows actions button
+		var oButtonDiv = document.createElement('div');
+		var oButtonTd = document.createElement('td');
+		oTr.appendChild(oButtonTd);
+		oButtonTd.appendChild(oButtonDiv);
+		var oButton = new YAHOO.widget.Button(
+		{
+			type:'menu', 
+			label:'Actions',
+			name: 'get_saved_results_action_button',
+			menu: oButtonMenuCfg,
+			container: oButtonDiv
+		});
+		
+		// Select all button
+		oButtonTd = document.createElement('td');
+		oTr.appendChild(oButtonTd);
+		var oSelectAllDiv = document.createElement('div');
+		oButtonTd.appendChild(oSelectAllDiv);
+		var oSelectAllButton = new YAHOO.widget.Button(
+		{
+			type:'checkbox', 
+			label:'Select All',
+			name: 'get_saved_results_selectall_button',
+			container: oSelectAllDiv,
+			onclick: {
+				fn: function(){
+					logger.log('checked', this.get('checked'));
+					if (this.get('checked') == true){
+						var aRecords = oDataTable.getRecordSet().getRecords();
+						for (var i in aRecords){
+							var oRecord = aRecords[i];
+							oDataTable.selectRow(oRecord);
+							this.set('label', 'Deselect All');
+						}
+					}
+					else {
+						oDataTable.unselectAllRows();
+						this.set('label', 'Select All');
 					}
 				}
-			];
-			
-			var oButton = new YAHOO.widget.Button(
-				{
-					type:'menu', 
-					label:'Actions',
-					name: 'action_button_' + oRecord.getData().qid,
-					menu: oButtonMenuCfg,
-					container: elLiner
-				});
-		};
-		YAHOO.ELSA.getSavedQueries.dataSource = new YAHOO.util.DataSource('Query/get_saved_queries?');
-		YAHOO.ELSA.getSavedQueries.dataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
-		YAHOO.ELSA.getSavedQueries.dataSource.responseSchema = {
+			}
+		});
+		
+		var oDataSource = new YAHOO.util.DataSource('Query/get_saved_results?');
+		oDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
+		oDataSource.responseSchema = {
 			resultsList: "results",
 			fields: ["qid", "query", "timestamp", "num_results", "comments", "hash" ],
 			metaFields: {
@@ -3338,64 +3456,60 @@ YAHOO.ELSA.getSavedQueries = function(){
 				recordsReturned: 'recordsReturned'
 			}
 		};
-			
-	}
-	
-	// Build the panel if necessary
-	if (!YAHOO.ELSA.getSavedQueries.panel){
-		var oPanel = new YAHOO.ELSA.Panel('saved_queries');
-		YAHOO.ELSA.getSavedQueries.panel = oPanel.panel;
-		YAHOO.ELSA.getSavedQueries.panel.setHeader('Saved Queries');
-		
-		var formatPermaLink = function(elLiner, oRecord, oColumn, oData){
-			elLiner.innerHTML = '<a href="get_results?qid=' + oRecord.getData().qid + '&hash=' + oRecord.getData().hash + '" target="_blank">permalink</a>';
-		}
-		
-		YAHOO.ELSA.getSavedQueries.panel.renderEvent.subscribe(function(){
-			var myColumnDefs = [
-				{ key:'menu', label:'Action', formatter:formatMenu },
-				{ key:"qid", label:"QID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
-				{ key:"query", label:"Query", sortable:true },
-				{ key:"timestamp", label:"Timestamp", editor:"date", formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true },
-				{ key:"num_results", label:"Results", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
-				{ key:"comments", label:"Comments", sortable:true },
-				{ key:"permalink", label:"Permalink", formatter:formatPermaLink }
-			];
-			var oPaginator = new YAHOO.widget.Paginator({
-			    pageLinks          : 10,
-		        rowsPerPage        : 5,
-		        rowsPerPageOptions : [5,20],
-		        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
-		        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
-		    });
-		    
-		    var oDataTableCfg = {
-		    	initialRequest: 'startIndex=0&results=5',
-		    	initialLoad: true,
-		    	dynamicData: true,
-		    	sortedBy : {key:"qid", dir:YAHOO.widget.DataTable.CLASS_DESC},
-		    	paginator: oPaginator //,
-		    	//MSG_EMPTY: 'Loading...'
-		    };
-		    var dtDiv = document.createElement('div');
-			dtDiv.id = 'saved_queries_dt';
-			document.body.appendChild(dtDiv);
-			try {	
-				YAHOO.ELSA.getSavedQueries.dataTable = new YAHOO.widget.DataTable(dtDiv, 
-					myColumnDefs, YAHOO.ELSA.getSavedQueries.dataSource, oDataTableCfg );
-				YAHOO.ELSA.getSavedQueries.dataTable.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
-					oPayload.totalRecords = oResponse.meta.totalRecords;
-					return oPayload;
+		var oColumnDefs = [
+			//{ key:'menu', label:'Action', formatter:formatMenu },
+			{ key:'checkbox', label:'', formatter:YAHOO.widget.DataTable.formatCheckbox },
+			{ key:"qid", label:"QID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
+			{ key:"query", label:"Query", sortable:true },
+			{ key:"timestamp", label:"Timestamp", editor:"date", formatter:YAHOO.ELSA.formatDateFromUnixTime, sortable:true },
+			{ key:"num_results", label:"Results", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
+			{ key:"comments", label:"Comments", sortable:true },
+			{ key:"permalink", label:"Permalink", formatter:formatPermaLink }
+		];
+		var oPaginator = new YAHOO.widget.Paginator({
+		    pageLinks          : 10,
+	        rowsPerPage        : 5,
+	        rowsPerPageOptions : [5,20,100],
+	        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
+	        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
+	    });
+	    
+	    var oDataTableCfg = {
+	    	initialRequest: 'startIndex=0&results=5',
+	    	initialLoad: true,
+	    	dynamicData: true,
+	    	sortedBy : {key:"qid", dir:YAHOO.widget.DataTable.CLASS_DESC},
+	    	paginator: oPaginator //,
+	    	//MSG_EMPTY: 'Loading...'
+	    };
+	    var oDiv = document.createElement('div');
+		oDiv.id = 'saved_results_dt';
+		oPanel.panel.body.appendChild(oDiv);
+		try {	
+			oDataTable = new YAHOO.widget.DataTable(oDiv, oColumnDefs, oDataSource, oDataTableCfg );
+			oDataTable.handleDataReturnPayload = function(oRequest, oResponse, oPayload){
+				oPayload.totalRecords = oResponse.meta.totalRecords;
+				return oPayload;
+			}
+			oDataTable.subscribe("checkboxClickEvent", function(oArgs) {
+				var elCheckbox = oArgs.target;
+				var elRow = this.getTrEl(elCheckbox);
+				if(elCheckbox.checked) {
+					this.selectRow(elRow);
 				}
-				YAHOO.ELSA.getSavedQueries.panel.setBody(dtDiv);
-			}
-			catch (e){
-				logger.log('Error:', e);
-			}
-		});
-	}
-	YAHOO.ELSA.getSavedQueries.panel.render();
-	YAHOO.ELSA.getSavedQueries.panel.show();
+				else {
+					this.unselectRow(elRow);
+				}
+			});
+		}
+		catch (e){
+			logger.log('Error:', e);
+		}
+	});
+	oPanel.panel.render();
+	oPanel.panel.show();
+	//oPanel.panel.destroyEvent.subscribe(function(){ logger.log('panel destroyed') });
+	//oPanel.panel.hideEvent.subscribe(function(){ logger.log('panel hidden', arguments); });
 };
 
 YAHOO.ELSA.getQueryScheduleAdmin = function(){
@@ -4906,8 +5020,10 @@ YAHOO.ELSA.Panel = function(p_sName, p_oArgs){
 	this.panel.setBody(''); //init to empty
 	this.panel.render();
 	
-	YAHOO.ELSA.panels[p_sName] = this; // register for possible re-use later
+	// register
+	YAHOO.ELSA.panels[p_sName] = this; 
 	YAHOO.ELSA.overlayManager.register(this.panel);
+	
 	return this;
 }
 

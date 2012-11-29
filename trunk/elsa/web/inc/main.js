@@ -544,7 +544,7 @@ YAHOO.ELSA.main = function () {
 							text: 'Saved Results',
 							helptext: 'Results this user has manually saved',
 							onclick: {
-								fn: YAHOO.ELSA.getSavedQueries
+								fn: YAHOO.ELSA.getSavedResults
 							}
 						},
 						{
