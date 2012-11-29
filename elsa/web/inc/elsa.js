@@ -2660,8 +2660,7 @@ YAHOO.ELSA.getPreviousQueries = function(){
 	oPanel.panel.show();
 };
 
-//YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
-YAHOO.ELSA.scheduleQuery = function(p_iQid){
+YAHOO.ELSA.scheduleQuery = function(p_sType, p_aArgs, p_iQid){
 	var handleSubmit = function(){
 		this.submit();
 	};
@@ -3372,7 +3371,7 @@ YAHOO.ELSA.getSavedResults = function(){
 						var aIds = oDataTable.getSelectedRows();
 						var oRecord = oDataTable.getRecord(aIds[0]);
 						logger.log('alerting with record', oRecord);
-						YAHOO.ELSA.scheduleQuery(oRecord.getData().qid);
+						YAHOO.ELSA.scheduleQuery(null, null, oRecord.getData().qid);
 					},
 					obj: oDataTable
 				}
@@ -3382,13 +3381,17 @@ YAHOO.ELSA.getSavedResults = function(){
 				value: 'delete', 
 				onclick:{
 					fn: function(p_sType, p_aArgs, p_oDataTable){
-						var aIds = oDataTable.getSelectedRows();
-						for (var i in aIds){
-							var oRecord = oDataTable.getRecord(aIds[i]);
-							logger.log('getting record', oRecord);
-							var oSavedQuery = new YAHOO.ELSA.Results.Saved(oRecord.getData().qid, oDataTable, true);
-							oSavedQuery.remove();
-						}
+						var oConfirmationPanel = new YAHOO.ELSA.Panel.Confirmation(function(p_oEvent, p_oDataTable){
+							var aIds = p_oDataTable.getSelectedRows();
+							var oRecord, oSavedQuery;
+							for (var i in aIds){
+								oRecord = p_oDataTable.getRecord(aIds[i]);
+								logger.log('deleting record', oRecord);
+								oSavedQuery = new YAHOO.ELSA.Results.Saved(oRecord.getData().qid, p_oDataTable, true);
+								oSavedQuery.remove();
+							}
+							this.hide();
+						}, oDataTable, 'Really delete saved result(s)?');
 					},
 					obj: oDataTable
 				}
@@ -3521,8 +3524,11 @@ YAHOO.ELSA.getQuerySchedule = function(p_oEvent, p_a, p_oMenuItem, p_bAsAdmin){
 	}
 	logger.log('getQuerySchedule args', arguments);
 	var deleteScheduledQuery = function(p_sType, p_aArgs, p_oRecord){
-		oQuery = new YAHOO.ELSA.Query.Scheduled(p_oRecord);
-		oQuery.remove();
+		var oConfirmationPanel = new YAHOO.ELSA.Panel.Confirmation(function(p_oEvent, p_oRecord){
+			var oQuery = new YAHOO.ELSA.Query.Scheduled(p_oRecord);
+			oQuery.remove();
+			this.hide();
+		}, p_oRecord, 'Really delete alert?');
 	};
 	var formatMenu = function(elLiner, oRecord, oColumn, oData){
 		// Create menu for our menu button
