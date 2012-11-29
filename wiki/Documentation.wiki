@@ -605,3 +605,19 @@ The above will configure ELSA to send an email to "sysadmin_team@example.com" if
 Host checks are run via the cron.pl script which runs every minute, so an interval of less than 60 seconds will be nonsensical.  The interval is padded with 60 seconds to make sure that the log loading batch job is completed on each node, so specifying an interval of 60 seconds will really be 120 seconds, but 900 seconds would be 960 seconds.
 
 There is currently no threshold for number of alerts sent, so you will get an email each minute until the logs start again or the configuration is changed.
+=Pcap/Stream/Block Integration=
+To integrate with a pcap server like OpenFPC or StreamDB, set these config params in elsa_web.conf:
+
+|| streamdb_url || StreamDB base URL ||
+|| pcapdb_url || OpenFPC base URL ||
+|| block_url || Base URL for your custom blocking app ||
+
+This example config:
+{{{
+{
+  "streamdb_url": "http://streamdb",
+  "pcap_url": "http://myopenfpc",
+  "block_url": "http://blackhole"
+}
+}}}
+will set both getStream, getPcap, and blockIp options available as plugins after clicking "Info" for a log entry.
