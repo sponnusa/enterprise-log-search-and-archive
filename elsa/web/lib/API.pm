@@ -3462,7 +3462,12 @@ sub run_schedule {
 			$query_params->{user} = $user_info_cache->{ $row->{uid} };
 			
 			# Perform query
-			$self->query($query_params);
+			eval {
+				$self->query($query_params);
+			};
+			if ($@){
+				$self->log->error('Problem running query: ' . Dumper($query_params) . "\n" . $@);
+			}
 			$counter++;
 		}
 	}
