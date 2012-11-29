@@ -4499,26 +4499,34 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	var oIps = {};
 	var aQuery = [];
 	
-	//if (defined(oData.proto) && oData.proto.toLowerCase() != 'tcp'){
-	//	YAHOO.ELSA.Error('Only TCP is supported for pcap retrieval.');
-	//}
+	// tack on the start/end +/- one minute
+	aQueryParams['start'] = new Date( p_oRecord.getData().timestamp );
+	aQueryParams['start'].setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
+	aQueryParams['start'] = getISODateTime(aQueryParams['start']);
+	aQueryParams['end'] = new Date( p_oRecord.getData().timestamp );
+	aQueryParams['end'].setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
+	aQueryParams['end'] = getISODateTime(aQueryParams['end']);
 	
 	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport' ];
+	var oOpenFpcTranslations = { 
+		'srcip': 'sip',
+		'dstip': 'dip',
+		'srcport': 'spt',
+		'dstport': 'dpt',
+		'start': 'stime',
+		'end': 'dtime'
+	};
 	for (var i in aQueryParams){
 		var sParam = aQueryParams[i];
 		if (defined(oData[sParam])){
-			aQuery.push(sParam + '=' + oData[sParam]);
+			var sUrlParam = sParam;
+			if (defined(oOpenFpcTranslations[sUrlParam])){
+				sUrlParam = oOpenFpcTranslations[sUrlParam];
+			}
+			aQuery.push(sUrlParam + '=' + oData[sParam]);
 		}
 	}
 	var sQuery = aQuery.join('&');
-	
-	// tack on the start/end +/- one minute
-	var oStart = new Date( p_oRecord.getData().timestamp );
-	oStart.setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
-	var oEnd = new Date( p_oRecord.getData().timestamp );
-	oEnd.setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
-	sQuery += '&start=' + getISODateTime(oStart) + '&end=' + getISODateTime(oEnd);
-	
 	var oPcapWindow = window.open(YAHOO.ELSA.pcapUrl + '/?' + sQuery);
 }
 
