@@ -1267,7 +1267,7 @@ sub get_saved_results {
 		$saved_queries = $self->_get_saved_query(sprintf('%d', $args->{qid}));
 	}
 	else {
-		$saved_queries = $self->_get_saved_queries($uid, $offset, $limit);
+		$saved_queries = $self->_get_saved_queries($uid, $offset, $limit, $args->{search});
 	}
 	
 
@@ -1290,7 +1290,7 @@ sub _get_saved_query {
 }
 
 sub _get_saved_queries {
-	my ( $self, $uid, $offset, $limit ) = @_;
+	my ( $self, $uid, $offset, $limit, $search ) = @_;
 	$limit = 100 unless $limit;
 
 	my ( $query, $sth, $row );
@@ -1305,31 +1305,22 @@ sub _get_saved_queries {
 	$row = $sth->fetchrow_hashref;
 	my $totalRecords = $row->{totalRecords} ? $row->{totalRecords} : 0;
 
-	# Find our type of database and use the appropriate query
-	my $db_type = $self->db->get_info(17);    #17 == SQL_DBMS_NAME
-	if ( $db_type =~ /Microsoft SQL Server/ ) {
-		# In MS-SQL, we don't have the niceties of OFFSET, so we have to do this via subqueries
-		my $outer_top = $offset + $limit;
-		$query = 'SELECT * FROM ' . "\n" .
-			'(SELECT TOP ? * FROM ' . "\n" .
-			'(SELECT TOP ? t1.qid, t2.query, comments FROM ' . "\n" .
-			'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid) ' . "\n" .
-		  	'WHERE uid=? ' . "\n" .
-		  	'ORDER BY qid DESC) OverallTop ' . "\n" .
-		  	'ORDER BY qid ASC) TopOfTop ' . "\n" .
-		  	'ORDER BY qid DESC';
-		$sth = $self->db->prepare($query) or die( $self->db->errstr );
-		$sth->execute($limit, ($offset + $limit), $uid);  
+	my @placeholders = ($uid);
+	$query =
+	    'SELECT t1.qid, t2.query, comments, num_results, UNIX_TIMESTAMP(timestamp) AS timestamp ' . "\n"
+	  . 'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid) ' . "\n"
+	  . 'WHERE uid=?' . "\n";
+	if ($search){
+		$query .= ' AND SUBSTRING_INDEX(SUBSTRING_INDEX(CONCAT(t2.query, " ", IF(ISNULL(comments), "", comments)), \'"\', 4), \'"\', -1) LIKE CONCAT("%", ?, "%")' . "\n";
+		push @placeholders, $search;
 	}
-	else {
-		$query =
-		    'SELECT t1.qid, t2.query, comments, num_results, UNIX_TIMESTAMP(timestamp) AS timestamp ' . "\n"
-		  . 'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid) ' . "\n"
-		  . 'WHERE uid=?' . "\n"
-		  . 'ORDER BY qid DESC LIMIT ?,?';
-		$sth = $self->db->prepare($query) or die( $self->db->errstr );
-		$sth->execute( $uid, $offset, $limit );
-	}
+	push @placeholders, $offset, $limit;
+	$query .= 'ORDER BY qid DESC LIMIT ?,?';
+	$self->log->debug(Dumper(\@placeholders));
+	$sth = $self->db->prepare($query) or die( $self->db->errstr );
+	
+	$sth->execute( @placeholders );
+
 
 	my $queries = [];    # only save the latest unique query
 	while ( my $row = $sth->fetchrow_hashref ) {
