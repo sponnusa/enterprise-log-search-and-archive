@@ -62,26 +62,37 @@ sub call {
 		$self->api->freshen_db;
 		$ret = $self->api->query($query_args);
 		unless ($ret){
-			$ret = { error => $self->api->last_error };
+			die($self->api->last_error);
 		}
-	};
-	if ($@){
-		my $e = $@;
-		$self->api->log->error($e);
-		$datasource->add_message({type => 'error', reason => 'access_denied', message => $e});
-		my ($headers, $body) = $datasource->serialize;
-		$res->headers(@$headers);
-		$res->body([encode_utf8($body)]);
-	}
-	else {
+	
 		my $datatable = Data::Google::Visualization::DataTable->new();
 	
 		if ($ret->has_groupby){
 			#$self->api->log->debug('ret: ' . Dumper($ret));
+			$self->api->log->debug('ret: ' . Dumper($ret->all_groupbys));
+			$self->api->log->debug('ret: ' . Dumper($ret->groupby));
+			
+			# First add columns
+			foreach my $groupby ($ret->all_groupbys){
+				$self->api->log->debug('groupby: ' . Dumper($groupby));
+				my $label = $ret->meta_params->{comment} ? $ret->meta_params->{comment} : 'count'; 
+				if ($Fields::Time_values->{$groupby}){
+					$datatable->add_columns({id => $groupby, label => $groupby, type => 'datetime'}, {id => 'value', label => $label, type => 'number'});
+				}
+				else {
+					if ($query_args->{query_meta_params}->{type} and $query_args->{query_meta_params}->{type} =~ /geo/i){
+						$datatable->add_columns({id => $groupby, label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
+					}
+					else {
+						$datatable->add_columns({id => $groupby, label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
+					}
+				}
+			}
+			
+			# Then add rows
 			foreach my $groupby ($ret->all_groupbys){
 				my $label = $ret->meta_params->{comment} ? $ret->meta_params->{comment} : 'count'; 
 				if ($Fields::Time_values->{$groupby}){
-					$datatable->add_columns({id => 'key', label => $groupby, type => 'datetime'}, {id => 'value', label => $label, type => 'number'});
 					my $tz = DateTime::TimeZone->new( name => "local");
 					foreach my $row (@{ $ret->results->results->{$groupby} }){
 						$self->api->log->debug('row: ' . Dumper($row));
@@ -104,7 +115,6 @@ sub call {
 #						}
 #						else {
 							# Hope for country code
-							$datatable->add_columns({id => 'key', label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
 							foreach my $row (@{ $ret->results->results->{$groupby} }){
 								my $cc = $row->{_groupby};
 								$self->api->log->debug('row: ' . Dumper($row));
@@ -116,7 +126,6 @@ sub call {
 #						}
 					}
 					else {
-						$datatable->add_columns({id => 'key', label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
 						foreach my $row (@{ $ret->results->results->{$groupby} }){
 							$self->api->log->debug('row: ' . Dumper($row));
 							$datatable->add_rows([ { v => $row->{_groupby} }, { v => $row->{_count} } ]);
@@ -140,12 +149,23 @@ sub call {
 			$self->api->log->debug('warnings: ' . Dumper($self->api->warnings));
 			$datasource->add_message({type => 'warning', reason => 'data_truncated', message => join(' ', @{ $self->api->warnings })});
 		}
+	};
+	if ($@){
+		my $e = $@;
+		$self->api->log->error($e);
+		$datasource->add_message({type => 'error', reason => 'access_denied', message => $e});
 		my ($headers, $body) = $datasource->serialize;
-		$self->api->log->debug('headers: ' . Dumper(@$headers));
-		$self->api->log->debug('body: ' . Dumper($body));
 		$res->headers(@$headers);
 		$res->body([encode_utf8($body)]);
 	}
+	else {
+		my ($headers, $body) = $datasource->serialize;
+		$res->headers(@$headers);
+		$res->body([encode_utf8($body)]);
+		$self->api->log->debug('headers: ' . Dumper(@$headers));
+		$self->api->log->debug('body: ' . Dumper($body));
+	}
+	
 	$res->finalize();
 }
 
