@@ -3289,7 +3289,27 @@ YAHOO.ELSA.Error = function(p_sError){
 };
 
 YAHOO.ELSA.getSavedResults = function(){
-	var oDataTable;
+	var oDataTable, oInput;
+	
+	var generateRequest = function(oState, oSelf) {
+        // Get states or use defaults
+        oState = oState || { pagination: null, sortedBy: null };
+        var sort = (oState.sortedBy) ? oState.sortedBy.key : "id";
+        var dir = (oState.sortedBy && oState.sortedBy.dir === YAHOO.widget.DataTable.CLASS_DESC) ? "desc" : "asc";
+        var startIndex = (oState.pagination) ? oState.pagination.recordOffset : 0;
+        var results = (oState.pagination) ? oState.pagination.rowsPerPage : 25;
+        
+        var sRet = "sort=" + sort +
+            "&dir=" + dir +
+            "&startIndex=" + startIndex +
+            "&results=" + (startIndex + results);
+        
+        var sSearch = oInput.value;
+        if (sSearch != ''){
+        	sRet += '&search=' + sSearch;
+        }
+		return sRet;		        
+    }
 	
 //	var formatMenu = function(elLiner, oRecord, oColumn, oData){
 //		// Create menu for our menu button
@@ -3449,6 +3469,38 @@ YAHOO.ELSA.getSavedResults = function(){
 			}
 		});
 		
+		// Search box
+		oInput = document.createElement('input');
+		oInput.setAttribute('size', 100);
+		oButtonTd = document.createElement('td');
+		oTr.appendChild(oButtonTd);
+		oButtonTd.appendChild(oInput);
+		
+		// Submit button for search box 
+		oButtonDiv = document.createElement('div');
+		oButtonTd = document.createElement('td');
+		oTr.appendChild(oButtonTd);
+		oButtonTd.appendChild(oButtonDiv);
+		var oButton = new YAHOO.widget.Button(
+		{
+			type:'submit', 
+			label:'Search Query/Comments',
+			name: 'get_saved_results_search_button',
+			container: oButtonDiv,
+			onclick: {
+				fn: function(){
+					//oDataTable.load();
+					oDataTable.getDataSource().sendRequest(generateRequest(oDataTable.get('paginator').getState(), oDataTable), {
+						success: oDataTable.onDataReturnInitializeTable,
+						failure: oDataTable.onDataReturnInitializeTable,
+						scope: oDataTable,
+						argument: oDataTable.getState()
+					});
+				}
+			}
+		});
+		
+		
 		var oDataSource = new YAHOO.util.DataSource('Query/get_saved_results?');
 		oDataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
 		oDataSource.responseSchema = {
@@ -3482,8 +3534,8 @@ YAHOO.ELSA.getSavedResults = function(){
 	    	initialLoad: true,
 	    	dynamicData: true,
 	    	sortedBy : {key:"qid", dir:YAHOO.widget.DataTable.CLASS_DESC},
-	    	paginator: oPaginator //,
-	    	//MSG_EMPTY: 'Loading...'
+	    	paginator: oPaginator,
+	    	generateRequest: generateRequest
 	    };
 	    var oDiv = document.createElement('div');
 		oDiv.id = 'saved_results_dt';
