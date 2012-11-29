@@ -2563,7 +2563,7 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 
 
 YAHOO.ELSA.getPreviousQueries = function(){
-	
+	var oPanel;
 	var setAsCurrentSearch = function(p_sType, p_aArgs, p_a){
 		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
 		var oData = p_oRecord.getData();
@@ -2612,7 +2612,7 @@ YAHOO.ELSA.getPreviousQueries = function(){
 		}
 	};
 		
-	var oPanel = new YAHOO.ELSA.Panel('previous_queries');
+	oPanel = new YAHOO.ELSA.Panel('previous_queries');
 	oPanel.panel.setHeader('Query History');
 	
 	oPanel.panel.renderEvent.subscribe(function(){
@@ -3530,9 +3530,27 @@ YAHOO.ELSA.getQuerySchedule = function(p_oEvent, p_a, p_oMenuItem, p_bAsAdmin){
 			this.hide();
 		}, p_oRecord, 'Really delete alert?');
 	};
+	
+	var oPanel;
+	var setAsCurrentSearch = function(p_sType, p_aArgs, p_a){
+		var p_oRecord = p_a[0], p_oDataTable = p_a[1];
+		var oData = p_oRecord.getData();
+		oData = YAHOO.lang.JSON.parse(oData.query);
+		YAHOO.util.Dom.get('q').value += ' ' + oData.query_string;
+		oPanel.panel.hide();
+	}
+	
 	var formatMenu = function(elLiner, oRecord, oColumn, oData){
 		// Create menu for our menu button
 		var oButtonMenuCfg = [
+			{ 
+				text: 'Add to Current Search', 
+				value: 'view', 
+				onclick:{
+					fn: setAsCurrentSearch,
+					obj: [oRecord,this]
+				}
+			},
 			{ 
 				text: 'Delete', 
 				value: 'delete', 
@@ -3577,7 +3595,7 @@ YAHOO.ELSA.getQuerySchedule = function(p_oEvent, p_a, p_oMenuItem, p_bAsAdmin){
 	}
 	
 	// Build the panel if necessary
-	var oPanel = new YAHOO.ELSA.Panel('query_schedule');
+	oPanel = new YAHOO.ELSA.Panel('query_schedule');
 	YAHOO.ELSA.getQuerySchedule.panel = oPanel.panel;
 	
 	var makeFrequency = function(p_i){
