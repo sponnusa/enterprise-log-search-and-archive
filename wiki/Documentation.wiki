@@ -609,7 +609,7 @@ There is currently no threshold for number of alerts sent, so you will get an em
 To integrate with a pcap server like OpenFPC or StreamDB, set these config params in elsa_web.conf:
 
 || streamdb_url || StreamDB base URL ||
-|| pcapdb_url || OpenFPC base URL ||
+|| pcap_url || OpenFPC base URL ||
 || block_url || Base URL for your custom blocking app ||
 
 This example config:
