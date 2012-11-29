@@ -356,6 +356,13 @@ sub _parse_query {
 		$self->log->debug("Set limit " . $self->limit);
 	}
 	
+	if ($self->meta_params->{start}){
+		$self->start(sprintf('%d', $self->meta_params->{start}));
+	}
+	if ($self->meta_params->{end}){
+		$self->end(sprintf('%d', $self->meta_params->{end}));
+	}
+		
 	foreach my $type (qw(field_terms attr_terms)){
 		foreach my $boolean (qw(and or not)){
 			$self->terms->{$type}->{$boolean} = {};
@@ -705,12 +712,6 @@ sub _parse_query {
 		die 'All query terms were stripped based on permissions or they were too common';
 	}
 	
-	if ($self->meta_params->{start}){
-		$self->start(sprintf('%d', $self->meta_params->{start}));
-	}
-	if ($self->meta_params->{end}){
-		$self->end(sprintf('%d', $self->meta_params->{end}));
-	}
 	$self->log->debug('META_PARAMS: ' . Dumper($self->meta_params));
 	
 	# Adjust query time params as necessary
