@@ -4688,6 +4688,7 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	}
 	var oIps = {};
 	var aQuery = [];
+	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport' ];
 	
 	// tack on the start/end +/- one minute
 	aQueryParams['start'] = new Date( p_oRecord.getData().timestamp );
@@ -4696,8 +4697,7 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	aQueryParams['end'] = new Date( p_oRecord.getData().timestamp );
 	aQueryParams['end'].setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
 	aQueryParams['end'] = getISODateTime(aQueryParams['end']);
-	
-	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport' ];
+		
 	var oOpenFpcTranslations = { 
 		'srcip': 'sip',
 		'dstip': 'dip',
@@ -4706,16 +4706,32 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 		'start': 'stime',
 		'end': 'dtime'
 	};
+	
 	for (var i in aQueryParams){
 		var sParam = aQueryParams[i];
-		if (defined(oData[sParam])){
+		if (typeof(oData[sParam]) != 'undefined'){
 			var sUrlParam = sParam;
-			if (defined(oOpenFpcTranslations[sUrlParam])){
+			if (typeof(oOpenFpcTranslations[sUrlParam]) != 'undefined'){
 				sUrlParam = oOpenFpcTranslations[sUrlParam];
 			}
 			aQuery.push(sUrlParam + '=' + oData[sParam]);
 		}
 	}
+	
+	var sUser = false, sPass;
+	for (var i in formParams.preferences.grid){
+		if (formParams.preferences.grid[i]['name'] == 'openfpc_username'){
+			sUser = formParams.preferences.grid[i]['value'];
+		}
+		else if (formParams.preferences.grid[i]['name'] == 'openfpc_password'){
+			sPass = formParams.preferences.grid[i]['value'];
+		}
+	}
+	if (sUser){
+		aQuery.push('username=' + sUser);
+		aQuery.push('password=' + sPass);
+	}
+	
 	var sQuery = aQuery.join('&');
 	var oPcapWindow = window.open(YAHOO.ELSA.pcapUrl + '/?' + sQuery);
 }
