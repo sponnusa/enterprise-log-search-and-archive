@@ -5030,7 +5030,7 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	var sUser = YAHOO.ELSA.getPreference('openfpc_username');
 	var sPass = YAHOO.ELSA.getPreference('openfpc_password');
 	if (sUser){
-		aQuery.push('username=' + sUser);
+		aQuery.push('user=' + sUser);
 		aQuery.push('password=' + sPass);
 	}
 	
