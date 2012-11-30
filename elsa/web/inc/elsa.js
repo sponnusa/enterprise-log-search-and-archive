@@ -4997,15 +4997,15 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	}
 	var oIps = {};
 	var aQuery = [];
-	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport' ];
+	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport', 'start', 'end' ];
 	
 	// tack on the start/end +/- one minute
-	aQueryParams['start'] = new Date( p_oRecord.getData().timestamp );
-	aQueryParams['start'].setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
-	aQueryParams['start'] = getISODateTime(aQueryParams['start']);
-	aQueryParams['end'] = new Date( p_oRecord.getData().timestamp );
-	aQueryParams['end'].setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
-	aQueryParams['end'] = getISODateTime(aQueryParams['end']);
+	oData['start'] = new Date( p_oRecord.getData().timestamp );
+	oData['start'].setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
+	oData['start'] = getISODateTime(oData['start']);
+	oData['end'] = new Date( p_oRecord.getData().timestamp );
+	oData['end'].setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
+	oData['end'] = getISODateTime(oData['end']);
 		
 	var oOpenFpcTranslations = { 
 		'srcip': 'sip',
@@ -5020,20 +5020,21 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 		var sParam = aQueryParams[i];
 		if (typeof(oData[sParam]) != 'undefined'){
 			var sUrlParam = sParam;
+			var sUrlValue = oData[sParam];
 			if (typeof(oOpenFpcTranslations[sUrlParam]) != 'undefined'){
 				sUrlParam = oOpenFpcTranslations[sUrlParam];
 			}
-			aQuery.push(sUrlParam + '=' + oData[sParam]);
+			aQuery.push(sUrlParam + '=' + sUrlValue);
 		}
 	}
-	
+		
 	var sUser = YAHOO.ELSA.getPreference('openfpc_username');
 	var sPass = YAHOO.ELSA.getPreference('openfpc_password');
 	if (sUser){
 		aQuery.push('user=' + sUser);
 		aQuery.push('password=' + sPass);
 	}
-	
+		
 	var sQuery = aQuery.join('&');
 	var oPcapWindow = window.open(YAHOO.ELSA.pcapUrl + '/?' + sQuery);
 }
