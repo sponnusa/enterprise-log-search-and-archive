@@ -28,6 +28,11 @@ YAHOO.ELSA.TimeTranslation = {
 	Days: [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ],
 	Months: [ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ]
 };
+YAHOO.ELSA.DefaultSettingsType = 'default_settings';
+YAHOO.ELSA.DefaultSettings = { 
+	'grid_display': 'Use grid display by default',
+	'resuse_tab': 'Reuse the same tab for all queries instead of opening new ones'
+};
 
 YAHOO.ELSA.initLogger = function(){
 	/* Setup logging */
@@ -3567,6 +3572,296 @@ YAHOO.ELSA.getSavedResults = function(){
 	//oPanel.panel.hideEvent.subscribe(function(){ logger.log('panel hidden', arguments); });
 };
 
+YAHOO.ELSA.getPreferences = function(){
+	var oDataTable = 'initial', oInput;
+	
+	// Build the panel
+	var oPanel = new YAHOO.ELSA.Panel('get_preferences');
+	oPanel.panel.setHeader('Preferences');
+		
+	oPanel.panel.renderEvent.subscribe(function(){
+		// Create action button
+		var oButtonMenuCfg = [
+			{ 
+				text: 'Add New Preference', 
+				value: 'add', 
+				onclick:{
+					fn: function(p_sType, p_aArgs){
+						logger.log('add args', arguments);
+						var callback = function(p_oNewValue){
+							oDataTable.addRow(p_oNewValue);
+						}
+						YAHOO.ELSA.async('Query/add_preference', callback);
+					}
+				}
+			},
+			{ 
+				text: 'Delete Checked', 
+				value: 'delete', 
+				onclick:{
+					fn: function(p_sType, p_aArgs){
+						logger.log('this', this);
+						var oConfirmationPanel = new YAHOO.ELSA.Panel.Confirmation(function(p_oEvent){
+							var aIds = oDataTable.getSelectedRows();
+							var oRecord;
+							for (var i in aIds){
+								oRecord = oDataTable.getRecord(aIds[i]);
+								logger.log('deleting record', oRecord);
+								var callback = function(p_oReturn){
+									logger.log('deleted query ', p_oReturn);
+									// find the row in the data table and delete it
+									for (var i = 0; i < oDataTable.getRecordSet().getLength(); i++){
+										var oRecord = oDataTable.getRecordSet().getRecord(i);
+										if (!oRecord){
+											continue;
+										}
+										if (oRecord.getData().id == p_oReturn.id){
+											logger.log('removing record ' + oRecord.getId() + ' from datatable');
+											oDataTable.deleteRow(oRecord.getId());
+											break;
+										}
+									}
+								}
+								YAHOO.ELSA.async('Query/delete_preference', callback, oRecord.getData());
+							}
+							this.hide();
+						}, null, 'Really delete preference(s)?');
+					}
+				}
+			}
+		];
+		
+		var oButtonTable = document.createElement('table');
+		var oTbody = document.createElement('tbody');
+		oButtonTable.appendChild(oTbody);
+		var oTr = document.createElement('tr');
+		oTbody.appendChild(oTr);
+		oPanel.panel.body.appendChild(oButtonTable);
+		
+		// Checked rows actions button
+		var oButtonDiv = document.createElement('div');
+		var oButtonTd = document.createElement('td');
+		oTr.appendChild(oButtonTd);
+		oButtonTd.appendChild(oButtonDiv);
+		var oButton = new YAHOO.widget.Button(
+		{
+			type:'menu', 
+			label:'Actions',
+			name: 'get_preferences_action_button',
+			menu: oButtonMenuCfg,
+			container: oButtonDiv
+		});
+		
+		// Select all button
+		oButtonTd = document.createElement('td');
+		oTr.appendChild(oButtonTd);
+		var oSelectAllDiv = document.createElement('div');
+		oButtonTd.appendChild(oSelectAllDiv);
+		var oSelectAllButton = new YAHOO.widget.Button(
+		{
+			type:'checkbox', 
+			label:'Select All',
+			name: 'get_preferences_selectall_button',
+			container: oSelectAllDiv,
+			onclick: {
+				fn: function(){
+					logger.log('checked', this.get('checked'));
+					if (this.get('checked') == true){
+						var aRecords = oDataTable.getRecordSet().getRecords();
+						for (var i in aRecords){
+							var oRecord = aRecords[i];
+							oDataTable.selectRow(oRecord);
+							this.set('label', 'Deselect All');
+						}
+					}
+					else {
+						oDataTable.unselectAllRows();
+						this.set('label', 'Select All');
+					}
+				}
+			}
+		});
+		
+		// Search box
+		oInput = document.createElement('input');
+		oInput.id = 'get_preferences_search_box';
+		oInput.setAttribute('size', 100);
+		oButtonTd = document.createElement('td');
+		oTr.appendChild(oButtonTd);
+		oButtonTd.appendChild(oInput);
+				
+		var formatValue = function(elLiner, oRecord, oColumn, oData){
+			if (typeof(oData) != 'string'){
+				elLiner.innerHTML = YAHOO.lang.JSON.stringify(oData);
+			}
+			else {
+				elLiner.innerHTML = oData;
+			}
+		}
+		
+		var oDataSource = new YAHOO.util.DataSource(formParams.preferences.grid);
+		oDataSource.doBeforeCallback = function (req,raw,res,cb) {
+			// This is the filter function
+			var data = res.results || [],
+				aFiltered = [],
+				i,l,j,sCol,
+				aSearchCols = [ 'type', 'name', 'value' ];
+
+			if (req) {
+				req = req.toLowerCase();
+				for (i = 0, l = data.length; i < l; ++i) {
+					for (j in aSearchCols){
+						sCol = aSearchCols[j];
+						if (data[i][sCol].match(req)) {
+							aFiltered.push(data[i]);
+							break;
+						}
+					}
+				}
+				res.results = aFiltered;
+			}
+			return res;
+		}
+		
+		var filterTimeout = null;
+		var updateFilter  = function () {
+    		// Reset timeout
+			filterTimeout = null;
+
+			// Reset sort
+			var state = oDataTable.getState();
+    		state.sortedBy = {key:'id', dir:YAHOO.widget.DataTable.CLASS_ASC};
+
+			// Get filtered data
+			oDataSource.sendRequest(YAHOO.util.Dom.get('get_preferences_search_box').value,{
+				success : oDataTable.onDataReturnInitializeTable,
+				failure : oDataTable.onDataReturnInitializeTable,
+				scope   : oDataTable,
+				argument: state
+			});
+		}
+
+		YAHOO.util.Event.on('get_preferences_search_box','keyup',function (e) {
+			clearTimeout(filterTimeout);
+			setTimeout(updateFilter,600);
+		});
+		
+		var asyncSubmitter = function(p_fnCallback, p_oNewValue){
+			// called in the scope of the editor
+			logger.log('editor this: ', this);
+			logger.log('p_oNewValue:', p_oNewValue);
+			
+			var oRecord = this.getRecord(),
+				oColumn = this.getColumn(),
+				sOldValue = this.value,
+				oDatatable = this.getDataTable();
+			logger.log('column:', oColumn);
+			
+			oRecord.setData(oColumn.field, p_oNewValue);
+			
+			var callback = function(p_oNewValue){
+				logger.log('callback p_oNewValue:', p_oNewValue);
+				logger.log('setting ' + oDataTable.getCellEditor().getColumn().field + ' to ', p_oNewValue);
+				
+				p_oNewValue = p_oNewValue[ oDataTable.getCellEditor().getColumn().field ];
+				oDataTable.updateCell(
+					oDataTable.getCellEditor().getRecord(),
+					oDataTable.getCellEditor().getColumn(),
+					p_oNewValue
+				);
+				oDataTable.getCellEditor().unblock();
+				oDataTable.getCellEditor().cancel(); //hides box
+			};
+				
+			YAHOO.ELSA.async('Query/set_preference', callback, oRecord.getData());
+		};
+				
+		// Set up editing flow
+		var highlightEditableCell = function(p_oArgs) {
+			var elCell = p_oArgs.target;
+			if(YAHOO.util.Dom.hasClass(elCell, "yui-dt-editable")) {
+				this.highlightCell(elCell);
+			}
+		};
+				
+		var onEventShowCellEditor = function(p_oArgs){
+			logger.log('p_oArgs', p_oArgs);
+			this.onEventShowCellEditor(p_oArgs);
+			// increase the size of the textbox, if we have one
+			if (oDataTable.getCellEditor() && oDataTable.getCellEditor().textbox){				
+				oDataTable.getCellEditor().textbox.setAttribute('size', 20);
+				oDataTable.getCellEditor().textbox.removeAttribute('style');
+				// create key listener for the submit
+				var enterKeyListener = new YAHOO.util.KeyListener(
+						oDataTable.getCellEditor().textbox,
+						{ keys: 13 },
+						{ 	fn: function(eName, p_aArgs){
+								var oEvent = p_aArgs[1];
+								// Make sure we don't submit the form
+								YAHOO.util.Event.stopEvent(oEvent);
+								var tgt=(oEvent.target ? oEvent.target : 
+									(oEvent.srcElement ? oEvent.srcElement : null)); 
+								try{
+									tgt.blur();
+								}
+								catch(e){}
+								var op = '=';
+								oDataTable.getCellEditor().save();
+							},
+							scope: YAHOO.ELSA,
+							correctScope: false
+						}
+				);
+				enterKeyListener.enable();
+			}
+		}
+		
+		var oColumnDefs = [
+			{ key:'checkbox', label:'', formatter:YAHOO.widget.DataTable.formatCheckbox },
+			{ key:"id", label:"ID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
+			{ key:"type", label:"Type", sortable:true, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter }) },
+			{ key:"name", label:"Name", sortable:true, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter }) },
+			{ key:"value", label:"Value", formatter:formatValue, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter }) }
+		];
+		var oPaginator = new YAHOO.widget.Paginator({
+		    pageLinks          : 10,
+	        rowsPerPage        : 5,
+	        rowsPerPageOptions : [5,20,100],
+	        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
+	        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
+	    });
+	    
+	    var oDataTableCfg = {
+	    	sortedBy : {key:"id", dir:YAHOO.widget.DataTable.CLASS_DESC},
+	    	paginator: oPaginator
+	    };
+	    var oDiv = document.createElement('div');
+		oDiv.id = 'get_preferences_dt';
+		oPanel.panel.body.appendChild(oDiv);
+		try {	
+			oDataTable = new YAHOO.widget.DataTable(oDiv, oColumnDefs, oDataSource, oDataTableCfg );
+			oDataTable.subscribe("checkboxClickEvent", function(oArgs) {
+				var elCheckbox = oArgs.target;
+				var elRow = this.getTrEl(elCheckbox);
+				if(elCheckbox.checked) {
+					this.selectRow(elRow);
+				}
+				else {
+					this.unselectRow(elRow);
+				}
+			});
+			oDataTable.subscribe("cellClickEvent", onEventShowCellEditor);
+		}
+		catch (e){
+			logger.log('Error:', e);
+		}
+	});
+	oPanel.panel.render();
+	oPanel.panel.show();
+	//oPanel.panel.destroyEvent.subscribe(function(){ logger.log('panel destroyed') });
+	//oPanel.panel.hideEvent.subscribe(function(){ logger.log('panel hidden', arguments); });
+};
+
 YAHOO.ELSA.getQueryScheduleAdmin = function(){
 	YAHOO.ELSA.getQuerySchedule(arguments[0], arguments[1], arguments[2], true);
 }
@@ -4636,6 +4931,20 @@ YAHOO.ELSA.blockIp = function(p_sType, p_aArgs, p_oRecord){
 	var oWindow = window.open(YAHOO.ELSA.blockUrl + '/' + p_oRecord.getData()._remote_ip + '?data=' + encodeURIComponent(YAHOO.lang.JSON.stringify(p_oRecord.getData())));
 }
 
+YAHOO.ELSA.getPreference = function(p_sName, p_sType){
+	for (var i in formParams.preferences.grid){
+		if (formParams.preferences.grid[i]['name'] == p_sName){
+			if (p_sType && formParams.preferences.grid[i]['type'] == p_sType){
+				return formParams.preferences.grid[i]['value'];
+			}
+			else {
+				return formParams.preferences.grid[i]['value'];
+			}
+		}
+	}
+	return null;
+}
+
 YAHOO.ELSA.getStream = function(p_sType, p_aArgs, p_oRecord){
 	logger.log('p_oRecord', p_oRecord);
 	
@@ -4718,15 +5027,8 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 		}
 	}
 	
-	var sUser = false, sPass;
-	for (var i in formParams.preferences.grid){
-		if (formParams.preferences.grid[i]['name'] == 'openfpc_username'){
-			sUser = formParams.preferences.grid[i]['value'];
-		}
-		else if (formParams.preferences.grid[i]['name'] == 'openfpc_password'){
-			sPass = formParams.preferences.grid[i]['value'];
-		}
-	}
+	var sUser = YAHOO.ELSA.getPreference('openfpc_username');
+	var sPass = YAHOO.ELSA.getPreference('openfpc_password');
 	if (sUser){
 		aQuery.push('username=' + sUser);
 		aQuery.push('password=' + sPass);

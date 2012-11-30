@@ -455,11 +455,32 @@ YAHOO.ELSA.main = function () {
 		
 		var oStartDate = new Date((formParams.display_start_int) * 1000);
 		var oSameTabCheckboxArgs = {id:'same_tab_checkbox', type:'checkbox'};
+		var perUserSetting;
+		
 		if (YAHOO.ELSA.sameTabForQueries){
-			oSameTabCheckboxArgs.checked = true;
+			var perUserSetting = YAHOO.ELSA.getPreference('reuse_tab', YAHOO.ELSA.DefaultSettingsType);
+			logger.log('perUserSetting', perUserSetting);
+			if (perUserSetting == null){
+				oSameTabCheckboxArgs.checked = true;
+			}
+			else if (perUserSetting != 1){
+				// Server config says yes, user says no
+				oSameTabCheckboxArgs.checked = false;
+			}
+			else {
+				oSameTabCheckboxArgs.checked = true;
+			}
 		}
+		else if (YAHOO.ELSA.getPreference('reuse_tab', YAHOO.ELSA.DefaultSettingsType)){
+			// server config says no, user says yes
+			oSameTabCheckboxArgs.checked = true;
+		} 
+		
 		var oGridCheckboxArgs = {id:'grid_display_checkbox', type:'checkbox'};
 		if (YAHOO.ELSA.gridDisplay){
+			oGridCheckboxArgs.checked = true;
+		}
+		else if (YAHOO.ELSA.getPreference('grid_display', YAHOO.ELSA.DefaultSettingsType)){
 			oGridCheckboxArgs.checked = true;
 		}
 				
@@ -573,6 +594,13 @@ YAHOO.ELSA.main = function () {
 							helptext: 'View/edit saved searches',
 							onclick: {
 								fn: YAHOO.ELSA.getSavedSearches
+							}
+						},
+						{
+							text: 'Preferences',
+							helptext: 'View/edit preferences',
+							onclick: {
+								fn: YAHOO.ELSA.getPreferences
 							}
 						}
 					]

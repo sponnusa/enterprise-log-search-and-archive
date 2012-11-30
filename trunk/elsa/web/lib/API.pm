@@ -962,6 +962,65 @@ sub get_all_scheduled_queries {
 	return $ret;
 }
 
+sub set_preference {
+	my ($self, $args) = @_;
+	
+	foreach my $item (qw(id type name value)){	
+		unless (defined $args->{$item}){
+			$self->_error('Invalid args, missing arg: ' . $item);
+			return;
+		}
+	}
+	
+	$args->{uid} = sprintf('%d', $args->{user}->uid);
+	
+	$self->log->info('Updating preferences: ' . Dumper(($args->{type}, $args->{name}, $args->{value}, $args->{id}, $args->{uid})));
+	
+	my ($query, $sth);
+	$query = 'UPDATE preferences SET type=?, name=?, value=? WHERE id=? AND uid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{type}, $args->{name}, $args->{value}, $args->{id}, $args->{uid});
+	
+	$query = 'SELECT * FROM preferences WHERE id=? AND uid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{id}, $args->{uid});
+	return $sth->fetchrow_hashref;
+}
+
+sub add_preference {
+	my ($self, $args) = @_;
+	
+	$args->{uid} = sprintf('%d', $args->{user}->uid);
+	
+	$self->log->info('Adding new empty preference');
+	
+	my ($query, $sth);
+	$query = 'INSERT INTO preferences (uid, type) VALUES(?, "custom")';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{uid});
+	
+	$query = 'SELECT * FROM preferences WHERE uid=? ORDER BY id DESC LIMIT 1';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{uid});
+	
+	return $sth->fetchrow_hashref;
+}
+
+sub delete_preference {
+	my ($self, $args) = @_;
+	
+	$args->{uid} = sprintf('%d', $args->{user}->uid);
+	
+	$self->log->info('Deleting preferences: ' . Dumper(($args->{type}, $args->{name}, $args->{value}, $args->{id}, $args->{uid})));
+	
+	my ($query, $sth);
+	$query = 'DELETE FROM preferences WHERE uid=? AND id=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{uid}, $args->{id});
+	
+	return { id => $args->{id} };
+}
+
 sub schedule_query {
 	my ($self, $args) = @_;
 	
