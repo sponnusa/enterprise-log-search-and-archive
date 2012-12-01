@@ -5002,10 +5002,10 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	// tack on the start/end +/- one minute
 	oData['start'] = new Date( p_oRecord.getData().timestamp );
 	oData['start'].setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
-	oData['start'] = getISODateTime(oData['start']);
+	oData['start'] = (oData['start'].getTime()/1000);
 	oData['end'] = new Date( p_oRecord.getData().timestamp );
 	oData['end'].setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
-	oData['end'] = getISODateTime(oData['end']);
+	oData['end'] = (oData['end'].getTime()/1000);
 		
 	var oOpenFpcTranslations = { 
 		'srcip': 'sip',
@@ -5013,7 +5013,7 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 		'srcport': 'spt',
 		'dstport': 'dpt',
 		'start': 'stime',
-		'end': 'dtime'
+		'end': 'etime'
 	};
 	
 	for (var i in aQueryParams){
