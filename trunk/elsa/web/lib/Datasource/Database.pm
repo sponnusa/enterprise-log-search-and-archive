@@ -25,6 +25,8 @@ has 'parser' => (is => 'rw', isa => 'Object');
 has 'db' => (is => 'rw', isa => 'Object');
 has 'timestamp_column' => (is => 'rw', isa => 'Str');
 
+our %Numeric_types = ( int => 1, ip_int => 1, float => 1 ); 
+
 sub BUILD {
 	my $self = shift;
 	
@@ -45,33 +47,30 @@ sub BUILD {
 				$row->{fuzzy_not_op} = 'NOT LIKE';
 			}
 		}
-		elsif ($row->{type} eq 'int' or $row->{type} eq 'ip_int'){
+		elsif ($row->{type} and $Numeric_types{ $row->{type} }){
 			$row->{fuzzy_op} = '=';
 			$row->{fuzzy_not_op} = '!=';
 		}
 		else {
 			$row->{fuzzy_not_op} = '<=';
 		}
-				
-		if ($row->{type} eq 'int' or $row->{type} and $row->{type} eq 'ip_int'){
-			$is_fuzzy = 0;
+		
+			
+		if ($row->{type} and $Numeric_types{ $row->{type} }){
 			$row->{callback} = sub {
 				my ($col, $op, $val) = @_;
+				$self->log->debug("adding to query: $col $op " . unpack('N*', inet_aton($val)));
 				return "$col $op " . unpack('N*', inet_aton($val));
 			};
 		}
 		
-		#my $col_name = $row->{name};
 		if ($row->{alias}){
 			if ($row->{alias} eq 'timestamp'){
 				$self->timestamp_column($row->{name});
 			}
-			#$row->{name} .= ' AS ' . $row->{alias};
-			#$col_name = $row->{alias};
 			$cols{ $row->{alias} } = $row;
 		}
 		
-		#$cols{$col_name} = $row;
 		$cols{ $row->{name} } = $row;
 	}
 			
@@ -93,6 +92,8 @@ sub _query {
 	
 	my $query_string = $q->query_string;
 	$query_string =~ s/\|.*//;
+	
+	$self->log->debug('query: ' . $query_string);
 	
 	my ($where, $placeholders) = @{ $self->parser->parse($query_string)->dbi };
 	$where =~ s/(?:(?:AND|OR|NOT)\s*)?1=1\s*(?:AND|OR|NOT)?//g; # clean up dummy values
