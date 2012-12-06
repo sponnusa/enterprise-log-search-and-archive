@@ -990,6 +990,10 @@ YAHOO.ELSA.Results = function(){
 			oAEl.on('click', YAHOO.ELSA.addTermFromOnClickNoSubmit, [p_oRecord.getData()['class'], p_oColumn.getKey(), p_oData]);
 			oDiv.appendChild(document.createTextNode(' '));
 			p_elCell.appendChild(oDiv);
+			
+			if (YAHOO.ELSA.getPreference('no_column_wrap', 'default_settings')){
+				p_elCell.parentNode.setAttribute('nowrap', 'nowrap');
+			}
 		}
 		catch (e){
 			logger.log('exception while parsing field:', e);
@@ -2070,6 +2074,48 @@ YAHOO.ELSA.Results.Saved = function(p_iQid, p_oDataTable, p_bDeleteOnly){
 	}
 	
 };
+
+YAHOO.ELSA.closeTabs = function(p_iUntil){
+	logger.log(p_iUntil);
+	var iNumTabs = YAHOO.ELSA.tabView.get('tabs').length;
+	if (!p_iUntil){
+		p_iUntil = iNumTabs;
+	}
+	for (var i = 0; i < p_iUntil; i++){
+		logger.log(i + ' of '+ p_iUntil);
+		var oTab = YAHOO.ELSA.tabView.getTab(0);
+		var iTabId = YAHOO.ELSA.tabView.getTabIndex(oTab);
+		logger.log('removing tab with tabid: ' + iTabId);
+		var iLocalResultId = YAHOO.ELSA.getLocalResultId(oTab);
+		YAHOO.ELSA.localResults.splice(iLocalResultId, 1);
+		YAHOO.ELSA.tabView.deselectTab(iTabId);
+		YAHOO.ELSA.tabView.removeTab(oTab);
+		YAHOO.ELSA.updateTabIds(iTabId);
+	}
+}
+
+YAHOO.ELSA.closeOtherTabs = function(p_iUntil){
+	var aTabs = YAHOO.ELSA.tabView.get('tabs');
+	for (var i in aTabs){
+		if (aTabs[i].get('element').title == 'active'){
+			continue;
+		}
+		var oTab = aTabs[i];
+		var iTabId = YAHOO.ELSA.tabView.getTabIndex(oTab);
+		logger.log('removing tab with tabid: ' + iTabId);
+		var iLocalResultId = YAHOO.ELSA.getLocalResultId(oTab);
+		YAHOO.ELSA.localResults.splice(iLocalResultId, 1);
+		YAHOO.ELSA.tabView.deselectTab(iTabId);
+		YAHOO.ELSA.tabView.removeTab(oTab);
+		YAHOO.ELSA.updateTabIds(iTabId);
+	}
+}
+
+YAHOO.ELSA.closeTabsUntilCurrent = function(){
+	var oActiveTab = YAHOO.ELSA.tabView.get('activeTab');
+	var oActiveTabId = YAHOO.ELSA.tabView.getTabIndex(oActiveTab);
+	YAHOO.ELSA.closeTabs(oActiveTabId);
+}
 
 YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 	this.superClass = YAHOO.ELSA.Results;
@@ -3529,7 +3575,7 @@ YAHOO.ELSA.getSavedResults = function(){
 		var oPaginator = new YAHOO.widget.Paginator({
 		    pageLinks          : 10,
 	        rowsPerPage        : 5,
-	        rowsPerPageOptions : [5,20,100],
+	        rowsPerPageOptions : [5,10,20,100],
 	        template           : "{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}",
 	        pageReportTemplate : "<strong>Records: {totalRecords} </strong> "
 	    });
@@ -4934,10 +4980,18 @@ YAHOO.ELSA.blockIp = function(p_sType, p_aArgs, p_oRecord){
 YAHOO.ELSA.getPreference = function(p_sName, p_sType){
 	for (var i in formParams.preferences.grid){
 		if (formParams.preferences.grid[i]['name'] == p_sName){
-			if (p_sType && formParams.preferences.grid[i]['type'] == p_sType){
-				return formParams.preferences.grid[i]['value'];
+			if (p_sType){
+				if (formParams.preferences.grid[i]['type'] == p_sType){
+					if (formParams.preferences.grid[i]['value'].match(/^\d+$/)){
+						return Number(formParams.preferences.grid[i]['value']);
+					}
+					return formParams.preferences.grid[i]['value'];
+				}
 			}
 			else {
+				if (formParams.preferences.grid[i]['value'].match(/^\d+$/)){
+					return Number(formParams.preferences.grid[i]['value']);
+				}
 				return formParams.preferences.grid[i]['value'];
 			}
 		}

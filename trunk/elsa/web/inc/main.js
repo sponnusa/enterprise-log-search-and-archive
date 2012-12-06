@@ -533,9 +533,10 @@ YAHOO.ELSA.main = function () {
 			YAHOO.ELSA.Error('Error drawing query grid:' + e.toString());
 			return;	
 		}
-				
+		
+		var keylisteners = {};
 		/* Have the enter key submit the form */
-		var enterKeyListener = new YAHOO.util.KeyListener(
+		keylisteners.enter = new YAHOO.util.KeyListener(
 				YAHOO.util.Dom.get('query_menu'),
 				{ keys: 13 },
 				{ 	fn: function(eName, eObj){ var tgt=(eObj[1].target ? eObj[1].target : (eObj[1].srcElement ? eObj[1].srcElement : null)); try{tgt.blur();}catch(e){} submitQuery();},
@@ -543,7 +544,55 @@ YAHOO.ELSA.main = function () {
 					correctScope: false
 				}
 		);
-		enterKeyListener.enable();
+		keylisteners.enter.enable();
+		
+		keylisteners.f8 = new YAHOO.util.KeyListener(
+			window,
+			{ keys: 119 },
+			{ 	fn: function(p_sEventName, p_a){
+				 	var iKey = p_a[0];
+				 	var oEvent = p_a[1];
+				 	oEvent.preventDefault();
+					YAHOO.ELSA.closeTabs();
+					YAHOO.util.Dom.get('q').focus();
+				},
+				scope: YAHOO.ELSA,
+				correctScope:false 
+			}
+		);
+		keylisteners.f8.enable();
+		
+		keylisteners.f9 = new YAHOO.util.KeyListener(
+			window,
+			{ keys: 120 },
+			{ 	fn: function(p_sEventName, p_a){
+				 	var iKey = p_a[0];
+				 	var oEvent = p_a[1];
+				 	oEvent.preventDefault();
+					YAHOO.ELSA.closeTabsUntilCurrent();
+					YAHOO.util.Dom.get('q').focus();
+				},
+				scope: YAHOO.ELSA,
+				correctScope:false 
+			}
+		);
+		keylisteners.f9.enable();
+		
+		keylisteners.f10 = new YAHOO.util.KeyListener(
+			window,
+			{ keys: 121 },
+			{ 	fn: function(p_sEventName, p_a){
+				 	var iKey = p_a[0];
+				 	var oEvent = p_a[1];
+				 	oEvent.preventDefault();
+					YAHOO.ELSA.closeOtherTabs();
+					YAHOO.util.Dom.get('q').focus();
+				},
+				scope: YAHOO.ELSA,
+				correctScope:false 
+			}
+		);
+		keylisteners.f10.enable();
 	}
 
 	var drawMenuBar = function(){
