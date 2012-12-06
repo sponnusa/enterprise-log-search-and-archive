@@ -992,6 +992,73 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="barracuda_scan" id='27_scan'>
+		<pattern>scan</pattern>
+		<rules>
+			<rule provider="ELSA" class='27' id='27'>
+				<patterns>
+					<pattern>@ESTRING::[@@IPv4:i0:@] @ESTRING:: @@ESTRING:: @@ESTRING:: @SCAN @ESTRING:: @@ESTRING:s0: @@ESTRING:s1: @@ESTRING:: @@ESTRING:i1: @@ESTRING:i2: @@ESTRING:s2: @SZ:@NUMBER::@ SUBJ:@ANYSTRING:s3:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="scan">UNKNOWN[10.37.80.102] 1329946623-01792678721d5b70001-uwIQq5 1329946623 1329946623 SCAN - sender@example.com recipient@example.com 0.341 0 0 - SZ:1634 SUBJ:Service - Flow Capture (inside)|status.example.com|PROBLEM</test_message>
+						<test_values>
+							<test_value name="i0">10.37.80.102</test_value>
+							<test_value name="s0">sender@example.com</test_value>
+							<test_value name="s1">recipient@example.com</test_value>
+							<test_value name="i1">0</test_value>
+							<test_value name="i2">0</test_value>
+							<test_value name="s2">-</test_value>
+							<test_value name="s3">Service - Flow Capture (inside)|status.example.com|PROBLEM</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>		
+	<ruleset name="barracuda_inbound" id='27_scan'>
+		<pattern>inbound</pattern>
+		<rules>
+			<rule provider="ELSA" class='28' id='28'>
+				<patterns>
+					<pattern>@ESTRING::[@@IPv4:i0:@] @ESTRING:: @@ESTRING:: @@ESTRING:: @RECV @ESTRING:s0: @@ESTRING:s1: @@ESTRING:i1: @@ESTRING:i2: @@ANYSTRING:s2:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="inbound/pass1">host.com[8.7.24.13] 1329330589-01792657ab486050001-5NcMI6 1329330589 1329330590 RECV test@test.com test1@test.ca 2 62 8.7.24.13</test_message>
+						<test_values>
+							<test_value name="i0">8.7.24.13</test_value>
+							<test_value name="s0">test@test.com</test_value>
+							<test_value name="s1">test1@test.ca</test_value>
+							<test_value name="i1">2</test_value>
+							<test_value name="i2">62</test_value>
+							<test_value name="s2">8.7.24.13</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>		
+	<ruleset name="barracuda_outbound" id='27_scan'>
+		<pattern>outbound</pattern>
+		<rules>
+			<rule provider="ELSA" class='29' id='29'>
+				<patterns>
+					<pattern>@IPv4:i0:@ @ESTRING:: @@ESTRING:: @@ESTRING:: @SEND @ESTRING:: @@ESTRING:i1: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ANYSTRING:s0:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="outbound/smtp">192.168.1.10: outbound/smtp[17580]: 127.0.0.1 1329330593-01792657ab486060001-slQ29D 0 0 SEND - 1 40FD5C6C659 250 &lt;0be658c5d60e4a0ea51a0a4745d6115e@mail.ca&gt; Queued mail for delivery</test_message>
+						<test_values>
+							<test_value name="i0">127.0.0.1</test_value>
+							<test_value name="s0">Queued mail for delivery</test_value>
+							<test_value name="i1">1</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 	<ruleset name='Microsoft Exchange via Epilog' id='30'>
 		<patterns>exchmtlog</patterns>
 		<rules>
