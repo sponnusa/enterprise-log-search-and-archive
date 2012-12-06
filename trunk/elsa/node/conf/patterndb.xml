@@ -1016,7 +1016,7 @@
 			</rule>
 		</rules>
 	</ruleset>		
-	<ruleset name="barracuda_inbound" id='27_scan'>
+	<ruleset name="barracuda_inbound" id='27_inbound'>
 		<pattern>inbound</pattern>
 		<rules>
 			<rule provider="ELSA" class='28' id='28'>
@@ -1039,7 +1039,7 @@
 			</rule>
 		</rules>
 	</ruleset>		
-	<ruleset name="barracuda_outbound" id='27_scan'>
+	<ruleset name="barracuda_outbound" id='27_outbound'>
 		<pattern>outbound</pattern>
 		<rules>
 			<rule provider="ELSA" class='29' id='29'>
