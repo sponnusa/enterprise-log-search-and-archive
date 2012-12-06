@@ -621,3 +621,19 @@ This example config:
 }
 }}}
 will set both getStream, getPcap, and blockIp options available as plugins after clicking "Info" for a log entry.
+
+=Preferences=
+You can set per-user preferences by navigating to the "Preferences" dialog under the "ELSA" menu in the upper-left-hand corner of the page.  Preference changes will take effect at the next page load.
+
+||Type||Name||Value to Enable||Function||
+||default_settings||reuse_tab||0||Overrides server setting for whether or not to reuse the current tab for each new query||
+||default_settings||grid_view||1||Defaults results to grid view||
+||default_settings||no_column_wrap||1||Disables column wrapping in grid view||
+||custom||openfpc_username||<user name>||User name for sending to OpenFPC if pcap_url is set||
+||custom||openfpc_password||<password>||OpenFPC password||
+
+=Keyboard Shortcuts=
+||Key||Action||
+||F8||Closes all result tabs||
+||F9||Closes all result tabs before active||
+||F10||Closes all tabs except active||
