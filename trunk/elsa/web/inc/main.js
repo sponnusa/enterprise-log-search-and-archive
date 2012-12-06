@@ -546,6 +546,7 @@ YAHOO.ELSA.main = function () {
 		);
 		keylisteners.enter.enable();
 		
+		// Close all tabs with F8
 		keylisteners.f8 = new YAHOO.util.KeyListener(
 			window,
 			{ keys: 119 },
@@ -562,6 +563,7 @@ YAHOO.ELSA.main = function () {
 		);
 		keylisteners.f8.enable();
 		
+		// Close tabs up to active with F9
 		keylisteners.f9 = new YAHOO.util.KeyListener(
 			window,
 			{ keys: 120 },
@@ -578,6 +580,7 @@ YAHOO.ELSA.main = function () {
 		);
 		keylisteners.f9.enable();
 		
+		// Close all other tabs with F10
 		keylisteners.f10 = new YAHOO.util.KeyListener(
 			window,
 			{ keys: 121 },
