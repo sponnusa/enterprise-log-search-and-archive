@@ -49,7 +49,7 @@ Installation is done by running the install.sh file obtained either by downloadi
 Currently, Linux and FreeBSD 8.x are supported, with Linux distros based on Debian (including Ubuntu), RedHat (including CentOS), and SuSE tested.  install.sh should run and succeed on these distributions, assuming that the defaults are chosen and that no existing configurations will conflict.
 
 ==Updates==
-Updating an installation is done via the install.sh file: {{{sh install.sh node update && sh install.sh web update}}}.  This will check the web for any updates and apply them locally, taking into account local customizations in /etc/elsa_vars.sh.
+Updating an installation is done via the install.sh file (assuming your ELSA directory is /usr/local/elsa): {{{sh /usr/local/elsa/contrib/install.sh node update && sh /usr/local/elsa/contrib/install.sh web update}}}.  This will check the web for any updates and apply them locally, taking into account local customizations in /etc/elsa_vars.sh.
 
 =Plugins=
 ELSA ships with several plugins:
