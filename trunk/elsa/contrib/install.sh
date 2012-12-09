@@ -30,6 +30,12 @@ SYSLOG_VER="3.2.4"
 GEOIP_DIR="/usr/share/GeoIP/"
 APACHE="apache2"
 
+if [ -f "/sbin/md5" ]; then
+	MD5SUM="/sbin/md5";
+else
+	MD5SUM="md5sum"
+fi
+
 # Include local config
 if [ -f /etc/elsa_vars.sh ]; then
 	. /etc/elsa_vars.sh
@@ -253,7 +259,7 @@ set_date(){
 
 get_elsa(){
 	# Find our current md5
-	BEFORE_MD5=$(md5sum $SELF | cut -f1 -d\ )
+	BEFORE_MD5=$($MD5SUM $SELF | cut -f1 -d\ )
 	echo "Current MD5: $BEFORE_MD5"
 	# Get the latest code from Google Code
 	cd $BASE_DIR
@@ -263,7 +269,7 @@ get_elsa(){
 	UPDATE_OK=$?
 			
 	DOWNLOADED="$BASE_DIR/elsa/contrib/$THIS_FILE"
-	AFTER_MD5=$(md5sum $DOWNLOADED | cut -f1 -d\ )
+	AFTER_MD5=$($MD5SUM $DOWNLOADED | cut -f1 -d\ )
 	echo "Latest MD5: $AFTER_MD5"
 	
 	if [ "$BEFORE_MD5" != "$AFTER_MD5" ]; then
