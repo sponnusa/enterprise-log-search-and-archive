@@ -395,6 +395,8 @@
 					<pattern>@ESTRING:: @@ESTRING:s1: [**] @@ESTRING:s2: [**] @@ESTRING:s4: [**] @@IPv4:i0:@:@NUMBER:i1:@ -> @IPv4:i2:@:@NUMBER:i3:@</pattern>
 					<!-- suricata extended -->
 					<pattern>@ESTRING:: @@ESTRING:s1: [**] @@ESTRING:s2: [**] @@ESTRING:s4: [**] @@ESTRING:s3: [**] @@ESTRING:s0: [**] @@ESTRING:: [**] @@ESTRING:i2: [**] @@NUMBER:i3:@ bytes [**] @IPv4:i0:@:@NUMBER:i4:@ -> @IPv4:i1:@:@NUMBER:i5:@</pattern>
+					<!--Common Log Format-->
+					<pattern>@IPv4:i0:@ @ESTRING:: @@ESTRING:s5: @@ESTRING:: "@@ESTRING:s0: @@ESTRING:s2: @HTTP/1.@NUMBER::@" @NUMBER:i2:@ @NUMBER:i3:@ @QSTRING:s3:"@ @QSTRING:s4:"@</pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -443,6 +445,19 @@
 							<test_value name="i2">200</test_value>
 							<test_value name="i3"></test_value>
 							<test_value name="i4"></test_value>
+						</test_values>
+					</example>
+					<example>
+						<test_message program="url">127.0.0.1 - - [09/Dec/2012:23:20:27 -0600] "HEAD / HTTP/1.1" 200 334 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/536.11 (KHTML, like Gecko) Ubuntu/12.04 Chromium/20.0.1132.47 Chrome/20.0.1132.47 Safari/536.11"</test_message>
+						<test_values>
+							<test_value name="i0">127.0.0.1</test_value>
+							<test_value name="s0">HEAD</test_value>
+							<test_value name="s2">/</test_value>
+							<test_value name="s3">-</test_value>
+							<test_value name="s4">Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/536.11 (KHTML, like Gecko) Ubuntu/12.04 Chromium/20.0.1132.47 Chrome/20.0.1132.47 Safari/536.11</test_value>
+							<test_value name="s5">-</test_value>
+							<test_value name="i2">200</test_value>
+							<test_value name="i3">334</test_value>
 						</test_values>
 					</example>
 					</examples>
