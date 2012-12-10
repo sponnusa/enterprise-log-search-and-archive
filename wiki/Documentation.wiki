@@ -113,12 +113,19 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
  * Archive/days: Max number of days to retain logs for in the archive
  * Sphinx/days: Max number of days to retain logs for in the indexes
 ==Low volume configuration tuning==
-If your ELSA node isn't receiving many logs (less than a few hundred per minute), you may need to tune your setup so that permanent indexes aren't underutilized.  There are at most num_indexes number of permanent indexes, and if there isn't a free one available, the oldest one will be overwritten.  If this happens before the log_size_limit has been reached, then it means that you rolled logs before you wanted to.  This means you need to tweak some settings in elsa_node.conf:
+If your ELSA node isn't receiving many logs (less than a few hundred per minute), you may need to tune your setup so that permanent indexes aren't underutilized.  There are at most {{{num_indexes}}} number of permanent indexes, and if there isn't a free one available, the oldest one will be overwritten.  If this happens before the {{{log_size_limit}}} has been reached, then it means that you rolled logs before you wanted to.  This means you need to tweak some settings in {{{elsa_node.conf}}}:
 
  * Increase num_indexes to something larger like 400
- * Increase allowed_temp_percent to 80
+ * Increase {{{allowed_temp_percent}}} to 80
 
 This should give you .8 x 400 x 60 seconds of time before temp indexes get rolled into a perm index, and should give you more perm indexes before they get rolled.  With 400 perm indexes, that should be more than 88 days of possible index time.  If that's still not enough, move index_interval up from 60 seconds to something larger (this will extend the "lifetime" of a temp index).
+
+If you set {{{num_indexes}}} to be larger than 200, you should increase the open files limit for searchd (Sphinx).  You can do this on Linux by editing {{{/etc/security/limits.conf}}} and adding:
+
+{{{root soft nofile 100000
+root hard nofile 200000}}}
+
+Then logout, login, and restart searchd.
 
 ==Firewall Settings==
 ||Source||Destination||Port||
