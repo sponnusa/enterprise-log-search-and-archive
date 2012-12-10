@@ -41,9 +41,9 @@ sub BUILD {
 		$self->cv->begin;
 		
 		foreach my $key (keys %{ $datum }){
-			if ($keys->{$key}){
+			if ($datum->{$key} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 				$datum->{transforms}->{$Name}->{$key} = {};
-				$self->_lookup($datum, $key, $datum->{$key});
+				$self->_lookup($datum, $key);
 			}
 		}
 		
@@ -70,7 +70,7 @@ sub _lookup {
 	my $self = shift;
 	my $datum = shift;
 	my $field = shift;
-	my $ip = shift;
+	my $ip = $datum->{$field};
 	
 	my $ret = $datum->{transforms}->{$Name}->{$field};
 	$self->log->trace('Looking up ip ' . $ip);
