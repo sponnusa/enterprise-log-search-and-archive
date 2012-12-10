@@ -36,9 +36,10 @@ INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(23, "CHECKPOINT", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(24, "PALO_ALTO_URL", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(25, "PALO_ALTO_TRAFFIC", 0);*/
-/*INSERT INTO classes (id, class, parent_id) VALUES(26, "BARRACUDA_SCAN", 0);*/
-/*INSERT INTO classes (id, class, parent_id) VALUES(27, "BARRACUDA_RECV", 0);*/
-/*INSERT INTO classes (id, class, parent_id) VALUES(28, "BARRACUDA_SEND", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(26, "OSSEC", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(27, "BARRACUDA_SCAN", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(28, "BARRACUDA_RECV", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(29, "BARRACUDA_SEND", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(30, "EXCHANGE", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(31, "LOG2TIMELINE", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(32, "CEF", 0);*/
