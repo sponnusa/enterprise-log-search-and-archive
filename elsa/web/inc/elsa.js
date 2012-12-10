@@ -888,7 +888,7 @@ YAHOO.ELSA.Results = function(){
 				var fieldHash = oTempWorkingSet[i];
 				var aMatches = null;
 				if (fieldHash.value != null){
-					aMatches = fieldHash.value.match(re);
+					aMatches = fieldHash.value.toString().match(re);
 				}
 				if (aMatches != null){
 					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
