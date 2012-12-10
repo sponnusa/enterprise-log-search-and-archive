@@ -24,6 +24,7 @@ has 'fields' => (is => 'rw', isa => 'ArrayRef', required => 1);
 has 'parser' => (is => 'rw', isa => 'Object');
 has 'db' => (is => 'rw', isa => 'Object');
 has 'timestamp_column' => (is => 'rw', isa => 'Str');
+has 'timestamp_is_int' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 
 our %Numeric_types = ( int => 1, ip_int => 1, float => 1 ); 
 
@@ -35,9 +36,10 @@ sub BUILD {
 	
 	$self->query_template =~ /FROM\s+([\w\_]+)/;
 	my %cols;
-	my $is_fuzzy = 1;
+	my $is_fuzzy = 0;
 	foreach my $row (@{ $self->fields }){
 		if (not $row->{type}){
+			$is_fuzzy = 1;
 			if ($self->dsn =~ /dbi:Pg/){
 				$row->{fuzzy_op} = 'ILIKE';
 				$row->{fuzzy_not_op} = 'NOT ILIKE';
@@ -68,6 +70,10 @@ sub BUILD {
 			if ($row->{alias} eq 'timestamp'){
 				$self->timestamp_column($row->{name});
 			}
+			elsif ($row->{alias} eq 'timestamp_int'){
+				$self->timestamp_column($row->{name});
+				$self->timestamp_is_int(1);
+			}
 			$cols{ $row->{alias} } = $row;
 		}
 		
@@ -79,7 +85,12 @@ sub BUILD {
 	}
 	
 	$self->log->debug('cols ' . Dumper(\%cols));
-	$self->parser(Search::QueryParser::SQL->new(columns => \%cols, fuzzify2 => $is_fuzzy));
+	if ($is_fuzzy){
+		$self->parser(Search::QueryParser::SQL->new(columns => \%cols, fuzzify2 => $is_fuzzy));
+	}
+	else {
+		$self->parser(Search::QueryParser::SQL->new(columns => \%cols));
+	}
 	
 	return $self;
 }
@@ -102,13 +113,24 @@ sub _query {
 	my @select;
 	my $groupby = '';
 	my $time_select_conversions = {
-		year => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*365) AS unsigned)',
-		month => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*30) AS unsigned)',
-		week => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*7) AS unsigned)',
-		day => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400 AS unsigned)',
-		hour => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/3600 AS unsigned)',
-		minute => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/60 AS unsigned)',
-		seconds => 'UNIX_TIMESTAMP(' . $self->timestamp_column . ')',
+		iso => {
+			year => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*365) AS unsigned)',
+			month => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*30) AS unsigned)',
+			week => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/(86400*7) AS unsigned)',
+			day => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/86400 AS unsigned)',
+			hour => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/3600 AS unsigned)',
+			minute => 'CAST(UNIX_TIMESTAMP(' . $self->timestamp_column . ')/60 AS unsigned)',
+			seconds => 'UNIX_TIMESTAMP(' . $self->timestamp_column . ')',
+		},
+		int => {
+			year => 'CAST(' . $self->timestamp_column . '/(86400*365) AS unsigned)',
+			month => 'CAST(' . $self->timestamp_column . '/(86400*30) AS unsigned)',
+			week => 'CAST(' . $self->timestamp_column . '/(86400*7) AS unsigned)',
+			day => 'CAST(' . $self->timestamp_column . '/86400 AS unsigned)',
+			hour => 'CAST(' . $self->timestamp_column . '/3600 AS unsigned)',
+			minute => 'CAST(' . $self->timestamp_column . '/60 AS unsigned)',
+			seconds => $self->timestamp_column,
+		}
 	};
 	
 	if ($q->has_groupby){
@@ -120,12 +142,21 @@ sub _query {
 			}
 		}
 		
-		if ($time_select_conversions->{ $q->groupby->[0] }){
+		if ($self->timestamp_is_int and $time_select_conversions->{int}->{ $q->groupby->[0] }){
 			if ($count_field){
-				push @select, 'SUM(' . $count_field . ') AS `_count`', $time_select_conversions->{ $q->groupby->[0] } . ' AS `_groupby`';
+				push @select, 'SUM(' . $count_field . ') AS `_count`', $time_select_conversions->{int}->{ $q->groupby->[0] } . ' AS `_groupby`';
 			}
 			else {
-				push @select, 'COUNT(*) AS `_count`', $time_select_conversions->{ $q->groupby->[0] } . ' AS `_groupby`';
+				push @select, 'COUNT(*) AS `_count`', $time_select_conversions->{int}->{ $q->groupby->[0] } . ' AS `_groupby`';
+			}
+			$groupby = 'GROUP BY _groupby';
+		}
+		elsif ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
+			if ($count_field){
+				push @select, 'SUM(' . $count_field . ') AS `_count`', $time_select_conversions->{iso}->{ $q->groupby->[0] } . ' AS `_groupby`';
+			}
+			else {
+				push @select, 'COUNT(*) AS `_count`', $time_select_conversions->{iso}->{ $q->groupby->[0] } . ' AS `_groupby`';
 			}
 			$groupby = 'GROUP BY _groupby';
 		}
@@ -174,6 +205,15 @@ sub _query {
 				}
 				push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);
 			}
+			elsif ($row->{alias} eq 'timestamp_int'){
+				if ($where and $where ne ' '){
+					$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+				}
+				else {
+					$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+				}
+				push @$placeholders, $q->start, $q->end;
+			}
 		}
 		else {
 			push @select, $row->{name};
@@ -182,7 +222,7 @@ sub _query {
 
 	my $orderby;
 	if ($q->has_groupby){
-		if ($time_select_conversions->{ $q->groupby->[0] }){
+		if ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
 			$orderby = '_groupby ASC';
 		}
 		else {
