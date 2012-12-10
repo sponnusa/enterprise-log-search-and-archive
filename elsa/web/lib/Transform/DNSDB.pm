@@ -41,9 +41,9 @@ sub BUILD {
 		$self->cv(AnyEvent->condvar);
 		$self->cv->begin;
 		foreach my $key (keys %{ $datum }){
-			if ($keys->{$key}){
+			if ($datum->{$key} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 				$datum->{transforms}->{$Name}->{$key} = {};
-				$self->_query($datum, $key, $datum->{$key});
+				$self->_query($datum, $key);
 			}
 		}
 		
@@ -58,7 +58,7 @@ sub _query {
 	my $self = shift;
 	my $datum = shift;
 	my $key = shift;
-	my $query = shift;
+	my $query = $datum->{$key};
 	
 	$self->cv->begin;
 	

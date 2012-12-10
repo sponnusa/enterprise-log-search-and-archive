@@ -26,7 +26,7 @@ sub BUILD {
 		$datum->{transforms}->{$Name} = {};
 		
 		foreach my $key (keys %{ $datum }){
-			if ($key eq 'srcip' or $key eq 'dstip' or $key eq 'ip'){
+			if ($datum->{$key} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 				if ($cc_only){
 					my $record = $geoip->country_code_by_addr($datum->{$key});
 					next unless $record;
