@@ -162,7 +162,7 @@ do {
 			sleep 1 if $Run;                                # to avoid errmsg flooding
 		}
 	}
-	$Conf = $Config_json->{config} if $Run; # reload the config in case it has changed on disk
+	$Conf = Config::JSON->new( $Conf_file )->{config} if $Run; # reload the config in case it has changed on disk
 } while ($Run);
 
 $Log->info('Exiting after processing ' . $total_processed . ' records');
