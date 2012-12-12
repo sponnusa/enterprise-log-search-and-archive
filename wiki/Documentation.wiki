@@ -639,6 +639,8 @@ You can set per-user preferences by navigating to the "Preferences" dialog under
 ||default_settings||no_column_wrap||1||Disables column wrapping in grid view||
 ||custom||openfpc_username||<user name>||User name for sending to OpenFPC if pcap_url is set||
 ||custom||openfpc_password||<password>||OpenFPC password||
+||default_settings||pcap_offset||<seconds>||Number of seconds before/after to set get_pcap retrieval time to||
+||default_settings||use_utc||1||Display all dates in UTC (GMT)||
 
 =Keyboard Shortcuts=
 ||Key||Action||
