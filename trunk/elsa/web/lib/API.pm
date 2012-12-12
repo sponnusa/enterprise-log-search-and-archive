@@ -1935,7 +1935,8 @@ sub _sphinx_query {
 					foreach my $table (sort keys %tables){
 						my $placeholders = join(',', map { '?' } @{ $tables{$table} });
 						my $table_query = sprintf("SELECT %1\$s.id,\n" .
-							"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
+							#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
+							"timestamp,\n" .
 							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
 							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 							"FROM %1\$s\n" .
@@ -2133,7 +2134,7 @@ sub _sphinx_query {
 			}
 		}
 		# Trim to just the limit asked for unless we're doing analytics
-		foreach my $row (sort { $a->{timestamp} cmp $b->{timestamp} } @tmp){
+		foreach my $row (sort { $a->{timestamp} <=> $b->{timestamp} } @tmp){
 			$q->results->add_result($row);
 			last if not $q->analytics and $q->results->records_returned >= $q->limit;
 		}
@@ -2244,9 +2245,8 @@ sub _unlimited_sphinx_query {
 				
 				push @batch_results, $record;
 				
-				my $epoch = UnixDate(ParseDate($record->{timestamp}), '%s');
-				if ($epoch > $latest_time){
-					$latest_time = $epoch;
+				if ($record->{timestamp} > $latest_time){
+					$latest_time = $record->{timestamp};
 				}
 				
 				$total++;
@@ -2866,7 +2866,7 @@ sub transform {
 		}
 		else {
 			foreach my $row ($q->results->all_results){
-				my $condensed_hash = { timestamp => UnixDate(ParseDate($row->{timestamp}), '%s') };
+				my $condensed_hash = { timestamp => $row->{timestamp} };
 				foreach my $base_col (qw(id msg)){
 					$condensed_hash->{$base_col} = $row->{$base_col};
 				}
@@ -3014,7 +3014,7 @@ sub transform {
 					# If there's no groupby but more transforms
 					$transform_args->{results} = [];
 					foreach my $row ($subq->results->all_results){
-						my $condensed_hash = { id => $row->{id}, msg => $row->{msg}, timestamp => UnixDate(ParseDate($row->{timestamp}), '%s') };
+						my $condensed_hash = { id => $row->{id}, msg => $row->{msg}, timestamp => $row->{timestamp} };
 						foreach my $field_hash (@{ $row->{_fields} }){
 							$condensed_hash->{ $field_hash->{field} } = $field_hash->{value};
 						}
@@ -3791,7 +3791,8 @@ sub _archive_query {
 				else {
 					$search_query = "SELECT main.id,\n" .
 						"\"" . $node . "\" AS node,\n" .
-						"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
+						#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
+						"timestamp,\n" .
 						"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
 						"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 						"FROM $table main\n" .
@@ -3981,7 +3982,7 @@ sub _archive_query {
 				push @tmp, $row;
 			}
 		}
-		foreach my $row (sort { $a->{timestamp} cmp $b->{timestamp} } @tmp){
+		foreach my $row (sort { $a->{timestamp} <=> $b->{timestamp} } @tmp){
 			$q->results->add_result($row);
 			last if scalar $q->results->total_records >= $limit;
 		}
