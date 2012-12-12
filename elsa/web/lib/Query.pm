@@ -838,6 +838,15 @@ sub _parse_query_term {
 				if ($self->node_info->{classes}->{ uc($term_hash->{value}) }){
 					$class = lc($self->node_info->{classes}->{ uc($term_hash->{value}) });
 				}
+				elsif (uc($term_hash->{value}) eq 'ANY'){
+					my @classes;
+					foreach my $class_name (keys %{ $self->node_info->{classes} }){
+						next if $class_name eq 'ANY';
+						push @classes, { field => 'class', value => $class_name, op => $term_hash->{op} };
+					}
+					$self->_parse_query_term({ '' => \@classes }, $effective_operator);
+					next;
+				}
 				else {
 					die("Unknown class $term_hash->{value}");
 				}
