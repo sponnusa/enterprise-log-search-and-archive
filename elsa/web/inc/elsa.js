@@ -1010,33 +1010,66 @@ YAHOO.ELSA.Results = function(){
 		var oDate = p_oData;
 		if(p_oData instanceof Date){
 			oDate = p_oData;
-		}else{
+		}
+		else if (typeof(p_oData) == 'number'){
+			oDate = new Date();
+			oDate.setTime(p_oData * 1000);
+		}
+		else{
 			var mSec = getDateFromISO(p_oData);
 			oDate = new Date();
 			oDate.setTime(mSec);
 		}
 		var curDate = new Date();
-		// only display the year if it isn't the current year
-		if (curDate.getYear() != oDate.getYear()){
-			p_elCell.innerHTML = sprintf('%04d %s %s %02d %02d:%02d:%02d',
-				oDate.getYear() + 1900,
-				YAHOO.ELSA.TimeTranslation.Days[ oDate.getDay() ],
-				YAHOO.ELSA.TimeTranslation.Months[ oDate.getMonth() ],
-				oDate.getDate(),
-				oDate.getHours(),
-				oDate.getMinutes(),
-				oDate.getSeconds()
-			);
+		if (YAHOO.ELSA.getPreference('use_utc', 'default_settings')){
+			// only display the year if it isn't the current year
+			if (curDate.getUTCFullYear() != oDate.getUTCFullYear()){
+				p_elCell.innerHTML = sprintf('%04d %s %s %02d %02d:%02d:%02d UTC',
+					oDate.getUTCFullYear(),
+					YAHOO.ELSA.TimeTranslation.Days[ oDate.getUTCDay() ],
+					YAHOO.ELSA.TimeTranslation.Months[ oDate.getUTCMonth() ],
+					oDate.getUTCDate(),
+					oDate.getUTCHours(),
+					oDate.getUTCMinutes(),
+					oDate.getUTCSeconds()
+				);
+			}
+			else {
+				p_elCell.innerHTML = sprintf('%s %s %02d %02d:%02d:%02d UTC',
+					YAHOO.ELSA.TimeTranslation.Days[ oDate.getUTCDay() ],
+					YAHOO.ELSA.TimeTranslation.Months[ oDate.getUTCMonth() ],
+					oDate.getUTCDate(),
+					oDate.getUTCHours(),
+					oDate.getUTCMinutes(),
+					oDate.getUTCSeconds()
+				);
+			}	
 		}
 		else {
-			p_elCell.innerHTML = sprintf('%s %s %02d %02d:%02d:%02d',
-				YAHOO.ELSA.TimeTranslation.Days[ oDate.getDay() ],
-				YAHOO.ELSA.TimeTranslation.Months[ oDate.getMonth() ],
-				oDate.getDate(),
-				oDate.getHours(),
-				oDate.getMinutes(),
-				oDate.getSeconds()
-			);
+			//var aMatches = curDate.toString().match(/\((\w+)\)$/);
+			//var sLocale = aMatches[1];
+			// only display the year if it isn't the current year
+			if (curDate.getYear() != oDate.getYear()){
+				p_elCell.innerHTML = sprintf('%04d %s %s %02d %02d:%02d:%02d',
+					oDate.getFullYear(),
+					YAHOO.ELSA.TimeTranslation.Days[ oDate.getDay() ],
+					YAHOO.ELSA.TimeTranslation.Months[ oDate.getMonth() ],
+					oDate.getDate(),
+					oDate.getHours(),
+					oDate.getMinutes(),
+					oDate.getSeconds()
+				);
+			}
+			else {
+				p_elCell.innerHTML = sprintf('%s %s %02d %02d:%02d:%02d',
+					YAHOO.ELSA.TimeTranslation.Days[ oDate.getDay() ],
+					YAHOO.ELSA.TimeTranslation.Months[ oDate.getMonth() ],
+					oDate.getDate(),
+					oDate.getHours(),
+					oDate.getMinutes(),
+					oDate.getSeconds()
+				);
+			}
 		}
 	};
 	
@@ -1136,11 +1169,15 @@ YAHOO.ELSA.Results = function(){
 		oAEl.on('click', YAHOO.ELSA.addTermFromOnClickNoSubmit, ['any', p_oColumn.getKey(), a.innerHTML]);
 	}
 	
+	this.parseTimestamp = function(p_oData){
+		return YAHOO.util.DataSourceBase.parseDate(p_oData * 1000);
+	}
+	
 	this.createDataTable = function(p_oResults, p_oElContainer){
 		var oFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
-			{ key:'timestamp', parser:YAHOO.util.DataSourceBase.parseDate },
+			{ key:'timestamp', parser:parseInt }, //parser:this.parseTimestamp },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString },
@@ -1209,7 +1246,7 @@ YAHOO.ELSA.Results = function(){
 		var aFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
-			{ key:'timestamp', parser:YAHOO.util.DataSourceBase.parseDate },
+			{ key:'timestamp', parser:this.parseTimestamp },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString }
@@ -1472,7 +1509,7 @@ YAHOO.ELSA.Results = function(){
 		var oFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
-			{ key:'timestamp', parser:YAHOO.util.DataSourceBase.parseDate },
+			{ key:'timestamp', parser:this.parseTimestamp },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString },
@@ -5028,12 +5065,13 @@ YAHOO.ELSA.getStream = function(p_sType, p_aArgs, p_oRecord){
 	var sQuery = aQuery.join('&');
 	
 	// tack on the start/end +/- one minute
-	var oStart = new Date( p_oRecord.getData().timestamp );
-	oStart.setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
-	var oEnd = new Date( p_oRecord.getData().timestamp );
-	oEnd.setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
+	var oStart = new Date();
+	oStart.setTime((p_oRecord.getData().timestamp - 120) * 1000);
+	var oEnd = new Date();
+	oEnd.setTime((p_oRecord.getData().timestamp + 60) * 1000);
 	sQuery += '&start=' + getISODateTime(oStart) + '&end=' + getISODateTime(oEnd);
 	
+	logger.log('getting stream url: ' + YAHOO.ELSA.streamdbUrl + '/?' + sQuery);
 	var oPcapWindow = window.open(YAHOO.ELSA.streamdbUrl + '/?' + sQuery);
 }
 
@@ -5053,13 +5091,20 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	var aQuery = [];
 	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport', 'start', 'end' ];
 	
-	// tack on the start/end +/- one minute
-	oData['start'] = new Date( p_oRecord.getData().timestamp );
-	oData['start'].setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
-	oData['start'] = (oData['start'].getTime()/1000);
-	oData['end'] = new Date( p_oRecord.getData().timestamp );
-	oData['end'].setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
-	oData['end'] = (oData['end'].getTime()/1000);
+	// tack on the start/end +/- 30 minutes by default
+	var iOffset = 30 * 60;
+	if (YAHOO.ELSA.getPreference('pcap_offset', 'default_settings')){
+		iOffset = YAHOO.ELSA.getPreference('pcap_offset', 'default_settings');
+	}
+	oData['start'] = p_oRecord.getData().timestamp - iOffset;
+	oData['end'] = p_oRecord.getData().timestamp + iOffset;
+	
+	//oData['start'] = new Date( p_oRecord.getData().timestamp );
+	//oData['start'].setMinutes( p_oRecord.getData().timestamp.getMinutes() - 2 );
+	//oData['start'] = (oData['start'].getTime()/1000);
+	//oData['end'] = new Date( p_oRecord.getData().timestamp );
+	//oData['end'].setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
+	//oData['end'] = (oData['end'].getTime()/1000);
 		
 	var oOpenFpcTranslations = { 
 		'srcip': 'sip',
@@ -5090,60 +5135,8 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	}
 		
 	var sQuery = aQuery.join('&');
+	logger.log('getting pcap from url: ' + YAHOO.ELSA.pcapUrl + '/?' + sQuery);
 	var oPcapWindow = window.open(YAHOO.ELSA.pcapUrl + '/?' + sQuery);
-}
-
-YAHOO.ELSA.old_getPcap = function(p_sType, p_aArgs, p_oRecord){
-	logger.log('p_oRecord', p_oRecord);
-	
-	if (!p_oRecord){
-		YAHOO.ELSA.Error('Need a record selected to get pcap for.');
-		return;
-	}
-	
-	var oData = {};
-	for (var i in p_oRecord.getData()['_fields']){
-		oData[ p_oRecord.getData()['_fields'][i].field ] =  p_oRecord.getData()['_fields'][i].value;
-	}
-	var oIps = {};
-	var sQuery = 'q=';
-	
-	if (defined(oData.proto) && defined(oData.srcip) && defined(oData.dstip) && defined(oData.srcport) && defined(oData.dstport)){
-		sQuery = oData.proto + ' ' + oData.srcip + ':' + oData.srcport + ' ' + oData.dstip + ':' + oData.dstport;
-	}
-	else if (defined(oData.srcip) && defined(oData.dstip)){
-		sQuery = oData.srcip + ' ' + oData.dstip;
-	}
-	else if (defined(oData.ip)){
-		sQuery = oData.ip;
-	}
-	else {
-		// attempt to find an ip in the msg
-		var re = new RegExp(/[\D](\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[\D]/);
-		var aMatches = oData.msg.match(re);
-		if (aMatches.length > 0){
-			sQuery = aMatches[1];
-		}
-		else {
-			YAHOO.ELSA.Error('No IP found in message');
-			return;
-		}
-	}
-	
-	// tack on the start/end +/- one minute
-	var oStart = new Date( p_oRecord.getData().timestamp );
-	oStart.setMinutes( p_oRecord.getData().timestamp.getMinutes() - 1 );
-	var oEnd = new Date( p_oRecord.getData().timestamp );
-	oEnd.setMinutes( p_oRecord.getData().timestamp.getMinutes() + 1 );
-	sQuery += '&start=' + getISODateTime(oStart) + '&end=' + getISODateTime(oEnd) + '&submit=1';
-	
-	// is the current view dev?
-	var sView = '';
-	if (YAHOO.ELSA.viewMode == 'dev'){
-		sView = 'view=dev&';
-	}
-	var oPcapWindow = window.open('pcap?' + sView + 'q=' + sQuery);
-	logger.log(oPcapWindow);
 }
 
 YAHOO.ELSA.getInfo = function(p_oEvent, p_oRecord){

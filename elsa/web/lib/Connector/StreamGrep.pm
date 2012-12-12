@@ -49,7 +49,7 @@ sub BUILD {
 			}
 		}
 		next unless $args{srcip} and $args{dstip};
-		my $timestamp = UnixDate(ParseDate($record->{timestamp}), '%s');
+		my $timestamp = $record->{timestamp};
 		my $start = $timestamp - $DefaultTimeOffset;
 		my $end = $timestamp + $DefaultTimeOffset;
 		my $req_str = $self->api->conf->get('connectors/sandbox/url') . '/?as_json=1&start=' . $start . '&end=' . $end;

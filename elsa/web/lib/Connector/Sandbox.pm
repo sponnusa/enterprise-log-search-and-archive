@@ -17,7 +17,7 @@ sub BUILD {
 	# Get our ip/port/timestamp info from first entry
 	my $record = $self->results->{results}->[0];
 	$self->api->log->debug('timestamp: ' . $record->{timestamp});
-	my $timestamp = UnixDate(ParseDate($record->{timestamp}), '%s');
+	my $timestamp = $record->{timestamp};
 	my $req_str = $self->api->conf->get('connectors/sandbox/url') . '?submit=executable&start=' . ($timestamp - $DefaultTimeOffset);
 	$req_str .= '&end=' . ($timestamp + $DefaultTimeOffset);
 	
