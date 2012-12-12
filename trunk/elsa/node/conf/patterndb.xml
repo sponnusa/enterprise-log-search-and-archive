@@ -397,6 +397,8 @@
 					<pattern>@ESTRING:: @@ESTRING:s1: [**] @@ESTRING:s2: [**] @@ESTRING:s4: [**] @@ESTRING:s3: [**] @@ESTRING:s0: [**] @@ESTRING:: [**] @@ESTRING:i2: [**] @@NUMBER:i3:@ bytes [**] @IPv4:i0:@:@NUMBER:i4:@ -> @IPv4:i1:@:@NUMBER:i5:@</pattern>
 					<!--Common Log Format-->
 					<pattern>@IPv4:i0:@ @ESTRING:: @@ESTRING:s5: @@ESTRING:: "@@ESTRING:s0: @@ESTRING:s2: @HTTP/1.@NUMBER::@" @NUMBER:i2:@ @NUMBER:i3:@ @QSTRING:s3:"@ @QSTRING:s4:"@</pattern>
+					<!--%{HOST} + Common Log Format-->
+					<pattern>@ESTRING:s1: @@IPv4:i0:@ @ESTRING:: @@ESTRING:s5: @@ESTRING:: "@@ESTRING:s0: @@ESTRING:s2: @HTTP/1.@NUMBER::@" @NUMBER:i2:@ @NUMBER:i3:@ @QSTRING:s3:"@ @QSTRING:s4:"@</pattern>
 				</patterns>
 				<examples>
 					<example>
