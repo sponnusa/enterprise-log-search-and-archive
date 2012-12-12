@@ -112,7 +112,7 @@ sub _query {
 	$self->log->debug('query: ' . $query_string);
 	
 	my ($where, $placeholders) = @{ $self->parser->parse($query_string)->dbi };
-	$where =~ s/(?:(?:AND|OR|NOT)\s*)?1=1\s*(?:AND|OR|NOT)?//g; # clean up dummy values
+	$where =~ s/(?:(?:AND|OR|NOT)\s*)?1=1//g; # clean up dummy values
 	$self->log->debug('where: ' . Dumper($where));
 	
 	my @select;
