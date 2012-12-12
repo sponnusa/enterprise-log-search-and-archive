@@ -26,7 +26,8 @@ has 'db' => (is => 'rw', isa => 'Object');
 has 'timestamp_column' => (is => 'rw', isa => 'Str');
 has 'timestamp_is_int' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 
-our %Numeric_types = ( int => 1, ip_int => 1, float => 1 ); 
+our %Numeric_types = ( int => 1, ip_int => 1, float => 1 );
+our %Mixed_types = ( proto => 1 );
 
 sub BUILD {
 	my $self = shift;
@@ -36,10 +37,8 @@ sub BUILD {
 	
 	$self->query_template =~ /FROM\s+([\w\_]+)/;
 	my %cols;
-	my $is_fuzzy = 0;
 	foreach my $row (@{ $self->fields }){
 		if (not $row->{type}){
-			$is_fuzzy = 1;
 			if ($self->dsn =~ /dbi:Pg/){
 				$row->{fuzzy_op} = 'ILIKE';
 				$row->{fuzzy_not_op} = 'NOT ILIKE';
@@ -65,6 +64,17 @@ sub BUILD {
 				return "$col $op " . unpack('N*', inet_aton($val));
 			};
 		}
+		elsif (not $Mixed_types{ $row->{name} }){
+			$row->{callback} = sub {
+				my ($col, $op, $val) = @_;
+				if ($op eq '='){
+					return "$col $row->{fuzzy_op} '%$val%'";
+				}
+				else {
+					return "$col $row->{fuzzy_not_op} '%$val%'";
+				}
+			};
+		}
 		
 		if ($row->{alias}){
 			if ($row->{alias} eq 'timestamp'){
@@ -85,12 +95,7 @@ sub BUILD {
 	}
 	
 	$self->log->debug('cols ' . Dumper(\%cols));
-	if ($is_fuzzy){
-		$self->parser(Search::QueryParser::SQL->new(columns => \%cols, fuzzify2 => $is_fuzzy));
-	}
-	else {
-		$self->parser(Search::QueryParser::SQL->new(columns => \%cols));
-	}
+	$self->parser(Search::QueryParser::SQL->new(columns => \%cols));
 	
 	return $self;
 }
