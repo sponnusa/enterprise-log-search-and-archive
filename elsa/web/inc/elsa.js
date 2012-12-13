@@ -716,9 +716,7 @@ YAHOO.ELSA.addTermAndSubmit = function(p_sField, p_oData){
 	try {
 		YAHOO.ELSA.currentQuery.queryBoolean = '+';
 		YAHOO.ELSA.currentQuery.addTerm(p_sField, '"' + sData + '"', '=');
-		YAHOO.ELSA.currentQuery.delMeta('class');
 		YAHOO.ELSA.currentQuery.delMeta('groupby');
-		YAHOO.ELSA.currentQuery.delMeta('limit');
 		YAHOO.ELSA.currentQuery.submit();
 	} catch(e) { YAHOO.ELSA.Error(e); }
 	
@@ -745,10 +743,7 @@ YAHOO.ELSA.groupData = function(p_iId, p_sClass, p_sField, p_sAggFunc){
 	}
 	
 	// reset old values
-	YAHOO.ELSA.currentQuery.delMeta('class');
 	YAHOO.ELSA.currentQuery.delMeta('groupby');
-	YAHOO.ELSA.currentQuery.delMeta('class');
-	YAHOO.ELSA.currentQuery.delMeta('limit');
 	
 	if (!p_sClass){
 		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
