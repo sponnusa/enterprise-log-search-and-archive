@@ -1481,4 +1481,27 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="IISWebLog">
+		<pattern>IISWebLog</pattern>
+		<rule provider="ELSA" class="7" id="IIS_7">
+			<pattern>@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@IPv4:i1:@ @ESTRING:s0: @@ESTRING:s2: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@IPv4:i0:@ @ESTRING:: @@ESTRING:s4: @@ESTRING:: @@ESTRING:s3: @@ESTRING:s1: @@NUMBER:i2:@ @NUMBER::@ @NUMBER::@ @NUMBER:i3:@ @NUMBER::@ @NUMBER:i5:@</pattern>
+			<examples>
+				<example>
+					<test_message program="IISWebLog">2012-12-13 13:39:16 W3SVC1 MYSERVERNAME 1.1.1.1 GET / - 80 - 2.2.2.2 HTTP/1.1 Mozilla/5.0+(Windows+NT+6.1;+WOW64)+AppleWebKit/537.11+(KHTML,+like+Gecko)+Chrome/23.0.1271.95+Safari/537.11 - - www.fqdn.of.website.from.host.header.com 301 0 0 401 408 453</test_message>
+					<test_values>
+						<test_value name="i0">2.2.2.2</test_value>
+						<test_value name="i1">1.1.1.1</test_value>
+						<test_value name="i2">301</test_value>
+						<test_value name="i3">401</test_value>
+						<test_value name="i5">453</test_value>
+						<test_value name="s0">GET</test_value>
+						<test_value name="s1">www.fqdn.of.website.from.host.header.com</test_value>
+						<test_value name="s2">/</test_value>
+						<test_value name="s3">-</test_value>
+						<test_value name="s4">Mozilla/5.0+(Windows+NT+6.1;+WOW64)+AppleWebKit/537.11+(KHTML,+like+Gecko)+Chrome/23.0.1271.95+Safari/537.11</test_value>
+					</test_values>
+				</example>
+			</examples>
+		</rule>
+	</ruleset>		
 </patterndb>
