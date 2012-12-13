@@ -693,9 +693,7 @@ YAHOO.ELSA.addTermFromChart = function(p_iChartId, p_iIndex){
 	logger.log('chart data: ', YAHOO.ELSA.Charts[p_iChartId]);
 	var sField = YAHOO.ELSA.Charts[p_iChartId].cfg.elements[0].text;
 	var oData = YAHOO.ELSA.Charts[p_iChartId].cfg.elements[0].values[p_iIndex];
-	YAHOO.ELSA.currentQuery.delMeta('class');
 	YAHOO.ELSA.currentQuery.delMeta('groupby');
-	YAHOO.ELSA.currentQuery.delMeta('limit');
 	YAHOO.ELSA.addTermAndSubmit(sField, oData);
 }
 
