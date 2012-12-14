@@ -1162,15 +1162,11 @@ YAHOO.ELSA.Results = function(){
 		oAEl.on('click', YAHOO.ELSA.addTermFromOnClickNoSubmit, ['any', p_oColumn.getKey(), a.innerHTML]);
 	}
 	
-	this.parseTimestamp = function(p_oData){
-		return YAHOO.util.DataSourceBase.parseDate(p_oData * 1000);
-	}
-	
 	this.createDataTable = function(p_oResults, p_oElContainer){
 		var oFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
-			{ key:'timestamp', parser:parseInt }, //parser:this.parseTimestamp },
+			{ key:'timestamp', parser:parseInt },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString },
@@ -1239,7 +1235,7 @@ YAHOO.ELSA.Results = function(){
 		var aFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
-			{ key:'timestamp', parser:this.parseTimestamp },
+			{ key:'timestamp', parser:this.parseInt },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString }
@@ -1502,7 +1498,7 @@ YAHOO.ELSA.Results = function(){
 		var oFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
-			{ key:'timestamp', parser:this.parseTimestamp },
+			{ key:'timestamp', parser:this.parseInt },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString },
