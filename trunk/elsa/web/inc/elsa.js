@@ -862,7 +862,7 @@ YAHOO.ELSA.Results = function(){
 				for (var sHighlight in oSelf.results.highlights){
 					sHighlight = sHighlight.replace(/^["']*/, '');
 					sHighlight = sHighlight.replace(/["']*$/, '');
-					logger.log('sHighlight '  + sHighlight);
+					//logger.log('sHighlight '  + sHighlight);
 					re = new RegExp('(' + sHighlight + ')', 'ig');
 					var aMatches = msg.match(re);
 					if (aMatches != null){
@@ -951,7 +951,7 @@ YAHOO.ELSA.Results = function(){
 			for (var sHighlight in this.results.highlights){
 				sHighlight = sHighlight.replace(/^["']*/, '');
 				sHighlight = sHighlight.replace(/["']*$/, '');
-				logger.log('sHighlight '  + sHighlight);
+				//logger.log('sHighlight '  + sHighlight);
 				re = new RegExp('(' + sHighlight + ')', 'ig');
 				var aMatches = p_sText.match(re);
 				if (aMatches != null){
@@ -1235,10 +1235,11 @@ YAHOO.ELSA.Results = function(){
 		var aFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
-			{ key:'timestamp', parser:this.parseInt },
+			{ key:'timestamp', parser:parseInt },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
-			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString }
+			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString },
+			{ key:'_fields' }
 		];
 		
 		var aColumns = [
@@ -1498,7 +1499,7 @@ YAHOO.ELSA.Results = function(){
 		var oFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
-			{ key:'timestamp', parser:this.parseInt },
+			{ key:'timestamp', parser:parseInt },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'program', parser:YAHOO.util.DataSourceBase.parseString },
@@ -1673,7 +1674,7 @@ YAHOO.ELSA.Results.LiveTail = function(p_oQuery){
 							sHighlight = sHighlight.replace(/^["']*/, '');
 							sHighlight = sHighlight.replace(/["']*$/, '');
 							var re = new RegExp('(' + sHighlight + ')', 'ig');
-							logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
+							//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
 							if (fieldHash['value_with_markup']){
 								var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
 								var aMatches = msg.match(re);
@@ -5132,7 +5133,7 @@ YAHOO.ELSA.getInfo = function(p_oEvent, p_oRecord){
 	var oRecord = p_oRecord;
 	logger.log('p_oRecord', oRecord);
 	
-	var oData = {};
+	var oData = oRecord.getData();
 	for (var i in oRecord.getData()['_fields']){
 		oData[ oRecord.getData()['_fields'][i].field ] =  oRecord.getData()['_fields'][i].value;
 	}
