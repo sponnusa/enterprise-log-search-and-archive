@@ -195,9 +195,21 @@ EOHTML
 	}
 	
 	# Check to see if we want grid results by default
-	if ($self->api->conf->get('grid_view_default')){
+	my $grid_by_user_pref;
+	if (exists $self->session->get('user_info')->{preferences} and exists $self->session->get('user_info')->{preferences}->{tree}
+		and exists $self->session->get('user_info')->{preferences}->{tree}->{default_settings}
+		and defined $self->session->get('user_info')->{preferences}->{tree}->{default_settings}->{grid_display}){
+		$grid_by_user_pref = $self->session->get('user_info')->{preferences}->{tree}->{default_settings}->{grid_display};
+	}
+	if (defined $grid_by_user_pref){
+		$HTML .= 'YAHOO.ELSA.gridDisplay = ' . ($grid_by_user_pref ? 1 : 0). ';' . "\n";
+	}
+	elsif ($self->api->conf->get('grid_view_default')){
 		$HTML .= 'YAHOO.ELSA.gridDisplay = 1;' . "\n";
 	}
+	else {
+		$HTML .= 'YAHOO.ELSA.gridDisplay = 0;' . "\n";
+	}	
 	
 	# Set form params
 	my $user = $self->api->get_user($self->session->get('user_info')->{username});

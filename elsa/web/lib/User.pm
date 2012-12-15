@@ -8,7 +8,7 @@ use DBI;
 use Data::Dumper;
 
 
-our @Serializable = qw(username uid permissions email groups extra_attrs is_admin session_start_time); 
+our @Serializable = qw(username uid permissions email groups extra_attrs is_admin session_start_time preferences); 
 
 # Object for storing query results
 has 'username' => (is => 'ro', isa => 'Str', required => 1);
