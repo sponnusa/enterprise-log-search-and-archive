@@ -635,7 +635,7 @@ You can set per-user preferences by navigating to the "Preferences" dialog under
 
 ||Type||Name||Value to Enable||Function||
 ||default_settings||reuse_tab||0||Overrides server setting for whether or not to reuse the current tab for each new query||
-||default_settings||grid_view||1||Defaults results to grid view||
+||default_settings||grid_display||1||Defaults results to grid view||
 ||default_settings||no_column_wrap||1||Disables column wrapping in grid view||
 ||custom||openfpc_username||<user name>||User name for sending to OpenFPC if pcap_url is set||
 ||custom||openfpc_password||<password>||OpenFPC password||
