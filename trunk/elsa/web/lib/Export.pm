@@ -6,7 +6,7 @@ use Data::Dumper;
 
 has 'columns' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { ['timestamp'] });
 has 'grid' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] });
-has '_raw_results' => (is => 'rw', isa => 'ArrayRef', required => 1);
+has '_raw_results' => (is => 'rw', required => 1);
 has 'results' => (is => 'rw', required => 1, default => '');
 has 'mime_type' => (is => 'rw', isa => 'Str', required => 1, default => 'text/plain');
 has 'extension' => (is => 'rw', isa => 'Str', required => 1, default => '.txt');
@@ -23,7 +23,15 @@ sub BUILD {
 	my $self = shift;
 	
 	# Was this a result set of data rows or a groupby?
-	if ($self->_raw_results->[0]->{groupby}){
+	if (ref($self->_raw_results) eq 'HASH'){
+		$self->columns([ 'groupby', 'values' ]);
+		my @grid;
+		foreach my $groupby (sort keys %{ $self->_raw_results }){
+			push @grid, { groupby => $groupby, values => join (',', map { $_->{_groupby} } @{ $self->_raw_results->{$groupby} }) };
+		}
+		$self->grid(\@grid);
+	}
+	elsif ($self->_raw_results->[0]->{groupby}){
 		$self->columns([ 'count', 'groupby' ]);
 		$self->grid($self->_raw_results);
 	}

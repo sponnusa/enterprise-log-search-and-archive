@@ -1200,7 +1200,10 @@ sub save_results {
 	}
 	
 	eval {
+		my $comments = $args->{comments};
+		# Replace args so we wipe user, etc.
 		$args = $self->json->decode($args->{results});
+		$args->{comments} = $comments;
 	};
 	if ($@){
 		$self->_error($@);
@@ -1236,6 +1239,8 @@ sub _save_results {
 	$sth->execute($args->{qid}, $self->json->encode($args));
 		
 	$self->db->commit;
+	
+	$self->log->info('Saved results to qid ' . $args->{qid});
 	
 	return 1;
 }
@@ -1523,7 +1528,7 @@ sub query {
 		# Get our node info
 		if (not $self->node_info->{updated_at} 
 			or ($self->conf->get('node_info_cache_timeout') and ((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout')))
-			or not $args->{user}->is_admin){
+			or ($args->{user} and not $args->{user}->is_admin)){
 			$self->node_info($self->_get_node_info($args->{user}));
 		}
 		if ($args->{q}){
@@ -2791,6 +2796,10 @@ sub export {
 		eval {
 			$decode = $self->json->decode(uri_unescape($args->{data}));
 			$self->log->debug( "Decoded data as : " . Dumper($decode) );
+			if ($decode->{qid}){
+				$decode->{user} = $args->{user};
+				$decode = $self->get_saved_result($decode)->{results};
+			}
 		};
 		if ($@){
 			$self->log->error("invalid args, error: $@, args: " . Dumper($args));
