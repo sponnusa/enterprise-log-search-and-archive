@@ -1503,5 +1503,109 @@
 				</example>
 			</examples>
 		</rule>
-	</ruleset>		
+	</ruleset>
+	<ruleset name="Vyatta FW">
+		<!-- Note: Vyatta bug id:7640 https://bugzilla.vyatta.com/show_bug.cgi?id=7640 Trailing space missing from default log prefix "-R]IN" should be "-R] "-->
+		<pattern>kernel-</pattern>
+		<rules>
+			<rule provider="ELSA" class="2" id="2">
+				<patterns>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-R]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @SPT=@ESTRING:i2: @DPT=@ESTRING:i4: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-D]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @SPT=@ESTRING:i2: @DPT=@ESTRING:i4: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-R]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @SPT=@ESTRING:i2: @DPT=@ESTRING:i4: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-D]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @SPT=@ESTRING:i2: @DPT=@ESTRING:i4: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-R]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-D]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-R]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-D]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-R]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@STRING:i0:@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-D]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@STRING:i0:@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-R]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@STRING:i0:@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-D]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING:: SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@STRING:i0:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="kernel">[100100.226323] [WEB_IN-default-R]IN=eth0 OUT=eth1 MAC=00:50:56:a6:00:13:00:50:56:a6:1f:41:08:00 SRC=172.31.254.28 DST=172.31.253.105 LEN=44 TOS=0x00 PREC=0x00 TTL=41 ID=16822 PROTO=TCP SPT=51425 DPT=23 WINDOW=1024 RES=0x00 SYN URGP=0</test_message>
+						<test_value name="s0">eth1</test_value>
+						<test_value name="s1">eth0</test_value>
+						<test_value name="s2">WEB_IN-default</test_value>
+						<test_value name="i0">TCP</test_value>
+						<test_value name="i1">172.31.254.28</test_value>
+						<test_value name="i2">51425</test_value>
+						<test_value name="i3">172.31.253.105</test_value>
+						<test_value name="i4">23</test_value>
+					</example>
+					<example>
+						<test_message program="kernel">[382188.344294] [WEB_IN-default-D]IN=eth0 OUT=eth1 MAC=00:50:56:a6:00:13:00:50:56:a6:1f:41:08:00 SRC=172.31.254.28 DST=172.31.253.109 LEN=44 TOS=0x00 PREC=0x00 TTL=45 ID=55452 PROTO=TCP SPT=51809 DPT=80 WINDOW=1024 RES=0x00 SYN URGP=0</test_message>
+						<test_value name="s0">eth1</test_value>
+						<test_value name="s1">eth0</test_value>
+						<test_value name="s2">WEB_IN-default</test_value>
+						<test_value name="i0">TCP</test_value>
+						<test_value name="i1">172.31.254.28</test_value>
+						<test_value name="i2">51809</test_value>
+						<test_value name="i3">172.31.253.109</test_value>
+						<test_value name="i4">80</test_value>
+					</example>
+					<example>
+						<test_message program="kernel">[387123.927635] [WEB_IN-8-D] IN=eth0 OUT=eth1 MAC=00:50:56:a6:00:13:00:50:56:a6:1f:41:08:00 SRC=172.31.254.28 DST=172.31.253.103 LEN=28 TOS=0x00 PREC=0x00 TTL=47 ID=49372 PROTO=ICMP TYPE=8 CODE=0 ID=5799 SEQ=0</test_message>
+						<test_value name="s0">eth1</test_value>
+						<test_value name="s1">eth0</test_value>
+						<test_value name="s2">WEB_IN-8</test_value>
+						<test_value name="i0">ICMP</test_value>
+						<test_value name="i1">172.31.254.28</test_value>
+						<test_value name="i2"></test_value>
+						<test_value name="i3">172.31.253.103</test_value>
+						<test_value name="i4"></test_value>
+					</example>
+					<example>
+						<test_message program="kernel">[466981.095849] [WEB_IN-default-D]IN=eth0 OUT=eth1 MAC=00:50:56:a6:00:13:00:50:56:a6:1f:41:08:00 SRC=172.31.254.28 DST=172.31.253.106 LEN=20 TOS=0x00 PREC=0x00 TTL=44 ID=39983 PROTO=135</test_message>
+						<test_value name="s0">eth1</test_value>
+						<test_value name="s1">eth0</test_value>
+						<test_value name="s2">WEB_IN-default</test_value>
+						<test_value name="i0">135</test_value>
+						<test_value name="i1">172.31.254.28</test_value>
+						<test_value name="i2"></test_value>
+						<test_value name="i3">172.31.253.106</test_value>
+						<test_value name="i4"></test_value>
+					</example>
+					<example>
+						<test_message program="kernel">[451134.428328] [WEB_IN-9-R] IN=eth0 OUT=eth1 MAC=00:50:56:a6:00:13:00:50:56:a6:1f:41:08:00 SRC=172.31.254.28 DST=172.31.253.107 LEN=20 TOS=0x00 PREC=0x00 TTL=37 ID=12252 PROTO=ESP INCOMPLETE [0 bytes]</test_message>
+						<test_value name="s0">eth1</test_value>
+						<test_value name="s1">eth0</test_value>
+						<test_value name="s2">WEB_IN-9</test_value>
+						<test_value name="i0">ESP</test_value>
+						<test_value name="i1">172.31.254.28</test_value>
+						<test_value name="i2"></test_value>
+						<test_value name="i3">172.31.253.107</test_value>
+						<test_value name="i4"></test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+		<rules>
+			<rule provider="ELSA" class="3" id="3">
+				<patterns>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-A]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING::SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @SPT=@ESTRING:i2: @DPT=@ESTRING:i4: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-A]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING::SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @SPT=@ESTRING:i2: @DPT=@ESTRING:i4: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-A]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING::SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-A]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING::SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@ESTRING:i0: @@ANYSTRING@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-A]@IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING::SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@STRING:i0:@</pattern>
+					<pattern>@QSTRING::[]@ [@ESTRING:s2:-A]@ IN=@ESTRING:s1: @OUT=@ESTRING:s0: @@ESTRING::SRC=@@IPv4:i1:@ DST=@IPv4:i3:@ @ESTRING::PROTO=@@STRING:i0:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="kernel">[88829.069484] [WEB_IN-7-A] IN=eth0 OUT=eth1 MAC=00:50:56:a6:00:13:00:50:56:a6:1f:41:08:00 SRC=172.31.254.28 DST=172.31.253.102 LEN=44 TOS=0x00 PREC=0x00 TTL=46 ID=22533 PROTO=TCP SPT=59995 DPT=3306 WINDOW=1024 RES=0x00 SYN URGP=0</test_message>
+						<test_value name="s0">eth1</test_value>
+						<test_value name="s1">eth0</test_value>
+						<test_value name="s2">WEB_IN-7</test_value>
+						<test_value name="i0">TCP</test_value>
+						<test_value name="i1">172.31.254.28</test_value>
+						<test_value name="i2">59995</test_value>
+						<test_value name="i3">172.31.253.102</test_value>
+						<test_value name="i4">3306</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
