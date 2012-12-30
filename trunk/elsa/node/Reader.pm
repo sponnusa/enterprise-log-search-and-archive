@@ -553,7 +553,7 @@ sub parse_line {
 		
 		# Convert any proto fields as necessary
 		foreach my $field_order (keys %{ $self->class_info->{field_conversions}->{ $line[FIELD_CLASS_ID] }->{PROTO} }){
-			$line[$field_order] = $Proto_map->{ $line[$field_order] };
+			$line[$field_order] = exists $Proto_map->{ $line[$field_order] } ? $Proto_map->{ $line[$field_order] } : $line[$field_order];
 		}
 	}
 	
@@ -662,7 +662,7 @@ sub parse_hash {
 			}
 			# Convert any proto fields as necessary
 			elsif ($self->class_info->{field_conversions}->{ $hash->{class_id} }->{PROTO}->{$i}){
-				$value = $Proto_map->{$value};
+				$value = exists $Proto_map->{$value} ? $Proto_map->{$value} : $value;
 			}
 			if (not defined $value){
 				$line[$i] = $i <= FIELD_I5 ? 0 : '';

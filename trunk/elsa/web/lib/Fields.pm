@@ -668,7 +668,7 @@ sub normalize_value {
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{PROTO} 
 		and $self->node_info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
 		$self->log->trace("Converting $value to proto");
-		return $Proto_map->{ $value };
+		return exists $Proto_map->{ $value } ? $Proto_map->{ $value } : $value;
 	}
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
 		and $self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
@@ -773,7 +773,7 @@ sub resolve_value {
 	}
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
 		#$self->log->debug("Converting $value from proto");
-		return $Inverse_proto_map->{ $value };
+		return exists $Inverse_proto_map->{ $value } ? $Inverse_proto_map->{ $value } : $value;
 	}
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
 		and $self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
