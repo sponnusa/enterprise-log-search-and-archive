@@ -189,6 +189,11 @@ sub _create_sphinx_conf {
 sub _process_batch {
 	my $filename = shift;
 	
+	if (getppid == 1){
+		$Log->error('We lost our parent process');
+		exit; #die gets caught, we want a complete exit
+	}
+	
 	my $args = {};
 	my $fh = \*STDIN;
 	my $offline_processing;
@@ -212,19 +217,11 @@ sub _process_batch {
 	
 	# Reset the miss cache
 	$args->{cache_add} = {};
-#	my $tempfile = File::Temp->new( DIR => $Conf->{buffer_dir}, UNLINK => 0 );
-#	unless ($tempfile){
-#		$Log->error('Unable to create tempfile: ' . $!);
-#		return 0;
-#	}
-#	$tempfile->autoflush(1);
 	my $tempfile_name = $Conf->{buffer_dir} . '/' . CORE::time();
 	
 	my $tail_watcher = _fork_livetail_manager($tempfile_name) unless $Opts{o} or $args->{offline_processing};
 	
 	# Open the file now that we've forked
-#	my $tempfile = IO::File->new('> ' . $tempfile_name);
-#	$tempfile->autoflush(1);
 	my $tempfile;
 	sysopen($tempfile, $tempfile_name, O_RDWR|O_CREAT);
 	
