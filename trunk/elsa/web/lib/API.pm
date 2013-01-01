@@ -1201,9 +1201,11 @@ sub save_results {
 	
 	eval {
 		my $comments = $args->{comments};
+		my $num_results = $args->{num_results} if $args->{num_results};
 		# Replace args so we wipe user, etc.
 		$args = $self->json->decode($args->{results});
 		$args->{comments} = $comments;
+		$args->{num_results} = $num_results if $num_results;
 	};
 	if ($@){
 		$self->_error($@);
@@ -1237,6 +1239,12 @@ sub _save_results {
 	$query = 'INSERT INTO saved_results_data (qid, data) VALUES (?,?)';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid}, $self->json->encode($args));
+	
+	if ($args->{num_results}){
+		$query = 'UPDATE query_log SET num_results=? WHERE qid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{num_results}, $args->{qid});
+	}
 		
 	$self->db->commit;
 	
@@ -1561,6 +1569,7 @@ sub query {
 
 	my ($query, $sth);
 	
+	# Check for batching
 	unless ($q->system or $q->livetail){
 		my $is_batch = 0;	
 		if ($q->analytics or $q->archive){
@@ -3065,7 +3074,8 @@ sub transform {
 							query_string => $q->query_string,
 							query_meta_params => $q->meta_params,
 							conf => $self->conf,
-							log => $self->log, 
+							log => $self->log,
+							user => $q->user,
 							cache => $cache,
 							data => $transform_args->{results}, #$transform_args->{results}, 
 							args => [ @given_transform_args ]);
@@ -3263,7 +3273,7 @@ sub transform {
 				}
 			}
 		}
-		#$self->log->debug('final: ' . Dumper(\@final));
+		$self->log->debug('final: ' . Dumper(\@final));
 		$q->results(Results->new(results => [ @final ]));
 		$q->groupby([]);
 	}
@@ -3306,7 +3316,14 @@ sub send_to {
 		my ($connector, @connector_args);
 		if ($raw =~ /(\w+)\(([^\)]+)?\)/){
 			$connector = $1;
-			@connector_args = $2 ? split(/\,/, $2) : ();
+			if ($2){
+				@connector_args = split(/\,/, $2);
+			}
+			elsif ($q->connector_params_idx($i)){
+				@connector_args = $q->connector_params_idx($i);
+				$self->log->debug('connector_params: ' . Dumper($q->connector_params));
+				$self->log->debug('set @connector_args to ' . Dumper(\@connector_args)); 
+			}
 		}
 		else {
 			$connector = $raw;
@@ -4149,7 +4166,8 @@ sub _get_livetail_results {
 		my $node_info = $q->node_info->{nodes}->{$node};
 		$query = "SELECT main.id,\n" .
 			"\"" . $node . "\" AS node,\n" .
-			"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
+			#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
+			"timestamp,\n" .
 			"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
 			"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 			"FROM livetail_results main\n" .
