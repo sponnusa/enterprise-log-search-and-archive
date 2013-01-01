@@ -963,9 +963,25 @@ YAHOO.ELSA.Results = function(){
 		return p_sText;
 	}
 	
+	var getFieldData = function(p_oRecord, p_sField){
+		if (typeof(p_oRecord.getData()[p_sField]) != 'undefined'){
+			return p_oRecord.getData()[p_sField];
+		}
+		else if (typeof(p_oRecord.getData()._fields) != 'undefined'){
+			for (var i in p_oRecord.getData()._fields){
+				var oFieldHash = p_oRecord.getData()._fields[i];
+				if (oFieldHash.field == p_sField){
+					return oFieldHash.value;
+				}
+			}
+		}
+		return null;
+	}
+	
 	this.formatField = function(p_elCell, p_oRecord, p_oColumn, p_oData){
-		//logger.log('called formatField on ', p_oData);
-		//logger.log('called formatField on ', p_oRecord);
+		p_oData = getFieldData(p_oRecord, p_oColumn.getKey());
+		//logger.log('called formatField on p_oData ', p_oData);
+		//logger.log('called formatField on p_oColumn ', p_oColumn);
 		try {
 			var oDiv = document.createElement('div');
 			
@@ -3941,45 +3957,75 @@ YAHOO.ELSA.getPreferences = function(){
 				this.highlightCell(elCell);
 			}
 		};
+		
+		var cellEditorValidator = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
+			var oQueryParams;
+			try {
+				oQueryParams = YAHOO.lang.JSON.parse(p_sInputValue);
+				oQueryParams.pattern.replace(/\+/g, '\+');
+			}
+			catch (e){
+				YAHOO.ELSA.Error(e);
+				return;
+			}
+			logger.log('oQueryParams', oQueryParams);
+			return oQueryParams;
+		};
 				
 		var onEventShowCellEditor = function(p_oArgs){
 			logger.log('p_oArgs', p_oArgs);
+			var oDataTable = this;
+			logger.log('oDataTable.getCellEditor()', oDataTable.getCellEditor());
+			logger.log('this', oDataTable);
 			this.onEventShowCellEditor(p_oArgs);
 			// increase the size of the textbox, if we have one
 			if (oDataTable.getCellEditor() && oDataTable.getCellEditor().textbox){				
 				oDataTable.getCellEditor().textbox.setAttribute('size', 20);
 				oDataTable.getCellEditor().textbox.removeAttribute('style');
-				// create key listener for the submit
-				var enterKeyListener = new YAHOO.util.KeyListener(
-						oDataTable.getCellEditor().textbox,
-						{ keys: 13 },
-						{ 	fn: function(eName, p_aArgs){
-								var oEvent = p_aArgs[1];
-								// Make sure we don't submit the form
-								YAHOO.util.Event.stopEvent(oEvent);
-								var tgt=(oEvent.target ? oEvent.target : 
-									(oEvent.srcElement ? oEvent.srcElement : null)); 
-								try{
-									tgt.blur();
-								}
-								catch(e){}
-								var op = '=';
-								oDataTable.getCellEditor().save();
-							},
-							scope: YAHOO.ELSA,
-							correctScope: false
-						}
-				);
-				enterKeyListener.enable();
+//				// create key listener for the submit
+//				var enterKeyListener = new YAHOO.util.KeyListener(
+//						oDataTable.getCellEditor().textbox,
+//						{ keys: 13 },
+//						{ 	fn: function(eName, p_aArgs){
+//								var oEvent = p_aArgs[1];
+//								// Make sure we don't submit the form
+//								YAHOO.util.Event.stopEvent(oEvent);
+//								var tgt=(oEvent.target ? oEvent.target : 
+//									(oEvent.srcElement ? oEvent.srcElement : null)); 
+//								try{
+//									tgt.blur();
+//								}
+//								catch(e){}
+//								var op = '=';
+//								oDataTable.getCellEditor().save();
+//							},
+//							scope: YAHOO.ELSA,
+//							correctScope: false
+//						}
+//				);
+//				enterKeyListener.enable();
 			}
 		}
 		
+		var myEditor = new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter, validator:cellEditorValidator});
+		//myEditor.prototype.resetForm = function(){
+		//	logger.log('resetForm', arguments);
+		//}
+		myEditor.subscribe('showEvent', function(p_oArgs){ 
+			logger.log('show event this', this);
+			logger.log('show event p_oArgs', p_oArgs);
+			logger.log('value: ' + YAHOO.lang.JSON.stringify(this.value));
+			var sValue = YAHOO.lang.JSON.stringify(this.value);
+			//sValue = sValue.replace('\\\\', '\\');
+			this.value = this.textbox.value = sValue;
+		});
+					
 		var oColumnDefs = [
 			{ key:'checkbox', label:'', formatter:YAHOO.widget.DataTable.formatCheckbox },
 			{ key:"id", label:"ID", formatter:YAHOO.widget.DataTable.formatNumber, sortable:true },
 			{ key:"type", label:"Type", sortable:true, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter }) },
 			{ key:"name", label:"Name", sortable:true, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter }) },
-			{ key:"value", label:"Value", formatter:formatValue, editor: new YAHOO.widget.TextboxCellEditor({asyncSubmitter:asyncSubmitter }) }
+			{ key:"value", label:"Value", formatter:formatValue, editor:myEditor  }
 		];
 		var oPaginator = new YAHOO.widget.Paginator({
 		    pageLinks          : 10,
@@ -4398,7 +4444,7 @@ YAHOO.ELSA.async = function(p_sUrl, p_oCallback, p_oPostData, p_oObject){
 		var aPost = [];
 		for (var i in p_oPostData){
 			if (typeof(p_oPostData[i]) == 'object'){
-				aPost.push(i + '=' + YAHOO.lang.JSON.stringify(p_oPostData[i]));
+				aPost.push(i + '=' + encodeURIComponent(YAHOO.lang.JSON.stringify(p_oPostData[i])));
 			}
 			else {
 				aPost.push(i + '=' + encodeURIComponent(p_oPostData[i]));

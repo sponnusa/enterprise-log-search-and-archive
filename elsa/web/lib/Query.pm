@@ -324,13 +324,35 @@ sub _parse_query {
 	($raw_query, my @connectors) = split(/\s*\>\s+/, $raw_query);
 	my @connector_params;
 	foreach my $raw_connector (@connectors){
-		$raw_connector =~ /([^\(]+)(\(?[^\)]+\))?/;
+		#TODO cleanup this regex crime against humanity below
+		$raw_connector =~ /([^\(]+)\(?( [^()]*+ | (?0) )\)?$/x;
 		$self->add_connector($1);
 		$self->log->trace("Added connector $1");
 		my $raw_params = $2;
 		if ($raw_params){
-			$self->add_connector_params([split(/\s*,\s*/, $raw_params)]);
+			$raw_params =~ s/\)$//;
+			my @masks = $raw_params =~ /([\w]+\( (?: [^()]*+ | (?0) ) \))/gx;
+			my $clone = $raw_params;
+			foreach my $mask (@masks){
+				$clone =~ s/\Q$mask\E/__MASK__/;
+			}
+			my @connector_params = split(/\s*,\s*/, $clone);
+			foreach my $mask (@masks){
+				$connector_params[0] =~ s/__MASK__/$mask/;
+			}
+			$self->add_connector_params([@connector_params]);
+			$self->log->trace("Added connector params " . Dumper(\@connector_params));
 		}
+		
+#		$raw_connector =~ /([^\(]+)\(?([^\)]+)\)?/;
+#		$self->add_connector($1);
+#		$self->log->trace("Added connector $1");
+#		my $raw_params = $2;
+#		if ($raw_params){
+#			$raw_params =~ /([^\,]+)\,?([^\,]+)\,?/;
+#			$self->add_connector_params([split(/\s*,\s*/, $raw_params)]);
+#			$self->log->trace("Added connector params $2");
+#		}
 	}
 		
 	# Strip off any transforms and apply later
@@ -342,7 +364,7 @@ sub _parse_query {
 	if ($self->meta_params->{connector}){
 		my $connector = $self->meta_params->{connector};
 		$self->add_connector($connector);
-		$self->add_connector_params([$self->meta_params->{connector_params}]);
+		$self->add_connector_params($self->meta_params->{connector_params});
 	}
 		
 	# Check to see if the class was given in meta params
@@ -909,16 +931,16 @@ sub _parse_query_term {
 			}
 			
 			my $orig_value = $term_hash->{value};
-			if ($self->livetail){
-				# Escape any slashes since this will become a regex
-				$term_hash->{value} =~ s/\//\\\//g;
+			if ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host'){
+				# Fine as is
 			}
 			elsif ($self->archive){
 				# Escape any special chars
 				$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])/\\$1/g;
 			}
-			elsif ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host'){
-				# Fine as is
+			elsif ($self->livetail){
+				# Escape any slashes since this will become a regex
+				$term_hash->{value} =~ s/\//\\\//g;
 			}
 			else {
 				# Get rid of any non-indexed chars
@@ -1013,7 +1035,19 @@ sub _parse_query_term {
 							join('', unpack('c*', pack('A*', uc($term_hash->{value}))));
 					}
 					elsif ($term_hash->{op} !~ /[\<\>]/ and not exists $self->terms->{field_terms}->{$boolean}->{$class_id}){
-						push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value} if $class_id; #skip class 0
+						if ($class_id){ #skip class 0
+							if ($term_hash->{field} =~ /proto/){
+								# proto is special because it is represented as both an integer and string, so search for both
+								push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
+								foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+									$self->log->trace('Adding on integer representation of protocol: ' . $values->{attrs}->{$class_id}->{$real_field});
+									push @{ $self->terms->{any_field_terms}->{$boolean} }, $values->{attrs}->{$class_id}->{$real_field};
+								}
+							}
+							else {		
+								push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
+							}
+						}
 					}
 					my $field_info = $self->get_field($term_hash->{field})->{$class_id};
 					unless ($field_info->{field_type}){

@@ -91,7 +91,8 @@ sub BUILD {
 	}
 			
 	foreach my $field (keys %$Fields::Reserved_fields){
-	 	$cols{$field} = { name => $field, callback => sub { '1=1' } };
+	 	#$cols{$field} = { name => $field, callback => sub { '1=1' } };
+	 	$cols{$field} = { name => $field, callback => sub { '' } };
 	}
 	
 	$self->log->debug('cols ' . Dumper(\%cols));
@@ -112,7 +113,8 @@ sub _query {
 	$self->log->debug('query: ' . $query_string);
 	
 	my ($where, $placeholders) = @{ $self->parser->parse($query_string)->dbi };
-	$where =~ s/(?:(?:AND|OR|NOT)\s*)?1=1//g; # clean up dummy values
+	#$where =~ s/(?:(?:AND|OR|NOT)\s*)?1=1//g; # clean up dummy values
+	$where =~ s/(?:AND|OR|NOT)\s*$//; # clean up any trailing booleans
 	$self->log->debug('where: ' . Dumper($where));
 	
 	my @select;
@@ -365,7 +367,21 @@ sub _query {
 	}
 	else {
 		foreach my $row (@rows){
-			my $ret = { timestamp => $row->{timestamp}, class => 'NONE', host => '0.0.0.0', 'program' => 'NA', datasource => $self->name };
+			my $timestamp = $row->{timestamp_int};
+			if ($row->{timestamp}){
+				if ($row->{timestamp} =~ /^\d+$/){
+					# Already native
+					$timestamp = $row->{timestamp};
+				}
+				else {
+					# Convert
+					$timestamp = UnixDate(ParseDate($row->{timestamp}), '%s');
+				}
+			}
+			else {
+				# Already native via timestamp_int
+			}
+			my $ret = { timestamp => $timestamp, class => 'NONE', host => '0.0.0.0', 'program' => 'NA', datasource => $self->name };
 			$ret->{_fields} = [
 				{ field => 'host', value => '0.0.0.0', class => 'any' },
 				{ field => 'program', value => 'NA', class => 'any' },
