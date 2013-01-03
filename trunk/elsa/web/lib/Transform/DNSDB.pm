@@ -10,6 +10,7 @@ use Time::HiRes;
 extends 'Transform';
 
 our $Name = 'DNSDB';
+our $Limit = 100;
 # Whois transform plugin
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 has 'cache' => (is => 'rw', isa => 'Object', required => 1);
@@ -24,6 +25,11 @@ has 'cv' => (is => 'rw', isa => 'Object');
 
 sub BUILD {
 	my $self = shift;
+	
+	# Use a configured limit if one exists
+	if ($self->conf->get('transforms/dnsdb/limit')){
+		$Limit = $self->conf->get('transforms/dnsdb/limit');
+	}
 	
 	my $keys = {};
 	if (scalar @{ $self->args }){
@@ -63,7 +69,7 @@ sub _query {
 	$self->cv->begin;
 	
 	if ($query =~ /\d+\.\d+\.\d+\.\d+/){
-		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rdata/ip/%s', $query);
+		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rdata/ip/%s?limit=%d', $query, $Limit);
 		
 		my $info = $self->cache->get($url);
 		if ($info and ref($info) eq 'HASH' and scalar keys %$info){
@@ -98,7 +104,7 @@ sub _query {
 		};
 	}
 	else {
-		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rrset/name/%s', $query);
+		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rrset/name/%s?limit=%d', $query, $Limit);
 		
 		my $info = $self->cache->get($url);
 		if ($info){
