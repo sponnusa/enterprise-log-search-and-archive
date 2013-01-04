@@ -1038,11 +1038,12 @@ sub _parse_query_term {
 						if ($class_id){ #skip class 0
 							if ($term_hash->{field} =~ /proto/){
 								# proto is special because it is represented as both an integer and string, so search for both
-								push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
+								my @compound_terms = ($term_hash->{value}); # compound an OR for just these potential values
 								foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 									$self->log->trace('Adding on integer representation of protocol: ' . $values->{attrs}->{$class_id}->{$real_field});
-									push @{ $self->terms->{any_field_terms}->{$boolean} }, $values->{attrs}->{$class_id}->{$real_field};
+									push @compound_terms, $values->{attrs}->{$class_id}->{$real_field};
 								}
+								push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . join('|', @compound_terms) . ')';
 							}
 							else {		
 								push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
