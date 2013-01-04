@@ -931,7 +931,7 @@ sub _parse_query_term {
 			}
 			
 			my $orig_value = $term_hash->{value};
-			if ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host'){
+			if ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host' or $term_hash->{field} =~ /proto/){
 				# Fine as is
 			}
 			elsif ($self->archive){
