@@ -422,10 +422,13 @@ sub set_permissions {
 	my ($query, $sth);
 	my $rows_updated = 0;
 	foreach my $perm (@{ $args->{permissions} }){
-		if ($Fields::IP_fields->{ $perm->{attr} } and $perm->{attr_id} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\-(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/){
+		my $short_attr = $perm->{attr};
+		$short_attr =~ /([^\.]+)$/;
+		$short_attr = $1;
+		if ($Fields::IP_fields->{ $short_attr } and $perm->{attr_id} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\-(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/){
 			$perm->{attr_id} = unpack('N*', inet_aton($1)) . '-' . unpack('N*', inet_aton($2));
 		}
-		elsif ($Fields::IP_fields->{ $perm->{attr} } and $perm->{attr_id} !~ /^[\d\-]+$/){
+		elsif ($Fields::IP_fields->{ $short_attr } and $perm->{attr_id} !~ /^[\d\-]+$/){
 			$perm->{attr_id} = unpack('N*', inet_aton($perm->{attr_id}));
 		}
 		
