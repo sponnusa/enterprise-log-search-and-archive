@@ -995,7 +995,7 @@ sub _parse_query_term {
 			}
 									
 			# Process a field/value or attr/value
-			if ($term_hash->{field} and $term_hash->{value}){
+			if ($term_hash->{field} and defined $term_hash->{value}){
 				
 				my $operators = {
 					'>' => 1,
