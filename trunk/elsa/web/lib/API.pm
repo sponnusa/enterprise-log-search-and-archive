@@ -2822,7 +2822,7 @@ sub export {
 		eval {
 			$decode = $self->json->decode(uri_unescape($args->{data}));
 			$self->log->debug( "Decoded data as : " . Dumper($decode) );
-			if ($decode->{qid}){
+			if (ref($decode) eq 'HASH' and $decode->{qid}){
 				$decode->{user} = $args->{user};
 				$decode = $self->get_saved_result($decode)->{results};
 			}
