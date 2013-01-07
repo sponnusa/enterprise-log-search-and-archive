@@ -2551,6 +2551,20 @@ sub _build_query {
 			}
 		}
 	}
+	
+	# Add in any blanket class allow statements for classes which didn't have a specific value restriction 
+	#  to make sure the class remains present in the clause.  Otherwise, there won't be any reason for the AND
+	#  to succeed when specific values are given in one class but not another since the general one won't be represented
+	#  in this specific clause.  It will be redundant with the class clause, but that should not affect performance.
+	if (scalar @perm_fields_clause){
+		foreach my $class_id (keys %{ $q->classes->{distinct} }){
+			unless (exists $q->user->permissions->{fields}->{$class_id}){
+				push @perm_fields_clause, 'class_id=?';
+				push @{ $clauses{permissions}->{vals} }, $class_id;
+			}
+		}
+	}
+	
 	push @{ $clauses{permissions}->{clauses} }, [ @perm_fields_clause ] if scalar @perm_fields_clause;
 
 	foreach my $class_id (keys %{ $q->classes->{distinct} }){
