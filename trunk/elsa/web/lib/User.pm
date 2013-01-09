@@ -351,22 +351,31 @@ sub _create_user {
 	my ( $query, $sth );
 	eval {
 		$self->db->begin_work;
-		$query = 'INSERT INTO users (username) VALUES (?)';
+		$query = 'SELECT uid FROM users WHERE username=?';
 		$sth   = $self->db->prepare($query);
 		$sth->execute( $self->username );
-		$query = 'INSERT INTO groups (groupname) VALUES (?)';
-		$sth   = $self->db->prepare($query);
-		$sth->execute( $self->username );
-		$query =
-		    'INSERT INTO users_groups_map (uid, gid) SELECT ' . "\n"
-		  . '(SELECT uid FROM users WHERE username=?),' . "\n"
-		  . '(SELECT gid FROM groups WHERE groupname=?)';
-		$sth = $self->db->prepare($query);
-		$sth->execute( $self->username, $self->username );
+		my $row = $sth->fetchrow_arrayref;
+		if ($row){
+			$self->log->warn('already created user ' . $self->username . ' with uid ' . $row->[0]);
+		}
+		else {	
+			$query = 'INSERT INTO users (username) VALUES (?)';
+			$sth   = $self->db->prepare($query);
+			$sth->execute( $self->username );
+			$query = 'INSERT IGNORE INTO groups (groupname) VALUES (?)';
+			$sth   = $self->db->prepare($query);
+			$sth->execute( $self->username );
+			$query =
+			    'INSERT INTO users_groups_map (uid, gid) SELECT ' . "\n"
+			  . '(SELECT uid FROM users WHERE username=?),' . "\n"
+			  . '(SELECT gid FROM groups WHERE groupname=?)';
+			$sth = $self->db->prepare($query);
+			$sth->execute( $self->username, $self->username );
+		}
 
 		my $select  = 'SELECT groupname FROM groups WHERE groupname=?';
 		my $sel_sth = $self->db->prepare($select);
-		$query = 'INSERT INTO groups (groupname) VALUES (?)';
+		$query = 'INSERT IGNORE INTO groups (groupname) VALUES (?)';
 		$sth   = $self->db->prepare($query);
 		foreach my $group ( @{ $self->groups } ) {
 			$sel_sth->execute($group);
@@ -381,7 +390,7 @@ sub _create_user {
 		$query = 'SELECT uid FROM users WHERE username=?';
 		$sth   = $self->db->prepare($query);
 		$sth->execute( $self->username );
-		my $row = $sth->fetchrow_hashref;
+		$row = $sth->fetchrow_hashref;
 		if ($row) {
 			$self->uid($row->{uid});
 		}
@@ -395,6 +404,7 @@ sub _create_user {
 	};
 	if ($@) {
 		$self->log->error( 'Database error: ' . $@ );
+		eval { $self->db->rollback; };
 		return;
 	}
 	return 1;
