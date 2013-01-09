@@ -12,6 +12,10 @@ export PATH=$PATH:/usr/local/bin
 BASE_DIR="/usr/local"
 DATA_DIR="/data"
 TMP_DIR="/tmp"
+# Include any local syslog-ng.conf statements in this file
+LOCAL_SYSLOG_CONF="/etc/elsa_syslog-ng.conf"
+# Set this in /etc/elsa_vars.sh to be "1" if you want to skip updating the syslog-ng.conf file entirely
+USE_LOCAL_SYSLOG_CONF="0"
 
 MYSQL_NODE_DB="syslog"
 
@@ -493,7 +497,14 @@ update_node_mysql(){
 update_syslogng(){
 	echo "Updating syslog-ng.conf..."
 	# Copy the syslog-ng.conf
-	cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+	if [ -f $LOCAL_SYSLOG_CONF ]; then
+		echo "Including syslog-ng.conf include file located at $LOCAL_SYSLOG_CONF"
+		cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" | sed -e "s|###INCLUDE_PLACEHOLDER###|include $LOCAL_SYSLOG_CONF\;|" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+	elif [ "$USE_LOCAL_SYSLOG_CONF" = "1" ]; then
+		echo "Not overwriting local syslog-ng.conf, all changes must be manually applied."
+	else
+		cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+	fi
 	return $?
 }
 
