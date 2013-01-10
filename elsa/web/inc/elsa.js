@@ -4993,7 +4993,7 @@ YAHOO.ELSA.getSavedSearches = function(){
 		var oNewValue = p_oNewValue;
 		var oSendValue = oNewValue;
 		
-		YAHOO.ELSA.async('Query/preference?action=update&id=' + oRecord.getData().id + '&col=' + oColumn.getKey() + '&val=' + oSendValue, function(p_oReturn){
+		YAHOO.ELSA.async('Query/preference', function(p_oReturn){
 			if (p_oReturn.ok && p_oReturn.ok > 0){
 				// update the edit queries datatable
 				oDatatable.updateCell(oRecord, oColumn, oNewValue);
@@ -5002,7 +5002,13 @@ YAHOO.ELSA.getSavedSearches = function(){
 			else {
 				p_fnCallback(false);
 			}
-		});
+		}, { //post data
+			action: 'update',
+			id: oRecord.getData().id,
+			col: oColumn.getKey(),
+			val: oSendValue
+		}
+		);
 	};
 	
 	var cellEditorValidatorQuery = function(p_sInputValue, p_sCurrentValue, p_oEditorInstance){
