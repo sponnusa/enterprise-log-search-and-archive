@@ -272,7 +272,13 @@ get_elsa(){
 	echo "Current MD5: $BEFORE_MD5"
 	# Get the latest code from Google Code
 	cd $BASE_DIR
-	svn --non-interactive --trust-server-cert --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" &&
+	# Check to see if svn accepts --trust-server-cert
+	SVN_TRUST_SERVER_CERT=" --trust-server-cert"
+	svn help export | grep trust
+	if [ $? -ne 0 ]; then 
+		SVN_TRUST_SERVER_CERT=""
+	fi
+	svn --non-interactive $SVN_TRUST_SERVER_CERT --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" &&
 	mkdir -p "$BASE_DIR/elsa/node/tmp/locks" && 
 	touch "$BASE_DIR/elsa/node/tmp/locks/directory"
 	UPDATE_OK=$?
