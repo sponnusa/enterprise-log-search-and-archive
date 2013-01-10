@@ -56,7 +56,7 @@ has 'web_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', re
 } });
 has 'node_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
 	_system_event_rates => { 
-		alias => '_node_stats_%d',
+		alias => '_node_stats_%s', # changed from %d to %s because of architecture problems with %d and unsigned integers
 		dsn => 'dbi:mysql:host=%s;port=%d;database=%s',
 		query_template => 'SELECT %s FROM (SELECT host_id, INET_NTOA(host_id) AS host, timestamp, class, count FROM host_stats t1 JOIN classes t2 ON (t1.class_id=t2.id) WHERE %s) derived %s ORDER BY %s LIMIT %d,%d',
 		fields => [
