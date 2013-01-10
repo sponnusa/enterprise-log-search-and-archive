@@ -125,8 +125,13 @@ centos_get_node_packages(){
 
 suse_get_node_packages(){
 	# Install required packages
+	LIBNET_PKG="libnet-devel";
+	if [ -f /usr/local/lib/libnet.so ]; then
+		echo "Using locally installed libnet"
+		LIBNET_PKG=""
+	fi
 	zypper -n update &&
-	zypper -qn install ntp perl curl make subversion gcc gcc-c++ mysql-community-server libmysqlclient-devel pkg-config pcre-devel libcap-devel libnet-devel libopenssl-devel glib2-devel pam-devel perl-Module-Build
+	zypper -qn install ntp perl curl make subversion gcc gcc-c++ mysql-community-server libmysqlclient-devel pkg-config pcre-devel libcap-devel $LIBNET_PKG libopenssl-devel glib2-devel pam-devel perl-Module-Build
 	return $?
 }
 
