@@ -116,6 +116,13 @@ if [ "$MYSQL_ROOT_PASS" != "" ]; then
     MYSQL_PASS_SWITCH="-p$MYSQL_ROOT_PASS"
 fi
 
+check_node_installed(){
+	if [ -f /etc/elsa_node.conf ]; then
+		echo "Found /etc/elsa_node.conf, which means ELSA is already installed.  Won't install over an existing installation, use update instead.  To force a re-installation, move or delete /etc/elsa_node.conf"
+		exit;
+	fi
+}
+
 centos_get_node_packages(){
 	# Install required packages
 	yum -y update
@@ -927,9 +934,16 @@ restart_apache(){
 	service $APACHE restart
 }
 
+check_web_installed(){
+	if [ -f /etc/elsa_web.conf ]; then
+		echo "Found /etc/elsa_web.conf, which means ELSA is already installed.  Won't install over an existing installation, use update instead.  To force a re-installation, move or delete /etc/elsa_web.conf"
+		exit;
+	fi
+}
+
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
+		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
@@ -941,7 +955,7 @@ if [ "$INSTALL" = "node" ]; then
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate"; do
+		for FUNCTION in "check_web_installed" $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate"; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
