@@ -162,6 +162,10 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("asn", "int", "NUMB
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("city", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("latitude", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("longitude", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("pkts_in", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("pkts_out", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("bytes_in", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("bytes_out", "int", "NUMBER");
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -309,6 +313,12 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="dstip"), 7);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="dstport"), 8);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="proto"), 9);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="bytes_in"), 10);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="service"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="conn_duration"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="bytes_out"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_out"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_in"), 15);
 
 /*INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FORTINET_URL"), (SELECT id FROM fields WHERE field="srcip"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FORTINET_URL"), (SELECT id FROM fields WHERE field="srcport"), 6);
