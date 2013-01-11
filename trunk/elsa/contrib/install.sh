@@ -513,12 +513,12 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("pkts_out", "int", "NUMBER")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("bytes_in", "int", "NUMBER")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("bytes_out", "int", "NUMBER")'
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="bytes_in"), 10);
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="service"), 11);
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="conn_duration"), 12);
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="bytes_out"), 13);
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_out"), 14);
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_in"), 15);
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="bytes_in"), 10)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="service"), 11)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="conn_duration"), 12)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="bytes_out"), 13)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_out"), 14)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_in"), 15)'
 	return $?
 }
 
