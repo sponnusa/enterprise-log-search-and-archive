@@ -1,10 +1,11 @@
 package Export;
 use Moose;
+use Utils; #for epoch2iso
 use Data::Dumper;
 
 # Base class for Result plugins
 
-has 'columns' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { ['timestamp'] });
+has 'columns' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { ['timestamp', 'epoch_time'] });
 has 'grid' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] });
 has '_raw_results' => (is => 'rw', required => 1);
 has 'results' => (is => 'rw', required => 1, default => '');
@@ -42,7 +43,7 @@ sub BUILD {
 		push @{ $self->columns }, 'msg';
 		
 		foreach my $row (@{ $self->_raw_results }){
-			my $grid_hash = { timestamp => $row->{timestamp}, msg => $row->{msg} };
+			my $grid_hash = { timestamp => Utils::epoch2iso($row->{timestamp}), epoch_time => $row->{timestamp}, msg => $row->{msg} };
 			foreach my $field_hash (@{ $row->{_fields} }){
 				$grid_hash->{ $field_hash->{field} } = $field_hash->{value};
 			}
