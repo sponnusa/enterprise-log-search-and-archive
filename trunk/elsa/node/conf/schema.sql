@@ -45,6 +45,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(32, "CEF", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(33, "WEB_CONTENT_FILTER", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(34, "NETFLOW", 0);*/
+/*INSERT INTO classes (id, class, parent_id) VALUES(35, "OSSEC_ALERTS", 0);*/
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -433,6 +434,13 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="latitude"), 14);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="longitude"), 15);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NETFLOW"), (SELECT id FROM fields WHERE field="desc"), 16);*/
+
+/*INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="OSSEC_ALERTS"), (SELECT id FROM fields WHERE field="sig_priority"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="OSSEC_ALERTS"), (SELECT id FROM fields WHERE field="sig_sid"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="OSSEC_ALERTS"), (SELECT id FROM fields WHERE field="sig_msg"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="OSSEC_ALERTS"), (SELECT id FROM fields WHERE field="hostname"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="OSSEC_ALERTS"), (SELECT id FROM fields WHERE field="user"), 13);
+*/
 
 
 CREATE TABLE table_types (
