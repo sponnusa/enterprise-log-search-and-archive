@@ -1634,4 +1634,22 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="OSSEC_ALERTS">
+		<pattern>ossec</pattern>
+		<rules>
+			<rule provider="shadejinx" class='35' id='35'>
+				<pattern>Alert Level: @NUMBER:i0:@; Rule: @NUMBER:i1:@ - @ESTRING:s0:;@ Location: @ESTRING:s1:-@@ESTRING::;@ user: @ESTRING:s2:;@</pattern>
+				<examples>
+					<example>
+						<test_message program="ossec">Alert Level: 4; Rule: 18105 - Windows audit failure event.; Location: %SERVER.DOMAIN.LOCAL%->/var/log/ossec_in; user: %USERNAME%; Jan 12 13:51:34 %SERVER.DOMAIN.LOCAL% MSWinEventLog|1|Security|3151378|Sat Jan 12 13:51:32 2013|4776|Microsoft-Windows-Security-Auditing|%USERNAME%|N/A|Failure Audit|%SERVER.DOMAIN.LOCAL%|None||The computer attempted to validate the credentials for an account. Authentication Package: MICROSOFT_AUTHENTICATION_PACKAGE_V1_0 Logon Account: %USERNAME% Source Workstation: %WORKSTATION_NAME% Error Code: 0xc0000064|3147595</test_message>
+						<test_value name="i0">4</test_value>
+						<test_value name="i1">18105</test_value>
+						<test_value name="s0">Windows audit failure event.</test_value>
+						<test_value name="s1">%SERVER.DOMAIN.LOCAL%</test_value>
+						<test_value name="s2">%USERNAME%</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
