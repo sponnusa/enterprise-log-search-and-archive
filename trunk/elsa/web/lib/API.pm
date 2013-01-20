@@ -2807,6 +2807,23 @@ sub format_results {
 			}
 		}
 	}
+	elsif ($args->{format} eq 'flat_json'){
+		my $json = [];
+		if ($args->{groupby}){
+			$json = $args->{results};
+		}
+		else {
+			foreach my $row (@{ $args->{results} }){
+				foreach my $field (@{ $row->{_fields} }){
+					next if $field->{class} eq 'any';
+					$row->{ $field->{class} . '.' . $field->{field} } = $field->{value};
+				}
+				delete $row->{_fields};
+				push @$json, $row;
+			}
+		}
+		$ret = $self->json->encode($json);
+	}
 	else {
 		# default to JSON
 		$ret .= $self->json->encode($args->{results}) . "\n";

@@ -44,7 +44,7 @@ sub usage {
 	return q{
 usage: -q <query string>
        -c <web config file; default is /etc/elsa_web.conf, alternatively you can set env var ELSA_CONF>
-       -f <format, default tsv; only other choice is json>
+       -f <format, default tsv; other choices are json and flat_json>
 If called without arguments, all arguments are interpreted as the query and defaults are used.
 };
 }
