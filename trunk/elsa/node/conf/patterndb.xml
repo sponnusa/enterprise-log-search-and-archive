@@ -724,17 +724,17 @@
 					  host    uri     referrer        user_agent      request_body_len        response_body_len       status_code     
 					  status_msg      info_code       info_msg        filename        tags    username        password        
 					  proxied mime_type       md5     extraction_file-->
-					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@NUMBER::@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:i4:|@@ESTRING::|@@ESTRING:i5:|@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@NUMBER::@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING::|@@ESTRING:i5:|@@ESTRING:i4:|@</pattern>
 					<!--ts      uid     id.orig_h       id.orig_p       id.resp_h       id.resp_p       method  
 					host    uri     referrer        user_agent      request_body_len       
 					 request_body_interrupted        response_body_len       response_body_interrupted       status_code     
 					 status_msg      filename        tags    username        password        proxied mime_type
        md5     extraction_file-->
-					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING::|@@ESTRING::|@@ESTRING:i5:|@@ESTRING:i4:|@@ESTRING::|@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING::|@@ESTRING::|@@ESTRING:i5:|@@ESTRING::|@@ESTRING:i4:|@</pattern>
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="bro_http">1319824864.447838|g6XHk1uplZc|10.0.0.0|19427|80.175.58.76|80|GET|www.google.com|/|http://example.com|myagent|200|0|1000|...</test_message>
+						<test_message program="bro_http">1319824864.447838|g6XHk1uplZc|10.0.0.0|19427|80.175.58.76|80|GET|www.google.com|/|http://example.com|myagent|-|-|1000|0|200|</test_message>
 						<!-- srcip -->
 						<test_value name="i0">10.0.0.0</test_value>
 						<!-- srcport -->
