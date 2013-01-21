@@ -797,7 +797,7 @@ sub load_records {
 	
 	die 'Invalid args: ' . Dumper($args)
 		unless $args and ref($args) eq 'HASH';
-	die 'Invalid args: ' . Dumper($args)
+	die 'Invalid file: ' . Dumper($args)
 		unless $args->{file} and -f $args->{file};
 	
 	$self->log->debug("args: " . Dumper($args));
@@ -2059,7 +2059,8 @@ sub record_host_stats {
 	my $row = $sth->fetchrow_hashref;
 	unless ($row){
 		$self->log->error("No latest index found");
-		die('No latest index found');
+		#die('No latest index found');
+		return 0;
 	}
 	my $index = 'temp_' . $row->{id};
 	my $records = $row->{records};
