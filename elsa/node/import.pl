@@ -49,8 +49,6 @@ Log::Log4perl::init( \$l4pconf ) or die("Unable to init logger\n");
 my $Log = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n");
 
 my $Timezone = $Opts{t} ? $Opts{t} : DateTime::TimeZone->new( name => "local")->name;
-my $parser = DateTime::Format::Strptime->new(pattern => '%m/%d/%Y%t%T', time_zone => $Timezone);
-my $printer = DateTime::Format::Strptime->new(pattern => '%s', time_zone => $Timezone);
 
 my $start = time();
 my $Outfile = new IO::File('> /data/elsa/tmp/import') or die('Cannot open /data/elsa/tmp/import');
@@ -61,6 +59,9 @@ if ($Format eq 'local_syslog'){
 }
 elsif ($Format eq 'bro'){
 	$lines_imported = _read_bro();
+}
+elsif ($Format eq 'snort'){
+	$lines_imported = _read_snort();
 }
 else {
 	die('Invalid input type ' . $Format);
@@ -94,13 +95,29 @@ sub _read_bro {
 			my @fields = split(/\t/, $_);
 			my $second = $fields[0];
 			($second) = split(/\./, $second, 1);
-			my $date = strftime('%b %d %H:%M:%s', localtime($second));
+			my $date = strftime('%b %d %H:%M:%S', localtime($second));
 			$Outfile->print($date . " bro_$type: " . join('|', @fields) . "\n");
 			$counter++;
 		};
 		if ($@){
 			$Log->error($@ . "\nLine: " . $_);
 		}
+	}
+	return $counter;
+}
+
+# Snort/Suricata fast.log
+sub _read_snort {
+	my $counter = 0;
+	my $parser = DateTime::Format::Strptime->new(pattern => '%m/%d/%Y-%T', time_zone => $Timezone);
+	my $printer = DateTime::Format::Strptime->new(pattern => '%b %d %T', time_zone => $Timezone);
+	while (<$Infile>){
+		$_ =~ /^(\S+)\s+\[\*\*\] ([^\n]+)/;
+		my $dt = $parser->parse_datetime($1);
+		my $msg = $2;
+		$msg =~ s/\[\*\*\]\ //;
+		$Outfile->print($printer->format_datetime($dt) . " snort: $msg\n");
+		$counter++;
 	}
 	return $counter;
 }
