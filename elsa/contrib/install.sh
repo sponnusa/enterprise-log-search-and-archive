@@ -628,7 +628,7 @@ centos_get_web_packages(){
 
 freebsd_get_web_packages(){
 	cd /usr/ports/www/mod_perl2 && make install clean
-	pkg_add -vFr subversion curl mysql55-client perl p5-App-cpanminus expat p5-Module-Build
+	pkg_add -vFr subversion curl mysql55-client perl p5-App-cpanminus expat p5-Module-Build ap22-mod_perl2
 	RET=$?
 	# pkg_add will return 6 when packages were already present
 	if [ "$RET" -ne 0 ] && [ "$RET" -ne 6 ]; then
