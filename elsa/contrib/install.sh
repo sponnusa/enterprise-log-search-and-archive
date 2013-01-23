@@ -103,6 +103,7 @@ elif [ -f /etc/freebsd-update.conf ]; then
 	CRONTAB_DIR="/var/cron/tabs"
 	INIT_DIR=/usr/local/etc/rc.d/
 	WEB_USER="www"
+	GEOIP_DIR="/usr/local/share/GeoIP/"
 	# FreeBSD does better over HTTP than FTP
 	export PACKAGEROOT="http://ftp.freebsd.org"
 	if [ ! -d "/usr/local/etc/$APACHE" ]; then
