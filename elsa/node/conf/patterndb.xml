@@ -492,11 +492,11 @@
 			<rule provider="Laurel" class='8' id='8'>
 				<!-- Rules for logs with interface included -->
 				<patterns>
-					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>
-					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@ -> @IPv4:i4:@</pattern>
-					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@]: @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>
-					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@]: @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@ -> @IPv4:i4:@</pattern>
-					<pattern>@QSTRING:s0:[]@@QSTRING:s1: @[Classification:@QSTRING:s2: ]@ [Priority@QSTRING:i0: ]@: @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -> @IPv4:i4:@:@NUMBER:i5:@</pattern>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1: [@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@ -&gt; @IPv4:i4:@</pattern>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@]: @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1:[@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@]: @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@ -&gt; @IPv4:i4:@</pattern>
+					<pattern>@QSTRING:s0:[]@@QSTRING:s1: @[Classification:@QSTRING:s2: ]@ [Priority@QSTRING:i0: ]@: @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
 				</patterns>
 				<example>
 					<test_message program="snort">[1:2010939:2] ET POLICY Suspicious inbound to PostgreSQL port 5432 [Classification: Potentially Bad Traffic] [Priority: 2]: &lt;eth1&gt; {TCP} 192.168.193.245:38472 -> 192.168.193.1:5432</test_message>
@@ -511,6 +511,12 @@
 					<test_value name="i4">192.168.193.1</test_value>
 					<test_value name="i5">5432</test_value>
 				</example>
+			</rule>
+			<rule provider="A Ratcliffe" class='8' id='8'>
+				<patterns>
+					<!-- via Sagan which has an extra colon in it-->
+					<pattern>@QSTRING:s0:[]@ @ESTRING:s1: [Classification@:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@]: @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
+				</patterns>
 			</rule>
 		</rules>
 	</ruleset>
