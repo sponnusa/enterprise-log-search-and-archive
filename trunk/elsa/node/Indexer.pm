@@ -2123,15 +2123,16 @@ sub _current_disk_space_available {
 	my $data_dir = $self->conf->get('sphinx/index_path');
 	$data_dir =~ s/\/.*$//;
 	my @lines = qx(df -B 1);
-	my ($default, $total, $available, $percentage_used);
+	my ($default, $total, $used, $available, $percentage_used, $mounted_on);
 	foreach my $line (@lines){
+		next if $line =~ /^Filesystem/;
 		chomp($line);
-		(undef, $total, $available, $percentage_used, undef) = split(/\s+/, $line);
+		(undef, $total, $used, $available, $percentage_used, $mounted_on) = split(/\s+/, $line);
 		$percentage_used =~ s/\%$//;
-		if ($line =~ /^$data_dir/o){
+		if ($line =~ /^$data_dir/o or $mounted_on =~ /^$data_dir/o){
 			return ($total, $available, $percentage_used);
 		}
-		elsif ($line =~ /^\/$/){
+		elsif ($line =~ /^\/$/ or $mounted_on =~ /^\/$/){
 			$default = [ $total, $available, $percentage_used ];
 		}
 	}
