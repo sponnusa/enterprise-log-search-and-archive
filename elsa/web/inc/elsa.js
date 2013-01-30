@@ -3970,8 +3970,16 @@ YAHOO.ELSA.getPreferences = function(){
 				}
 			}
 			catch (e){
-				YAHOO.ELSA.Error(e);
-				return;
+				logger.log('Did not parse as JSON, trying as string, error was: ' + e.toString());
+				// Assume we were passed a regular string
+				try {
+					oQueryParams = p_sInputValue;
+					oQueryParams.replace(/\+/g, '\+');
+				}
+				catch (e2){
+					YAHOO.ELSA.Error(e2.toString());
+					return;
+				}
 			}
 			logger.log('oQueryParams', oQueryParams);
 			return oQueryParams;
