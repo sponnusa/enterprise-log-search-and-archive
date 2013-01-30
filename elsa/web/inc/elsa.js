@@ -3962,7 +3962,12 @@ YAHOO.ELSA.getPreferences = function(){
 			var oQueryParams;
 			try {
 				oQueryParams = YAHOO.lang.JSON.parse(p_sInputValue);
-				oQueryParams.pattern.replace(/\+/g, '\+');
+				if (typeof(oQueryParams) == 'object' && oQueryParams.pattern){
+					oQueryParams.pattern.replace(/\+/g, '\+');
+				}
+				else {
+					oQueryParams.replace(/\+/g, '\+');
+				}
 			}
 			catch (e){
 				YAHOO.ELSA.Error(e);
