@@ -380,6 +380,10 @@ our $Reserved_fields = { map { $_ => 1 } qw( start end limit offset class groupb
 
 our $IP_fields = { map { $_ => 1 } qw( node_id host_id ip srcip dstip sourceip destip ) };
 
+our $Import_min_id = unpack('N*', inet_aton('127.0.0.2'));
+our $Import_max_id = unpack('N*', inet_aton('127.255.255.255'));
+our $Import_fields = [ qw(import_name import_description import_type import_date) ];
+
 # Helper methods for dealing with resolving fields
 has 'node_info' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 
