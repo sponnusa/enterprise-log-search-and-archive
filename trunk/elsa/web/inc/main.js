@@ -812,10 +812,12 @@ YAHOO.ELSA.main = function () {
 //					}
 					// Don't set the button if the query string has the groupby in it
 					var aMatches = YAHOO.ELSA.currentQuery.queryString.match(/\s*groupby[:=]([\w\.]+)\s*/, 'i');
-					if (aMatches != null && aMatches[1] == YAHOO.ELSA.currentQuery.metas.groupby[0]){
+					//if (aMatches != null && aMatches[1] == YAHOO.ELSA.currentQuery.metas.groupby[0]){
+					if (aMatches != null){
 						logger.log('groupby set via queryString');
 						// Clear metas.groupby[0] so that this doesn't get sent twice as it's represented in the queryString
 						YAHOO.ELSA.currentQuery.metas.groupby.splice(0,1);
+						oGroupButton.set('label', aMatches[1]);
 					}
 					else {
 						oGroupButton.set('label', YAHOO.ELSA.currentQuery.metas.groupby[0]);

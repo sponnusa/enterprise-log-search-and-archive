@@ -551,11 +551,27 @@ YAHOO.ELSA.Query = function(){
 		delete this.terms[p_sField];
 		return true;
 	}
-	
+	this.invisibleMetas = {
+		'start': 1,
+		'end': 1,
+		'start_time': 1,
+		'end_time': 1
+	};
+
 	this.addMeta = function(p_sField, p_sValue){
 		logger.log('adding to current query meta:' + p_sField + ', val: ' + p_sValue);
 		if (this.validateMeta(p_sField, p_sValue)){
-			this.metas[p_sField] = p_sValue;
+			// first remove any existing
+            this.delMeta(p_sField);
+            
+            if (this.invisibleMetas[p_sField]){
+            	this.metas[p_sField] = p_sValue;
+            }
+            else {
+            	if (p_sField != 'class' && p_sValue != 'any'){
+            		YAHOO.util.Dom.get('q').value += ' ' + p_sField + ':' + p_sValue;
+            	}
+            }
 			return true;
 		}
 		else {
@@ -567,7 +583,7 @@ YAHOO.ELSA.Query = function(){
 	this.delMeta = function(p_sField){
 		logger.log('removing current query meta:' + p_sField);
 		if (YAHOO.util.Dom.get('q').value){
-			var re = new RegExp('\\W?' + p_sField + '[\\:\\=]([\\w\\.]+)', 'i');
+			var re = new RegExp('\\W?' + p_sField + '[\\:\\=]"?([\\w\\.]+)"?', 'i');
 			YAHOO.util.Dom.get('q').value = YAHOO.util.Dom.get('q').value.replace(re, '');
 		}
 		delete this.metas[p_sField];
@@ -745,15 +761,10 @@ YAHOO.ELSA.groupData = function(p_iId, p_sClass, p_sField, p_sAggFunc){
 	// reset old values
 	YAHOO.ELSA.currentQuery.delMeta('groupby');
 	
-	if (!p_sClass){
+	if (!p_sClass || p_sClass == 'any'){
 		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
 	}
-	else if (p_sClass == 'any'){
-		//any class, always an INT field
-		YAHOO.ELSA.currentQuery.addMeta('class', 'any');
-		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
-	}
-	else if (p_sClass != YAHOO.ELSA.Labels.noGroupBy){ //clears
+	else if (p_sClass != YAHOO.ELSA.Labels.noGroupBy){
 		// Find type to determine if we can do this remotely or if it's a client-side group
 		var sFieldType = 'string';
 		for (var i in YAHOO.ELSA.formParams.fields){
@@ -763,6 +774,7 @@ YAHOO.ELSA.groupData = function(p_iId, p_sClass, p_sField, p_sAggFunc){
 			}
 		}
 		
+		YAHOO.ELSA.currentQuery.delMeta('class');
 		YAHOO.ELSA.currentQuery.addMeta('class', p_sClass);
 		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
 	}
