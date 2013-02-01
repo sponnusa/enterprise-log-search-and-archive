@@ -994,6 +994,11 @@ sub _get_max_id {
 	my $max_id = $row->{max_id};
 	$max_id = 0 unless $max_id;
 	
+	# Import tables need a different ID space than regular index tables
+	if ($type eq 'import' and $max_id < $Peer_id_multiplier){
+		$max_id = $Peer_id_multiplier;
+	}
+	
 	# Validate this is with the correct range for this node
 	my $min_id = $self->conf->get('id') ? $Peer_id_multiplier * $self->conf->get('id') : 0;
 	unless ($max_id > $min_id){
