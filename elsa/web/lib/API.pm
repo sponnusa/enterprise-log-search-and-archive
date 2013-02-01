@@ -1866,7 +1866,7 @@ sub _sphinx_query {
 			}
 			# If we are searching more than distributed_threshold rows, then we will query all data in parallel.
 			if ($total_rows_searched > $distributed_threshold){
-				$self->log->trace('using distributed_local index because total_rows_searche: ' . $total_rows_searched .
+				$self->log->trace('using distributed_local index because total_rows_searched: ' . $total_rows_searched .
 					' and distributed_threshold: ' . $distributed_threshold);
 				@index_arr = ('distributed_local');
 			}
@@ -1954,11 +1954,13 @@ sub _sphinx_query {
 						my $table_query = sprintf("SELECT %1\$s.id,\n" .
 							#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
 							"timestamp,\n" .
+							"imports.name AS import_name, imports.description AS import_description, imports.datatype AS import_type, imports.imported AS import_date,\n" .
 							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
 							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 							"FROM %1\$s\n" .
 							"LEFT JOIN %2\$s.programs ON %1\$s.program_id=programs.id\n" .
 							"LEFT JOIN %2\$s.classes ON %1\$s.class_id=classes.id\n" .
+							"LEFT JOIN %2\$s.imports ON %1\$s.host_id=imports.id\n" .
 							'WHERE %1$s.id IN (' . $placeholders . ')',
 							$table, $nodes->{$node}->{db});
 						push @table_queries, $table_query;
@@ -1984,10 +1986,16 @@ sub _sphinx_query {
 									. Dumper(\%tables)); 
 							}
 							$self->log->trace('node '. $node . ' got db rows: ' . (scalar @$rows));
+							
 							foreach my $row (@$rows){
 								$ret->{$node}->{results} ||= {};
 								$row->{node} = $node;
 								$row->{node_id} = unpack('N*', inet_aton($node));
+								foreach my $import_col (@{ $Fields::Import_fields }){
+									unless ($row->{$import_col}){
+										delete $row->{$import_col};
+									}
+								}
 								$ret->{$node}->{results}->{ $row->{id} } = $row;
 							}
 							$cv->end;
@@ -2019,6 +2027,15 @@ sub _sphinx_query {
 	#$self->log->debug('conversions: ' . Dumper($self->node_info->{field_conversions}));
 	
 	if ($q->has_groupby){
+		# Swap the host for the import_groupby if necessary
+		if ($q->import_groupby){
+			my @groupbys = $q->all_groupbys;
+			for (my $i = 0; $i < @groupbys; $i++){
+				if ($groupbys[$i] eq 'host'){
+					$q->groupby->[$i] = $q->import_groupby;
+				}
+			}
+		}
 		my %results;
 		foreach my $groupby ($q->all_groupbys){
 			my %agg;
@@ -2054,6 +2071,10 @@ sub _sphinx_query {
 						# Resolve normally
 						$key = $self->resolve_value($sphinx_row->{class_id}, 
 							$sphinx_row->{'_groupby'}, $groupby);
+					}
+					elsif ($q->import_groupby){
+						# Resolve with the mysql row
+						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{ $q->import_groupby };
 					}
 					else {
 						# Resolve with the mysql row
@@ -2136,6 +2157,20 @@ sub _sphinx_query {
 						{ field => 'program', value => $row->{program}, class => 'any' },
 						{ field => 'class', value => $row->{class}, class => 'any' },
 					];
+				my $is_import = 0;
+				foreach my $import_col (@{ $Fields::Import_fields }){
+					if (exists $row->{$import_col}){
+						$is_import++;
+						push @{ $row->{_fields} }, { field => $import_col, value => $row->{$import_col}, class => 'any' };
+					}
+				}
+				if ($is_import){
+					# Remove host
+					shift(@{ $row->{_fields} });
+					
+					# Add node
+					push @{ $row->{_fields} }, { field => 'node', value => $row->{node}, class => 'any' };
+				}
 				# Resolve column names for fields
 				foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
 					my $value = delete $row->{$col};

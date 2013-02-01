@@ -67,6 +67,7 @@ has 'comments' => (is => 'rw', isa => 'Str');
 has 'time_taken' => (is => 'rw', isa => 'Num', trigger => \&_set_time_taken);
 has 'batch_message' => (is => 'rw', isa => 'Str');
 has 'node_info' => (is => 'rw', isa => 'HashRef');
+has 'import_groupby' => (is => 'rw', isa => 'Str');
 
 sub BUILDARGS {
 	my $class = shift;
@@ -884,10 +885,17 @@ sub _parse_query_term {
 				next;
 			}
 			elsif ($term_hash->{field} eq 'groupby'){
-				my $field_infos = $self->get_field($term_hash->{value});
+				my $value = lc($term_hash->{value});
+				if ($value =~ /^import\_/){
+					die('Invalid groupby ' . $value) unless grep { $_ eq $value } @$Fields::Import_fields;
+					$self->import_groupby($value);
+					$self->log->trace('Setting groupby to host on behalf of an import groupby ' . $self->import_groupby);
+					$value = 'host';
+				}
+				my $field_infos = $self->get_field($value);
 				$self->log->trace('$field_infos ' . Dumper($field_infos));
-				if ($field_infos or $term_hash->{value} eq 'node'){
-					$self->add_groupby(lc($term_hash->{value}));
+				if ($field_infos or $value eq 'node'){
+					$self->add_groupby(lc($value));
 					foreach my $class_id (keys %$field_infos){
 						$self->classes->{groupby}->{$class_id} = 1;
 					}
