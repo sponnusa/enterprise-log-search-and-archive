@@ -96,7 +96,12 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
  * Nodes: Contains the connection information to the log node databases which hold the actual data.
  * Auth_method: Controls how authentication and authorization occurs.  For LDAP, the ldap settings must also be filled out.
  * Link_key: should be changed to something other than the default.  It is used to salt the auth hashes for permalinks.
- * Email: For alerts and archive query notifications, you need to setup the email server to use.
+ * Email: For alerts and archive query notifications, you need to setup the email server to use.  If you wish to get the actual results from an alert, in addition to a link to the results, add the following config to the email section:
+{{{
+ "email": {
+    "include_data": 1
+  }
+}}}
  * Meta_db: Should point to the database which stores the web management information.  This can reside on a node, but probably shouldn't.  The performance won't be much of a factor, so running this locally on the web server should be fine.
  * Excluded_classes: If you want to remove some classes from the menus and searches altogether, configure the config entry for excluded_classes like this:
 {{{
