@@ -836,12 +836,22 @@ sub _parse_query_term {
 						
 			if ($term_hash->{field} eq 'start'){
 				# special case for start/end
-				$self->start(UnixDate($term_hash->{value}, "%s"));
+				if (int($term_hash->{value})){
+					$self->start(int($term_hash->{value}));
+				}
+				else {
+					$self->start(UnixDate($term_hash->{value}, "%s"));
+				}
 				next;
 			}
 			elsif ($term_hash->{field} eq 'end'){
 				# special case for start/end
-				$self->end(UnixDate($term_hash->{value}, "%s"));
+				if (int($term_hash->{value})){
+					$self->end(int($term_hash->{value}));
+				}
+				else {
+					$self->end(UnixDate($term_hash->{value}, "%s"));
+				}
 				next;
 			}
 			elsif ($term_hash->{field} eq 'limit'){
