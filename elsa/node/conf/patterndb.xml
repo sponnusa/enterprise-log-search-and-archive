@@ -1680,4 +1680,46 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="NetScreen" id='1001'>
+		<rules>
+			<rule provider="ELSA" class='2' id='2'>
+				<patterns>
+					<pattern>NetScreen device_id=@ESTRING:: @@ESTRING:: @start_time="@ESTRING::"@ duration=@ESTRING:: @policy_id=@ESTRING:s2: @service=@ESTRING:: @proto=@ESTRING:i0: @src zone=@ESTRING:s1: @dst zone=@ESTRING:s0: @action=Deny sent=@ESTRING:: @rcvd=@ESTRING:: @src=@ESTRING:i1: @dst=@ESTRING:i3: @src_port=@ESTRING:i2: @dst_port=@ESTRING:i4: @</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="fwgate-1">NetScreen device_id=fw [Root]system-notification-00257(traffic): start_time="2012-10-02 09:46:20" duration=0 policy_id=10005 service=http proto=6 src zone=OUT dst zone=IN action=Deny sent=0 rcvd=40 src=192.168.0.1 dst=192.168.1.1 src_port=51271 dst_port=80 session_id=0 reason=Traffic Denied</test_message>
+						<test_value name="i0">6</test_value>
+						<test_value name="s0">IN</test_value>
+						<test_value name="i1">192.168.0.1</test_value>
+						<test_value name="s1">OUT</test_value>
+						<test_value name="i2">51271</test_value>
+						<test_value name="i3">192.168.1.1</test_value>
+						<test_value name="i4">10005</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+		<rules>
+			<rule provider="ELSA" class='3' id='3'>
+				<patterns>
+					<pattern>NetScreen device_id=@ESTRING:: @@ESTRING:: @start_time="@ESTRING::"@ duration=@ESTRING:s2: @policy_id=@ESTRING:: @service=@ESTRING:: @proto=@ESTRING:i0: @src zone=@ESTRING:s1: @dst zone=@ESTRING:s0: @action=Permit sent=@ESTRING:: @rcvd=@ESTRING:i5: @src=@ESTRING:i1: @dst=@ESTRING:i3: @src_port=@ESTRING:i2: @dst_port=@ESTRING:i4: @</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="fwgate-1">NetScreen device_id=fwgate-1 [Root]system-notification-00257(traffic): start_time="2013-02-14 15:37:46" duration=2 policy_id=8 service=tcp/port:10050 proto=6 src zone=Trust dst zone=DMZ action=Permit sent=379 rcvd=377 src=192.168.1.XX dst=192.168.XXX.XXX src_port=36033 dst_port=10050 src-xlated ip=192.168.XX.XX port=36033 dst-xlated ip=192.168.XXX.XXX port=10050 session_id=253315 reason=Close - TCP FIN</test_message>
+						<test_value name="i0">6</test_value>
+						<test_value name="i1">192.168.1.XX</test_value>
+						<test_value name="i2">36033</test_value>
+						<test_value name="i3">192.168.XXX.XXX</test_value>
+						<test_value name="i4">10050</test_value>
+						<test_value name="i5">377</test_value>
+						<test_value name="s0">DMZ</test_value>
+						<test_value name="s1">Trust</test_value>
+						<test_value name="s2">2</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
