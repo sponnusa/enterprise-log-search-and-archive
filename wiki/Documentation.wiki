@@ -652,3 +652,6 @@ You can set per-user preferences by navigating to the "Preferences" dialog under
 ||F8||Closes all result tabs||
 ||F9||Closes all result tabs before active||
 ||F10||Closes all tabs except active||
+
+=External Documentation=
+ * Adding additional disk to an ELSA VM http://opensecgeek.blogspot.com/2013/02/mysql-and-elsa-when-your-storage-runs.html
