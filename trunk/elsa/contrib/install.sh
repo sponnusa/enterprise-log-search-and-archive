@@ -478,10 +478,10 @@ set_node_mysql(){
 	# Install mysql schema
 	service $MYSQL_SERVICE_NAME start
 	mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create $MYSQL_NODE_DB && mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog_data && 
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "$MYSQL_USER"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "$MYSQL_USER"@"%" IDENTIFIED BY "'$MYSQL_PASS'"' &&
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "$MYSQL_USER"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "$MYSQL_USER"@"%" IDENTIFIED BY "'$MYSQL_PASS'"'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "'$MYSQL_USER'"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "'$MYSQL_USER'"@"%" IDENTIFIED BY "'$MYSQL_PASS'"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "'$MYSQL_USER'"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog_data.* TO "'$MYSQL_USER'"@"%" IDENTIFIED BY "'$MYSQL_PASS'"'
 	
 	# Above could fail with db already exists, but this is the true test for success
 	mysql -u$MYSQL_USER -p$MYSQL_PASS $MYSQL_NODE_DB -e "source $BASE_DIR/elsa/node/conf/schema.sql" &&
