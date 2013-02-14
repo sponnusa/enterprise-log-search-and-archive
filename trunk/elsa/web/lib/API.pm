@@ -3018,6 +3018,35 @@ sub transform {
 			if (ref($transform_args->{results}) eq 'HASH'){
 				foreach my $groupby (keys %{ $transform_args->{results} }){
 					foreach my $datum (@{ $transform_args->{results}->{$groupby} }){
+						if (exists $datum->{_groupby}){
+							if ($field){
+								push @values, $field . ':' . $datum->{_groupby};
+							}
+							else {
+								push @values, $datum->{_groupby};
+							}
+						}
+						else {
+							# Find our field to use since it wasn't given explicitly
+							foreach my $key (keys %$datum){
+								my $value = $datum->{$key};
+								next if ref($value);
+								if ($field){
+									next if $key eq 'count' and $field ne 'count';
+									push @values, $field . ':' . $value;
+								}
+								else {
+									next if $key eq 'count';
+									push @values, $value;
+								}
+							}
+						}
+					}
+				}
+			}
+			else {
+				foreach my $datum (@{ $transform_args->{results} }){
+					if (exists $datum->{_groupby}){
 						if ($field){
 							push @values, $field . ':' . $datum->{_groupby};
 						}
@@ -3025,15 +3054,20 @@ sub transform {
 							push @values, $datum->{_groupby};
 						}
 					}
-				}
-			}
-			else {
-				foreach my $datum (@{ $transform_args->{results} }){
-					if ($field){
-						push @values, $field . ':' . $datum->{_groupby};
-					}
 					else {
-						push @values, $datum->{_groupby};
+						# Find our field to use since it wasn't given explicitly
+						foreach my $key (keys %$datum){
+							my $value = $datum->{$key};
+							next if ref($value);
+							if ($field){
+								next if $key eq 'count' and $field ne 'count';
+								push @values, $field . ':' . $value;
+							}
+							else {
+								next if $key eq 'count';
+								push @values, $value;
+							}
+						}
 					}
 				}
 			}				
