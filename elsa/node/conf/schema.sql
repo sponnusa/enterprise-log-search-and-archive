@@ -104,7 +104,7 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("country_code", "in
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_sid", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_msg", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_classification", "string", "QSTRING");
-INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_priority", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_priority", "int", "NUMBER");
 INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("host", "int", "IPv4", "IPv4");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("authmethod", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("device", "string", "QSTRING");
