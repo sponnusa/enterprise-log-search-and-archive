@@ -1892,6 +1892,9 @@ sub _sphinx_query {
 					$search_query = 'SELECT *, COUNT(*) AS _count, ' . $query->{groupby} . ' AS _groupby, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where} .
 						' GROUP BY ' . $query->{groupby};
 				}
+				if ($q->orderby){
+					$search_query .= ' ORDER BY _orderby ' . $q->orderby_dir;
+				}
 				$search_query .= ' LIMIT ?,? OPTION ranker=none';
 				if ($q->cutoff){
 					$search_query .= ',cutoff=' . $q->cutoff;
@@ -1934,7 +1937,9 @@ sub _sphinx_query {
 				
 				# Find what tables we need to query to resolve rows
 				my %tables;
+				my %orderby_map;
 				ROW_LOOP: foreach my $row (@$rows){
+					$orderby_map{ $row->{id} } = $row->{_orderby};
 					foreach my $table_hash (@{ $self->node_info->{nodes}->{$node}->{tables}->{tables} }){
 						next unless $table_hash->{table_type} eq 'index' or $table_hash->{table_type} eq 'import';
 						if ($table_hash->{min_id} <= $row->{id} and $row->{id} <= $table_hash->{max_id}){
@@ -1996,6 +2001,7 @@ sub _sphinx_query {
 										delete $row->{$import_col};
 									}
 								}
+								$row->{_orderby} = $orderby_map{ $row->{id} };
 								$ret->{$node}->{results}->{ $row->{id} } = $row;
 							}
 							$cv->end;
@@ -2185,11 +2191,26 @@ sub _sphinx_query {
 				push @tmp, $row;
 			}
 		}
-		# Trim to just the limit asked for unless we're doing analytics
-		foreach my $row (sort { $a->{timestamp} <=> $b->{timestamp} } @tmp){
-			$q->results->add_result($row);
-			last if not $q->analytics and $q->results->records_returned >= $q->limit;
+		
+		# Now that we've got our results, order by our given order by
+		if ($q->orderby_dir eq 'DESC'){
+			foreach my $row (sort { $b->{_orderby} <=> $a->{_orderby} } @tmp){
+				$q->results->add_result($row);
+				last if not $q->analytics and $q->results->records_returned >= $q->limit;
+			}
 		}
+		else {
+			foreach my $row (sort { $a->{_orderby} <=> $b->{_orderby} } @tmp){
+				$q->results->add_result($row);
+				last if not $q->analytics and $q->results->records_returned >= $q->limit;
+			}
+		}
+		
+#		# Trim to just the limit asked for unless we're doing analytics
+#		foreach my $row (sort { $a->{timestamp} <=> $b->{timestamp} } @tmp){
+#			$q->results->add_result($row);
+#			last if not $q->analytics and $q->results->records_returned >= $q->limit;
+#		}
 		$q->results->total_records($total_records);
 	}
 	
@@ -2792,14 +2813,38 @@ sub _build_query {
 			#$self->log->trace('field_infos: ' . Dumper($field_infos));
 			foreach my $class_id (keys %{$field_infos}){
 				next unless $q->classes->{distinct}->{$class_id} or $class_id == 0;
+				my $orderby = undef;
+				if ($q->orderby){
+					$orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
+					$select .= ', ' . $orderby . ' AS _orderby';
+				}
+				else {
+					$select .= ', timestamp AS _orderby';
+				}
 				push @queries, {
 					select => $select,
 					where => $where . ($class_id ? ' AND class_id=?' : ''),
 					values => [ @values, $class_id ? $class_id : () ],
 					groupby => $Fields::Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} },
 					groupby_field => $field,
+					orderby => $orderby,
+					orderby_dir => $q->orderby_dir,
 				};
 			}
+		}
+	}
+	elsif ($q->orderby){
+		my $field_infos = $self->get_field($q->orderby);
+		foreach my $class_id (keys %{$field_infos}){
+			my $orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
+			$select .= ', ' . $orderby . ' AS _orderby';
+			push @queries, {
+				select => $select,
+				where => $where,
+				values => [ @values ],
+				orderby => $orderby,
+				orderby_dir => $q->orderby_dir,
+			};
 		}
 	}
 	else {
@@ -2807,7 +2852,7 @@ sub _build_query {
 		push @queries, {
 			select => $select,
 			where => $where,
-			values => [ @values ],
+			values => [ @values ]
 		};
 	}	
 		
@@ -3880,6 +3925,7 @@ sub _archive_query {
 			foreach my $query (@$queries){
 				# strip sphinx-specific attr_ prefix
 				$query->{where} =~ s/attr\_((?:i|s)\d)([<>=]{1,2})\?/$1$2\?/g; 
+				$query->{orderby} =~ s/attr\_((?:i|s)\d)/$1/g;
 				my $search_query;
 				if ($query->{groupby}){
 					$query->{groupby} =~ s/attr\_((?:i|s)\d)/$1/g;
@@ -3910,12 +3956,13 @@ sub _archive_query {
 						"\"" . $node . "\" AS node,\n" .
 						#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
 						"timestamp,\n" .
+						($query->{orderby} ? $query->{orderby} : 'timestamp') . ' AS _orderby,' . "\n" .
 						"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
 						"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 						"FROM $table main\n" .
 						"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
 						"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
-						'WHERE ' . $query->{where} . "\n" . 'LIMIT ?,?';
+						'WHERE ' . $query->{where} . ' ORDER BY _orderby ' . $query->{orderby_dir} . "\n" . 'LIMIT ?,?';
 				}
 				#$self->log->debug('archive_query: ' . $search_query . ', values: ' . 
 				#	Dumper($query->{values}, $args->{offset}, $args->{limit}));

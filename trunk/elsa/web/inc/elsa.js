@@ -1194,6 +1194,7 @@ YAHOO.ELSA.Results = function(){
 		var oFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
+			{ key:'_orderby' },
 			{ key:'timestamp', parser:parseInt },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
@@ -1215,6 +1216,7 @@ YAHOO.ELSA.Results = function(){
 		
 		oColumns.push({ key:'timestamp', label:'Timestamp', sortable:true, editor:'date', formatter:this.formatDate });
 		oColumns.push({ key:'_fields', label:'Fields', sortable:true, formatter:this.formatFields }); //formatter adds highlights
+		oColumns.push({ key:'_orderby', hidden:true, sortable:true });
 		
 		// DataSource instance
 	    this.dataSource = new YAHOO.util.DataSource(p_oResults);
@@ -1240,9 +1242,14 @@ YAHOO.ELSA.Results = function(){
 	    });
 	    
 	    var oTableCfg = {
-	        paginator: this.paginator,
-	        dynamicData: false,
-	        summary: 'this is a summary'
+	    	paginator: this.paginator,
+	    	dynamicData: false,
+	    	summary: 'this is a summary',
+	    	sortedBy: {
+	        	key: '_orderby',
+	        	dir: p_oResults.orderby_dir.toString().toLowerCase()
+	    	}//,
+	    	//sortFunction: YAHOO.util.Sort.compare
 	    };
 	    
 	    try{
@@ -1251,7 +1258,7 @@ YAHOO.ELSA.Results = function(){
 	    	logger.log('datatable: ', this.dataTable);
 	  	 	YAHOO.util.Dom.removeClass(p_oElContainer, 'hiddenElement');
 	    }catch(e){
-	    	logger.log('No datatable because:', e);
+	    	logger.log('No datatable because:', e.stack);
 	    	for (var term in e){
 				logger.log(term, e[term]);
 			}
@@ -1263,6 +1270,7 @@ YAHOO.ELSA.Results = function(){
 		var aFields = [
 			{ key:'id', parser:parseInt },
 			{ key:'node' }, // not displayed
+			{ key:'_orderby' },
 			{ key:'timestamp', parser:parseInt },
 			{ key:'host', parser:YAHOO.util.DataSourceBase.parseString },
 			{ key:'class', parser:YAHOO.util.DataSourceBase.parseString },
@@ -1282,6 +1290,7 @@ YAHOO.ELSA.Results = function(){
 		}
 		
 		aColumns.push({ key:'timestamp', label:'Timestamp', sortable:true, resizeable:true, editor:'date', formatter:this.formatDate });
+		aColumns.push({ key:'_orderby', hidden:true, sortable:true });
 		
 		p_oResults.grid_results = [];
 		var oColsAdded = {};
@@ -1338,7 +1347,11 @@ YAHOO.ELSA.Results = function(){
 	        paginator: this.paginator,
 	        dynamicData: false,
 	        draggableColumns:true,
-	        resizeableColumns:true
+	        resizeableColumns:true,
+	        sortedBy: {
+	        	key: '_orderby',
+	        	dir: p_oResults.orderby_dir.toString().toLowerCase()
+	    	}
 	    };
 	    
 	    try{
@@ -2371,7 +2384,7 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 					this.renderDataTableHeader();
 					this.dataTable.render();
 				}
-				this.dataTable.sortColumn(this.dataTable.getColumn('timestamp'), YAHOO.widget.DataTable.CLASS_ASC);
+				//this.dataTable.sortColumn(this.dataTable.getColumn('timestamp'), YAHOO.widget.DataTable.CLASS_ASC);
 				YAHOO.util.Event.onAvailable('explain_query_' + this.results.qid, function(){
 					if (typeof(this.results.stats) != 'undefined'){
 						// Set query explain stats

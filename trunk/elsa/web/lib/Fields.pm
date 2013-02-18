@@ -376,7 +376,7 @@ our $Time_values = {
 	year => 86400 * 365,
 };
 
-our $Reserved_fields = { map { $_ => 1 } qw( start end limit offset class groupby node cutoff datasource timeout archive analytics nobatch livetail ), keys %$Time_values };
+our $Reserved_fields = { map { $_ => 1 } qw( start end limit offset class groupby node cutoff datasource timeout archive analytics nobatch livetail orderby orderby_dir ), keys %$Time_values };
 
 our $IP_fields = { map { $_ => 1 } qw( node_id host_id ip srcip dstip sourceip destip ) };
 
