@@ -28,6 +28,8 @@ has 'results' => (is => 'rw', isa => 'Results', required => 1);
 has 'start_time' => (is => 'ro', isa => 'Num', required => 1, default => sub { Time::HiRes::time() });
 has 'groupby' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { has_groupby => 'count', all_groupbys => 'elements', add_groupby => 'push' });
+has 'orderby' => (is => 'rw', isa => 'Str');
+has 'orderby_dir' => (is => 'rw', isa => 'Str', required => 1, default => 'ASC');
 has 'timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'cancelled' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'archive' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
@@ -218,6 +220,7 @@ sub TO_JSON {
 		totalRecords => $self->results->total_records, 
 		recordsReturned => $self->results->records_returned,	
 		groupby => $self->groupby,
+		orderby_dir => $self->orderby_dir,
 		query_string => $self->query_string,
 		query_meta_params => $self->meta_params,
 		hash => $self->hash,
@@ -913,6 +916,25 @@ sub _parse_query_term {
 				}
 				next;
 			}
+			elsif ($term_hash->{field} eq 'orderby'){
+				my $value = lc($term_hash->{value});
+				my $field_infos = $self->get_field($value);
+				$self->log->trace('$field_infos ' . Dumper($field_infos));
+				if ($field_infos or $value eq 'node'){
+					$self->orderby($value);
+					foreach my $class_id (keys %$field_infos){
+						$self->classes->{groupby}->{$class_id} = 1;
+					}
+					$self->log->trace("Set orderby " . Dumper($self->orderby));
+				}
+				next;
+			}
+			elsif ($term_hash->{field} eq 'orderby_dir'){
+				if (uc($term_hash->{value}) eq 'DESC'){
+					$self->orderby_dir('DESC');
+				}
+				next;
+			}
 			elsif ($term_hash->{field} eq 'node'){
 				if ($term_hash->{value} =~ /^[\w\.]+$/){
 					if ($effective_operator eq '-'){
@@ -945,6 +967,18 @@ sub _parse_query_term {
 				$self->livetail(1);
 				$self->archive(1);
 				$self->log->trace("Set livetail.");
+				next;
+			}
+			elsif ($term_hash->{field} eq 'archive'){
+				$self->meta_params->{archive} = 1;
+				$self->archive(1);
+				$self->log->trace("Set archive.");
+				next;
+			}
+			elsif ($term_hash->{field} eq 'analytics'){
+				$self->meta_params->{analytics} = 1;
+				$self->analytics(1);
+				$self->log->trace("Set analytics.");
 				next;
 			}
 			

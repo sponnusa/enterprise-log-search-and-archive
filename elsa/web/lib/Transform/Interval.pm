@@ -3,7 +3,7 @@ use Moose;
 use Data::Dumper;
 extends 'Transform';
 our $Name = 'Interval';
-# Whois transform plugin
+
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 
 sub BUILDARGS {
