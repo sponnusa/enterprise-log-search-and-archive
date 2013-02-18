@@ -325,13 +325,13 @@ sub initial_validate_directory {
 	$self->log->debug('files: ' . Dumper(\@files));
 	foreach my $file (@files){
 		$self->log->debug('considering file ' . $file);
+		my $mtime = (stat $file)[9];
+		next if ((CORE::time() - $mtime) < (2 * $self->conf->get('sphinx/index_interval') ) );
 		if (-z $file){
 			$self->log->info('Deleting empty buffer ' . $file);
 			unlink $file;
 			next;
 		}
-		my $mtime = (stat $file)[9];
-		next if ((CORE::time() - $mtime) < (2 * $self->conf->get('sphinx/index_interval') ) );
 		$sth->execute($file);
 		my $row = $sth->fetchrow_hashref;
 		next if $row;
