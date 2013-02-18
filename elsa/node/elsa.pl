@@ -227,7 +227,6 @@ sub _process_batch {
 	my $tempfile;
 	sysopen($tempfile, $tempfile_name, O_RDWR|O_CREAT) or die('Unable to open our tempfile: ' . $!);
 	$Log->debug('Offline processing: ' . $args->{offline_processing} . ' and using tempfile ' . $tempfile_name); 
-	$Log->debug($tempfile_name . ' exists: ' . (-f $tempfile_name) . ', and has size: ' . (-s $tempfile_name));
 	
 	my $run = 1;
 	# End the loop after index_interval seconds
@@ -240,13 +239,8 @@ sub _process_batch {
 	unless ($args->{offline_processing}){
 		alarm $Conf->{sphinx}->{index_interval};
 	}
-	
-	$Log->debug('1: ' . $tempfile_name . ' exists: ' . (-f $tempfile_name) . ', and has size: ' . (-s $tempfile_name));
-	
 	my $reader = new Reader(log => $Log, conf => $Config_json, cache => $Cache, offline_processing => $args->{offline_processing});
-	
-	$Log->debug('2: ' . $tempfile_name . ' exists: ' . (-f $tempfile_name) . ', and has size: ' . (-s $tempfile_name));
-	
+
 	my $batch_counter = 0; # we make this a standard variable instead of using $arg->{batch_counter} to save the hash deref in loop
 	while (<$fh>){	
 		eval { 
@@ -265,8 +259,6 @@ sub _process_batch {
 		alarm(1) if $offline_processing;
 	}
 	close($tempfile);
-	
-	$Log->debug('after processing, ' . $tempfile_name . ' exists: ' . (-f $tempfile_name) . ', and has size: ' . (-s $tempfile_name));
 			
 	# Update args to be results
 	$args->{batch_counter} = $batch_counter;
