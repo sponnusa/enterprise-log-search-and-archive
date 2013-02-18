@@ -124,7 +124,7 @@ sub _read_local_syslog {
 sub _read_bro {
 	my $outfile = new IO::File('> /data/elsa/tmp/import') or die('Cannot open /data/elsa/tmp/import');
 	my $counter = 0;
-	$Infile_name =~ /([^\.]+)\./;
+	$Infile_name =~ /([^\/\.]+)[\.\w]+$/;
 	my $type = $1;
 	while (<$Infile>){
 		eval {
