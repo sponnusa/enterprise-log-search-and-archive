@@ -9,6 +9,7 @@ use String::CRC32;
 use Log::Log4perl;
 use DBI;
 use FindBin;
+use File::Copy;
 #use Storable qw(thaw);
 use JSON;
 use IO::File;
@@ -100,6 +101,7 @@ unless (-f $Conf->{sphinx}->{config_file}){
 }
 
 if ($Opts{f}){
+	$Log->trace("Processing file $Opts{f}...");
 	print "Processing file $Opts{f}...\n";
 	_process_batch($Opts{f});
 	exit;
@@ -217,13 +219,15 @@ sub _process_batch {
 	
 	# Reset the miss cache
 	$args->{cache_add} = {};
-	my $tempfile_name = $Conf->{buffer_dir} . '/' . CORE::time();
+	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . CORE::time();
 	
 	my $tail_watcher = _fork_livetail_manager($tempfile_name) unless $Opts{o} or $args->{offline_processing};
 	
 	# Open the file now that we've forked
 	my $tempfile;
-	sysopen($tempfile, $tempfile_name, O_RDWR|O_CREAT);
+	sysopen($tempfile, $tempfile_name, O_RDWR|O_CREAT) or die('Unable to open our tempfile: ' . $!);
+	$Log->debug('Offline processing: ' . $args->{offline_processing} . ' and using tempfile ' . $tempfile_name); 
+	$Log->debug($tempfile_name . ' exists: ' . (-f $tempfile_name) . ', and has size: ' . (-s $tempfile_name));
 	
 	my $run = 1;
 	# End the loop after index_interval seconds
@@ -237,7 +241,11 @@ sub _process_batch {
 		alarm $Conf->{sphinx}->{index_interval};
 	}
 	
+	$Log->debug('1: ' . $tempfile_name . ' exists: ' . (-f $tempfile_name) . ', and has size: ' . (-s $tempfile_name));
+	
 	my $reader = new Reader(log => $Log, conf => $Config_json, cache => $Cache, offline_processing => $args->{offline_processing});
+	
+	$Log->debug('2: ' . $tempfile_name . ' exists: ' . (-f $tempfile_name) . ', and has size: ' . (-s $tempfile_name));
 	
 	my $batch_counter = 0; # we make this a standard variable instead of using $arg->{batch_counter} to save the hash deref in loop
 	while (<$fh>){	
@@ -256,19 +264,101 @@ sub _process_batch {
 		# If importing, we want to stop as soon as we're done processing the file
 		alarm(1) if $offline_processing;
 	}
+	close($tempfile);
+	
+	$Log->debug('after processing, ' . $tempfile_name . ' exists: ' . (-f $tempfile_name) . ', and has size: ' . (-s $tempfile_name));
 			
 	# Update args to be results
-	#$args->{file} = $tempfile->filename();
 	$args->{batch_counter} = $batch_counter;
 	$args->{file} = $tempfile_name;
+	$args->{file_size} = -s $args->{file};
 	$args->{start} = $args->{offline_processing} ? $reader->offline_processing_times->{start} : $args->{start_time};
 	$args->{end} = $args->{offline_processing} ? $reader->offline_processing_times->{end} : Time::HiRes::time();
 	$args->{total_processed} = $args->{batch_counter};
 	$args->{total_errors} = $args->{error_counter};
 	
 	# Report back that we've finished
-	$Log->debug("Finished job process_batch with cache hits: $args->{batch_counter} and " . (scalar keys %{ $args->{cache_add} }) . ' new programs');
+	$Log->debug("Finished job process_batch with $args->{batch_counter} logs processed and " . (scalar keys %{ $args->{cache_add} }) . ' new programs');
 	$Log->debug('Total errors: ' . $args->{error_counter} . ' (%' . (($args->{error_counter} / $args->{batch_counter}) * 100) . ')' ) if $args->{batch_counter};
+	$Log->debug('file size for file ' . $args->{file} . ' is ' . $args->{file_size});
+	
+	# Kill the livetail forker
+	if ($tail_watcher){
+		kill SIGTERM, $tail_watcher;
+		$Log->trace("Ending child tail manager $tail_watcher");
+	}
+	
+	unless ($args->{batch_counter}){
+		$Log->trace('No logs recorded');
+		unlink ($args->{file}) if -f $args->{file};
+		return $args->{batch_counter};
+	}
+	
+	# Are we forwarding events?
+	if ($Conf->{forwarding}){
+		my $pid = fork();
+		if ($pid){
+			# Parent
+			if ($Conf->{forwarding}->{forward_only}){
+				return $args->{batch_counter};
+			}
+		}
+		else {
+			# Child
+			$Log->trace('Child started');
+			eval {
+				# Write the new programs to a file
+				my ($program_fh, $program_filename);
+				if (scalar keys %{ $reader->to_add }){
+					$program_filename = 'programs_' . time();
+					sysopen($program_fh, $program_filename, O_RDWR|O_CREAT);
+					foreach my $program (keys %{ $reader->to_add }){
+						$program_fh->print(join("\t", $reader->to_add->{$program}->{id}, $program) . "\n");
+					}
+					close($program_fh);
+				}
+			
+				# Move the buffer file and new program file to remote location
+				$args->{file} =~ /\/([^\n]+$)/;
+				my $shortfile = $1;
+				foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
+					if ($dest_hash->{method} eq 'cp'){
+						if ($program_filename){
+							$Log->trace('Copying program file ' . $program_filename);
+							move($program_filename, $dest_hash->{dir} . '/') or $Log->error('Error copying ' . $program_filename . ' to dir ' . $dest_hash->{dir});
+						}
+						$Log->trace('Copying file ' . $args->{file});
+						move($args->{file}, $dest_hash->{dir} . '/') or $Log->error('Error copying ' . $args->{file} . ' to dir ' . $dest_hash->{dir} . ': ' . $!);
+					}
+					elsif ($dest_hash->{method} eq 'scp'){
+						my $ssh = Net::OpenSSH->new($dest_hash->{host});
+						if ($ssh->error){
+							$Log->error('Error opening SSH connection to host ' . $dest_hash->{host} . ': ' . $ssh->error);
+							next;
+						}
+						if ($program_filename){
+							$ssh->scp_put($program_filename, $dest_hash->{dir});
+							if ($ssh->error){
+								$Log->error('Error copying ' . $program_filename . ' to host ' . $dest_hash->{host} . ':' . $dest_hash->{dir} . ': ' . $ssh->error);
+							}
+						}
+						$ssh->scp_put($args->{file}, $dest_hash->{dir});
+						if ($ssh->error){
+							$Log->error('Error copying file to host ' . $dest_hash->{host} . ':' . $dest_hash->{dir} . ': ' . $ssh->error);
+						}
+					}
+					else {
+						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
+					}
+				}
+			};
+			if ($@){
+				$Log->error('Child encountered error: ' . $@);
+			}
+			$Log->trace('Child finished');
+			exit; # done with child
+		}
+	}
 	
 	if (scalar keys %{ $reader->to_add }){
 		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
@@ -283,15 +373,8 @@ sub _process_batch {
 		$sth->execute($args->{file});
 		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter});
 	}
-	
-	# Kill the livetail forker
-	if ($tail_watcher){
-		kill SIGTERM, $tail_watcher;
-		$Log->trace("Ending child tail manager $tail_watcher");
-	}
 		
 	# Fork our post-batch processor
-	return $args->{batch_counter} unless $args->{batch_counter};
 	my $pid = fork();
 	if ($pid){
 		# Parent
