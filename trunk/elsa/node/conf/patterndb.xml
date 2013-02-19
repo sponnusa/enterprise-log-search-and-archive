@@ -272,6 +272,7 @@
 		<rules>
 			<rule provider="ELSA" class='4' id='4'>
 				<patterns>
+					<pattern>@NUMBER:i0:@: @ESTRING::Account Name@@ESTRING::Account Name@:  @ESTRING:s1: @@ESTRING::Account Domain@:  @ESTRING:s2: @@ESTRING::Source Network Address@: @IPv4:i1:@</pattern>
 					<pattern>@NUMBER:i0:@: A network share object was accessed. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: Account Domain@: @ESTRING:s2: Logon ID@: @ESTRING:: @Network Information: Object Type: File Source Address: @IPv4:i1:@ Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: Share Path:@ @ESTRING:s4: Access Request Information:@ </pattern>
 					<pattern>@NUMBER:i0:@: A network share object was accessed. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: Account Domain@: @ESTRING:s2: Logon ID@: @ESTRING:: @Network Information: Object Type: File Source Address: @IPv4:i1:@ Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: Share Path:@</pattern>
 					<pattern>@NUMBER:i0:@: A network share object was checked to see whether client can be granted desired access. Subject: Security ID: @ESTRING:: @Account Name: @ESTRING:s1: @Account Domain: @ESTRING:s2: @Logon ID: @ESTRING:: @Network Information: Object Type: File Source Address: @ESTRING:i1: @Source Port: @NUMBER::@ Share Information: Share Name: @ESTRING:s3: @Share Path: @ESTRING:s4: @Relative Target Name: @ESTRING:s5: @Access</pattern>
@@ -280,6 +281,15 @@
 					<pattern>@NUMBER:i0:@: @ANYSTRING::@</pattern>
 				</patterns>
 				<examples>
+					<example>
+						<test_message program="security-auditing">4624: An account was successfully logged on. Subject:  Security ID:  S-1-5-18  Account Name:  MYDOMAIN-DC-1$  Account Domain:  MYDOMAIN  Logon ID:  0x3e7  Logon Type:   3  New Logon:  Security ID:  S-1-5-21-3113823999-9998615402-9997257512-9966  Account Name:  myuser  Account Domain:  MYDOMAIN  Logon ID:  0x2339f787  Logon GUID:  {00000000-0000-0000-0000-000000000000}  Process Information:  Process ID:  0x1e8  Process Name:  C:\\Windows\\System32\\lsass.exe  Network Information:  Workstation Name: MYDOMAIN-DC-1  Source Network Address: 172.24.248.117  Source Port:  54265  Detailed Authentication Information:  Logon Process:  Advapi    Authentication Package: MICROSOFT_AUTHENTICATION_PACKAGE_V1_0  Transited Services: -  Package Name (NTLM only): -  Key Length:  0  This event is generated when a logon session is created. It is generated on the computer that was accessed.</test_message>
+						<test_values>
+							<test_value name="i0">4624</test_value>
+							<test_value name="s1">myuser</test_value>
+							<test_value name="s2">MYDOMAIN</test_value>
+							<test_value name="i1">172.24.248.117</test_value>
+						</test_values>
+					</example>
 					<example>
 						<test_message program="Service_Control_Manager">7035: NT AUTHORITYSYSTEM: The COH_Mon service was successfully sent a start control.</test_message>
 						<test_values>
@@ -985,9 +995,28 @@
 	</ruleset>
 	<ruleset name="ossec" id='26'>
 		<rules>
+			<rule provider="ELSA" class="4" id="26">
+				<patterns>
+					<pattern>@NUMBER::@@ESTRING::(@@ESTRING::)@ @IPv4:pdb_extracted_sourceip:@->WinEvtLog WinEvtLog: @ESTRING:pdb_extracted_program::@ AUDIT_@ESTRING::(@@ESTRING:i0:)@@ESTRING::Account Name@@ESTRING::Account Name@:  @ESTRING:s1: @@ESTRING::Account Domain@:  @ESTRING:s2: @@ESTRING::Source Network Address@: @IPv4:i1:@</pattern>
+					<values>
+						<value name="PROGRAM">$pdb_extracted_program</value>
+					</values>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="">2013 Jan 18 20:25:08 (host.example.com) 172.20.0.23->WinEvtLog WinEvtLog: Security: AUDIT_SUCCESS(4624): Microsoft-Windows-Security-Auditing: myuser: MYDOMAIN: MYDOMAIN-DC-1.example.com: An account was successfully logged on. Subject:  Security ID:  S-1-5-18  Account Name:  MYDOMAIN-DC-1$  Account Domain:  MYDOMAIN  Logon ID:  0x3e7  Logon Type:   3  New Logon:  Security ID:  S-1-5-21-3113823999-9998615402-9997257512-9966  Account Name:  myuser  Account Domain:  MYDOMAIN  Logon ID:  0x2339f787  Logon GUID:  {00000000-0000-0000-0000-000000000000}  Process Information:  Process ID:  0x1e8  Process Name:  C:\\Windows\\System32\\lsass.exe  Network Information:  Workstation Name: MYDOMAIN-DC-1  Source Network Address: 172.24.248.117  Source Port:  54265  Detailed Authentication Information:  Logon Process:  Advapi    Authentication Package: MICROSOFT_AUTHENTICATION_PACKAGE_V1_0  Transited Services: -  Package Name (NTLM only): -  Key Length:  0  This event is generated when a logon session is created. It is generated on the computer that was accessed.</test_message>
+						<test_values>
+							<test_value name="i0">4624</test_value>
+							<test_value name="s1">myuser</test_value>
+							<test_value name="s2">MYDOMAIN</test_value>
+							<test_value name="i1">172.24.248.117</test_value>
+						</test_values>
+					</example>
+				</examples>
+			</rule>
 			<rule provider="ELSA" class='4' id='26'>
 				<patterns>
-					<pattern>@NUMBER::@@ESTRING::(@@ESTRING::)@ @IPv4:pdb_extracted_sourceip:@->WinEvtLog WinEvtLog: @ESTRING:pdb_extracted_program::@ AUDIT_@ESTRING::(@@ESTRING:i0:)@</pattern>
+					<pattern>asdf@NUMBER::@@ESTRING::(@@ESTRING::)@ @IPv4:pdb_extracted_sourceip:@->WinEvtLog WinEvtLog: @ESTRING:pdb_extracted_program::@ AUDIT_@ESTRING::(@@ESTRING:i0:)@</pattern>
 					<values>
 						<value name="PROGRAM">$pdb_extracted_program</value>
 					</values>
