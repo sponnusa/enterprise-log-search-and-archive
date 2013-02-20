@@ -509,7 +509,7 @@ ELSA uses [https://developers.google.com/chart/ Google Visualizations] to draw c
 Dashboards are accessed via 
 {{{<elsa>/dashboard/<alias>?<time unit>=<number of units>&start=<ISO start>&end=<ISO end>}}}  
 All parameters after the alias are optional, and the default is to show the past seven days by hour.  To see, for instance, the last fifteen minutes by second, you'd use: {{{ <alias>?seconds=900 }}} which would give you extremely granular data.  You could also view any time period at any granularity by providing a more specific start and/or end, such as {{{ <alias>?seconds=900&start=two days ago }}}
-or {{{ <alias>?seconds=900&start=2012-08-27 00:00:00 }}}
+or {{{ <alias>?seconds=900&start=2012-08-27 00:00:00 }}}.  You can add {{{ &refresh=<seconds> }}} to a dashboard URL to have it refresh every n seconds, where n is at least five.
 ==Performance Considerations==
 Take care when creating charts that the queries used do not tax the system too much.  This can happen when a query is not selective enough.  That is, there is more "grouping" than "searching" occurring.  For anything less than a billion records, this should not be much of an issue, but if your query returns more than a billion or so, you may notice that it can take seconds or minutes for the charts to load.
 =Troubleshooting=
