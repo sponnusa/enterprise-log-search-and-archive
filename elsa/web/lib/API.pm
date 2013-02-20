@@ -2814,15 +2814,16 @@ sub _build_query {
 			foreach my $class_id (keys %{$field_infos}){
 				next unless $q->classes->{distinct}->{$class_id} or $class_id == 0;
 				my $orderby = undef;
+				my $ordered_select = $select;
 				if ($q->orderby){
 					$orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
-					$select .= ', ' . $orderby . ' AS _orderby';
+					$ordered_select .= ', ' . $orderby . ' AS _orderby';
 				}
 				else {
-					$select .= ', timestamp AS _orderby';
+					$ordered_select .= ', timestamp AS _orderby';
 				}
 				push @queries, {
-					select => $select,
+					select => $ordered_select,
 					where => $where . ($class_id ? ' AND class_id=?' : ''),
 					values => [ @values, $class_id ? $class_id : () ],
 					groupby => $Fields::Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} },
@@ -2837,9 +2838,8 @@ sub _build_query {
 		my $field_infos = $self->get_field($q->orderby);
 		foreach my $class_id (keys %{$field_infos}){
 			my $orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
-			$select .= ', ' . $orderby . ' AS _orderby';
 			push @queries, {
-				select => $select,
+				select => $select . ', ' . $orderby . ' AS _orderby',
 				where => $where,
 				values => [ @values ],
 				orderby => $orderby,
