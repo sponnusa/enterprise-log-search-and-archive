@@ -2029,7 +2029,7 @@ sub _sphinx_query {
 	$cv->end; # bookend initial begin
 	$cv->recv; # block until all of the above completes
 	
-	my ($total_records, $records_returned) = (0,0,0);
+	my ($total_records, $records_returned) = (0,0);
 	#$self->log->debug('conversions: ' . Dumper($self->node_info->{field_conversions}));
 	
 	if ($q->has_groupby){
