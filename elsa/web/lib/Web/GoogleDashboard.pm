@@ -248,6 +248,11 @@ sub _get_index_body {
 	if ($args->{edit}){
 		$edit = 'YAHOO.ELSA.editCharts = true;';
 	}
+	
+	my $refresh = 'YAHOO.ELSA.dashboardRefreshInterval = false;';
+	if ($args->{refresh} and int($args->{refresh}) >= 5){
+		$refresh = 'YAHOO.ELSA.dashboardRefreshInterval = ' . (1000 * int($args->{refresh})) . ';';
+	}
 		
 	my $json = $self->api->json->encode($queries);
 	my $dir = $self->path_to_inc;
@@ -271,6 +276,7 @@ $yui_js
 <link rel="stylesheet" type="text/css" href="$dir/inc/custom.css" />
 <script>
 $edit
+$refresh
 // Set viewMode for dev/prod
 var oRegExp = new RegExp('\\\\Wview=(\\\\w+)');
 var aMatches = oRegExp.exec(location.search);
@@ -297,7 +303,9 @@ YAHOO.util.Event.addListener(window, "load", function(){
 	//google.setOnLoadCallback(loadCharts);
 	//YAHOO.ELSA.Chart.loadCharts();
 	oDashboard = new YAHOO.ELSA.Dashboard($args->{id}, '$args->{title}', '$args->{alias}', $json, 'google_charts');
-	
+	if (YAHOO.ELSA.dashboardRefreshInterval){
+		YAHOO.lang.later(YAHOO.ELSA.dashboardRefreshInterval, oDashboard, 'redraw', [], true);
+	}
 });
 </script>
 </head>
