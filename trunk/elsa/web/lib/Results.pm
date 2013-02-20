@@ -174,9 +174,11 @@ has 'results' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required =
 sub BUILDARGS {
 	my $class = shift;
 	my %params = @_;
-	if ($params{results} and ref($params{results}) and ref($params{results}) eq 'HASH'){
-		foreach my $groupby (keys %{ $params{results} }){
-			$params{total_records} += scalar @{ $params{results}->{$groupby} };
+	unless ($params{total_records}){ # don't calculate if these are already provided
+		if ($params{results} and ref($params{results}) and ref($params{results}) eq 'HASH'){
+			foreach my $groupby (keys %{ $params{results} }){
+				$params{total_records} += scalar @{ $params{results}->{$groupby} };
+			}
 		}
 	}
 	return \%params;
