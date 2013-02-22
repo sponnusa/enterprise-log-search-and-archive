@@ -326,7 +326,7 @@ sub _process_batch {
 					elsif ($dest_hash->{method} eq 'scp'){
 						my %conn_hash = %{ $dest_hash };
 						$conn_hash{batch_mode} = 1;
-						delete $conn_hash{scp};
+						delete $conn_hash{method};
 						delete $conn_hash{dir};
 						my $host = delete $conn_hash{host};
 						my $ssh = Net::OpenSSH->new($host, %conn_hash);
