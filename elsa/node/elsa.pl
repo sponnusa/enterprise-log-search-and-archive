@@ -323,7 +323,17 @@ sub _process_batch {
 						move($args->{file}, $dest_hash->{dir} . '/') or $Log->error('Error copying ' . $args->{file} . ' to dir ' . $dest_hash->{dir} . ': ' . $!);
 					}
 					elsif ($dest_hash->{method} eq 'scp'){
-						my $ssh = Net::OpenSSH->new($dest_hash->{host});
+						my $conn_string = $dest_hash->{host};
+						if ($dest_hash->{port}){
+							$conn_string .= ':' . $dest_hash->{port};
+						}
+						if ($dest_hash->{username} and $dest_hash->{password}){
+							$conn_string = $dest_hash->{username} . ':' . $dest_hash->{password} . '@' . $conn_string;
+						}
+						elsif ($dest_hash->{username}){
+							$conn_string = $dest_hash->{username} . '@' . $conn_string;
+						}
+						my $ssh = Net::OpenSSH->new($conn_string);
 						if ($ssh->error){
 							$Log->error('Error opening SSH connection to host ' . $dest_hash->{host} . ': ' . $ssh->error);
 							next;
