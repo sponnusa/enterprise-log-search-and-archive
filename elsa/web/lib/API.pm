@@ -12,7 +12,11 @@ use Socket qw(inet_aton inet_ntoa);
 use CHI;
 use Time::HiRes qw(time);
 use Time::Local;
-use Module::Pluggable require => 1, search_path => [ qw( Export Info Transform Connector Datasource ) ];
+use Module::Pluggable sub_name => 'export_plugins', require => 1, search_path => [ qw(Export) ];
+use Module::Pluggable sub_name => 'info_plugins', require => 1, search_path => [ qw(Info) ];
+use Module::Pluggable sub_name => 'transform_plugins', require => 1, search_path => [ qw(Transform) ];
+use Module::Pluggable sub_name => 'connector_plugins', require => 1, search_path => [ qw(Connector) ];
+use Module::Pluggable sub_name => 'datasource_plugins', require => 1, search_path => [ qw(Datasource) ];
 use URI::Escape qw(uri_unescape);
 use Mail::Internet;
 use Email::LocalDelivery;
@@ -23,7 +27,8 @@ use Storable qw(freeze thaw);
 use User;
 use Query;
 use Results;
-use AsyncMysql;
+#use AsyncMysql;
+use AsyncDB;
 
 our $Max_limit = 1000;
 our $Max_query_terms = 128;
@@ -172,7 +177,11 @@ sub BUILD {
 	}
 	
 	# init plugins
-	$self->plugins();
+	$self->export_plugins();
+	$self->info_plugins();
+	$self->transform_plugins();
+	$self->connector_plugins();
+	$self->datasource_plugins();
 	
 	# Update livetail_poll_interval if necessary
 	if ($self->conf->get('livetail/poll_interval')){
@@ -700,6 +709,85 @@ sub _get_sphinx_nodes {
 	my %nodes;
 	my $node_conf = $self->conf->get('nodes');
 	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { shift->send });
+	my $start = time();
+	foreach my $node (keys %$node_conf){
+		if (scalar keys %{ $q->nodes->{given} }){
+			next unless $q->nodes->{given}->{$node};
+		}
+		elsif (scalar keys %{ $q->nodes->{excluded} }){
+			next if $q->nodes->{excluded}->{$node};
+		}
+		
+		my $db_name = 'syslog';
+		if ($node_conf->{$node}->{db}){
+			$db_name = $node_conf->{$node}->{db};
+		}
+		
+		my $mysql_port = 3306;
+		if ($node_conf->{$node}->{port}){
+			$mysql_port = $node_conf->{$node}->{port};
+		}
+				
+		my $sphinx_port = 9306;
+		if ($node_conf->{$node}->{sphinx_port}){
+			$sphinx_port = $node_conf->{$node}->{sphinx_port};
+		}
+		eval {
+			$nodes{$node} = { db => $db_name };
+			
+			$cv->begin;
+			my $node_start = time();	
+			$nodes{$node}->{dbh} = AsyncDB->new(log => $self->log, db_args => [
+				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
+				$node_conf->{$node}->{username}, 
+				$node_conf->{$node}->{password}, 
+				{
+					mysql_connect_timeout => $self->db_timeout,
+					PrintError => 0,
+					mysql_multi_statements => 1,
+				}
+			], cb => sub {
+				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (time() - $node_start));
+				$cv->end;
+			});
+			
+			$self->log->trace('connecting to sphinx on node ' . $node);
+			
+			$cv->begin;
+			$node_start = time();
+			$nodes{$node}->{sphinx} = AsyncDB->new(log => $self->log, db_args => [
+				'dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef,
+				{
+					mysql_connect_timeout => $self->db_timeout,
+					PrintError => 0,
+					mysql_multi_statements => 1,
+					mysql_bind_type_guessing => 1,
+				}
+			], cb => sub {
+				$self->log->trace('connected to ' . $node . ' on ' . $sphinx_port . ' in ' . (time() - $node_start));
+				$cv->end;
+			});
+		};
+		if ($@){
+			$self->add_warning($@);
+			delete $nodes{$node};
+		}		
+	}
+	$cv->end;
+	$cv->recv;
+	$self->log->trace('All connected in ' . (time() - $start) . ' seconds');
+	
+	return \%nodes;
+}
+
+sub old_get_sphinx_nodes {
+	my $self = shift;
+	my $q = shift;
+	my %nodes;
+	my $node_conf = $self->conf->get('nodes');
+	
 	foreach my $node (keys %$node_conf){
 		if (scalar keys %{ $q->nodes->{given} }){
 			next unless $q->nodes->{given}->{$node};
@@ -839,7 +927,7 @@ sub _get_schedule_actions {
 	my ($self, $user) = @_;
 	
 	my @ret;
-	foreach my $plugin ($self->plugins()){
+	foreach my $plugin ($self->connector_plugins()){
 		if ($plugin =~ /^Connector::(\w+)/){
 			unless ($user->is_admin){
 				next if $plugin->admin_required;
@@ -1816,11 +1904,18 @@ sub check_local {
 sub _sphinx_query {
 	my ($self, $q) = @_;
 	
-	my $queries = $self->_build_query($q);
-	
-	my $nodes = $self->_get_sphinx_nodes($q);
-	my $ret = {};
 	my $overall_start = time();
+	my %stats;
+	my $start_time = time();
+	my $queries = $self->_build_query($q);
+	$stats{build_query} = (time() - $start_time);
+	
+	$start_time = time();
+	my $nodes = $self->_get_sphinx_nodes($q);
+	$stats{connect_to_nodes} = (time() - $start_time);
+	
+	my $ret = {};
+	
 	foreach my $node (keys %{ $nodes }){
 		if (exists $nodes->{$node}->{error}){
 			my $err_str = 'not using node ' . $node . ' because ' . $nodes->{$node}->{error};
@@ -1908,8 +2003,11 @@ sub _sphinx_query {
 			$self->log->trace('sphinx query: ' . join(';', @sphinx_queries));
 			$self->log->trace('values: ' . join(',', @sphinx_values));
 			$cv->begin;
-			$nodes->{$node}->{sphinx}->sphinx(join(';SHOW META;', @sphinx_queries) . ';SHOW META', sub {
-				$self->log->debug('Sphinx query for node ' . $node . ' finished in ' . (time() - $start));
+			$nodes->{$node}->{sphinx}->sphinx(join(';SHOW META;', @sphinx_queries) . ';SHOW META', 0, @sphinx_values, sub {
+				my $sphinx_query_time = (time() - $start);
+				$self->log->debug('Sphinx query for node ' . $node . ' finished in ' . $sphinx_query_time);
+				$stats{sphinx_query} += $sphinx_query_time;
+				$start = time();
 				my ($dbh, $result, $rv) = @_;
 				if (not $rv){
 					my $e = 'node ' . $node . ' got error ' .  Dumper($result);
@@ -1939,7 +2037,9 @@ sub _sphinx_query {
 				my %tables;
 				my %orderby_map;
 				ROW_LOOP: foreach my $row (@$rows){
-					$orderby_map{ $row->{id} } = $row->{_orderby};
+					if ($q->orderby){
+						$orderby_map{ $row->{id} } = $row->{_orderby};
+					}
 					foreach my $table_hash (@{ $self->node_info->{nodes}->{$node}->{tables}->{tables} }){
 						next unless $table_hash->{table_type} eq 'index' or $table_hash->{table_type} eq 'import';
 						if ($table_hash->{min_id} <= $row->{id} and $row->{id} <= $table_hash->{max_id}){
@@ -1949,6 +2049,7 @@ sub _sphinx_query {
 						}
 					}
 				}
+				$self->log->debug('%orderby_map  ' . Dumper(\%orderby_map));
 				
 				if (scalar keys %tables){				
 					# Go get the actual rows from the dbh
@@ -1976,7 +2077,7 @@ sub _sphinx_query {
 					$self->log->trace('table query for node ' . $node . ': ' . $table_query 
 						. ', placeholders: ' . join(',', @table_query_values));
 					$cv->begin;
-					$nodes->{$node}->{dbh}->multi_query($table_query, 
+					$nodes->{$node}->{dbh}->multi_query($table_query, @table_query_values,
 						sub { 
 							my ($dbh, $rows, $rv) = @_;
 							if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
@@ -1992,6 +2093,7 @@ sub _sphinx_query {
 							}
 							$self->log->trace('node '. $node . ' got db rows: ' . (scalar @$rows));
 							
+							$self->log->debug('in fork, %orderby_map  ' . Dumper(\%orderby_map));
 							foreach my $row (@$rows){
 								$ret->{$node}->{results} ||= {};
 								$row->{node} = $node;
@@ -2001,12 +2103,19 @@ sub _sphinx_query {
 										delete $row->{$import_col};
 									}
 								}
-								$row->{_orderby} = $orderby_map{ $row->{id} };
+								if ($q->orderby){
+									$row->{_orderby} = $orderby_map{ $row->{id} };
+								}
+								else {
+									$row->{_orderby} = $row->{timestamp};
+								}
 								$ret->{$node}->{results}->{ $row->{id} } = $row;
 							}
+							$stats{mysql_query} += (time() - $start);
 							$cv->end;
 						},
-						@table_query_values);
+						#@table_query_values);
+						);
 					$cv->end; #end sphinx query	
 				}
 				elsif (@$rows) {
@@ -2018,7 +2127,8 @@ sub _sphinx_query {
 					# No results
 					$cv->end; #end sphinx query
 				}
-			}, 0, @sphinx_values);
+			#}, 0, @sphinx_values);
+			});
 		};
 		if ($@){
 			$ret->{$node}->{error} = 'sphinx query error: ' . $@;
@@ -2252,7 +2362,8 @@ sub _sphinx_query {
 		keywords => \%keyword_stats, 
 		total_docs => $total_docs, 
 		total_time => (time() - $overall_start),
-		docs_filtered_per_sec => ($total_docs / (time() - $overall_start))
+		docs_filtered_per_sec => ($total_docs / (time() - $overall_start)),
+		%stats
 	});
 	
 	return 1;
@@ -2930,9 +3041,8 @@ sub export {
 		}
 		
 		my $results_obj;
-		my $plugin_fqdn = 'Export::' . $args->{plugin};
-		foreach my $plugin ($self->plugins()){
-			if ($plugin eq $plugin_fqdn){
+		foreach my $plugin ($self->export_plugins()){
+			if ($plugin =~ /\:\:$args->{plugin}$/i){
 				$self->log->debug('loading plugin ' . $plugin);
 				$results_obj = $plugin->new(results => $decode);
 				$self->log->debug('results_obj:' . Dumper($results_obj));
@@ -2947,7 +3057,7 @@ sub export {
 		}
 		
 		$self->log->error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
-			join(', ', $self->plugins()) . ' ' . Dumper($args));
+			join(', ', $self->export_plugins()) . ' ' . Dumper($args));
 		return 'Unable to build results object from args';
 	}
 	else {
@@ -3201,9 +3311,8 @@ sub transform {
 			$self->log->trace('new results after subsearch: ' . Dumper($transform_args->{results}));
 		}
 		else {
-			my $plugin_fqdn = 'Transform::' . $transform;
-			foreach my $plugin ($self->plugins()){
-				if (lc($plugin) eq lc($plugin_fqdn)){
+			foreach my $plugin ($self->transform_plugins()){
+				if ($plugin =~ /\:\:$transform$/i){
 					$self->log->debug('loading plugin ' . $plugin);
 					eval {
 						my %compiled_transform_args = (
@@ -3251,8 +3360,8 @@ sub transform {
 				}
 			}
 			unless ($num_found){
-				$self->log->error("failed to find transform $plugin_fqdn" . ', only have transforms ' .
-					join(', ', $self->plugins()));
+				$self->log->error("failed to find transform $transform " . ', only have transforms ' .
+					join(', ', $self->transform_plugins()));
 				return 0;
 			}
 		}
@@ -3467,10 +3576,9 @@ sub send_to {
 			@connector_args = @{ $cargs } if $cargs;
 		}
 		
-		my $plugin_fqdn = 'Connector::' . $connector;
 		my $num_found = 0;
-		foreach my $plugin ($self->plugins()){
-			if (lc($plugin) eq lc($plugin_fqdn)){
+		foreach my $plugin ($self->connector_plugins()){
+			if ($plugin =~ /\:\:$connector$/i){
 				$self->log->debug('loading plugin ' . $plugin);
 				eval {
 					# Check to see if we are processing bulk results
@@ -3541,7 +3649,7 @@ sub send_to {
 		}
 		unless ($num_found){
 			$self->log->error("failed to find connectors " . Dumper($q->connectors) . ', only have connectors ' .
-				join(', ', $self->plugins()));
+				join(', ', $self->connector_plugins()));
 			return 0;
 		}
 	}
@@ -4206,10 +4314,8 @@ sub _external_query {
 			}
 		}
 		
-		my $plugin_fqdn = 'Datasource::' . $datasource;
-		foreach my $plugin ($self->plugins()){
-			$self->log->debug('checking ' . $plugin_fqdn . ' against ' . $plugin);
-			if (lc($plugin) eq lc($plugin_fqdn)){
+		foreach my $plugin ($self->datasource_plugins()){
+			if ($plugin =~ /\:\:$datasource/i){
 				$self->log->debug('loading plugin ' . $plugin);
 				my %compiled_args;
 				eval {
@@ -4233,7 +4339,7 @@ sub _external_query {
 				next DATASOURCES_LOOP;
 			}
 		}
-		die('datasource ' . $plugin_fqdn . ' not found');
+		die('datasource ' . $datasource . ' not found');
 	}
 	return $q;
 }

@@ -429,6 +429,58 @@ sub _get_nodes {
 	my %nodes;
 	my $node_conf = $self->conf->get('nodes');
 	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { shift->send });
+	my $start = time();
+	foreach my $node (keys %$node_conf){
+		my $db_name = 'syslog';
+		if ($node_conf->{$node}->{db}){
+			$db_name = $node_conf->{$node}->{db};
+		}
+		
+		my $mysql_port = 3306;
+		if ($node_conf->{$node}->{port}){
+			$mysql_port = $node_conf->{$node}->{port};
+		}
+
+		eval {
+			$nodes{$node} = { db => $db_name };
+			
+			$cv->begin;
+			my $node_start = time();	
+			$nodes{$node}->{dbh} = AsyncDB->new(log => $self->log, db_args => [
+				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
+				$node_conf->{$node}->{username}, 
+				$node_conf->{$node}->{password}, 
+				{
+					mysql_connect_timeout => $self->db_timeout,
+					PrintError => 0,
+					mysql_multi_statements => 1,
+				}
+			], cb => sub {
+				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (time() - $node_start));
+				$cv->end;
+			});
+			
+		};
+		if ($@){
+			$self->add_warning($@);
+			delete $nodes{$node};
+		}		
+	}
+	$cv->end;
+	$cv->recv;
+	$self->log->trace('All connected in ' . (time() - $start) . ' seconds');
+		
+	return \%nodes;
+}
+
+sub old_get_nodes {
+	my $self = shift;
+	my $user = shift;
+	my %nodes;
+	my $node_conf = $self->conf->get('nodes');
+	
 	my $mysql_port = 3306;
 	my $db_name = 'syslog';
 	foreach my $node (keys %$node_conf){
