@@ -12,6 +12,7 @@ use Sys::Info;
 use Sys::Info::Constants qw( :device_cpu );
 use Sys::MemInfo qw( freemem totalmem freeswap totalswap );
 use Config::JSON;
+use Module::Pluggable sub_name => 'postprocessor_plugins', require => 1, search_path => [ qw( PostProcessor ) ];
 
 use constant CRITICAL_LOW_MEMORY_LIMIT => 100 * 1024 * 1024;
 our $Missing_table_error_limit = 4;
@@ -90,7 +91,10 @@ sub BUILD {
 	$Data_db_name = $self->conf->get('database/data_db') ? $self->conf->get('database/data_db') : 'syslog_data';
 	$Min_expected_num_hosts = $self->conf->get('min_expected_hosts') if $self->conf->get('min_expected_hosts');
 	
-	#$self->log->debug('db id: ' . $self->dbh_id);		
+	#$self->log->debug('db id: ' . $self->dbh_id);	
+	
+	# Init plugins
+	$self->postprocessor_plugins();	
 }
 
 sub DEMOLISH {
@@ -749,7 +753,15 @@ sub load_buffers {
 	}
 	
 	my ($first_id, $last_id, $multiple_loads);
-	foreach my $row (@rows){	
+	foreach my $row (@rows){
+		# Run plugins
+		foreach my $plugin ($self->postprocessor_plugins){
+			my %plugin_args = %$row;
+			$plugin_args{log} = $self->log;
+			$plugin_args{db} = $self->db;
+			$plugin_args{conf} = $self->conf;
+			my $plugin_object = $plugin->new(%plugin_args);
+		}
 		# Send to index load records
 		if ($self->conf->get('sphinx/perm_index_size')){
 			my $batch_ids  = $self->load_records({ file => $row->{filename}, import => $is_import });
@@ -2039,16 +2051,16 @@ sub add_programs {
 	$self->log->trace('Adding programs: ' . Dumper($to_add));
 	$query = 'INSERT INTO programs (id, program) VALUES(?,?) ON DUPLICATE KEY UPDATE id=?';
 	$sth = $self->db->prepare($query);
-	$query = 'REPLACE INTO class_program_map (class_id, program_id) VALUES(?,?)';
-	my $sth_map = $self->db->prepare($query);
+#	$query = 'REPLACE INTO class_program_map (class_id, program_id) VALUES(?,?)';
+#	my $sth_map = $self->db->prepare($query);
 	foreach my $program (keys %{ $to_add }){
 		$sth->execute($to_add->{$program}->{id}, $program, $to_add->{$program}->{id});
-		if ($sth->rows){ # this was not a duplicate, proceed with the class map insert
-			$sth_map->execute($to_add->{$program}->{class_id}, $to_add->{$program}->{id});
-		}
-		else {
-			$self->log->error('Duplicate CRC found for ' . $program . ' with CRC ' . $to_add->{$program}->{id});
-		}
+#		if ($sth->rows){ # this was not a duplicate, proceed with the class map insert
+#			$sth_map->execute($to_add->{$program}->{class_id}, $to_add->{$program}->{id});
+#		}
+#		else {
+#			$self->log->error('Duplicate CRC found for ' . $program . ' with CRC ' . $to_add->{$program}->{id});
+#		}
 	}
 }
 
