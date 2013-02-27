@@ -684,13 +684,22 @@ build_web_perl(){
 	done
 	
 	echo "Retrieving GeoIP databases..."
-	mkdir -p $GEOIP_DIR &&
-	curl -L "http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz" > $TMP_DIR/GeoLiteCity.dat.gz &&
-	gunzip -f $TMP_DIR/GeoLiteCity.dat.gz &&
-	cp $TMP_DIR/GeoLiteCity.dat $GEOIP_DIR/GeoIPCity.dat
-	curl -L "http://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz" > $TMP_DIR/GeoIP.dat.gz &&
-	gunzip -f $TMP_DIR/GeoIP.dat.gz &&
-	cp $TMP_DIR/GeoIP.dat $GEOIP_DIR/ &&
+	if [ ! -f "$GEOIP_DIR/GeoIPCity.dat" ]; then
+		if [ ! -f "$TMP_DIR/GeoLiteCity.dat.gz" ]; then
+			curl -L "http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz" > $TMP_DIR/GeoLiteCity.dat.gz
+		fi
+		mkdir -p $GEOIP_DIR &&
+		gunzip -f $TMP_DIR/GeoLiteCity.dat.gz &&
+		cp $TMP_DIR/GeoLiteCity.dat $GEOIP_DIR/GeoIPCity.dat
+	fi
+
+	if [ ! -f "$GEOIP_DIR/GeoIP.dat" ]; then
+		if [ ! -f "$TMP_DIR/GeoIP.dat.gz" ]; then
+			curl -L "http://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz" > $TMP_DIR/GeoIP.dat.gz
+		fi
+		gunzip -f $TMP_DIR/GeoIP.dat.gz &&
+		cp $TMP_DIR/GeoIP.dat $GEOIP_DIR/
+	fi
 	echo "...done."
 	
 	if [ "$DISTRO" = "ubuntu" ]; then
