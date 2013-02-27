@@ -236,8 +236,18 @@ sub _query {
 		};
 		if ($@){
 			$self->log->error($@ . 'hdr: ' . Dumper($hdr) . ', url: ' . $url . ', body: ' . ($body ? $body : ''));
-			$self->cv->end;
-			return;
+			# This may be a multiline pseudo-json format
+			eval {
+				$data = [];
+				foreach (split("\n", $body)){
+					push @$data, decode_json($_);
+				}
+			};
+			if ($@){
+				$self->log->error($@ . 'hdr: ' . Dumper($hdr) . ', url: ' . $url . ', body: ' . ($body ? $body : ''));
+				$self->cv->end;
+				return;
+			}
 		}
 				
 		if ($data and ref($data) eq 'HASH' and $data->{status} eq '200' and $data->{data}->{feed} and $data->{data}->{feed}->{entry}){
@@ -313,6 +323,32 @@ sub _query {
 					}
 					#$datum->{transforms}->{$Name}->{$key} = $cif_datum;
 					#$self->cache->set($url, $cif_datum);
+				}
+			}
+			my $final = {};
+			foreach my $cif_key (sort keys %{ $datum->{transforms}->{$Name}->{$key} }){
+				$final->{$cif_key} = join(' ', sort keys %{ $datum->{transforms}->{$Name}->{$key}->{$cif_key} });
+			}
+			$datum->{transforms}->{$Name}->{$key} = $final;
+					
+			$self->cache->set($url, $datum->{transforms}->{$Name}->{$key});
+		}
+		# CIF v1.0 format
+		elsif ($data and ref($data) eq 'ARRAY' and $data->{status} eq '200'){
+			foreach my $entry ( @$data ){
+				my $cif_datum = {};
+				$cif_datum->{type} = $entry->{assessment};
+				$cif_datum->{severity} = $entry->{severity};
+				$cif_datum->{timestamp} = $entry->{detecttime};
+				$cif_datum->{address} = $entry->{address};
+				$cif_datum->{description} = $entry->{description};
+				$cif_datum->{confidence} = $entry->{confidence};
+				$cif_datum->{reference} = $entry->{alternativeid};
+				$cif_datum->{reason} = $entry->{purpose};
+					
+				foreach my $cif_key (keys %$cif_datum){
+					$datum->{transforms}->{$Name}->{$key}->{$cif_key} ||= {};
+					$datum->{transforms}->{$Name}->{$key}->{$cif_key}->{ $cif_datum->{$cif_key} } = 1;
 				}
 			}
 			my $final = {};
