@@ -99,8 +99,12 @@ elsif ($Format eq 'csv'){
 elsif ($Format eq 'tsv'){
 	$lines_imported = _read_tsv();
 }
+elsif ($Format eq 'sidewinder'){
+	$lines_imported = _read_sidewinder();
+}
 else {
-	die('Invalid input type ' . $Format);
+	print "Using default format since none specified.\n";
+	$lines_imported = _read_local();
 }
 
 my $end_time = time() - $start;
@@ -115,6 +119,57 @@ sub _read_local_syslog {
 			next;
 		}
 		$outfile->print($_);
+		$counter++;
+	}
+	return $counter;
+}
+
+# Local file as-is and append a timestamp and program
+sub _read_local {
+	my $program = 'unknown';
+	if ($Opts{p}){
+		$program = $Opts{p};
+	}
+	my $program_id = crc32($program);
+	
+	# Record our program_id to the database if necessary
+	$query = 'INSERT IGNORE INTO programs (id, program) VALUES(?,?)';
+	$sth = $Dbh->prepare($query);
+	$sth->execute($program_id, $program);
+	
+	my $date = strftime('%b %d %H:%M:%S', localtime(time()));
+	
+	my $outfile = new IO::File('> /data/elsa/tmp/import') or die('Cannot open /data/elsa/tmp/import');
+	my $counter = 0;
+	while (<$Infile>){
+		if ($. <= $Lines_to_skip){
+			next;
+		}
+		$outfile->print("$date $program: $_");
+		$counter++;
+	}
+	return $counter;
+}
+
+# Sidewinder
+sub _read_sidewinder {
+	my $program = 'auditd';
+	my $program_id = crc32($program);
+	
+	# Record our program_id to the database if necessary
+	$query = 'INSERT IGNORE INTO programs (id, program) VALUES(?,?)';
+	$sth = $Dbh->prepare($query);
+	$sth->execute($program_id, $program);
+	
+	my $parser = DateTime::Format::Strptime->new(pattern => '%b %d %T %Y %Z', time_zone => $Timezone);
+	my $printer = DateTime::Format::Strptime->new(pattern => '%b %d %T', time_zone => $Timezone);
+	
+	my $outfile = new IO::File('> /data/elsa/tmp/import') or die('Cannot open /data/elsa/tmp/import');
+	my $counter = 0;
+	while (<$Infile>){
+		$_ =~ /^date="([^"]+)/;
+		my $dt = $parser->parse_datetime($1) or next;
+		$outfile->print($printer->format_datetime($dt) . " $program: $_");
 		$counter++;
 	}
 	return $counter;
