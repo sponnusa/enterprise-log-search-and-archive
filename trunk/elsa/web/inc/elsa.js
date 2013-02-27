@@ -557,6 +557,11 @@ YAHOO.ELSA.Query = function(){
 		'start_time': 1,
 		'end_time': 1
 	};
+	
+	this.localMetas = {
+		'livetail': 1,
+		'archive': 1
+	};
 
 	this.addMeta = function(p_sField, p_sValue){
 		logger.log('adding to current query meta:' + p_sField + ', val: ' + p_sValue);
@@ -568,6 +573,9 @@ YAHOO.ELSA.Query = function(){
             	this.metas[p_sField] = p_sValue;
             }
             else {
+            	if (this.localMetas[p_sField]){
+                	this.metas[p_sField] = p_sValue;
+                }
             	if (p_sField != 'class' && p_sValue != 'any'){
             		YAHOO.util.Dom.get('q').value += ' ' + p_sField + ':' + p_sValue;
             	}
