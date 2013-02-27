@@ -341,7 +341,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
