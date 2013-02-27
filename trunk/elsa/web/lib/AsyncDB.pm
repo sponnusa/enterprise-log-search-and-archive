@@ -125,6 +125,7 @@ sub BUILDARGS {
 sub DEMOLISH {
 	my $self = shift;
 	# Clean up our filehandles to avoid a segfault at exit
+	close(STDERR);
 	$self->dbh->DESTROY();
 }
 
