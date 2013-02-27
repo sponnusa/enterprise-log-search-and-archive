@@ -332,7 +332,7 @@ sub _query {
 			$self->cache->set($url, $datum->{transforms}->{$Name}->{$key});
 		}
 		# CIF v1.0 format
-		elsif ($data and ref($data) eq 'ARRAY' and $data->{status} eq '200'){
+		elsif ($data and ref($data) eq 'ARRAY'){
 			foreach my $entry ( @$data ){
 				my $cif_datum = {};
 				$cif_datum->{type} = $entry->{assessment};
