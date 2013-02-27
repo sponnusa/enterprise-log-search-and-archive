@@ -12,6 +12,7 @@ use IO::File;
 use POSIX qw(strftime);
 use DBI;
 use FindBin;
+use Socket;
 
 # Include the directory this script is in
 use lib $FindBin::Bin;
@@ -163,13 +164,14 @@ sub _read_sidewinder {
 	
 	my $parser = DateTime::Format::Strptime->new(pattern => '%b %d %T %Y %Z', time_zone => $Timezone);
 	my $printer = DateTime::Format::Strptime->new(pattern => '%b %d %T', time_zone => $Timezone);
+	my $host = inet_ntoa(pack('N*', $Id));
 	
 	my $outfile = new IO::File('> /data/elsa/tmp/import') or die('Cannot open /data/elsa/tmp/import');
 	my $counter = 0;
 	while (<$Infile>){
 		$_ =~ /^date="([^"]+)/;
 		my $dt = $parser->parse_datetime($1) or next;
-		$outfile->print($printer->format_datetime($dt) . " $program: $_");
+		$outfile->print($printer->format_datetime($dt) . " $host $program: $_");
 		$counter++;
 	}
 	return $counter;
