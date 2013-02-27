@@ -739,7 +739,7 @@ sub load_buffers {
 	
 	my ($query, $sth);
 		
-	$query = 'SELECT id, filename FROM buffers WHERE ISNULL(pid) ORDER BY id ASC';
+	$query = 'SELECT id, filename, start, end FROM buffers WHERE ISNULL(pid) ORDER BY id ASC';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	$query = 'UPDATE buffers SET pid=? WHERE id=?';
@@ -764,7 +764,7 @@ sub load_buffers {
 		}
 		# Send to index load records
 		if ($self->conf->get('sphinx/perm_index_size')){
-			my $batch_ids  = $self->load_records({ file => $row->{filename}, import => $is_import });
+			my $batch_ids  = $self->load_records({ file => $row->{filename}, start => $row->{start}, end => $row->{end}, import => $is_import });
 			$first_id ||= $batch_ids->{first_id};
 			$last_id = $batch_ids->{last_id};
 			if ($is_import){
@@ -849,29 +849,29 @@ sub load_records {
 	my $last_id = $row->{max_id};
 	my $first_id = $row->{max_id} - $records + 1;
 	
-#	$self->log->debug("Found max_id of $row->{max_id}, should have $args->{last_id}");
+	#$self->log->debug("Found max_id of $row->{max_id}, should have $args->{last_id}");
 	$self->log->info("Loaded $records records in $load_time seconds ($rps per second)");
 	
-	# Find out what our min/max timestamps are by getting the records at min/max id
-	$query = sprintf('SELECT timestamp FROM %s WHERE id=?', $full_table);
-	$sth = $self->db->prepare($query);
-	$sth->execute($first_id);
-	$row = $sth->fetchrow_hashref;
-	my $start = 0;
-	if ($row){
-		$start = $row->{timestamp};
-	}
-	else {
-		die 'Unable to get a start timestamp from table ' . $full_table . ' with row id ' . $first_id;
-	}
-	$sth->execute($last_id);
-	$row = $sth->fetchrow_hashref;
-	my $end = 0;
-	if ($row){
-		$end = $row->{timestamp};
-	}
-	else {
-		die 'Unable to get an end timestamp from table ' . $full_table . ' with row id ' . $first_id;
+	unless ($args->{start} and $args->{end}){
+		# Find out what our min/max timestamps are by getting the records at min/max id
+		$query = sprintf('SELECT timestamp FROM %s WHERE id=?', $full_table);
+		$sth = $self->db->prepare($query);
+		$sth->execute($first_id);
+		$row = $sth->fetchrow_hashref;
+		if ($row){
+			$args->{start} = $row->{timestamp};
+		}
+		else {
+			die 'Unable to get a start timestamp from table ' . $full_table . ' with row id ' . $first_id;
+		}
+		$sth->execute($last_id);
+		$row = $sth->fetchrow_hashref;
+		if ($row){
+			$args->{end} = $row->{timestamp};
+		}
+		else {
+			die 'Unable to get an end timestamp from table ' . $full_table . ' with row id ' . $first_id;
+		}
 	}
 	
 	$self->_get_lock('directory') or die 'Unable to obtain lock';
@@ -881,23 +881,22 @@ sub load_records {
 	$sth = $self->db->prepare($query);
 	$sth->execute($full_table);
 	$row = $sth->fetchrow_hashref;
-	if ($row->{start} > $start){
+	if ($row->{start} > $args->{start}){
 		$query = 'UPDATE tables SET start=FROM_UNIXTIME(?) WHERE table_name=?';
 		$sth = $self->db->prepare($query);
-		$sth->execute($start, $full_table);
-		$self->log->debug('Updated table to have start ' . $start);
+		$sth->execute($args->{start}, $full_table);
+		$self->log->debug('Updated table to have start ' . $args->{start});
 	}
-	if ($row->{end} < $end){
+	if ($row->{end} < $args->{end}){
 		$query = 'UPDATE tables SET end=FROM_UNIXTIME(?) WHERE table_name=?';
 		$sth = $self->db->prepare($query);
-		$sth->execute($end, $full_table);
-		$self->log->debug('Updated table to have end ' . $end)
+		$sth->execute($args->{end}, $full_table);
+		$self->log->debug('Updated table to have end ' . $args->{end})
 	}
 	$query = 'UPDATE tables SET max_id=?, table_locked_by=NULL WHERE table_name=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($last_id, $full_table);
-	
-	$self->log->debug('Updated table to have end ' . $end . ', max_id ' . $last_id . ' table_name ' . $full_table);
+	$self->log->debug('Updated table to have max_id ' . $last_id . ' table_name ' . $full_table);
 	
 	# Mark load complete
 	$query = 'UPDATE buffers SET index_complete=1 WHERE filename=?';

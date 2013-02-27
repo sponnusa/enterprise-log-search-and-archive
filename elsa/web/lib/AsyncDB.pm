@@ -122,7 +122,7 @@ sub BUILDARGS {
 	return \%params;
 }
 
-sub DESTROY {
+sub DEMOLISH {
 	my $self = shift;
 	# Clean up our filehandles to avoid a segfault at exit
 	$self->dbh->DESTROY();
