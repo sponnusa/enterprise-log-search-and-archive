@@ -186,14 +186,14 @@ sub _query {
 	$query = url_encode($query);
 	my $url;
 	if ($self->conf->get('transforms/cif/server_ip')){
-		$url = sprintf('http://%s/api/%s?apikey=%s&fmt=json', 
+		$url = sprintf('http://%s/api/%s?apikey=%s&fmt=json&query=%s', 
 			$self->conf->get('transforms/cif/server_ip'), $query, 
-			$self->conf->get('transforms/cif/apikey'));
+			$self->conf->get('transforms/cif/apikey'), $query);
 	}
 	elsif ($self->conf->get('transforms/cif/base_url')){
-		$url = sprintf('%s/api/%s?apikey=%s&fmt=json', 
+		$url = sprintf('%s/api/%s?apikey=%s&fmt=json&query=%s', 
 			$self->conf->get('transforms/cif/base_url'), $query, 
-			$self->conf->get('transforms/cif/apikey'));
+			$self->conf->get('transforms/cif/apikey'), $query);
 	}
 	else {
 		die('server_ip nor base_url configured');
