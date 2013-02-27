@@ -177,7 +177,7 @@ has 'db' => (is => 'rw', isa => 'Object', required => 1);
 has 'cache' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'to_add' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'offline_processing' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
-has 'offline_processing_times' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { start => CORE::time(), end => 0 } });
+has 'processing_times' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { start => CORE::time(), end => 0 } });
 
 sub BUILDARGS {
 	my $class = shift;
@@ -418,14 +418,13 @@ sub parse_line {
 	}
 	
 	# Update start/end times if necessary
-	if ($self->offline_processing){
-		if ($line[FIELD_TIMESTAMP] < $self->offline_processing_times->{start}){
-			$self->offline_processing_times->{start} = $line[FIELD_TIMESTAMP];
-		}
-		if ($line[FIELD_TIMESTAMP] > $self->offline_processing_times->{end}){
-			$self->offline_processing_times->{end} = $line[FIELD_TIMESTAMP];
-		}
+	if ($line[FIELD_TIMESTAMP] < $self->processing_times->{start}){
+		$self->processing_times->{start} = $line[FIELD_TIMESTAMP];
 	}
+	if ($line[FIELD_TIMESTAMP] > $self->processing_times->{end}){
+		$self->processing_times->{end} = $line[FIELD_TIMESTAMP];
+	}
+	
 	
 	# Write nulls explicitly
 	for (my $i = FIELD_I0; $i <= FIELD_S5; $i++){
@@ -537,13 +536,11 @@ sub parse_hash {
 	#unshift(@line, '0');
 	
 	# Update start/end times if necessary
-	if ($self->offline_processing){
-		if ($hash->{timestamp} < $self->offline_processing_times->{start}){
-			$self->offline_processing_times->{start} = $hash->{timestamp};
-		}
-		if ($hash->{timestamp} > $self->offline_processing_times->{end}){
-			$self->offline_processing_times->{end} = $hash->{timestamp};
-		}
+	if ($line[FIELD_TIMESTAMP] < $self->processing_times->{start}){
+		$self->processing_times->{start} = $line[FIELD_TIMESTAMP];
+	}
+	if ($line[FIELD_TIMESTAMP] > $self->processing_times->{end}){
+		$self->processing_times->{end} = $line[FIELD_TIMESTAMP];
 	}
 			
 	return \@line;

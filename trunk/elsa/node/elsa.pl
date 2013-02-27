@@ -262,8 +262,8 @@ sub _process_batch {
 	$args->{batch_counter} = $batch_counter;
 	$args->{file} = $tempfile_name;
 	$args->{file_size} = -s $args->{file};
-	$args->{start} = $args->{offline_processing} ? $reader->offline_processing_times->{start} : $args->{start_time};
-	$args->{end} = $args->{offline_processing} ? $reader->offline_processing_times->{end} : Time::HiRes::time();
+	$args->{start} = $reader->processing_times->{start};
+	$args->{end} = $reader->processing_times->{end};
 	$args->{total_processed} = $args->{batch_counter};
 	$args->{total_errors} = $args->{error_counter};
 	
@@ -351,10 +351,11 @@ sub _process_batch {
 	
 	my ($query,$sth);
 	if ($args->{batch_counter}){
-		$query = 'INSERT INTO buffers (filename) VALUES (?)';
+		$query = 'INSERT INTO buffers (filename, start, end) VALUES (?,?,?)';
 		$sth = $Dbh->prepare($query);
-		$sth->execute($args->{file});
-		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter});
+		$sth->execute($args->{file}, $args->{start}, $args->{end});
+		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter} 
+			. ' and start ' . (scalar localtime($args->{start})) . ' and end ' . (scalar localtime($args->{end})));
 	}
 		
 	# Fork our post-batch processor
