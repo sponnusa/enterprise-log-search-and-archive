@@ -122,6 +122,12 @@ sub BUILDARGS {
 	return \%params;
 }
 
+sub DESTROY {
+	my $self = shift;
+	# Clean up our filehandles to avoid a segfault at exit
+	$self->dbh->DESTROY();
+}
+
 sub query {
 	multi_query(@_);
 }
