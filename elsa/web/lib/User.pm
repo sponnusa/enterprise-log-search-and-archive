@@ -250,23 +250,28 @@ sub _init_ldap {
 
 sub _init_kerberos {
 	my $self = shift;
-	$self->email($self->username . '@' . $self->conf->get('kerberos/realm'));
-	$self->permissions({
-		class_id => {
-			0 => 1,
-		},
-		host_id => {
-			0 => 1,
-		},
-		program_id => {
-			0 => 1,
-		},
-		node_id => {
-			0 => 1,
-		},
-		filter => '',
-	});
-	$self->is_admin(1);
+	if ($self->conf->get('kerberos/db_auth')){
+		$self->_init_db();
+	}
+	else {
+		$self->email($self->username . '@' . $self->conf->get('kerberos/realm'));
+		$self->permissions({
+			class_id => {
+				0 => 1,
+			},
+			host_id => {
+				0 => 1,
+			},
+			program_id => {
+				0 => 1,
+			},
+			node_id => {
+				0 => 1,
+			},
+			filter => '',
+		});
+		$self->is_admin(1);
+	}
 }
 
 sub _init_local {
