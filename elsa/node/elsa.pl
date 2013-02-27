@@ -9,11 +9,8 @@ use String::CRC32;
 use Log::Log4perl;
 use DBI;
 use FindBin;
-use File::Copy;
-#use Storable qw(thaw);
 use JSON;
 use IO::File;
-use Net::OpenSSH;
 
 # Include the directory this script is in
 use lib $FindBin::Bin;
@@ -315,39 +312,27 @@ sub _process_batch {
 				$args->{file} =~ /\/([^\n]+$)/;
 				my $shortfile = $1;
 				foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
+					my $forwarder;
 					if ($dest_hash->{method} eq 'cp'){
-						if ($program_filename){
-							$Log->trace('Copying program file ' . $program_filename);
-							move($program_filename, $dest_hash->{dir} . '/') or $Log->error('Error copying ' . $program_filename . ' to dir ' . $dest_hash->{dir});
-						}
-						$Log->trace('Copying file ' . $args->{file});
-						move($args->{file}, $dest_hash->{dir} . '/') or $Log->error('Error copying ' . $args->{file} . ' to dir ' . $dest_hash->{dir} . ': ' . $!);
+						require Forwarder::Copy;
+						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
 					}
 					elsif ($dest_hash->{method} eq 'scp'){
-						my %conn_hash = %{ $dest_hash };
-						$conn_hash{batch_mode} = 1;
-						delete $conn_hash{method};
-						delete $conn_hash{dir};
-						my $host = delete $conn_hash{host};
-						my $ssh = Net::OpenSSH->new($host, %conn_hash);
-						if ($ssh->error){
-							$Log->error('Error opening SSH connection to host ' . $dest_hash->{host} . ': ' . $ssh->error);
-							next;
-						}
-						if ($program_filename){
-							$ssh->scp_put($program_filename, $dest_hash->{dir});
-							if ($ssh->error){
-								$Log->error('Error copying ' . $program_filename . ' to host ' . $dest_hash->{host} . ':' . $dest_hash->{dir} . ': ' . $ssh->error);
-							}
-						}
-						$ssh->scp_put($args->{file}, $dest_hash->{dir});
-						if ($ssh->error){
-							$Log->error('Error copying file to host ' . $dest_hash->{host} . ':' . $dest_hash->{dir} . ': ' . $ssh->error);
-						}
+						require Forwarder::SSH;
+						$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
+					}
+					elsif ($dest_hash->{method} eq 'url'){
+						require Forwarder::URL;
+						$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
 					}
 					else {
 						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
 					}
+					
+					if ($program_filename){
+						$forwarder->forward($program_filename);
+					}
+					$forwarder->forward($args->{file});
 				}
 			};
 			if ($@){
