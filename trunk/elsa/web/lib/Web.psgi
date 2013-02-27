@@ -42,73 +42,7 @@ elsif ($api->conf->get('auth/method') eq 'local_ssh'){
 	);
 }
 elsif ($api->conf->get('auth/method') eq 'local'){
-#	require Authen::Simple::PAM;
-#	$auth = Authen::Simple::PAM->new(
-#		service => 'sshd',
-#		log => $api->log,
-#	);
-	# Inline a local SSH authenticator since there is a bug in Authen::PAM and an install bug in Net::SSH::Perl
-	package Authen::Simple::SimpleSSH;
-	use base qw(Authen::Simple::Adapter);
-	require Net::SSH::Expect;
-	__PACKAGE__->options({
-		host => {
-			type => Params::Validate::SCALAR,
-			optional => 0,
-			default => '127.0.0.1'
-		},
-		port => {
-			type => Params::Validate::SCALAR,
-			optional => 0,
-			default => 22
-		},
-		match => {
-			type => Params::Validate::SCALAR,
-			optional => 0,
-			default => '(welcome|last login)'
-		}
-	});
-	
-	sub check {
-		my ( $self, $username, $password ) = @_;
-
-		my ( $host, $port, $match_on_success ) = ( $self->host, $self->port, $self->match );
-		
-		my $ssh = new Net::SSH::Expect( host => $host, user => $username, password => $password,
-			ssh_option => '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no');
-		eval {
-			$ssh->login();
-		};
-		$self->log->debug('error: ' . $@);
-		
-		my $peek = $ssh->peek(1);
-		$api->log->debug('peek: ' . $peek);
-		if ($peek =~ /denied/){
-			return 0;
-		}
-		elsif ($@ =~ 'SSHConnectionAborted'){
-			return 1;
-		}
-		else {
-			return 0;
-		}
-#		my $result_string = $ssh->login();
-#		
-#		unless ( $result_string =~ /\Q$match_on_success\E/i) {
-#			$self->log->error("Failed to find $match_on_success in $result_string") if $self->log;
-#			return 0;
-#		}
-#		return 1;
-    }
-
-	package main;
-	my %options = ( log => $api->log );
-	foreach my $option (qw(host port match)){ 
-		if ($api->conf->get('ssh_auth/' . $option)){
-			$options{$option} = $api->conf->get('ssh_auth/' . $option);
-		}
-	}
-	$auth = Authen::Simple::SimpleSSH->new(%options);
+	$api->log->logdie('Auth method "local" is no longer implemented, halting.');
 }
 elsif ($api->conf->get('auth/method') eq 'none'){
 	# Inline a null authenticator
