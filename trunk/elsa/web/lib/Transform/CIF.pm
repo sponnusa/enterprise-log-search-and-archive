@@ -235,13 +235,11 @@ sub _query {
 			$data = decode_json($body);
 		};
 		if ($@){
-			$self->log->error($@ . 'hdr: ' . Dumper($hdr) . ', url: ' . $url . ', body: ' . ($body ? $body : ''));
-			# This may be a multiline pseudo-json format
+			#$self->log->error($@ . 'hdr: ' . Dumper($hdr) . ', url: ' . $url . ', body: ' . ($body ? $body : ''));
+			# This may be a multiline pseudo-json format indicating v1.0
 			eval {
-				$data = [];
-				foreach (split("\n", $body)){
-					push @$data, decode_json($_);
-				}
+				$data = [ map { decode_json($_) } split("\n", $body) ];
+				$self->log->debug('added ' . (scalar @$data) . ' v1.0 entries');
 			};
 			if ($@){
 				$self->log->error($@ . 'hdr: ' . Dumper($hdr) . ', url: ' . $url . ', body: ' . ($body ? $body : ''));
@@ -345,6 +343,7 @@ sub _query {
 				$cif_datum->{confidence} = $entry->{confidence};
 				$cif_datum->{reference} = $entry->{alternativeid};
 				$cif_datum->{reason} = $entry->{purpose};
+				$self->log->debug('cif_datum: ' . Dumper($cif_datum));
 					
 				foreach my $cif_key (keys %$cif_datum){
 					$datum->{transforms}->{$Name}->{$key}->{$cif_key} ||= {};
