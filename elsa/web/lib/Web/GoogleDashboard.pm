@@ -304,7 +304,8 @@ YAHOO.util.Event.addListener(window, "load", function(){
 	//YAHOO.ELSA.Chart.loadCharts();
 	oDashboard = new YAHOO.ELSA.Dashboard($args->{id}, '$args->{title}', '$args->{alias}', $json, 'google_charts');
 	if (YAHOO.ELSA.dashboardRefreshInterval){
-		YAHOO.lang.later(YAHOO.ELSA.dashboardRefreshInterval, oDashboard, 'redraw', [], true);
+		//YAHOO.lang.later(YAHOO.ELSA.dashboardRefreshInterval, oDashboard, 'redraw', [], true);
+		YAHOO.lang.later(YAHOO.ELSA.dashboardRefreshInterval, location, 'reload', [], true);
 	}
 });
 </script>
