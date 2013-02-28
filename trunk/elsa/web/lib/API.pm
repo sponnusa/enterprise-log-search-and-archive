@@ -3323,7 +3323,7 @@ sub transform {
 		}
 		else {
 			foreach my $plugin ($self->transform_plugins()){
-				if ($plugin =~ /\:\:$transform$/i){
+				if ($plugin =~ /\:\:$transform(?:\:\:|$)/i){
 					$self->log->debug('loading plugin ' . $plugin);
 					eval {
 						my %compiled_transform_args = (
@@ -3589,7 +3589,7 @@ sub send_to {
 		
 		my $num_found = 0;
 		foreach my $plugin ($self->connector_plugins()){
-			if ($plugin =~ /\:\:$connector$/i){
+			if ($plugin =~ /\:\:$connector(?:\:\:|$)/i){
 				$self->log->debug('loading plugin ' . $plugin);
 				eval {
 					# Check to see if we are processing bulk results
