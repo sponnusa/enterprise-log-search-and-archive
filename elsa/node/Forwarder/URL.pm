@@ -12,12 +12,14 @@ sub BUILDARGS {
 	my ($class, %params) = @_;
 	
 	$params{ua} = new LWP::UserAgent(agent => 'ELSA Log Relay/0.1', timeout => 10);
-	if (exists $params{ca_file}){
-		$params{ua}->ssl_opts(
-			SSL_ca_file => delete $params{ca_file},
-			SSL_cert_file => delete $params{cert_file},
-			SSL_key_file => delete $params{key_file},
-		);
+	my %ssl_opts;
+	foreach (qw(ca_file cert_file key_file verify_mode)){
+		if (exists $params{$_}){
+			$ssl_opts{'SSL_' . $_} = $params{$_};
+		}
+	}
+	if (keys %ssl_opts){
+		$params{ua}->ssl_opts(%ssl_opts);
 	}
 	
 	return \%params;
