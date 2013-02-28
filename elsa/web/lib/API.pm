@@ -619,7 +619,7 @@ sub get_stats {
 				$self->log->warn('no dbh for node ' . $node . ':' . Dumper($stats->{nodes}->{$node}->{dbh}));
 			}
 			$self->log->trace('get stat ' . $item . ' for node ' . $node);
-			$stats->{nodes}->{$node}->{dbh}->query($query, sub {
+			$stats->{nodes}->{$node}->{dbh}->query($query, $item, $args->{start}, $args->{end}, sub {
 				my ($dbh, $rows, $rv) = @_;
 				#$self->log->trace('got stat ' . $item . ' for node ' . $node . ': ' . Dumper($rows));
 				$load_stats->{$item}->{summary} = $rows->[0];
@@ -627,7 +627,7 @@ sub get_stats {
 			
 				my $query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
 				$cv->begin;
-				$stats->{nodes}->{$node}->{dbh}->query($query, sub {
+				$stats->{nodes}->{$node}->{dbh}->query($query, $item, $args->{start}, $args->{end}, sub {
 					my ($dbh, $rows, $rv) = @_;
 					unless ($intervals and $load_stats->{$item}->{summary} and $load_stats->{$item}->{summary}->{total_time}){
 						$self->log->error('no stat for node ' . $node . ' and stat ' . $item);
@@ -664,10 +664,8 @@ sub get_stats {
 						$load_stats->{$item}->{data}->{KBytesPerSec}->[$bucket] += ($row->{bytes} / 1024 / $bucket_size);
 					}
 					$cv->end;
-				},
-				$item, $args->{start}, $args->{end});
-			},
-			$item, $args->{start}, $args->{end});
+				});
+			});
 		}
 		$cv->end;
 		$cv->recv;	
@@ -4108,7 +4106,7 @@ sub _archive_query {
 				$self->log->debug('running query ' . $query_hash->{query});
 				$self->log->debug(' with values ' . join(',', @{ $query_hash->{values} }));
 				$cv->begin;
-				$q->node_info->{nodes}->{$node}->{dbh}->query($query_hash->{query}, sub { 
+				$q->node_info->{nodes}->{$node}->{dbh}->query($query_hash->{query}, @{ $query_hash->{values} }, sub { 
 						$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
 						my ($dbh, $rows, $rv) = @_;
 						$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
@@ -4121,8 +4119,7 @@ sub _archive_query {
 						}
 						push @{ $ret->{$node}->{rows} }, @$rows;
 						$cv->end; #end archive query
-					},
-					@{ $query_hash->{values} });
+					});
 			};
 			if ($@){
 				$ret->{$node}->{error} = 'sphinx query error: ' . $@;
