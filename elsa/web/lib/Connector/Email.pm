@@ -65,7 +65,7 @@ sub BUILD {
 		$sth->execute($self->query->schedule_id);
 	}
 	
-	$self->api->send_email({ headers => $headers, body => $body});
+	$self->api->send_email({ headers => $headers, body => $body, user => 'system'});
 	
 	# Check to see if we saved the results previously
 	$query = 'SELECT qid FROM saved_results WHERE qid=?';
