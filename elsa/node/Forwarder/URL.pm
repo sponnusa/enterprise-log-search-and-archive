@@ -12,7 +12,10 @@ sub BUILDARGS {
 	my ($class, %params) = @_;
 	
 	if (exists $params{verify_mode} and not $params{verify_mode}){
-		local $ENV{PERL_LWP_SSL_VERIFY_HOSTNAME} = 0;
+		$ENV{PERL_LWP_SSL_VERIFY_HOSTNAME} = 0;
+	}
+	else {
+		$ENV{PERL_LWP_SSL_VERIFY_HOSTNAME} = 1;
 	}
 	
 	$params{ua} = new LWP::UserAgent(agent => 'ELSA Log Relay/0.1', timeout => 10);
