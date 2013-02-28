@@ -383,10 +383,24 @@ sub _parse_query {
 	}
 	
 	if ($self->meta_params->{start}){
-		$self->start(sprintf('%d', $self->meta_params->{start}));
+		if ($self->meta_params->{start} =~ /^\d+$/){
+			$self->start(int($self->meta_params->{start}));
+		}
+		else {
+			my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s");
+			$self->start($start);
+			$self->meta_params->{start} = $start;
+		}
 	}
 	if ($self->meta_params->{end}){
-		$self->end(sprintf('%d', $self->meta_params->{end}));
+		if ($self->meta_params->{start} =~ /^\d+$/){
+			$self->end(int($self->meta_params->{end}));
+		}
+		else {
+			my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s");
+			$self->end($end);
+			$self->meta_params->{end} = $end;
+		}
 	}
 		
 	foreach my $type (qw(field_terms attr_terms)){
@@ -839,21 +853,22 @@ sub _parse_query_term {
 						
 			if ($term_hash->{field} eq 'start'){
 				# special case for start/end
-				if (int($term_hash->{value})){
+				if ($term_hash->{value} =~ /^\d+$/){
 					$self->start(int($term_hash->{value}));
 				}
 				else {
-					$self->start(UnixDate($term_hash->{value}, "%s"));
+					$self->start(UnixDate(ParseDate($term_hash->{value}), "%s"));
 				}
+				$self->log->debug('start is now: ' . $self->start .', ' . (scalar localtime($self->start)));
 				next;
 			}
 			elsif ($term_hash->{field} eq 'end'){
 				# special case for start/end
-				if (int($term_hash->{value})){
+				if ($term_hash->{value} =~ /^\d+$/){
 					$self->end(int($term_hash->{value}));
 				}
 				else {
-					$self->end(UnixDate($term_hash->{value}, "%s"));
+					$self->end(UnixDate(ParseDate($term_hash->{value}), "%s"));
 				}
 				next;
 			}
