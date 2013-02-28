@@ -22,37 +22,38 @@ YAHOO.ELSA.main = function () {
 		oQuery.metas = cloneVar(YAHOO.ELSA.currentQuery.metas);
 		// apply the start/stop times
 		try {
-			var oStartTime, oEndTime;
-			if (YAHOO.util.Dom.get('start_time').value){
-				oStartTime = getDateFromISO(YAHOO.util.Dom.get('start_time').value)/1000;
-				if (!oStartTime){
-					YAHOO.ELSA.Error('Invalid start time');
-					return;
-				}
-				else {
-					oQuery.addMeta('start', oStartTime);
-				}
-			}
-			else {
-				oQuery.delMeta('start');
-			}
-			if (YAHOO.util.Dom.get('end_time').value){
-				oEndTime = getDateFromISO(YAHOO.util.Dom.get('end_time').value)/1000;
-				if (!oEndTime){
-					YAHOO.ELSA.Error('Invalid end time');
-					return;
-				}
-				else {
-					oQuery.addMeta('end', oEndTime);
-				}
-			}
-			else {
-				oQuery.delMeta('end');
-			}
-			if (oStartTime > oEndTime){
-				YAHOO.ELSA.Error('Start time greater than end time');
-				return;
-			}
+//			var oStartTime, oEndTime;
+//			if (YAHOO.util.Dom.get('start_time').value){
+//				oQuery.addMeta('start', YAHOO.util.Dom.get('start_time').value);
+//				//oStartTime = getDateFromISO(YAHOO.util.Dom.get('start_time').value)/1000;
+//				//if (!oStartTime){
+//				//	YAHOO.ELSA.Error('Invalid start time');
+//				//	return;
+//				//}
+//				//else {
+//				//	oQuery.addMeta('start', oStartTime);
+//				//}
+//			}
+//			//else {
+//			//	oQuery.delMeta('start');
+//			//}
+//			if (YAHOO.util.Dom.get('end_time').value){
+//				oEndTime = getDateFromISO(YAHOO.util.Dom.get('end_time').value)/1000;
+//				if (!oEndTime){
+//					YAHOO.ELSA.Error('Invalid end time');
+//					return;
+//				}
+//				else {
+//					oQuery.addMeta('end', oEndTime);
+//				}
+//			}
+//			else {
+//				oQuery.delMeta('end');
+//			}
+//			if (oStartTime > oEndTime){
+//				YAHOO.ELSA.Error('Start time greater than end time');
+//				return;
+//			}
 //			logger.log('submitting query: ', oQuery);
 //						
 //			var oResults = new YAHOO.ELSA.Results.Tabbed.Live(YAHOO.ELSA.tabView, oQuery);

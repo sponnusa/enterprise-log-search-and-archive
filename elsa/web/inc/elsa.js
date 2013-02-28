@@ -426,7 +426,8 @@ YAHOO.ELSA.Query = function(){
 	this.submit = function(){
 		// apply the start/stop times
 		if (YAHOO.util.Dom.get('start_time').value){
-			var sStartTime = getDateFromISO(YAHOO.util.Dom.get('start_time').value)/1000;
+			//var sStartTime = getDateFromISO(YAHOO.util.Dom.get('start_time').value)/1000;
+			var sStartTime = YAHOO.util.Dom.get('start_time').value;
 			this.addMeta('start', sStartTime);
 		}
 		if (YAHOO.util.Dom.get('end_time').value){
@@ -591,8 +592,10 @@ YAHOO.ELSA.Query = function(){
 	this.delMeta = function(p_sField){
 		logger.log('removing current query meta:' + p_sField);
 		if (YAHOO.util.Dom.get('q').value){
-			var re = new RegExp('\\W?' + p_sField + '[\\:\\=]"?([\\w\\.]+)"?', 'i');
+			var re = new RegExp('\\W?' + p_sField + '[\\:\\=][^"]([\\w\\.]+)', 'i');
 			YAHOO.util.Dom.get('q').value = YAHOO.util.Dom.get('q').value.replace(re, '');
+			var re_quoted = new RegExp('\\W?' + p_sField + '[\\:\\=]"([\\w\\.\\s]+)"', 'i');
+			YAHOO.util.Dom.get('q').value = YAHOO.util.Dom.get('q').value.replace(re_quoted, '');
 		}
 		delete this.metas[p_sField];
 		return true;
