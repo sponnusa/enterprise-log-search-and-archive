@@ -289,6 +289,8 @@ sub _error {
 
 sub get_permissions {
 	my ($self, $args) = @_;
+	
+	die('Admin required') unless $args->{user}->is_admin;
 		
 	my $form_params = $self->get_form_params($args->{user});
 	
@@ -409,6 +411,8 @@ sub get_permissions {
 
 sub set_permissions {
 	my ($self, $args) = @_;
+	
+	die('Admin required') unless $args->{user}->is_admin;
 	
 	unless ($args->{action} and ($args->{action} eq 'add' or $args->{action} eq 'delete')){
 		$self->_error('No set permissions action given: ' . Dumper($args));
@@ -1271,9 +1275,9 @@ sub update_scheduled_query {
 		}
 		
 		$self->log->debug('given_arg: ' . $given_arg . ': ' . $args->{$given_arg});
-		$query = sprintf('UPDATE query_schedule SET %s=? WHERE id=?', $given_arg);
+		$query = sprintf('UPDATE query_schedule SET %s=? WHERE id=? AND uid=?', $given_arg);
 		$sth = $self->db->prepare($query);
-		$sth->execute($args->{$given_arg}, $args->{id});
+		$sth->execute($args->{$given_arg}, $args->{id}, $args->{user}->uid);
 		$new_args->{$given_arg} = $args->{$given_arg};
 	}
 	
@@ -1288,6 +1292,7 @@ sub save_results {
 		return $self->_save_results($args);
 	}
 	
+	my $user = $args->{user};
 	eval {
 		my $comments = $args->{comments};
 		my $num_results = $args->{num_results} if $args->{num_results};
@@ -1306,6 +1311,7 @@ sub save_results {
 	}
 	
 	$self->log->debug('got results to save: ' . Dumper($args));
+	$args->{user} = $user;
 	
 	$self->_save_results($args);
 }
@@ -1319,6 +1325,13 @@ sub _save_results {
 	}
 	
 	my ($query, $sth);
+	$query = 'SELECT uid FROM query_log WHERE qid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{qid});
+	my $row = $sth->fetchrow_hashref;
+	unless ($row and $row->{uid} eq $args->{user}->uid){
+		die('Insufficient permissions');
+	}
 	
 	$self->db->begin_work;
 	$query = 'INSERT INTO saved_results (qid, comments) VALUES(?,?)';
@@ -3697,7 +3710,7 @@ sub run_schedule {
 		my $body = 'The alert set for query ' . $decode->{query_string} . ' has expired and has been disabled.  ' .
 			'If you wish to continue receiving this query, please log into ELSA, enable the query, and set a new expiration date.';
 		
-		$self->send_email({headers => $headers, body => $body});
+		$self->send_email({headers => $headers, body => $body, user => 'system'});
 	}
 	if (scalar @ids){
 		$self->log->info('Expiring query schedule for ids ' . join(',', @ids));
@@ -3827,7 +3840,7 @@ sub run_schedule {
 						From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
 						Subject => sprintf('Host inactivity alert: %s', $host),
 					};
-					$self->send_email({ headers => $headers, body => $errmsg });
+					$self->send_email({ headers => $headers, body => $errmsg, user => 'system' });
 				}
 			}
 		}
@@ -3853,6 +3866,10 @@ sub run_schedule {
 
 sub send_email {
 	my ($self, $args) = @_;
+	
+	unless ($args->{user} eq 'system'){
+		die('Insufficient permissions');
+	}
 	
 	# Send the email
 	my $email_headers = new Mail::Header();
@@ -3906,7 +3923,7 @@ sub _batch_notify {
 				$q->qid, $q->hash);
 	}
 	
-	$self->send_email({ headers => $headers, body => $body});
+	$self->send_email({ headers => $headers, body => $body, user => 'system'});
 }
 
 sub run_archive_queries {
