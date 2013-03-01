@@ -383,7 +383,7 @@ sub _parse_query {
 	}
 	
 	if ($self->meta_params->{start}){
-		if ($self->meta_params->{start} =~ /^\d+$/){
+		if ($self->meta_params->{start} =~ /^\d+(?:\.\d+)?$/){
 			$self->start(int($self->meta_params->{start}));
 		}
 		else {
@@ -393,7 +393,7 @@ sub _parse_query {
 		}
 	}
 	if ($self->meta_params->{end}){
-		if ($self->meta_params->{start} =~ /^\d+$/){
+		if ($self->meta_params->{start} =~ /^\d+(?:\.\d+)?$/){
 			$self->end(int($self->meta_params->{end}));
 		}
 		else {
