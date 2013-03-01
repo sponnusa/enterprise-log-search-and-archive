@@ -14,6 +14,7 @@ use FindBin;
 use lib $FindBin::Bin;
 use Getopt::Std;
 use Log::Log4perl;
+use File::Copy;
 
 use Indexer;
 
@@ -88,9 +89,9 @@ builder {
 		my $uploaded_file = $req->uploads->{filename};
 		# Hard link the file so that when the HTTP server deletes it, we still have it in the child process
 		my $new_file_name = $Conf->{buffer_dir} . '/' . $req->address . '_' . $uploaded_file->basename;
-		link($uploaded_file->path, $new_file_name) or (
-			$Log->error('Unable to link ' . $uploaded_file->path . ' to ' . $new_file_name . ': ' . $!
-			and return [ 500, [ 'Content-Type' => 'text/plain' ], [ 'error' ] ])
+		move($uploaded_file->path, $new_file_name) or (
+			$Log->error('Unable to move ' . $uploaded_file->path . ' to ' . $new_file_name . ': ' . $!)
+			and return [ 500, [ 'Content-Type' => 'text/plain' ], [ 'error' ] ]
 		);
 		$Log->info('Received file ' . $uploaded_file->basename . ' with size ' . $uploaded_file->size . ' from client ' . $req->address);
 		
