@@ -15,6 +15,10 @@ use lib $FindBin::Bin;
 use Getopt::Std;
 use Log::Log4perl;
 use File::Copy;
+use Archive::Extract;
+use Digest::MD5;
+use IO::File;
+use Time::HiRes qw(time);
 
 use Indexer;
 
@@ -86,51 +90,77 @@ builder {
 	mount '/' => sub {
 		my $env = shift;
 		my $req = Plack::Request->new($env);
+		my $params = $req->parameters->as_hashref;
 		my $uploaded_file = $req->uploads->{filename};
-		# Hard link the file so that when the HTTP server deletes it, we still have it in the child process
-		my $new_file_name = $Conf->{buffer_dir} . '/' . $req->address . '_' . $uploaded_file->basename;
-		move($uploaded_file->path, $new_file_name) or (
-			$Log->error('Unable to move ' . $uploaded_file->path . ' to ' . $new_file_name . ': ' . $!)
-			and return [ 500, [ 'Content-Type' => 'text/plain' ], [ 'error' ] ]
-		);
-		$Log->info('Received file ' . $uploaded_file->basename . ' with size ' . $uploaded_file->size . ' from client ' . $req->address);
+#		my $new_file_name = $Conf->{buffer_dir} . '/' . $req->address . '_' . $uploaded_file->basename;
+#		move($uploaded_file->path, $new_file_name) or (
+#			$Log->error('Unable to move ' . $uploaded_file->path . ' to ' . $new_file_name . ': ' . $!)
+#			and return [ 500, [ 'Content-Type' => 'text/plain' ], [ 'error' ] ]
+#		);
 		
+		$Log->debug('params: ' . Dumper($params));
+		$Log->info('Received file ' . $uploaded_file->basename . ' with size ' . $uploaded_file->size 
+			. ' from client ' . $req->address);
 		my ($query, $sth);
-		if ($uploaded_file->basename =~ /programs/){
-			$Log->info('Loading programs file ' . $new_file_name);
-			$query = 'LOAD DATA LOCAL INFILE "' . $new_file_name . '" INTO TABLE programs';
-			$Dbh->do($query);
-			if ($Dbh->rows){
-				return [ 200, [ 'Content-Type' => 'text/plain' ], [ 'ok' ] ];
-			}
-			else {
-				return [ 500, [ 'Content-Type' => 'text/plain' ], [ 'error' ] ];
-			}
-		}
 		
-		# Record our received file in the database
-		$query = 'INSERT INTO buffers (filename) VALUES (?)';
-		$sth = $Dbh->prepare($query);
-		$sth->execute($new_file_name);
-		my $rows = $sth->rows;
-		$sth->finish;
-		
-		# Fork and process
-		my $pid = fork();
-		if ($pid){
+		my $ae = Archive::Extract->new( archive => $uploaded_file->path );
+		my $id = $req->address . '_' . $params->{md5};
+		# make a working dir for these files
+		my $working_dir = $Conf->{buffer_dir} . '/' . $id;
+		mkdir($working_dir);
+		$ae->extract( to => $working_dir ) or die($ae->error);
+		my $files = $ae->files;
+		foreach my $unzipped_file_shortname (@$files){
+			my $unzipped_file = $working_dir . '/' . $unzipped_file_shortname;
+			my $file = $Conf->{buffer_dir} . '/' . $id . '_' . $unzipped_file_shortname;
+			move($unzipped_file, $file);
+			
+			if ($unzipped_file_shortname =~ /programs/){
+				$Log->info('Loading programs file ' . $file);
+				$query = 'LOAD DATA LOCAL INFILE "' . $file . '" INTO TABLE programs';
+				$Dbh->do($query);
+				next;
+			}
+			
+			# Check md5
+			my $md5_start = time();
+			my $md5 = new Digest::MD5;
+			my $upload_fh = new IO::File($file);
+			$md5->addfile($upload_fh);
+			my $local_md5 = $md5->hexdigest;
+			close($upload_fh);
+			my $md5_time_taken = time() - $md5_start;
+			$Log->trace('Calculated md5 ' . $local_md5 . ' in ' . $md5_time_taken . ' seconds.');
+			unless ($local_md5 eq $params->{md5}){
+				my $msg = 'MD5 mismatch! Found: ' . $local_md5 . ' expected: ' . $params->{md5};
+				$Log->error($msg);
+				return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+			}
+			
+			# Record our received file in the database
+			$query = 'INSERT INTO buffers (filename, start, end) VALUES (?,?,?)';
+			$sth = $Dbh->prepare($query);
+			$sth->execute($file, $params->{start}, $params->{end});
+			my $rows = $sth->rows;
+			my $buffers_id = $Dbh->{mysql_insertid};
+			
+			# Record the upload
+			$query = 'INSERT INTO uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
+			$sth = $Dbh->prepare($query);
+			$sth->execute($req->address, $params->{count}, $params->{size}, $params->{batch_time}, 
+				$params->{total_errors}, $params->{start}, $params->{end}, $buffers_id);
+			$sth->finish;
+			
 			if ($rows){
+				$Log->trace('Added file ' . $file);
 				return [ 200, [ 'Content-Type' => 'text/plain' ], [ 'ok' ] ];
 			}
 			else {
+				$Log->error('Error inserting into buffers table');
 				return [ 500, [ 'Content-Type' => 'text/plain' ], [ 'error' ] ];
 			}
 		}
-		else {
-			# Child
-			my $indexer = new Indexer(log => $Log, conf => $Config_json);
-			$indexer->load_buffers();
-			exit;
-		}
+		rmdir($working_dir);
 	};
 };
 

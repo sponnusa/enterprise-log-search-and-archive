@@ -11,6 +11,8 @@ use DBI;
 use FindBin;
 use JSON;
 use IO::File;
+use Digest::MD5;
+use Time::HiRes;
 
 # Include the directory this script is in
 use lib $FindBin::Bin;
@@ -266,6 +268,7 @@ sub _process_batch {
 	$args->{end} = $reader->processing_times->{end};
 	$args->{total_processed} = $args->{batch_counter};
 	$args->{total_errors} = $args->{error_counter};
+	$args->{batch_time} = $Conf->{sphinx}->{index_interval};
 	
 	# Report back that we've finished
 	$Log->debug("Finished job process_batch with $args->{batch_counter} logs processed and " . (scalar keys %{ $args->{cache_add} }) . ' new programs');
@@ -286,6 +289,7 @@ sub _process_batch {
 	
 	# Are we forwarding events?
 	if ($Conf->{forwarding}){
+		require Archive::Zip;
 		my $pid = fork();
 		if ($pid){
 			# Parent
@@ -297,20 +301,53 @@ sub _process_batch {
 			# Child
 			$Log->trace('Child started');
 			eval {
+				my $md5_start = time();
+				
+				# Calculate the MD5
+				my $md5 = new Digest::MD5;
+				$tempfile->open($tempfile_name);
+				$md5->addfile($tempfile);
+				$args->{md5} = $md5->hexdigest;
+				close($tempfile);
+				my $md5_time_taken = time() - $md5_start;
+				$Log->trace('Calculated md5 ' . $args->{md5} . ' in ' . $md5_time_taken . ' seconds.');
+				
 				# Write the new programs to a file
 				my ($program_fh, $program_filename);
 				if (scalar keys %{ $reader->to_add }){
-					$program_filename = 'programs_' . time();
+					$program_filename = $Conf->{buffer_dir} . '/programs_' . time();
 					sysopen($program_fh, $program_filename, O_RDWR|O_CREAT);
 					foreach my $program (keys %{ $reader->to_add }){
 						$program_fh->print(join("\t", $reader->to_add->{$program}->{id}, $program) . "\n");
 					}
 					close($program_fh);
 				}
+				
+				$args->{compressed} = 1;
+				my $zip = Archive::Zip->new();
+				$args->{file} =~ /\/([^\/]+$)/;
+				my $shortfile = $1;
+				my $compressed_filename = $tempfile_name . '.zip';
+				my $start = Time::HiRes::time();
+				$zip->addFile($tempfile_name, $shortfile);
+				
+				if ($program_filename){
+					$program_filename =~ /\/([^\/]+$)/;
+					$shortfile = $1;
+					$zip->addFile($program_filename, $shortfile);
+				}
+				unless( $zip->writeToFileNamed($compressed_filename) == Archive::Zip::AZ_OK()){
+					die('Unable to create compressed file ' . $compressed_filename);
+				}
+				my $taken = Time::HiRes::time() - $start;
+				$args->{compression_time} = $taken;
+				my $new_size = -s $compressed_filename;
+				$Log->trace('Compressed file to ' . $compressed_filename . ' in ' . $taken . ' at a rate of ' 
+					. ($new_size/$taken) . ' bytes/sec and ratio of ' . ($args->{file_size} / $new_size)) if $taken;
+				$args->{file} = $compressed_filename;
+				
 			
 				# Move the buffer file and new program file to remote location
-				$args->{file} =~ /\/([^\n]+$)/;
-				my $shortfile = $1;
 				foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
 					my $forwarder;
 					if ($dest_hash->{method} eq 'cp'){
@@ -328,11 +365,15 @@ sub _process_batch {
 					else {
 						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
 					}
-					
-					if ($program_filename){
-						$forwarder->forward($program_filename);
-					}
-					$forwarder->forward($args->{file});
+					$forwarder->forward($args);
+				}
+				
+				# Delete our forward zip file
+				unlink($compressed_filename);
+				unlink($program_filename) if $program_filename;
+				
+				if ($Conf->{forwarding}->{forward_only}){
+					unlink($tempfile_name);
 				}
 			};
 			if ($@){

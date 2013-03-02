@@ -34,23 +34,29 @@ sub BUILDARGS {
 
 sub forward {
 	my $self = shift;
+	my $args = shift;
 	
-	foreach (@_){
-		my $file = $_;
-		my $req = HTTP::Request::Common::POST($self->url,
-			[
-				'filename' => [ $file ]
-			],
-			'Content_Type' => 'form-data');
-		
-		my $res = $self->ua->request($req);
-		if ($res->is_success){
-			my $ret = $res->content();
-			$self->log->debug('got ret: ' . Dumper($ret));
-		}
-		else {
-			$self->log->error('Failed to upload logs via url ' . $self->url . ': ' . $res->status_line);
-		}
+	my $req = HTTP::Request::Common::POST($self->url,
+		[
+			md5 => $args->{md5},
+			count => $args->{batch_counter},
+			size => $args->{file_size},
+			start => $args->{start},
+			end => $args->{end},
+			compressed => $args->{compressed} ? 1 : 0,
+			batch_time => $args->{batch_time},
+			total_errors => $args->{total_errors},
+			filename => [ $args->{file} ]
+		],
+		'Content_Type' => 'form-data');
+	
+	my $res = $self->ua->request($req);
+	if ($res->is_success){
+		my $ret = $res->content();
+		$self->log->debug('got ret: ' . Dumper($ret));
+	}
+	else {
+		$self->log->error('Failed to upload logs via url ' . $self->url . ': ' . $res->status_line);
 	}
 	
 	return 1;					
