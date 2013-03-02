@@ -341,7 +341,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -527,6 +527,7 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_in"), 15)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS imports (	id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,	name VARCHAR(255) NOT NULL,	description VARCHAR(255) NOT NULL,	datatype VARCHAR(255) NOT NULL,	imported TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB AUTO_INCREMENT=2130706434'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'UPDATE fields SET field_type="INT", pattern_type="NUMBER" WHERE field="sig_priority"'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS uploads (id INT NOT NULL PRIMARY KEY AUTO_INCREMENT, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, client_ip INT UNSIGNED NOT NULL, count INT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL, batch_time SMALLINT UNSIGNED NOT NULL, errors SMALLINT UNSIGNED NOT NULL, start INT UNSIGNED NOT NULL, end INT UNSIGNED NOT NULL, buffers_id INT UNSIGNED NOT NULL) ENGINE=InnoDB'
 	return $?
 }
 
@@ -677,7 +678,7 @@ build_web_perl(){
 		# PAM requires some user input for testing, and we don't want that
 		#cpanm -n Authen::PAM Crypt::DH &&
 		#Authen::Simple::PAM 
-		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos
+		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
