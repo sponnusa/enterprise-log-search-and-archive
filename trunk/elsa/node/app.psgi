@@ -141,7 +141,6 @@ builder {
 			$query = 'INSERT INTO buffers (filename, start, end) VALUES (?,?,?)';
 			$sth = $Dbh->prepare($query);
 			$sth->execute($file, $params->{start}, $params->{end});
-			my $rows = $sth->rows;
 			my $buffers_id = $Dbh->{mysql_insertid};
 			
 			# Record the upload
@@ -150,17 +149,9 @@ builder {
 			$sth->execute($req->address, $params->{count}, $params->{size}, $params->{batch_time}, 
 				$params->{total_errors}, $params->{start}, $params->{end}, $buffers_id);
 			$sth->finish;
-			
-			if ($rows){
-				$Log->trace('Added file ' . $file);
-				return [ 200, [ 'Content-Type' => 'text/plain' ], [ 'ok' ] ];
-			}
-			else {
-				$Log->error('Error inserting into buffers table');
-				return [ 500, [ 'Content-Type' => 'text/plain' ], [ 'error' ] ];
-			}
 		}
 		rmdir($working_dir);
+		return [ 200, [ 'Content-Type' => 'text/plain' ], [ 'ok' ] ];
 	};
 };
 
