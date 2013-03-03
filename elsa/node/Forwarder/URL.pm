@@ -54,12 +54,12 @@ sub forward {
 	if ($res->is_success){
 		my $ret = $res->content();
 		$self->log->debug('got ret: ' . Dumper($ret));
+		return 1;
 	}
 	else {
 		$self->log->error('Failed to upload logs via url ' . $self->url . ': ' . $res->status_line);
-	}
-	
-	return 1;					
+		return 0;
+	}				
 }
 
 __PACKAGE__->meta->make_immutable;
