@@ -174,7 +174,7 @@ sub _get_node_info {
 		}
 		$ret->{nodes}->{$node} = {
 			db => $nodes->{$node}->{db},
-			dbh => $nodes->{$node}->{dbh},
+			#dbh => $nodes->{$node}->{dbh},
 		};
 				
 		# Get indexes

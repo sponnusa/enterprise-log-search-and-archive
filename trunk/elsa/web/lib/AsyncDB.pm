@@ -2,6 +2,7 @@ package AsyncDB;
 use Moose;
 use Data::Dumper;
 use AnyEvent::DBI;
+use Scalar::Util qw( weaken );
 
 has 'log' => ( is => 'ro', isa => 'Object', required => 1 );
 has 'db_args' => (is => 'rw', isa => 'ArrayRef', required => 1);
@@ -96,6 +97,7 @@ sub BUILDARGS {
 				on_error => sub {
 					my ($dbh, $filename, $line, $fatal) = @_;
 					$params{log}->error($@ . ' at ' . $filename . ' ' . $line);
+					$params{cb}->(undef);
 					die($@) if $fatal;
 				},
 				on_connect => sub {
@@ -125,7 +127,7 @@ sub BUILDARGS {
 sub DEMOLISH {
 	my $self = shift;
 	# Clean up our filehandles to avoid a segfault at exit
-	close(STDERR);
+	delete $self->dbh->{rw};
 	$self->dbh->DESTROY();
 }
 

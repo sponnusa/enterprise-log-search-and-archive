@@ -2127,7 +2127,7 @@ sub _sphinx_query {
 						},
 						#@table_query_values);
 						);
-					$cv->end; #end sphinx query	
+					$cv->end; #end sphinx query
 				}
 				elsif (@$rows) {
 					$self->add_warning('No MySQL tables found for search hits.');
@@ -4008,6 +4008,11 @@ sub _archive_query {
 	my $overall_start = time();
 	my $limit = $q->limit ? $q->limit : 2**32;
 	
+	my %stats;
+	my $start_time = time();
+	my $nodes = $self->_get_nodes($q->user);
+	$stats{connect_to_nodes} = (time() - $start_time);
+	
 	my $ret = {};
 	my %queries; # per-node hash
 	foreach my $node (keys %{ $q->node_info->{nodes} }){
@@ -4123,7 +4128,7 @@ sub _archive_query {
 				$self->log->debug('running query ' . $query_hash->{query});
 				$self->log->debug(' with values ' . join(',', @{ $query_hash->{values} }));
 				$cv->begin;
-				$q->node_info->{nodes}->{$node}->{dbh}->query($query_hash->{query}, @{ $query_hash->{values} }, sub { 
+				$nodes->{$node}->{dbh}->query($query_hash->{query}, @{ $query_hash->{values} }, sub { 
 						$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
 						my ($dbh, $rows, $rv) = @_;
 						$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
@@ -4406,12 +4411,18 @@ sub _livetail_query {
 	my $queries = $self->_build_livetail_query($q);
 	
 	$query = 'INSERT INTO livetail (qid, query) VALUES (?,?)';
-	foreach my $node (keys %{ $q->node_info->{nodes} }){
-		my $dbh = DBI->connect_cached(@{ $q->node_info->{nodes}->{$node}->{dbh}->db_args }) or die($DBI::errstr);
-		$sth = $dbh->prepare($query);
-		$sth->execute($q->qid, $queries);
-		$sth->finish;
-		$self->log->debug('added livetail ' . $q->qid . ' to node ' . $node);
+	my $nodes = $self->_get_nodes($q->user);
+	foreach my $node (keys %$nodes){
+#		$sth = $nodes->{$node}->{dbh}->prepare($query);
+#		$sth->execute($q->qid, $queries);
+#		$sth->finish;
+#		$self->log->debug('added livetail ' . $q->qid . ' to node ' . $node);
+		$nodes->{$node}->{dbh}->query($query, $q->qid, sub {
+			my ($dbh, $rows, $rv) = @_;
+			if ($rv){
+				$self->log->debug('added livetail ' . $q->qid . ' to node ' . $node);
+			}
+		});
 	}
 	return $q;
 }
@@ -4420,6 +4431,9 @@ sub _get_livetail_results {
 	my ($self, $q) = @_;
 	my ($query,$sth);
 	my $ret = {};
+	my $nodes = $self->_get_nodes($q->user);
+	my $cv = AnyEvent->condvar;
+	$cv->begin;
 	foreach my $node (keys %{ $q->node_info->{nodes} }){
 		my $node_info = $q->node_info->{nodes}->{$node};
 		$query = "SELECT main.id,\n" .
@@ -4434,15 +4448,24 @@ sub _get_livetail_results {
 			'WHERE qid=? AND timestamp >= ? ORDER BY timestamp DESC';
 		
 		$ret->{$node} = [];
-		my $dbh = DBI->connect_cached(@{ $q->node_info->{nodes}->{$node}->{dbh}->db_args }) or die($DBI::errstr);
-		$sth = $dbh->prepare($query);
-		$sth->execute($q->qid, $q->start);
-		$self->log->debug('query: ' . $query . "\nargs: " . $q->qid . " " . $q->start);
-		while (my $row = $sth->fetchrow_hashref){
-			push @{ $ret->{$node} }, $row;
-		}
-		$sth->finish;
+		$cv->begin;
+		$nodes->{$node}->{dbh}->query($query, $q->qid, $q->start, sub {
+			my ($dbh, $rows, $rv) = @_;
+			if ($rv){
+				push @{ $ret->{$node} }, @$rows;
+			}
+			$cv->end;
+		});
+#		$sth = $nodes->{$node}->{dbh}->prepare($query);
+#		$sth->execute($q->qid, $q->start);
+#		$self->log->debug('query: ' . $query . "\nargs: " . $q->qid . " " . $q->start);
+#		while (my $row = $sth->fetchrow_hashref){
+#			push @{ $ret->{$node} }, $row;
+#		}
+#		$sth->finish;
 	}
+	$cv->end;
+	$cv->recv;
 	
 	my @tmp; # we need to sort chronologically
 	NODE_LOOP: foreach my $node (keys %$ret){
@@ -4707,12 +4730,17 @@ sub cancel_livetail {
 	}
 	
 	$query = 'DELETE FROM livetail WHERE qid=?';
-	foreach my $node (keys %{ $self->node_info->{nodes} }){
+	my $nodes = $self->_get_nodes($args->{user});
+	foreach my $node (keys %$nodes){
 		$self->log->debug('cancelling livetail for qid ' . $args->{qid} . ' on node ' . $node);
-		my $dbh = DBI->connect_cached(@{ $self->node_info->{nodes}->{$node}->{dbh}->db_args }) or die($DBI::errstr);
-		$sth = $dbh->prepare($query);
-		$sth->execute($args->{qid});
-		$sth->finish;
+		$nodes->{$node}->{dbh}->exec($query, $args->{qid}, sub {
+			my ($dbh, $rows, $rv) = @_;
+			if ($rv){
+				$self->log->trace('Deleted livetail ' . $args->{qid} . ' from node ' . $node);
+			}
+		});
+		#$sth->execute($args->{qid});
+		#$sth->finish;
 	}
 		
 	return { ok => 1 };
