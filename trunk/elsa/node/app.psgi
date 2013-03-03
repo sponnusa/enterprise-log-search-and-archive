@@ -123,14 +123,11 @@ builder {
 			}
 			
 			# Check md5
-			my $md5_start = time();
 			my $md5 = new Digest::MD5;
 			my $upload_fh = new IO::File($file);
 			$md5->addfile($upload_fh);
 			my $local_md5 = $md5->hexdigest;
 			close($upload_fh);
-			my $md5_time_taken = time() - $md5_start;
-			$Log->trace('Calculated md5 ' . $local_md5 . ' in ' . $md5_time_taken . ' seconds.');
 			unless ($local_md5 eq $params->{md5}){
 				my $msg = 'MD5 mismatch! Found: ' . $local_md5 . ' expected: ' . $params->{md5};
 				$Log->error($msg);
