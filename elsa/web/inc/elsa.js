@@ -430,9 +430,15 @@ YAHOO.ELSA.Query = function(){
 			var sStartTime = YAHOO.util.Dom.get('start_time').value;
 			this.addMeta('start', sStartTime);
 		}
+		else {
+			delete this.metas['start'];
+		}
 		if (YAHOO.util.Dom.get('end_time').value){
 			var sEndTime = getDateFromISO(YAHOO.util.Dom.get('end_time').value)/1000;
 			this.addMeta('end', sEndTime);
+		}
+		else {
+			delete this.metas['end'];
 		}
 		logger.log('submitting query: ', this);
 		try {
