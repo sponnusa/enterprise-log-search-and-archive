@@ -1,5 +1,8 @@
 YAHOO.namespace('YAHOO.ELSA');
 
+//static variable via closure
+var TimeZoneOffset = (function(){ var d = new Date(); return d.getTimezoneOffset(); })();
+
 // Need to alter this method slightly so we can set custom sizes
 YAHOO.widget.TextareaCellEditor.prototype.move = function() {
 	this.textarea.style.width = this.width || this.getTdEl().offsetWidth + "px";
@@ -424,6 +427,7 @@ YAHOO.ELSA.Query = function(){
 	}
 	
 	this.submit = function(){
+		this.addMeta('timezone_offset', TimeZoneOffset);
 		// apply the start/stop times
 		if (YAHOO.util.Dom.get('start_time').value){
 			//var sStartTime = getDateFromISO(YAHOO.util.Dom.get('start_time').value)/1000;
@@ -434,7 +438,8 @@ YAHOO.ELSA.Query = function(){
 			delete this.metas['start'];
 		}
 		if (YAHOO.util.Dom.get('end_time').value){
-			var sEndTime = getDateFromISO(YAHOO.util.Dom.get('end_time').value)/1000;
+			//var sEndTime = getDateFromISO(YAHOO.util.Dom.get('end_time').value)/1000;
+			var sEndTime = YAHOO.util.Dom.get('end_time').value;
 			this.addMeta('end', sEndTime);
 		}
 		else {
@@ -562,7 +567,8 @@ YAHOO.ELSA.Query = function(){
 		'start': 1,
 		'end': 1,
 		'start_time': 1,
-		'end_time': 1
+		'end_time': 1,
+		'timezone_offset': 1
 	};
 	
 	this.localMetas = {

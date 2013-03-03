@@ -59,6 +59,7 @@ has 'highlights' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', require
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear' });
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
+has 'timezone_difference' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 
 # Optional
 has 'query_string' => (is => 'rw', isa => 'Str');
@@ -382,12 +383,23 @@ sub _parse_query {
 		$self->log->debug("Set limit " . $self->limit);
 	}
 	
+	# Apply client's timezone settings
+	if ($self->meta_params->{timezone_offset}){
+		# Find our offset in minutes to match Javascript's offset designation
+		my $server_offset = int(UnixDate(ParseDate('now'), '%z')) / 100 * -60;
+		$self->timezone_difference(($self->meta_params->{timezone_offset} - $server_offset) * 60);
+		$self->log->trace('Applying timezone offset of ' . $self->timezone_difference);
+	}
+	
 	if ($self->meta_params->{start}){
 		if ($self->meta_params->{start} =~ /^\d+(?:\.\d+)?$/){
 			$self->start(int($self->meta_params->{start}));
 		}
 		else {
-			my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s");
+			$self->log->debug('Started with ' . $self->meta_params->{start} . ' which parses to ' . 
+				UnixDate(ParseDate($self->meta_params->{start}), "%s"));
+			my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s") + $self->timezone_difference;
+			$self->log->debug('ended with ' . $start);
 			$self->start($start);
 			$self->meta_params->{start} = $start;
 		}
@@ -397,7 +409,7 @@ sub _parse_query {
 			$self->end(int($self->meta_params->{end}));
 		}
 		else {
-			my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s");
+			my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s") + $self->timezone_difference;
 			$self->end($end);
 			$self->meta_params->{end} = $end;
 		}
@@ -857,7 +869,7 @@ sub _parse_query_term {
 					$self->start(int($term_hash->{value}));
 				}
 				else {
-					$self->start(UnixDate(ParseDate($term_hash->{value}), "%s"));
+					$self->start(UnixDate(ParseDate($term_hash->{value}), "%s") + $self->timezone_difference);
 				}
 				$self->log->debug('start is now: ' . $self->start .', ' . (scalar localtime($self->start)));
 				next;
@@ -868,7 +880,7 @@ sub _parse_query_term {
 					$self->end(int($term_hash->{value}));
 				}
 				else {
-					$self->end(UnixDate(ParseDate($term_hash->{value}), "%s"));
+					$self->end(UnixDate(ParseDate($term_hash->{value}), "%s") + $self->timezone_difference);
 				}
 				next;
 			}
