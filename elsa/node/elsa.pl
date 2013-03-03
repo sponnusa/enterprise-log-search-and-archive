@@ -348,6 +348,7 @@ sub _process_batch {
 				
 			
 				# Move the buffer file and new program file to remote location
+				my $forwarding_errors = 0;
 				foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
 					my $forwarder;
 					if ($dest_hash->{method} eq 'cp'){
@@ -365,11 +366,19 @@ sub _process_batch {
 					else {
 						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
 					}
-					$forwarder->forward($args);
+					my $ok = $forwarder->forward($args);
+					unless ($ok){
+						$forwarding_errors++;
+					}
 				}
 				
-				# Delete our forward zip file
-				unlink($compressed_filename);
+				if ($forwarding_errors){
+					move($compressed_filename, $compressed_filename . '_FORWARDING_FAILED');
+				}
+				else {
+					# Delete our forward zip file
+					unlink($compressed_filename);	
+				}
 				unlink($program_filename) if $program_filename;
 				
 				if ($Conf->{forwarding}->{forward_only}){
