@@ -195,7 +195,7 @@ sub _get_current_import_size {
 	$self->log->debug("Current size of imported logs in database is $db_size");
 	
 	# Find current size of Sphinx indexes
-	$query = 'SELECT CONCAT(LEFT(type, 4), "_", id) FROM v_directory WHERE table_type="import"';
+	$query = 'SELECT CONCAT(LEFT(type, 4), "_", id) FROM v_directory WHERE table_type="import" AND NOT ISNULL(type)';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my @files;
