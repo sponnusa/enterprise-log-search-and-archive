@@ -9,6 +9,7 @@ use IO::Handle;
 use IO::File;
 use Digest::HMAC_SHA1;
 use Socket;
+use Time::HiRes;
 
 our $Db_timeout = 3;
 our $Bulk_dir = '/tmp';
@@ -431,7 +432,7 @@ sub _get_nodes {
 	
 	my $cv = AnyEvent->condvar;
 	$cv->begin(sub { shift->send });
-	my $start = time();
+	my $start = Time::HiRes::time();
 	foreach my $node (keys %$node_conf){
 		my $db_name = 'syslog';
 		if ($node_conf->{$node}->{db}){
@@ -447,7 +448,7 @@ sub _get_nodes {
 			$nodes{$node} = { db => $db_name };
 			
 			$cv->begin;
-			my $node_start = time();	
+			my $node_start = Time::HiRes::time();	
 			$nodes{$node}->{dbh} = AsyncDB->new(log => $self->log, db_args => [
 				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
 				$node_conf->{$node}->{username}, 
@@ -458,7 +459,7 @@ sub _get_nodes {
 					mysql_multi_statements => 1,
 				}
 			], cb => sub {
-				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (time() - $node_start));
+				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (Time::HiRes::time() - $node_start));
 				$cv->end;
 			});
 			
@@ -470,7 +471,7 @@ sub _get_nodes {
 	}
 	$cv->end;
 	$cv->recv;
-	$self->log->trace('All connected in ' . (time() - $start) . ' seconds');
+	$self->log->trace('All connected in ' . (Time::HiRes::time() - $start) . ' seconds');
 		
 	return \%nodes;
 }
