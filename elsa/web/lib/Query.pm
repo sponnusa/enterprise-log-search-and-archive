@@ -384,7 +384,7 @@ sub _parse_query {
 	}
 	
 	# Apply client's timezone settings
-	if ($self->meta_params->{timezone_offset}){
+	if (defined $self->meta_params->{timezone_offset}){
 		# Find our offset in minutes to match Javascript's offset designation
 		my $server_offset = int(UnixDate(ParseDate('now'), '%z')) / 100 * -60;
 		$self->timezone_difference(($self->meta_params->{timezone_offset} - $server_offset) * 60);
