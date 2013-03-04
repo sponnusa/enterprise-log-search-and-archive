@@ -4733,7 +4733,7 @@ sub cancel_livetail {
 	my $nodes = $self->_get_nodes($args->{user});
 	foreach my $node (keys %$nodes){
 		$self->log->debug('cancelling livetail for qid ' . $args->{qid} . ' on node ' . $node);
-		$nodes->{$node}->{dbh}->exec($query, $args->{qid}, sub {
+		$nodes->{$node}->{dbh}->dbh->exec($query, $args->{qid}, sub {
 			my ($dbh, $rows, $rv) = @_;
 			if ($rv){
 				$self->log->trace('Deleted livetail ' . $args->{qid} . ' from node ' . $node);
