@@ -427,7 +427,12 @@ YAHOO.ELSA.Query = function(){
 	}
 	
 	this.submit = function(){
-		this.addMeta('timezone_offset', TimeZoneOffset);
+		if (YAHOO.ELSA.getPreference('use_utc', 'default_settings')){
+			this.addMeta('timezone_offset', 0);
+		}
+		else {
+			this.addMeta('timezone_offset', TimeZoneOffset);
+		}
 		// apply the start/stop times
 		if (YAHOO.util.Dom.get('start_time').value){
 			//var sStartTime = getDateFromISO(YAHOO.util.Dom.get('start_time').value)/1000;
