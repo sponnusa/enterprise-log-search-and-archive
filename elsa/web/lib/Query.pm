@@ -398,7 +398,8 @@ sub _parse_query {
 		else {
 			$self->log->debug('Started with ' . $self->meta_params->{start} . ' which parses to ' . 
 				UnixDate(ParseDate($self->meta_params->{start}), "%s"));
-			my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s") + $self->timezone_difference;
+			my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s");
+			#my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s") + $self->timezone_difference;
 			$self->log->debug('ended with ' . $start);
 			$self->start($start);
 			$self->meta_params->{start} = $start;
@@ -409,7 +410,8 @@ sub _parse_query {
 			$self->end(int($self->meta_params->{end}));
 		}
 		else {
-			my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s") + $self->timezone_difference;
+			my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s");
+			#my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s") + $self->timezone_difference;
 			$self->end($end);
 			$self->meta_params->{end} = $end;
 		}
@@ -869,7 +871,8 @@ sub _parse_query_term {
 					$self->start(int($term_hash->{value}));
 				}
 				else {
-					$self->start(UnixDate(ParseDate($term_hash->{value}), "%s") + $self->timezone_difference);
+					$self->start(UnixDate(ParseDate($term_hash->{value}), "%s"));
+					#$self->start(UnixDate(ParseDate($term_hash->{value}), "%s") + $self->timezone_difference);
 				}
 				$self->log->debug('start is now: ' . $self->start .', ' . (scalar localtime($self->start)));
 				next;
@@ -880,7 +883,8 @@ sub _parse_query_term {
 					$self->end(int($term_hash->{value}));
 				}
 				else {
-					$self->end(UnixDate(ParseDate($term_hash->{value}), "%s") + $self->timezone_difference);
+					$self->end(UnixDate(ParseDate($term_hash->{value}), "%s"));
+					#$self->end(UnixDate(ParseDate($term_hash->{value}), "%s") + $self->timezone_difference);
 				}
 				next;
 			}

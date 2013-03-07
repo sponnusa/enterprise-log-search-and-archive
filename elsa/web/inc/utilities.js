@@ -146,7 +146,10 @@ function getISODateTime(oDate){
 	if (!oDate){
 		oDate = new Date();
 	}
-	return getISODate(oDate) + ' ' + getISOTime(oDate);
+	var sIso = oDate.toISOString();
+	sIso = sIso.replace('T', ' ').replace('Z', '');
+	return sIso;
+	//return getISODate(oDate) + ' ' + getISOTime(oDate);
 }
 
 function getDateFromISO(sIsoDate){
