@@ -72,7 +72,7 @@ my ($start, $end) = (2**32, 0);
 while (<$fh>){
 	$batch_counter++;
 	my (undef, $timestamp) = split(/\t/, $_);
-	if ($timestamp < $start){
+	if ($timestamp and $timestamp < $start){
 		$start = $timestamp;
 	}
 	if ($timestamp > $end){
