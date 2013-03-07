@@ -1712,9 +1712,7 @@ sub query {
 					return;
 				}
 			}
-		}
-		
-		if ($is_batch){
+			
 			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
 			$q->batch_message($is_batch . '  You will receive an email with your results.');
 			$q->batch(1);
