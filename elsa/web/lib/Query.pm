@@ -405,7 +405,7 @@ sub _parse_query {
 		}
 	}
 	if ($self->meta_params->{end}){
-		if ($self->meta_params->{start} =~ /^\d+(?:\.\d+)?$/){
+		if ($self->meta_params->{end} =~ /^\d+(?:\.\d+)?$/){
 			$self->end(int($self->meta_params->{end}));
 		}
 		else {
