@@ -2682,7 +2682,7 @@ sub _build_query {
 	);
 	
 	# Create permissions clauses
-	foreach my $attr (qw(class_id host_id program_id node_id)){
+	foreach my $attr (qw(class_id host_id program_id)){
 		my @clause;
 		foreach my $id (keys %{ $q->user->permissions->{$attr} }){
 			next unless $id;
@@ -4507,7 +4507,7 @@ sub _build_livetail_query {
 	);
 	
 	# Create permissions clauses
-	foreach my $attr (qw(class_id host_id program_id node_id)){
+	foreach my $attr (qw(class_id host_id program_id)){
 		# Get field name
 		my $line_pos;
 		foreach my $idx (keys %{ $Fields::Field_order_to_attr }){
