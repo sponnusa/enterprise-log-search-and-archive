@@ -627,6 +627,9 @@
 		<rules>
 			<rule class="15" id="15">
 				<patterns>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@tcp|@ESTRING:s0:|@@ESTRING:s1:|@@ANYSTRING::@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@udp|@ESTRING:s0:|@@ESTRING:s1:|@@ANYSTRING::@</pattern>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@icmp|@ESTRING:s0:|@@ESTRING:s1:|@@ANYSTRING::@</pattern>
 					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING:s0:|@@ESTRING:s1:|@@ANYSTRING::@</pattern>
 				</patterns>
 				<examples>
