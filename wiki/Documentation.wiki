@@ -646,6 +646,7 @@ You can set per-user preferences by navigating to the "Preferences" dialog under
 ||custom||openfpc_password||<password>||OpenFPC password||
 ||default_settings||pcap_offset||<seconds>||Number of seconds before/after to set get_pcap retrieval time to||
 ||default_settings||use_utc||1||Display all dates in UTC (GMT)||
+||default_settings||orderby_dir||DESC||Default to reverse sort (descending)||
 
 =Keyboard Shortcuts=
 ||Key||Action||
