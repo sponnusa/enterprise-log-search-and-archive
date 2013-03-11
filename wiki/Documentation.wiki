@@ -169,6 +169,9 @@ To see what hosts have had lockout events, one could run:
 }}}
 and choose the ANY.host field from the “Report On” menu.
 
+==Ordering==
+You can change the column used to order your query as well as the direction using the {{{orderby}}} and {{{orderby_dir}}} keywords.  For instance, to order a query by host in reverse order, use: {{{orderby:host orderby_dir:desc}}}.  The default is {{{orderby:timestamp orderby_dir:ASC}}}.
+
 ==Keywords==
 Keywords are the words indexed and available for searching.  Note that you cannot search for a partial keyword, it must be complete.  Also note that keywords are comprised of not only alpha-numeric words, but also hyphens, dots, and at-signs.  So, these are all complete keywords:
 {{{
