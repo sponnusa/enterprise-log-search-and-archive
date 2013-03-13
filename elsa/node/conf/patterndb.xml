@@ -1756,4 +1756,30 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="ATT Uverse" id='1001'>
+		<rules>
+			<rule provider="ELSA" class='2' id='2'>
+				<patterns>
+					<pattern>src=@ESTRING:i1: @dst=@ESTRING:i3: @ipprot=@ESTRING:i0: @sport=@ESTRING:i2: @dport=@ESTRING:i4: @</pattern>
+					<pattern>src=@ESTRING:i1: @dst=@ESTRING:i3: @ipprot=@ESTRING:i0: @</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="fw,fwmon">src=192.168.1.65 dst=192.168.2.8 ipprot=17 sport=7547 dport=3478 Drop traffic to 192.168.0.0/16</test_message>
+						<test_value name="i0">17</test_value>
+						<test_value name="i1">192.168.1.65</test_value>
+						<test_value name="i2">7547</test_value>
+						<test_value name="i3">192.168.2.8</test_value>
+						<test_value name="i4">3478</test_value>
+					</example>
+					<example>
+						<test_message program="fw,fwmon">src=192.168.2.8 dst=192.168.1.72 ipprot=17 (layer 4 info unknown) Unknown inbound session stopped</test_message>
+						<test_value name="i0">17</test_value>
+						<test_value name="i1">192.168.2.8</test_value>
+						<test_value name="i3">192.168.1.72</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
