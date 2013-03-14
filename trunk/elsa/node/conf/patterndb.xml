@@ -71,6 +71,10 @@
 					<pattern>Deny @ESTRING:i0: @@ESTRING::from @@ESTRING:s0:-@@ESTRING:i1:-@@ESTRING::/@@ESTRING:i2: @to @ESTRING:s1:-@@ESTRING:i3:-@@ESTRING::/@@ESTRING:i4: @</pattern>
 					<pattern>Deny inbound @ESTRING:i0: @from @ESTRING:i1:/@@ESTRING:i2: @to @ESTRING:i3:/@@ESTRING:i4: @on interface @ANYSTRING:s0:@</pattern>
 					<pattern>Deny outbound @ESTRING:i0: @from @ESTRING:i1:/@@ESTRING:i2: @to @ESTRING:i3:/@@ESTRING:i4: @on interface @ANYSTRING:s0:@</pattern>
+					<pattern>Deny IP spoof @ESTRING::to @@ESTRING:i3: @on interface @ANYSTRING:s0:@</pattern>
+					<pattern>Deny inbound @ESTRING:i0: @src @ESTRING:s0::@@ESTRING:i1: @dst @ESTRING:s1::@@ESTRING:i3: @</pattern>
+					<pattern>Deny @ESTRING:i0: @@ESTRING::from @@ESTRING:i1:/@@ESTRING:i2: @to @ESTRING:i3:/@@ESTRING:i4: @@ESTRING::interface @@ANYSTRING:s0:@</pattern>
+					<pattern>Deny IP from @ESTRING:i1: @to @ESTRING:i3: @</pattern>
 				</patterns>
 			</rule>
 			<rule provider="ELSA" class='3' id='3'>
