@@ -1,3 +1,29 @@
+if ( !Date.prototype.toISOString ) {
+     
+    ( function() {
+     
+        function pad(number) {
+            var r = String(number);
+            if ( r.length === 1 ) {
+                r = '0' + r;
+            }
+            return r;
+        }
+  
+        Date.prototype.toISOString = function() {
+            return this.getUTCFullYear()
+                + '-' + pad( this.getUTCMonth() + 1 )
+                + '-' + pad( this.getUTCDate() )
+                + 'T' + pad( this.getUTCHours() )
+                + ':' + pad( this.getUTCMinutes() )
+                + ':' + pad( this.getUTCSeconds() )
+                + '.' + String( (this.getUTCMilliseconds()/1000).toFixed(3) ).slice( 2, 5 )
+                + 'Z';
+        };
+   
+    }() );
+}
+
 /**
  * Similar to Perl's keys function, returns 
  * the properties of an object as an array
@@ -146,10 +172,12 @@ function getISODateTime(oDate){
 	if (!oDate){
 		oDate = new Date();
 	}
-	var sIso = oDate.toISOString();
-	sIso = sIso.replace('T', ' ').replace('Z', '');
-	return sIso;
-	//return getISODate(oDate) + ' ' + getISOTime(oDate);
+	if (parseInt(YAHOO.ELSA.getPreference('use_utc', 'default_settings')) == 1){
+		var sIso = oDate.toISOString();
+		sIso = sIso.replace('T', ' ').replace('Z', '');
+		return sIso;
+	}
+	return getISODate(oDate) + ' ' + getISOTime(oDate);
 }
 
 function getDateFromISO(sIsoDate){
