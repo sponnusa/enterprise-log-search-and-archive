@@ -86,7 +86,8 @@ my $Required = {
 			num_indexes => 'integer',
 			archive => sub { 
 				(exists $_[1]->{table_size} and int($_[1]->{table_size}) > 1000) and 
-				((exists $_[1]->{percentage} and int($_[1]->{percentage}) > 0 and int($_[1]->{percentage}) < 100) 
+				((exists $_[1]->{percentage} and int($_[1]->{percentage}) > 0 and int($_[1]->{percentage}) < 100)
+				or (exists $_[1]->{percentage} and ($_[1]->{percentage} == 0 or $_[1]->{percentage} eq '0'))
 				or (exists $_[1]->{days} and int($_[1]->{days}) > 0)) 
 			},
 			log_size_limit => sub { if ($_[1] =~ /^(\d{1,2})\%/){ return $1 > 0 and $1 < 100 } else { return int($_[1]); } },
@@ -135,9 +136,9 @@ my $Additions = {
 		
 		# Create peer entries for all current nodes
 		foreach my $node (keys %{ $conf->get('nodes') }){
-			$conf->set('/peers/' . $node . '/url', 'http://' . $node . '/');
-			$conf->set('/peers/' . $node . '/username', 'elsa');
-			$conf->set('/peers/' . $node . '/apikey', $temp_api_key);
+			$conf->set('peers/' . $node . '/url', 'http://' . $node . '/');
+			$conf->set('peers/' . $node . '/username', 'elsa');
+			$conf->set('peers/' . $node . '/apikey', $temp_api_key);
 		}
 		say 'IMPORTANT!  You will need to install the API key on any peers (nodes) this server needs to talk to!' . "\n" .
 		'Add the following configuration to the /etc/elsa_web.conf file on each remote peer this server talks to: ' . "\n" .
