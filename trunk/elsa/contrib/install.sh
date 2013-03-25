@@ -873,7 +873,7 @@ suse_set_apache(){
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/etc/apache2/server-tuning.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
-	set_apache_tuning($APACHE_CONF);
+	set_apache_tuning $APACHE_CONF;
 	service apache2 restart
 	
 	enable_service "apache2"
@@ -902,7 +902,7 @@ ubuntu_set_apache(){
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/etc/apache2/apache2.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
-	set_apache_tuning($APACHE_CONF);
+	set_apache_tuning $APACHE_CONF;
 	service apache2 restart
 	enable_service "apache2"
 	return $?
@@ -933,7 +933,7 @@ centos_set_apache(){
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/etc/httpd/conf/httpd.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
-	set_apache_tuning($APACHE_CONF);
+	set_apache_tuning $APACHE_CONF;
 	service apache2 restart
 	
 	service httpd restart
@@ -973,7 +973,7 @@ freebsd_set_apache(){
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/usr/local/etc/apache22/httpd.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
-	set_apache_tuning($APACHE_CONF);
+	set_apache_tuning $APACHE_CONF;
 	
 	service $APACHE restart
 	
