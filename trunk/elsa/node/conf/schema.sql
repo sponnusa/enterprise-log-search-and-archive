@@ -463,7 +463,9 @@ CREATE TABLE tables (
 	FOREIGN KEY (table_type_id) REFERENCES table_types (id),
 	UNIQUE KEY (table_name),
 	KEY(min_id),
-	KEY(max_id)
+	KEY(max_id),
+	UNIQUE KEY (min_id, table_type_id),
+	UNIQUE KEY (max_id, table_type_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE indexes (

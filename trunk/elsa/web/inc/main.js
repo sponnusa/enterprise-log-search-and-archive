@@ -394,11 +394,11 @@ YAHOO.ELSA.main = function () {
 			{
 				text: 'Archive Analytics (Map/Reduce)',
 				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.archive_analytics }
-			},
+			}/*,
 			{
 				text: 'Live Tail',
 				onclick: { fn:onArchiveSelectionClick, obj:YAHOO.ELSA.Labels.livetail }
-			}
+			}*/ //Disabled until it can be made more reliable
 		];
 		
 		var oArchiveButtonCfg = {

@@ -43,7 +43,8 @@ sub BUILD {
 	
 	# Save the results
 	$self->api->save_results({
-		meta_info => { groupby => $self->query_meta_params->{groupby} },
+		#meta_info => { groupby => $self->query_meta_params->{groupby} },
+		meta_info => {},
 		qid => $self->qid, 
 		results => $self->results, 
 		comments => 'Map/Reduce for ' . $self->query_schedule_id,

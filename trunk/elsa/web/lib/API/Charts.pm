@@ -601,12 +601,12 @@ sub _is_permitted {
 
 sub _get_auth_token {
 	my ($self, $args) = @_;
-	return $self->get_hash($args->{query} . $args->{label} . $args->{query_id});
+	return $self->_get_hash($args->{query} . $args->{label} . $args->{query_id});
 }
 
 sub _check_auth_token {
 	my ($self, $args) = @_;
-	return $args->{auth} eq $self->get_hash($args->{query_string} . $args->{label} . $args->{query_id}) ? 1 : 0;
+	return $args->{auth} eq $self->_get_hash($args->{query_string} . $args->{label} . $args->{query_id}) ? 1 : 0;
 }
 
 sub _get_query {
@@ -683,7 +683,8 @@ sub _get_rows {
 					comment => $query->{label},
 					type => $chart->{type},
 				};
-				$query_meta_params->{groupby} = [$args->{groupby}] unless $query->{query_string} =~ /\sgroupby[:=]/ or $query->{query_string} =~ /sum\([^\)]+\)$/;
+				#$query_meta_params->{groupby} = [$args->{groupby}] unless $query->{query_string} =~ /\sgroupby[:=]/ or $query->{query_string} =~ /sum\([^\)]+\)$/;
+				$query->{query_string} .= ' groupby:' . $args->{groupby} unless $query->{query_string} =~ /\sgroupby[:=]/ or $query->{query_string} =~ /sum\([^\)]+\)$/;
 				if ($args->{limit}){
 					$query_meta_params->{limit} = $args->{limit};
 				}

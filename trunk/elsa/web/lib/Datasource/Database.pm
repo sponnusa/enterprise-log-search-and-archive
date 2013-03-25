@@ -6,7 +6,7 @@ use CHI;
 use DBI;
 use JSON;
 use URL::Encode qw(url_encode);
-use Time::HiRes;
+use Time::HiRes qw(time);
 use Search::QueryParser::SQL;
 use Date::Manip;
 use Socket;

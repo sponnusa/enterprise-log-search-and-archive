@@ -221,7 +221,7 @@ sub _process_batch {
 	$args->{cache_add} = {};
 	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . CORE::time();
 	
-	my $tail_watcher = _fork_livetail_manager($tempfile_name) unless $Opts{o} or $args->{offline_processing};
+#	my $tail_watcher = _fork_livetail_manager($tempfile_name) unless $Opts{o} or $args->{offline_processing};
 	
 	# Open the file now that we've forked
 	my $tempfile;
@@ -275,11 +275,11 @@ sub _process_batch {
 	$Log->debug('Total errors: ' . $args->{error_counter} . ' (%' . (($args->{error_counter} / $args->{batch_counter}) * 100) . ')' ) if $args->{batch_counter};
 	$Log->debug('file size for file ' . $args->{file} . ' is ' . $args->{file_size});
 	
-	# Kill the livetail forker
-	if ($tail_watcher){
-		kill SIGTERM, $tail_watcher;
-		$Log->trace("Ending child tail manager $tail_watcher");
-	}
+#	# Kill the livetail forker
+#	if ($tail_watcher){
+#		kill SIGTERM, $tail_watcher;
+#		$Log->trace("Ending child tail manager $tail_watcher");
+#	}
 	
 	unless ($args->{batch_counter}){
 		$Log->trace('No logs recorded');
@@ -407,24 +407,26 @@ sub _process_batch {
 		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter} 
 			. ' and start ' . (scalar localtime($args->{start})) . ' and end ' . (scalar localtime($args->{end})));
 	}
+	
+	return $args->{batch_counter};
 		
-	# Fork our post-batch processor
-	my $pid = fork();
-	if ($pid){
-		# Parent
-		return $args->{batch_counter};
-	}
-	# Child
-	$Log->trace('Child started');
-	eval {
-		my $indexer = new Indexer(log => $Log, conf => $Config_json);
-		$indexer->load_buffers($filename eq '__IMPORT__' ? 1 : 0);
-	};
-	if ($@){
-		$Log->error('Child encountered error: ' . $@);
-	}
-	$Log->trace('Child finished');
-	exit; # done with child
+#	# Fork our post-batch processor
+#	my $pid = fork();
+#	if ($pid){
+#		# Parent
+#		return $args->{batch_counter};
+#	}
+#	# Child
+#	$Log->trace('Child started');
+#	eval {
+#		my $indexer = new Indexer(log => $Log, conf => $Config_json);
+#		$indexer->load_buffers($filename eq '__IMPORT__' ? 1 : 0);
+#	};
+#	if ($@){
+#		$Log->error('Child encountered error: ' . $@);
+#	}
+#	$Log->trace('Child finished');
+#	exit; # done with child
 }
 
 sub _realtime_process {

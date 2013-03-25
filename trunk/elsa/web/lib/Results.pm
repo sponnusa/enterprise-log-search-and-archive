@@ -21,8 +21,10 @@ has 'json' => (is => 'rw', isa => 'JSON', required => 1, default => sub { return
 sub BUILDARGS {
 	my $class = shift;
 	my %params = @_;
-	if ($params{results} and ref($params{results}) and ref($params{results}) eq 'ARRAY'){
-		$params{total_records} = scalar @{ $params{results} };
+	unless ($params{total_records}){ # don't calculate if these are already provided
+		if ($params{results} and ref($params{results}) and ref($params{results}) eq 'ARRAY'){
+			$params{total_records} = scalar @{ $params{results} };
+		}
 	}
 	return \%params;
 }
@@ -49,6 +51,7 @@ sub remove_transforms {
 sub add_result {
 	my $self = shift;
 	my $record = shift;
+	my $no_inc = shift;
 	
 	if ($self->is_bulk){
 		$self->_bulk_write([$record]);
@@ -61,7 +64,7 @@ sub add_result {
 			$self->results([]);
 		}	
 	}
-	$self->inc_total;
+	$self->inc_total unless $no_inc;
 }
 
 sub add_results {
@@ -70,6 +73,29 @@ sub add_results {
 	
 	foreach (@$results){
 		$self->add_result($_);
+	}
+}
+
+sub merge {
+	my $self = shift;
+	my $results_obj = shift;
+	my $q = shift;
+	
+	# Increment our counters
+	$self->total_records( $self->total_records + $results_obj->total_records);
+	
+	# Add the actual results
+	foreach ($results_obj->all_results){
+		$self->add_result($_, 1);
+	}
+	
+	# Trim to the given query limit, if query object is provided
+	if ($q and $q->limit){
+		my $gt = sub { $a <=> $b };
+		my $lt = sub { $b <=> $a };
+		my $sort_fn = $q->orderby_dir eq 'DESC' ? $gt : $lt;
+		my @final = sort $sort_fn  @{ $self->results };
+		$self->results([ @final[0..($q->limit - 1)] ]);
 	}
 }
 
@@ -218,6 +244,35 @@ sub add_results {
 		foreach (@{ $results->{$groupby} }){
 			$self->add_result($groupby, $_);
 		}
+	}
+}
+
+sub merge {
+	my $self = shift;
+	my $results_obj = shift;
+	my $q = shift;
+	
+	# Increment our counters
+	$self->total_records( $self->total_records + $results_obj->total_records);
+	
+	# Add the actual results
+	$self->add_results($results_obj->results);
+	
+	# Sort and trim
+	my $total_records = 0;
+	my %results;
+	foreach my $groupby ($self->all_groupbys){
+		my %agg;
+		foreach my $row (@{ $self->results->{$groupby} }){
+			$agg{ $row->{_groupby} } += $row->{_count};
+		}
+		my @tmp;
+		foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
+			$total_records += $agg{$key};
+			push @tmp, { intval => $agg{$key}, '_groupby' => $key, '_count' => $agg{$key} };
+			last if $q and scalar @tmp >= $q->limit;
+		}
+		$results{$groupby} = [ @tmp ];
 	}
 }
 

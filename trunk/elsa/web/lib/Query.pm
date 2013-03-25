@@ -59,7 +59,8 @@ has 'highlights' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', require
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear' });
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
-has 'timezone_difference' => (is => 'rw', isa => 'Int', required => 1, default => 0);
+has 'timezone_difference' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { start => 0, end => 0 } });
+has 'peer_requests' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 
 # Optional
 has 'query_string' => (is => 'rw', isa => 'Str');
@@ -71,6 +72,7 @@ has 'time_taken' => (is => 'rw', isa => 'Num', trigger => \&_set_time_taken);
 has 'batch_message' => (is => 'rw', isa => 'Str');
 has 'node_info' => (is => 'rw', isa => 'HashRef');
 has 'import_groupby' => (is => 'rw', isa => 'Str');
+has 'peer_label' => (is => 'rw', isa => 'Str');
 
 sub BUILDARGS {
 	my $class = shift;
@@ -102,6 +104,10 @@ sub BUILDARGS {
 	unless ($params{user}){
 		$params{user} = new User(username => 'system', conf => $params{conf});
 		$params{log}->info('Defaulting user to system');
+		if ($params{permissions}){
+			$params{user}->permissions(ref($params{permissions}) ? $params{permissions} : $params{json}->decode($params{permissions}));
+			$params{log}->trace('Set permissions: ' . Dumper($params{user}->permissions));
+		}
 	}
 		
 	return \%params;
@@ -145,6 +151,12 @@ sub BUILD {
 	}
 	
 	$self->log->trace("Using timeout of " . $self->timeout);
+	
+	# Set a default orderby if one is available in preferences
+	if ($self->user->preferences and $self->user->preferences->{tree}->{default_settings} and
+		$self->user->preferences->{tree}->{default_settings}->{orderby_dir}){
+		$self->orderby_dir($self->user->preferences->{tree}->{default_settings}->{orderby_dir});
+	}
 		
 	# Parse first to see if limit gets set which could incidate a batch job
 	$self->_parse_query();
@@ -180,7 +192,7 @@ sub BUILD {
 		$self->log->debug( "Received query with qid " . $self->qid . " at " . time() );
 	}
 	
-	$self->hash($self->get_hash($self->qid));
+	$self->hash($self->_get_hash($self->qid));
 	
 	# Find highlights to inform the web client
 	foreach my $boolean (qw(and or)){
@@ -197,6 +209,8 @@ sub BUILD {
 			$self->highlights->{$regex} = 1;
 		}
 	}
+	
+	$self->stats->{get_node_info} = $self->node_info->{took};
 		
 	return $self;	
 }
@@ -307,6 +321,26 @@ sub _parse_query_string {
 	$self->_parse_query_term($parsed_query);
 }
 
+sub _timezone_diff {
+	my $self = shift;
+	my $time = shift;
+	
+	# Apply client's timezone settings
+	if (defined $self->meta_params->{timezone_offset}){
+		# Find our offset in minutes to match Javascript's offset designation
+		my $server_offset_then = int(UnixDate(ParseDate($time), '%z')) / 100 * -60;
+		my $server_offset_now = int(UnixDate(ParseDate('now'), '%z')) / 100 * -60;
+		if ($self->meta_params->{timezone_offset} and $server_offset_then != $server_offset_now){
+			my $dst_diff = $server_offset_then - $server_offset_now;
+			$self->log->trace('Applying daylight savings time difference of ' . $dst_diff);
+			$self->meta_params->{timezone_offset} += $dst_diff;
+		}
+		my $tz_diff = (($self->meta_params->{timezone_offset} - $server_offset_then) * 60);
+		$self->log->trace('Applying timezone offset for ' . $time . ' of ' . $tz_diff);
+		return $tz_diff;
+	}
+}
+
 sub _parse_query {
 	my $self = shift;
 	
@@ -383,35 +417,29 @@ sub _parse_query {
 		$self->log->debug("Set limit " . $self->limit);
 	}
 	
-	# Apply client's timezone settings
-	if (defined $self->meta_params->{timezone_offset}){
-		# Find our offset in minutes to match Javascript's offset designation
-		my $server_offset = int(UnixDate(ParseDate('now'), '%z')) / 100 * -60;
-		$self->timezone_difference(($self->meta_params->{timezone_offset} - $server_offset) * 60);
-		$self->log->trace('Applying timezone offset of ' . $self->timezone_difference);
-	}
-	
 	if ($self->meta_params->{start}){
+		my $tz_diff = $self->_timezone_diff($self->meta_params->{start});
 		if ($self->meta_params->{start} =~ /^\d+(?:\.\d+)?$/){
 			$self->start(int($self->meta_params->{start}));
 		}
 		else {
 			$self->log->debug('Started with ' . $self->meta_params->{start} . ' which parses to ' . 
 				UnixDate(ParseDate($self->meta_params->{start}), "%s"));
-			my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s");
-			#my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s") + $self->timezone_difference;
+			#my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s");
+			my $start = UnixDate(ParseDate($self->meta_params->{start}), "%s") + $tz_diff;
 			$self->log->debug('ended with ' . $start);
 			$self->start($start);
 			$self->meta_params->{start} = $start;
 		}
 	}
 	if ($self->meta_params->{end}){
+		my $tz_diff = $self->_timezone_diff($self->meta_params->{end});
 		if ($self->meta_params->{end} =~ /^\d+(?:\.\d+)?$/){
 			$self->end(int($self->meta_params->{end}));
 		}
 		else {
-			my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s");
-			#my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s") + $self->timezone_difference;
+			#my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s");
+			my $end = UnixDate(ParseDate($self->meta_params->{end}), "%s") + $tz_diff;
 			$self->end($end);
 			$self->meta_params->{end} = $end;
 		}
@@ -800,6 +828,8 @@ sub _parse_query {
 		if ($self->node_info->{archive_max} > $self->node_info->{indexes_max}){
 			$type = 'archive';
 		}
+		$self->log->debug('indexes_start_max: ' . $self->node_info->{'indexes_start_max'});
+		$self->log->debug('archive_start_max: ' . $self->node_info->{'archive_start_max'});
 		my $new_start_max = $self->node_info->{$type . '_start_max'};
 		$self->log->warn('Adjusted start_int ' . $self->start . ' to ' . $new_start_max . ' because it was after ' . $self->node_info->{$type . '_max'});
 		$self->start($new_start_max);
@@ -810,8 +840,10 @@ sub _parse_query {
 			$type = 'archive';
 		}
 		my $new_max = $self->node_info->{$type . '_max'};
-		$self->log->warn('Adjusted end_int ' . $self->end . ' to ' . $new_max);
-		$self->end($new_max);
+		if ($new_max){
+			$self->log->warn('Adjusted end_int ' . $self->end . ' to ' . $new_max);
+			$self->end($new_max);
+		}
 	}
 	
 	# Final sanity check
@@ -871,8 +903,9 @@ sub _parse_query_term {
 					$self->start(int($term_hash->{value}));
 				}
 				else {
-					$self->start(UnixDate(ParseDate($term_hash->{value}), "%s"));
-					#$self->start(UnixDate(ParseDate($term_hash->{value}), "%s") + $self->timezone_difference);
+					#$self->start(UnixDate(ParseDate($term_hash->{value}), "%s"));
+					my $tz_diff = $self->_timezone_diff($term_hash->{value});
+					$self->start(UnixDate(ParseDate($term_hash->{value}), "%s") + $tz_diff);
 				}
 				$self->log->debug('start is now: ' . $self->start .', ' . (scalar localtime($self->start)));
 				next;
@@ -883,8 +916,9 @@ sub _parse_query_term {
 					$self->end(int($term_hash->{value}));
 				}
 				else {
-					$self->end(UnixDate(ParseDate($term_hash->{value}), "%s"));
-					#$self->end(UnixDate(ParseDate($term_hash->{value}), "%s") + $self->timezone_difference);
+					#$self->end(UnixDate(ParseDate($term_hash->{value}), "%s"));
+					my $tz_diff = $self->_timezone_diff($term_hash->{value});
+					$self->end(UnixDate(ParseDate($term_hash->{value}), "%s") + $tz_diff);
 				}
 				next;
 			}
@@ -1128,7 +1162,16 @@ sub _parse_query_term {
 								}
 								push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . join('|', @compound_terms) . ')';
 							}
-							else {		
+							elsif ($term_hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
+								# Handle an IPv4 value
+								push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . $term_hash->{value} . '|' . unpack('N*', inet_aton($term_hash->{value})) . ')';
+#								if ($boolean ne 'not'){
+#									push @{ $self->terms->{any_field_terms}->{or} }, $term_hash->{value};
+#									push @{ $self->terms->{any_field_terms}->{or} }, unpack('N*', inet_aton($term_hash->{value}));
+#								}
+							}
+							else {	
+								$self->log->debug("no ip match for $term_hash->{value}");
 								push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
 							}
 						}

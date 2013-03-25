@@ -36,7 +36,7 @@ sub BUILD {
 		"\r\n" . sprintf('%s/get_results?qid=%d&hash=%s', 
 			$self->api->conf->get('email/base_url') ? $self->api->conf->get('email/base_url') : 'http://localhost',
 			$self->query->qid,
-			$self->api->get_hash($self->query->qid),
+			$self->api->_get_hash($self->query->qid),
 	);
 	if ($self->api->conf->get('email/include_data')){
 		if ($self->query->has_groupby){

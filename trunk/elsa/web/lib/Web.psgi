@@ -9,8 +9,10 @@ use lib $FindBin::Bin;
 
 use API;
 use API::Charts;
+use API::Peers;
 use Web;
 use Web::Query;
+use Web::API;
 use Web::GoogleDatasource;
 use Web::GoogleDashboard;
 use Web::Mobile;
@@ -22,6 +24,7 @@ if ($ENV{ELSA_CONF}){
 
 my $api = API->new(config_file => $config_file) or die('Unable to start from given config file.');
 my $charts_api = API::Charts->new(config_file => $config_file) or die('Unable to start from given config file.');
+my $peers_api = API::Peers->new(config_file => $config_file) or die('Unable to start from given config file.');
 
 my $auth;
 if (lc($api->conf->get('auth/method')) eq 'ldap' and $api->conf->get('ldap')){
@@ -148,11 +151,12 @@ builder {
 	enable 'CrossOrigin', origins => '*', methods => '*', headers => '*';
 	enable 'Session', store => 'File';
 	unless ($api->conf->get('auth/method') eq 'none'){
-		enable match_if all( path('!', '/favicon.ico'), path('!', qr!^/inc/!), path('!', qr!^/transform!) ), 'Auth::Basic', authenticator => $auth, realm => $api->conf->get('auth/realm');
+		enable match_if all( path('!', '/favicon.ico'), path('!', qr!^/inc/!), path('!', qr!^/transform!), path('!', qr!^/API/!) ), 'Auth::Basic', authenticator => $auth, realm => $api->conf->get('auth/realm');
 	}
 	
 	mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
 	mount '/Query' => Web::Query->new(api => $api)->to_app;
+	mount '/API' => Web::API->new(api => $peers_api)->to_app;
 	mount '/datasource' => Web::GoogleDatasource->new(api => $charts_api)->to_app;
 	mount '/dashboard' => Web::GoogleDashboard->new(api => $charts_api)->to_app;
 	mount '/Charts' => Web::Query->new(api => $charts_api)->to_app;

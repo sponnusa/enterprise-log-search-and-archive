@@ -1,16 +1,15 @@
-package Web::Query;
+package Web::API;
 use Moose;
 extends 'Web';
 use Data::Dumper;
 use Plack::Request;
-use Plack::Session;
 use Encode;
 use Scalar::Util;
+use Digest::SHA qw(sha512_hex);
 
 sub call {
 	my ($self, $env) = @_;
-    $self->session(Plack::Session->new($env));
-	my $req = Plack::Request->new($env);
+    my $req = Plack::Request->new($env);
 	my $res = $req->new_response(200); # new Plack::Response
 	$res->content_type('text/plain');
 	$res->header('Access-Control-Allow-Origin' => '*');
@@ -29,12 +28,15 @@ sub call {
 	
 	my $args = $req->parameters->as_hashref;
 	$self->api->log->debug('args: ' . Dumper($args));
-	if ($self->session->get('user')){
-		$args->{user} = $self->api->get_stored_user($self->session->get('user'));
+	
+	# Authenticate via apikey
+	unless ($self->api->_check_auth_header($req)){
+		$res->status(401);
+		$res->body('unauthorized');
+		$res->header('WWW-Authenticate', 'ApiKey');
+		return $res->finalize();
 	}
-	else {
-		$args->{user} = $self->api->get_user($req->user);
-	}
+	
 	unless ($self->api->can($method)){
 		$res->status(404);
 		$res->body('not found');
@@ -43,6 +45,10 @@ sub call {
 	my $ret;
 	eval {
 		$self->api->freshen_db;
+		if ($req->upload and $req->uploads->{filename}){
+			$args->{upload} = $req->uploads->{filename};
+			$args->{address} = $req->address;
+		}
 		$ret = $self->api->$method($args);
 		unless ($ret){
 			$ret = { error => $self->api->last_error };
@@ -52,6 +58,10 @@ sub call {
 		my $e = $@;
 		$self->api->log->error($e);
 		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
+	}
+	elsif (ref($ret) and ref($ret) eq 'ARRAY'){
+		# API function returned Plack-compatible response
+		return $ret;
 	}
 	elsif (ref($ret) and ref($ret) eq 'HASH' and $ret->{mime_type}){
 		$res->content_type($ret->{mime_type});
@@ -82,4 +92,5 @@ sub call {
 	$res->finalize();
 }
 
+__PACKAGE__->meta->make_immutable;
 1;
