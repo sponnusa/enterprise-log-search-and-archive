@@ -1716,7 +1716,7 @@ sub query {
 		$self->add_warning($warning);
 	}
 	
-	return $self->_peer_query($q);
+	return $self->_peer_query($q, 'self');
 
 #	my ($query, $sth);
 #	

@@ -73,6 +73,7 @@ has 'batch_message' => (is => 'rw', isa => 'Str');
 has 'node_info' => (is => 'rw', isa => 'HashRef');
 has 'import_groupby' => (is => 'rw', isa => 'Str');
 has 'peer_label' => (is => 'rw', isa => 'Str');
+has 'from_peer' => (is => 'rw', isa => 'Str');
 
 sub BUILDARGS {
 	my $class = shift;
@@ -853,6 +854,12 @@ sub _parse_query {
 	
 	$self->log->debug('going with times start: ' . (scalar localtime($self->start)) .  ' (' . $self->start . ') and end: ' .
 		(scalar localtime($self->end)) . ' (' . $self->end . ')');
+	
+	# Exclude our from_peer
+	if ($self->from_peer){
+		$self->log->debug('Not executing query on ' . $self->from_peer . ' which is my from_peer to avoid a loop.');
+		$self->nodes->{excluded}->{ $self->from_peer } = 1;
+	}
 	
 	return 1;
 }
