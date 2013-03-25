@@ -1059,7 +1059,7 @@ elif [ "$INSTALL" = "web" ]; then
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql" "validate_config" "restart_apache"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql" "validate_config" $DISTRO"_set_apache"; do
 			exec_func $FUNCTION
 		done
 	else
