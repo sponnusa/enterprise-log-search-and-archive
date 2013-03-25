@@ -1189,7 +1189,7 @@ sub load_records {
 			$args->{end} = $row->{timestamp};
 		}
 		else {
-			$self->_unlock_and_die('Unable to get an end timestamp from table ' . $full_table . ' with row id ' . $first_id);
+			$self->_unlock_and_die('Unable to get an end timestamp from table ' . $full_table . ' with row id ' . $last_id);
 		}
 	}
 	
