@@ -3,9 +3,13 @@ use Moose;
 use Data::Dumper;
 use LWP::UserAgent;
 use HTTP::Request::Common;
+use Digest::SHA qw(sha512_hex);
+
 extends 'Forwarder';
 
 has 'url' => (is => 'rw', isa => 'Str', required => 1);
+has 'username' => (is => 'rw', isa => 'Str', required => 1);
+has 'apikey' => (is => 'rw', isa => 'Str', required => 1);
 has 'ua' => (is => 'rw', isa => 'LWP::UserAgent', required => 1);
 
 sub BUILDARGS {
@@ -19,6 +23,7 @@ sub BUILDARGS {
 	}
 	
 	$params{ua} = new LWP::UserAgent(agent => 'ELSA Log Relay/0.1', timeout => 10);
+	
 	my %ssl_opts;
 	foreach (qw(ca_file cert_file key_file verify_mode)){
 		if (exists $params{$_}){
@@ -30,6 +35,13 @@ sub BUILDARGS {
 	}
 	
 	return \%params;
+}
+
+sub _get_auth_header {
+	my $self = shift;
+	
+	my $timestamp = CORE::time();
+	return 'ApiKey ' . $self->username . ':' . $timestamp . ':' . sha512_hex($timestamp . $self->apikey);
 }
 
 sub forward {
@@ -48,7 +60,8 @@ sub forward {
 			total_errors => $args->{total_errors},
 			filename => [ $args->{file} ]
 		],
-		'Content_Type' => 'form-data');
+		'Content_Type' => 'form-data',
+		'Authorization' => $self->_get_auth_header());
 	
 	my $res = $self->ua->request($req);
 	if ($res->is_success){

@@ -25,6 +25,7 @@ our $Index_retry_time = 5;
 our $Data_db_name = 'syslog_data';
 our $Peer_id_multiplier = 2**40;
 our $Min_expected_num_hosts = 2;
+our $Max_concurrent_rows_indexed = 10_000_000;
 
 has 'locks' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
@@ -90,7 +91,7 @@ sub BUILD {
 	my $self = shift;
 	$Data_db_name = $self->conf->get('database/data_db') ? $self->conf->get('database/data_db') : 'syslog_data';
 	$Min_expected_num_hosts = $self->conf->get('min_expected_hosts') if $self->conf->get('min_expected_hosts');
-	
+	$Max_concurrent_rows_indexed = $self->conf->get('sphinx/perm_index_size');
 	#$self->log->debug('db id: ' . $self->dbh_id);	
 	
 	# Init plugins
@@ -160,7 +161,7 @@ sub _get_current_index_size {
 	$self->log->debug("Current size of indexed logs in database is $db_size");
 	
 	# Find current size of Sphinx indexes
-	$query = 'SELECT CONCAT(LEFT(type, 4), "_", id) FROM v_directory WHERE table_type="index"';
+	$query = 'SELECT CONCAT(LEFT(type, 4), "_", id) FROM v_directory WHERE table_type="index" and NOT ISNULL(type)';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my @files;
@@ -170,11 +171,13 @@ sub _get_current_index_size {
 	my $size = 0;
 	find(sub { 
 		foreach my $file (@files){
-			if ($File::Find::name =~ $file){
+			next unless $file;
+			if ($File::Find::name =~ /$file\./){
 				$size += -s $File::Find::name;
 			}
 		}		
 	}, $self->conf->get('sphinx/index_path'));
+	$self->log->trace('Found size of Sphinx indexes ' . $size . ' for total size of ' . ($db_size + $size));
 	
 	return $db_size + $size;
 }
@@ -205,7 +208,8 @@ sub _get_current_import_size {
 	my $size = 0;
 	find(sub { 
 		foreach my $file (@files){
-			if ($File::Find::name =~ $file){
+			next unless $file;
+			if ($File::Find::name =~ /$file\./){
 				$size += -s $File::Find::name;
 			}
 		}		
@@ -679,35 +683,104 @@ sub _check_consolidate {
 	my ($query, $sth);
 	
 	$self->_get_lock('directory');
+	
+	# Check to see if we're all out of permanent indexes
+	$query = 'SELECT COUNT(*) from indexes WHERE type="permanent"';
+	$sth = $self->db->prepare($query);
+	$sth->execute;
+	my $row = $sth->fetchrow_arrayref;
+	if ($row->[0] >= ($self->conf->get('num_indexes') - 2)){
+		my $total = $row->[0];
+		# Consolidate the table with the most indexes
+		$query = 'SELECT table_name, type, SUM(locked_by) AS locked, COUNT(DISTINCT id) AS num_indexes, ' . "\n"
+			. 'min_id, max_id, max_id-min_id AS num_rows, table_type, table_start_int, table_end_int ' . "\n"
+			. 'FROM v_directory' . "\n"
+			. 'WHERE ISNULL(table_locked_by) AND (table_type="index" OR table_type="import")' . "\n"
+			. 'GROUP BY table_name' . "\n"
+			. 'HAVING ISNULL(locked) AND (num_indexes > 1 OR type="realtime") ORDER BY num_indexes DESC LIMIT 1';
+		$sth = $self->db->prepare($query);
+		$sth->execute;
+		$row = $sth->fetchrow_hashref;
+		$self->log->warn('We have ' . $total . ' permanent indexes, need to consolidate table ' . $row->{table_name}
+			. ' with its ' . $row->{num_indexes} . ' indexes');
+		$self->consolidate_indexes({ first_id => $row->{min_id}, last_id => $row->{max_id}, type => $row->{table_type}, 
+			start => $row->{table_start_int}, end => $row->{table_end_int} });
+	}
+	
 	# Check to see if we're low on temporary indexes and need to consolidate
 	if ($self->_over_num_index_limit()){
 		$self->log->warn('Over the temp index limit, engaging emergency consolidation');
 		
 		# Find out how many temp indexes we've got
 		foreach my $table_type (qw(index import)){
-			$query = "SELECT MIN(first_id) AS min_id, MAX(last_id) AS max_id,\n" .
-				"MIN(start) AS start, MAX(end) AS end\n" .
-				"FROM v_directory WHERE table_type=? AND ISNULL(locked_by) AND type=\"temporary\"";
+			$query = "SELECT first_id, last_id, last_id-first_id AS table_rows, table_id,\n" .
+				"IF(last_id-first_id > ?, \"big\", \"small\") AS size, \n" .
+				"UNIX_TIMESTAMP(index_start) AS start, UNIX_TIMESTAMP(index_end) AS end\n" .
+				"FROM v_directory WHERE table_type=? AND ISNULL(locked_by) AND NOT ISNULL(first_id) ORDER BY first_id ASC";
 			$sth = $self->db->prepare($query);
-			$sth->execute($table_type);
-			my $row = $sth->fetchrow_hashref;
-			my ($min_id, $max_id) = (0,0);
-			if ($row and $row->{min_id}){
-				$self->log->trace('got row: ' . Dumper($row));
-				$min_id = $row->{min_id};
-				$max_id = $row->{max_id};
-				
-				# We need to run the aggregate indexing to create permanent indexes from temp indexes	
-				# Recurse and index the greater swath of records.  This will mean there will be indexes replaced.
-				$self->consolidate_indexes({ first_id => $min_id, last_id => $max_id, type => $table_type });
+			$sth->execute($self->conf->get('sphinx/perm_index_size'), $table_type);
+			
+			my @to_consolidate;
+			my %consolidate;
+			while(my $row = $sth->fetchrow_hashref){
+				if ($row->{size} eq 'small'){
+					$consolidate{type} ||= $table_type;
+					$consolidate{first_id} ||= $row->{first_id};
+					$consolidate{start} ||= $row->{start};
+					$consolidate{table_id} ||= $row->{table_id};
+					$consolidate{last_id} = $row->{last_id};
+					$consolidate{end} = $row->{end};
+					if ($row->{table_id} ne $consolidate{table_id}){
+						# Crossed table boundary
+						$self->log->trace('Crossed into another table, must consolidate here: ' . Dumper(\%consolidate));
+						push @to_consolidate, { %consolidate };
+						%consolidate = %$row;
+					}
+				}
+				else {
+					# Crossed big/small boundary
+					if ($consolidate{first_id} and $consolidate{last_id}){
+						$self->log->trace('Crossed big/small boundary, must consolidate: ' . Dumper(\%consolidate));
+						push @to_consolidate, { %consolidate };
+					}
+					#%consolidate = %$row;
+					%consolidate = ();
+				}
 			}
+			
+			# If we didn't find anything using the above method, just go with the only consecutive small indexes we know
+			if (not scalar @to_consolidate and $consolidate{first_id} and $consolidate{last_id}){
+				push @to_consolidate, { %consolidate };
+			}
+			
+			$self->log->trace('Found sequences to consolidate: ' . Dumper(\@to_consolidate));
+			foreach my $row (@to_consolidate){
+				$self->consolidate_indexes($row);
+			}
+			
+#			$query = "SELECT MIN(first_id) AS min_id, MAX(last_id) AS max_id,\n" .
+#				"MIN(start) AS start, MAX(end) AS end, table_start_int, table_end_int\n" .
+#				"FROM v_directory WHERE table_type=? AND ISNULL(locked_by) AND type=\"temporary\"";
+#			$sth = $self->db->prepare($query);
+#			$sth->execute($table_type);
+#			my $row = $sth->fetchrow_hashref;
+#			my ($min_id, $max_id) = (0,0);
+#			if ($row and $row->{min_id}){
+#				$self->log->trace('got row: ' . Dumper($row));
+#				$min_id = $row->{min_id};
+#				$max_id = $row->{max_id};
+#				
+#				# We need to run the aggregate indexing to create permanent indexes from temp indexes	
+#				# Recurse and index the greater swath of records.  This will mean there will be indexes replaced.
+#				$self->consolidate_indexes({ first_id => $min_id, last_id => $max_id, type => $table_type, start => $row->{table_start_int}, end => $row->{table_end_int} });
+#			}
 		}
 	}
 	
 	# Check to see if we need to consolidate any tables
 	$self->db->begin_work;
 	$query = 'SELECT table_name, type, SUM(locked_by) AS locked, COUNT(DISTINCT id) AS num_indexes, ' . "\n"
-		. 'min_id, max_id, max_id-min_id AS num_rows, table_type ' . "\n"
+		. 'min_id, max_id, max_id-min_id AS num_rows, table_type, table_start_int, table_end_int ' . "\n"
 		. 'FROM v_directory' . "\n"
 		. 'WHERE ISNULL(table_locked_by) AND (table_type="index" OR table_type="import")' . "\n"
 		. 'GROUP BY table_name' . "\n"
@@ -717,14 +790,17 @@ sub _check_consolidate {
 	
 	my @to_consolidate;
 	while (my $row = $sth->fetchrow_hashref){
-		next if $row->{min_id} >= $row->{max_id};
+		if ($row->{min_id} >= $row->{max_id}){
+			$self->log->error('min_id ' . $row->{min_id} . ' is greater than max_id ' . $row->{max_id} . ' for table ' . $row->{table_name});
+			next;
+		}
 		# Lock the table
 		$query = 'UPDATE tables SET table_locked_by=? WHERE table_name=?';
 		my $upd_sth = $self->db->prepare($query);
 		$upd_sth->execute($$, $row->{table_name});
 		$self->log->debug('Locked table ' . $row->{table_name});
 		$self->log->debug('Locked table ' . Dumper($row));
-		push @to_consolidate, { first_id => $row->{min_id}, last_id => $row->{max_id}, type => $row->{table_type} };
+		push @to_consolidate, { first_id => $row->{min_id}, last_id => $row->{max_id}, type => $row->{table_type}, start => $row->{table_start_int}, end => $row->{table_end_int} };
 	}
 	$self->db->commit;
 	$self->_release_lock('directory');
@@ -738,30 +814,62 @@ sub load_buffers {
 	my ($self, $is_import) = @_;
 	
 	my ($query, $sth);
-		
-	$query = 'SELECT id, filename, start, end FROM buffers WHERE ISNULL(pid) ORDER BY id ASC';
+	
+	# Guard against processes piling up if we get overwhelmed
+	$query = 'SELECT COUNT(DISTINCT pid) FROM buffers';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
-	$query = 'UPDATE buffers SET pid=? WHERE id=?';
+	my $row = $sth->fetchrow_arrayref;
+	if ($row and $row->[0] > 0){
+		$self->log->warn('Already load records jobs running, will not load buffers.');
+		return 0;
+	}
 	
+	$query = 'SELECT COUNT(DISTINCT locked_by) FROM indexes';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	$row = $sth->fetchrow_arrayref;
+	if ($row and $row->[0] > 1){
+		$self->log->warn('Already ' . $row->[0] . ' indexers running, will not load buffers.');
+		return 0;
+	}
+	
+	$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
+	
+	$query = 'UPDATE buffers SET pid=? WHERE ISNULL(pid) AND index_complete=0 AND archive_complete=0';
+	$sth = $self->db->prepare($query);
+	$sth->execute($$);
+	
+	$query = 'SELECT id, filename, start, end FROM buffers WHERE pid=? ORDER BY id ASC';
+	$sth = $self->db->prepare($query);
+	$sth->execute($$);
 	my @rows;
 	while (my $row = $sth->fetchrow_hashref){
 		push @rows, $row;
-		my $sth = $self->db->prepare($query);
-		$sth->execute($$, $row->{id});
-		$sth->finish();
 	}
+	$sth->finish();
 	
-	my ($first_id, $last_id, $multiple_loads);
-	foreach my $row (@rows){
+	$self->log->debug('rows for load_records: ' . Dumper(\@rows));
+	
+	my ($first_id, $last_id, $start, $end, $multiple_loads);
+	while (my $row = shift(@rows)){
+		$start ||= $row->{start};
+		$end = $row->{end};
 		# Run plugins
+		
 		foreach my $plugin ($self->postprocessor_plugins){
-			my %plugin_args = %$row;
-			$plugin_args{log} = $self->log;
-			$plugin_args{db} = $self->db;
-			$plugin_args{conf} = $self->conf;
-			my $plugin_object = $plugin->new(%plugin_args);
+			eval {
+				my %plugin_args = %$row;
+				$plugin_args{log} = $self->log;
+				$plugin_args{db} = $self->db;
+				$plugin_args{conf} = $self->conf;
+				my $plugin_object = $plugin->new(%plugin_args);
+			};
+			if ($@){
+				$self->log->error("Plugin $plugin got error: $@");
+			}
 		}
+
 		# Send to index load records
 		if ($self->conf->get('sphinx/perm_index_size')){
 			my $batch_ids  = $self->load_records({ file => $row->{filename}, start => $row->{start}, end => $row->{end}, import => $is_import });
@@ -770,20 +878,30 @@ sub load_buffers {
 			if ($is_import){
 				$batch_ids->{import} = 1;
 			}
-			if (scalar @rows == 1){
-				# Standard case, just do the indexing
-				$self->index_records($batch_ids);
-				$self->record_host_stats();
-			}
-			elsif ($batch_ids->{first_id} - $last_id > 1){
+#			if (scalar @rows == 1){
+#				# Standard case, just do the indexing
+#				$self->index_records($batch_ids);
+#				$self->record_host_stats();
+#			}
+#			els
+			if ($batch_ids->{first_id} - $last_id > 1){
 				# Non-consecutive, must do an index for this batch
 				$self->log->debug('non-consecutive ids: ' . $batch_ids->{first_id} . ' and ' . $last_id);
-				$self->index_records($batch_ids);
+				$self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, start => $start, end => $end });
+				$self->_index_records();
 				$first_id = $batch_ids->{first_id};
 			}
 			else {
 				# Consecutive, keep loading, we will index at the end
 				$multiple_loads++;
+			}
+			if (($last_id - $first_id) > $self->conf->get('sphinx/perm_index_size')){
+				$self->log->warn('Hit our perm_index_size of ' . $self->conf->get('sphinx/perm_index_size') .
+					', not loading any more buffers.');
+				$query = 'UPDATE buffers SET pid=NULL WHERE pid=? AND index_complete=0';
+				$sth = $self->db->prepare($query);
+				$sth->execute($$);
+				@rows = (); #akin to last, but allows archive below to happen
 			}
 		}
 		
@@ -793,28 +911,228 @@ sub load_buffers {
 		}
 	}
 	
+	#$self->_release_lock('directory');
+	
 	if ($multiple_loads and $self->conf->get('sphinx/perm_index_size')){
 		$self->log->trace('Loading multiple buffers between ' . $first_id . ' and ' . $last_id);
-		$self->index_records({ first_id => $first_id, last_id => $last_id });
+		#$self->index_records({ first_id => $first_id, last_id => $last_id, start => $start, end => $end });
+		my $index_id = $self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, start => $start, end => $end });
 	}
+	
+	$self->_release_lock('directory');
+	
+	$query = 'UPDATE buffers SET pid=NULL WHERE pid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($$);
+	
+	$self->_index_records();
+	
+#	# Check to see if we need to index anything we were unable to before due to max concurrent indexing
+#	# This may be an index job that needs to happen from a previous run.
+#	if ($self->conf->get('sphinx/perm_index_size')){
+#		$query = 'UPDATE indexes SET locked_by=? WHERE ISNULL(locked_by) AND type="unavailable"';
+#		$sth = $self->db->prepare($query);
+#		$sth->execute($$);
+#		$self->_index_records();
+#	}
 	
 	$self->rotate_logs();
 	
 	return {};
 }
 
+sub _queue_for_indexing {
+	my $self = shift;
+	my $args = shift;
+	$self->_unlock_and_die( 'Invalid args: ' . Dumper($args))
+		unless $args and ref($args) eq 'HASH';
+	$self->_unlock_and_die( 'Invalid args: ' . Dumper($args))
+		unless $args->{first_id};
+	$self->_unlock_and_die( 'Invalid args: ' . Dumper($args))
+		unless $args->{last_id};
+		
+	$self->log->debug("Queuing for index with args " . Dumper($args));
+	
+	my ($query, $sth, $row);
+	
+	# Verify these records are unlocked
+	$query = "SELECT locked_by\n" .
+		"FROM v_directory\n" .
+		"WHERE table_type=\"index\" AND (? BETWEEN first_id AND last_id\n" .
+		"OR ? BETWEEN first_id AND last_id\n" .
+		"OR (first_id > ? AND last_id < ?))\n" .
+		"ORDER BY id ASC";
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{first_id}, $args->{last_id}, $args->{first_id}, $args->{last_id});
+	while ($row = $sth->fetchrow_hashref){
+		if ($row->{locked_by} and $row->{locked_by} != $$){
+			$self->_release_lock('directory');
+			$self->_unlock_and_die('Cannot do this indexing because index or table is locked: ' . Dumper($row));
+		}
+	}
+	
+	# Check to see if ram limitations dictate that these should be small permanent tables since they consume no ram
+	my $index_type = 'temporary';
+	if ($self->_over_mem_limit()){
+		$self->log->warn('Resources overlimit, using permanent index for this emergency');
+		$index_type = 'permanent';
+	}
+	elsif (($args->{last_id} - $args->{first_id}) > $self->conf->get('sphinx/perm_index_size')){
+		$self->log->debug('Size dictates permanent index');
+		$index_type = 'permanent';
+	}
+	
+	my $next_index_id = $self->_get_next_index_id($index_type);
+	
+	# Find the table(s) we'll be indexing
+	my $table;
+	my $table_type = 'index';
+	if ($args->{import}){
+		$table_type = 'import';
+	}
+	$query = "SELECT DISTINCT table_id AS id, table_name, min_id AS actual_min, max_id AS actual_max, IF(min_id < ?, ?, min_id) AS min_id,\n" .
+		"IF(max_id > ?, ?, max_id) AS max_id\n" .
+		"FROM v_directory\n" .
+		"WHERE table_type=? AND (? BETWEEN min_id AND max_id\n" .
+		"OR ? BETWEEN min_id AND max_id\n" .
+		"OR (min_id > ? AND max_id < ?))\n" .
+		"ORDER BY id ASC";
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{first_id}, $args->{first_id},
+	 	$args->{last_id},$args->{last_id},
+	 	$table_type, $args->{first_id}, 
+		$args->{last_id}, 
+		$args->{first_id}, $args->{last_id});
+	my @tables_needed;
+	while ($row = $sth->fetchrow_hashref){
+		push @tables_needed, $row;
+	}
+	$self->log->trace("Tables needed: " . Dumper(\@tables_needed));
+	
+	# There should be exactly one table
+	if (scalar @tables_needed > 1){
+		# Verify that none of these overlap
+		for (my $i = 0; $i < @tables_needed; $i++){
+			for (my $j = 0; $j < @tables_needed; $j++){
+				next if $i == $j;
+				if (($tables_needed[$j]->{min_id} >= $tables_needed[$i]->{min_id} 
+					and $tables_needed[$j]->{min_id} <= $tables_needed[$i]->{max_id})
+					or ($tables_needed[$j]->{max_id} >= $tables_needed[$i]->{min_id} 
+					and $tables_needed[$j]->{max_id} <= $tables_needed[$i]->{max_id})){
+					$self->log->error('table ' . Dumper($tables_needed[$i]) . ' overlaps with '
+						. Dumper($tables_needed[$j]));
+					$self->_validate_directory();
+					return 0;
+				}
+			}
+		}
+		# Recursively do each table in a separate run
+		foreach my $row (@tables_needed){
+			$self->_queue_for_indexing({ first_id => $row->{min_id}, last_id => $row->{max_id} });
+		}
+		
+		return 1;
+		
+		#$self->_release_lock('directory');
+		#$self->_unlock_and_die( 'Error, indexing spans multiple tables: ' . Dumper(\@tables_needed));
+	}
+	elsif (scalar @tables_needed == 1) {
+		$table = $tables_needed[0]->{table_name};
+		$self->log->debug("Indexing rows from table $table");
+	}
+	else {
+		$query = 'UPDATE indexes SET locked_by=NULL WHERE locked_by=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($$);
+		
+		$query = 'SELECT * FROM tables';
+		$sth = $self->db->prepare($query);
+		$sth->execute();
+		my $tmp_hash = $sth->fetchall_hashref('id');
+		$self->_release_lock('directory');
+		$self->_unlock_and_die("No tables found for first_id $args->{first_id} and last_id $args->{last_id}" .
+		 ", tables in database: " . Dumper($tmp_hash) . "\n table_type: $table_type\n" . Dumper($args));
+	}
+	
+	my ($count, $start, $end);
+	if ($args->{start} and $args->{end}){
+		$start = $args->{start};
+		$end = $args->{end};
+		$count = $args->{count} ? $args->{count} : ($args->{last_id} - $args->{first_id});
+	}
+	else {
+		$count = ($args->{last_id} - $args->{first_id});
+		# This will be much faster than finding the timestamps above since timestamp is not indexed
+		$query = sprintf("SELECT timestamp FROM %s WHERE id=?", $table);
+		$sth = $self->db->prepare($query);
+		my $id = $args->{first_id};
+		my $attempts = 0; # safety
+		my $attempts_limit = 100;
+		while ($attempts < $attempts_limit and not $start and $id < $args->{last_id}){
+			$sth->execute($id);
+			$row = $sth->fetchrow_hashref;
+			$start = $row->{timestamp};
+			$id++;
+			$attempts++;
+		}
+		$id = $args->{last_id};
+		$attempts = 0;
+		while ($attempts < $attempts_limit and not $end and $id > $args->{first_id}){
+			$sth->execute($id);
+			$row = $sth->fetchrow_hashref;
+			$end = $row->{timestamp};
+			$id--;
+			$attempts++;
+		}
+	}
+	
+	unless ($start and $end){
+		# all else has failed, resort to min/max
+		$query = 'SELECT MIN(timestamp) AS start, MAX(timestamp) AS end FROM ' . $table . ' WHERE timestamp > 0';
+		$sth = $self->db->prepare($query);
+		$sth->execute;
+		$row = $sth->fetchrow_hashref;
+		($start, $end) = ($row->{start}, $row->{end});
+		$self->log->warn('Last resort (expensive) timestamps: ' . $start . ', ' . $end);
+	} 
+
+	unless ($start and $end){
+		$self->log->warn("Invalid start or end: $start, $end");
+	}
+	
+	$self->log->debug("Data table info: $count, $start, $end");
+	unless ($args->{last_id} >= $args->{first_id}){
+		$self->_release_lock('directory');
+		$self->_unlock_and_die("Unable to find rows we're about to index, only got $count rows " .
+			"from table $table " .
+			"with ids $args->{first_id} and $args->{last_id} a difference of " . ($args->{last_id} - $args->{first_id}));
+	}
+	
+	# Update the index table
+	$query = "REPLACE INTO indexes (id, start, end, first_id, last_id, table_id, type, locked_by)\n" .
+		"VALUES(?, ?, ?, ?, ?, (SELECT id FROM tables WHERE table_name=?), ?, ?)";
+	$sth = $self->db->prepare($query);
+	$sth->execute($next_index_id, $start, $end, $args->{first_id}, $args->{last_id}, 
+		$table, $index_type, $$);
+	$self->_release_lock('directory');
+	
+	$self->log->debug("Inserted into indexes: " . join(", ", $next_index_id, $start, $end, $args->{first_id}, $args->{last_id}, $table, $index_type, $$));
+	
+	return $next_index_id;
+}
+
 sub load_records {
 	my $self = shift;
 	my $args = shift;
 	
-	die 'Invalid args: ' . Dumper($args)
+	$self->_unlock_and_die('Invalid args: ' . Dumper($args))
 		unless $args and ref($args) eq 'HASH';
-	die 'Invalid file: ' . Dumper($args)
+	$self->_unlock_and_die('Invalid file: ' . Dumper($args))
 		unless $args->{file} and -f $args->{file};
 	
 	$self->log->debug("args: " . Dumper($args));
 	
-	$self->_get_lock('directory') or die 'Unable to obtain lock';
+	$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
 		
 	# Create table
 	my $full_table = $self->_create_table($args);
@@ -831,7 +1149,7 @@ sub load_records {
 	$sth = $self->db->prepare($query);
 	$sth->execute($$, $full_table);
 	
-	$self->_release_lock('directory');
+	#$self->_release_lock('directory');
 	
 	my $load_start = time();
 	# CONCURRRENT allows the table to be open for reading whilst the LOAD DATA occurs so that queries won't stack up
@@ -844,10 +1162,11 @@ sub load_records {
 
 	$query = sprintf("SELECT MAX(id) AS max_id FROM %s", $full_table);
 	$sth = $self->db->prepare($query);
-	$sth->execute() or die $self->db->errstr;
+	$sth->execute() or $self->_unlock_and_die($self->db->errstr);
 	my $row = $sth->fetchrow_hashref;
 	my $last_id = $row->{max_id};
 	my $first_id = $row->{max_id} - $records + 1;
+	$self->log->debug('found first_id: ' . $first_id . ', last_id: ' . $last_id . ', count: ' . $records);
 	
 	#$self->log->debug("Found max_id of $row->{max_id}, should have $args->{last_id}");
 	$self->log->info("Loaded $records records in $load_time seconds ($rps per second)");
@@ -862,7 +1181,7 @@ sub load_records {
 			$args->{start} = $row->{timestamp};
 		}
 		else {
-			die 'Unable to get a start timestamp from table ' . $full_table . ' with row id ' . $first_id;
+			$self->_unlock_and_die('Unable to get a start timestamp from table ' . $full_table . ' with row id ' . $first_id);
 		}
 		$sth->execute($last_id);
 		$row = $sth->fetchrow_hashref;
@@ -870,11 +1189,11 @@ sub load_records {
 			$args->{end} = $row->{timestamp};
 		}
 		else {
-			die 'Unable to get an end timestamp from table ' . $full_table . ' with row id ' . $first_id;
+			$self->_unlock_and_die('Unable to get an end timestamp from table ' . $full_table . ' with row id ' . $first_id);
 		}
 	}
 	
-	$self->_get_lock('directory') or die 'Unable to obtain lock';
+	#$self->_get_lock('directory') or die 'Unable to obtain lock';
 	
 	# Update the directory with our new buffer start (if it is earlier than what's already there)
 	$query = 'SELECT UNIX_TIMESTAMP(start) AS start, UNIX_TIMESTAMP(end) AS end FROM tables WHERE table_name=?';
@@ -917,9 +1236,9 @@ sub archive_records {
 	my $self = shift;
 	my $args = shift;
 	
-	die 'Invalid args: ' . Dumper($args)
+	$self->_unlock_and_die('Invalid args: ' . Dumper($args))
 		unless $args and ref($args) eq 'HASH';
-	die 'Invalid args: ' . Dumper($args)
+	$self->_unlock_and_die('Invalid args: ' . Dumper($args))
 		unless $args->{file} and $args->{file};
 		
 	$args->{archive} = 1;
@@ -1023,7 +1342,7 @@ sub _get_max_id {
 sub _get_table {
 	my $self = shift;
 	my $args = shift;
-	die 'Invalid args: ' . Dumper($args) unless $args and ref($args) eq 'HASH';
+	$self->_unlock_and_die('Invalid args: ' . Dumper($args)) unless $args and ref($args) eq 'HASH';
 	
 	my $table_type = 'index';
 	if ($args->{archive}){
@@ -1049,7 +1368,7 @@ sub _get_table {
 #		'WHERE table_type_id=(SELECT id FROM %1$s.table_types WHERE table_type=?)' . "\n" .
 #		"ORDER BY tables.id DESC LIMIT 1", $Meta_db_name);
 	$sth = $self->db->prepare($query);
-	$sth->execute($table_type) or die $self->db->errstr;
+	$sth->execute($table_type) or $self->_unlock_and_die($self->db->errstr);
 	$row = $sth->fetchrow_hashref;
 	if ($row){
 		# Is it time for a new index?
@@ -1081,7 +1400,7 @@ sub _get_table {
 sub _create_table {
 	my $self = shift;
 	my $args = shift;
-	die 'Invalid args: ' . Dumper($args)
+	$self->_unlock_and_die('Invalid args: ' . Dumper($args))
 		unless $args and ref($args) eq 'HASH';
 			
 	my ($query, $sth, $row);
@@ -1119,15 +1438,29 @@ sub _create_table {
 		#$self->log->debug(sprintf("Created table id %d with start %s, end %s, first_id %lu, last_id %lu", 
 		#	$id, _epoch2iso($args->{start}), _epoch2iso($args->{end}), $args->{first_id}, $args->{last_id} ));	
 		
-		$query = "CREATE TABLE IF NOT EXISTS $needed_table LIKE syslogs_template";
-		$self->log->debug("Creating table: $query");
-		$self->db->do($query);
-		
-		$query = sprintf('ALTER TABLE %s AUTO_INCREMENT=%lu', $needed_table, $current_max_id + 1);
-		if ($args->{archive}){
-			$query .= ' ENGINE=ARCHIVE';
+		if ($self->conf->get('mysql_dir')){
+			$query = 'SHOW CREATE TABLE syslogs_template';
+			$sth = $self->db->prepare($query);
+			$sth->execute;
+			my $row = $sth->fetchrow_arrayref;
+			$query = $row->[1];
+			$query =~ s/`syslogs_template`/$needed_table/;
+			$query =~ s/ ENGINE=MyISAM//;
+			$query .= sprintf(q{ DATA DIRECTORY='%1$s' INDEX DIRECTORY='%1$s' AUTO_INCREMENT=%2$lu ENGINE=%3$s},
+				$self->conf->get('mysql_dir'), $current_max_id + 1, ($args->{archive} ? 'ARCHIVE' : 'MyISAM')); 
+			$self->log->debug("Creating table: $query");
+			$self->db->do($query);
 		}
-		$self->db->do($query);
+		else {
+			$query = "CREATE TABLE IF NOT EXISTS $needed_table LIKE syslogs_template";
+			$self->log->debug("Creating table: $query");
+			$self->db->do($query);
+			$query = sprintf('ALTER TABLE %s AUTO_INCREMENT=%lu', $needed_table, $current_max_id + 1);
+			if ($args->{archive}){
+				$query .= ' ENGINE=ARCHIVE';
+			}
+			$self->db->do($query);
+		}
 	};
 	if ($@){
 		my $e = $@;
@@ -1136,7 +1469,7 @@ sub _create_table {
 			return $needed_table;
 		}
 		else {
-			die($e); # whatever it is, it's not cool
+			$self->_unlock_and_die($e); # whatever it is, it's not cool
 		}
 		
 	}
@@ -1146,14 +1479,14 @@ sub _create_table {
 sub consolidate_indexes {
 	my $self = shift;
 	my $args = shift;
-	die 'Invalid args: ' . Dumper($args)
+	$self->_unlock_and_die('Invalid args: ' . Dumper($args))
 		unless $args and ref($args) eq 'HASH';
 		
 	my ($query, $sth, $row);
 	
 	my ($first_id, $last_id, $table);
 	
-	$self->_get_lock('directory') or die 'Unable to obtain lock';
+	$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
 	
 	$self->log->debug("Consolidating indexes with args " . Dumper($args));
 	if ($args->{table}){
@@ -1170,7 +1503,7 @@ sub consolidate_indexes {
 		}
 		else {
 			$self->_release_lock('directory');
-			die 'Unable to find rows to index for table ' . $args->{table};
+			$self->_unlock_and_die('Unable to find rows to index for table ' . $args->{table});
 		}
 	}
 	elsif ($args->{first_id} and $args->{last_id}){
@@ -1180,7 +1513,7 @@ sub consolidate_indexes {
 	}
 	else {
 		$self->_release_lock('directory');
-		die 'Invalid args: ' . Dumper($args);
+		$self->_unlock_and_die('Invalid args: ' . Dumper($args));
 	}
 	
 	$query = 'SELECT COUNT(*) AS count FROM v_directory ' . "\n" .
@@ -1207,20 +1540,22 @@ sub consolidate_indexes {
 	}
 	$table = $row->{table_name};
 	
+	$self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, start => $args->{start}, end => $args->{end}, import => $args->{type} eq 'import' ? 1 : 0 });
+	
 	$self->_release_lock('directory');
 	
 	# Do the indexing
-	my $replaced = $self->index_records({ first_id => $first_id, last_id => $last_id, import => $args->{type} eq 'import' ? 1 : 0 });
+	#my $replaced = $self->index_records({ first_id => $first_id, last_id => $last_id, import => $args->{type} eq 'import' ? 1 : 0 });	
+	$self->_index_records();
+	$self->_get_lock('directory') or die 'Unable to obtain lock';
 	
-#	$self->_get_lock('directory') or die 'Unable to obtain lock';
-#	
-#	# Unlock the table we're consolidating
-#	$query = 'UPDATE tables SET table_locked_by=NULL WHERE table_name=?';
-#	$sth = $self->db->prepare($query);
-#	$sth->execute($table);
-#	$self->log->debug('Unlocked table ' . $table);
-#	
-#	$self->_release_lock('directory');
+	# Unlock the table we're consolidating
+	$query = 'UPDATE tables SET table_locked_by=NULL WHERE table_name=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($table);
+	$self->log->debug('Unlocked table ' . $table);
+	
+	$self->_release_lock('directory');
 		
 	# Validate our directory after this to be sure there's nothing left astray
 	$self->_validate_directory();
@@ -1229,14 +1564,14 @@ sub consolidate_indexes {
 sub _get_lock {
 	my $self = shift;
 	my $lock_name = shift;
-	my $lock_timeout = shift;
-	$lock_timeout ||= 120;
+	my $is_nonblocking = shift;
+	$is_nonblocking = $is_nonblocking ? LOCK_NB : 0;
 	
 	my $ok;
 	my $lockfile = $self->conf->get('lockfile_dir') . '/' . $lock_name;
 	eval {
-		open($self->locks->{$lock_name}, $lockfile) or die('Unable to open ' . $lockfile . ': ' . $!);
-		$ok = flock($self->locks->{$lock_name}, LOCK_EX);
+		open($self->locks->{$lock_name}, $lockfile) or $self->_unlock_and_die('Unable to open ' . $lockfile . ': ' . $!);
+		$ok = flock($self->locks->{$lock_name}, LOCK_EX|$is_nonblocking);
 	};
 	if ($@){
 		$self->log->error('locking error: ' . $@);
@@ -1251,12 +1586,14 @@ sub _get_lock {
 sub _release_lock {
 	my $self = shift;
 	my $lock_name = shift;
+	my $is_nonblocking = shift;
+	$is_nonblocking = $is_nonblocking ? LOCK_NB : 0;
 	
 	my $ok;
 	my $lockfile = $self->conf->get('lockfile_dir') . '/' . $lock_name;
 	eval {
 		open($self->locks->{$lock_name}, $lockfile) or die('Unable to open ' . $lockfile . ': ' . $!);
-		$ok = flock($self->locks->{$lock_name}, LOCK_UN);
+		$ok = flock($self->locks->{$lock_name}, LOCK_UN|$is_nonblocking);
 		close($self->locks->{$lock_name});
 	};
 	if ($@){
@@ -1269,7 +1606,101 @@ sub _release_lock {
 	return 1;
 }
 
-sub index_records {
+sub _index_records {
+	my $self = shift;
+		
+	my ($query, $sth, $row);
+	
+#	# Check to make sure there aren't too many rows already being indexed
+#	$query = 'SELECT SUM(last_id-first_id) AS total_rows FROM indexes WHERE NOT ISNULL(locked_by)';
+#	$sth = $self->db->prepare($query);
+#	$sth->execute();
+#	my $total_being_indexed = $sth->fetchrow_arrayref;
+#	if ($total_being_indexed){
+#		$total_being_indexed = $total_being_indexed->[0];
+#	}
+#	else {
+#		$total_being_indexed = 0;
+#	}
+#	$self->log->trace('Total being indexed: ' . $total_being_indexed);
+#	if ($total_being_indexed > $Max_concurrent_rows_indexed){
+#		$self->log->error('Too many rows being indexed.  ' . $total_being_indexed . ' is greater than '.
+#			$Max_concurrent_rows_indexed);
+#		$query = 'UPDATE indexes SET locked_by=NULL, type="unavailable" WHERE locked_by=?';
+#		$sth = $self->db->prepare($query);
+#		$sth->execute($$);
+#		return 0;
+#	}
+#	
+#	# Adjust any unavailable indexes to have the proper type
+#	$query = 'UPDATE indexes SET type=IF(last_id-first_id > ?, "permanent", "temporary") ' .
+#		'WHERE locked_by=? AND type="unavailable"';
+#	$sth = $self->db->prepare($query);
+#	$sth->execute($self->conf->get('sphinx/perm_index_size'), $$);
+	
+	$query = 'SELECT id, type, first_id, last_id FROM indexes WHERE locked_by=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($$);
+	my @rows;
+	while (my $row = $sth->fetchrow_hashref){
+		push @rows, $row;
+	}
+	
+	my $total_docs = 0;
+	foreach my $row (@rows){
+		# Check to see if this will replace any smaller indexes (this happens during index consolidation)
+		$query = "SELECT id, first_id, last_id, start, end, type FROM v_directory\n" .
+			"WHERE first_id >= ? and last_id <= ? AND ISNULL(locked_by)";
+		$sth = $self->db->prepare($query);
+		#$self->log->debug('Checking for replacing with query: ' . $query . ', values: ' . join(',', $row->{first_id}, $row->{last_id}));
+		$sth->execute($row->{first_id}, $row->{last_id});
+		my %replaced;
+		
+		$query = 'UPDATE indexes SET locked_by=? WHERE id=? AND type=?';
+		my $upd_sth = $self->db->prepare($query);
+		while (my $replacement_row = $sth->fetchrow_hashref){
+			$replaced{ $replacement_row->{type} } ||= {};
+			$self->log->debug('Index ' . $row->{type} . '_' . $row->{id} . ' is replacing ' . $replacement_row->{type} . " index " . $replacement_row->{id});
+			my $rows = $upd_sth->execute($$, $replacement_row->{id}, $replacement_row->{type});
+			if ($rows){
+				$replaced{ $replacement_row->{type} }->{ $replacement_row->{id} } = 1;
+			}
+			else {
+				$self->log->error('Failed to lock for replacement index ' . $replacement_row->{id} . ' of type ' . $replacement_row->{type});
+			}
+		}
+		$upd_sth->finish;
+		
+		# Now actually perform the indexing
+		my $start_time = time();
+		my $index_name = $self->_get_index_name($row->{type}, $row->{id});
+		my $stats = $self->_sphinx_index($index_name);
+		
+		# Delete the replaced indexes
+		foreach my $type (keys %replaced){
+			$self->log->debug("Dropping indexes " . join(", ", sort keys %{ $replaced{$type} }));
+			$self->_drop_indexes($type, [ sort keys %{ $replaced{$type} } ]);
+		}
+		
+		# Unlock the indexes we were working on
+		$query = 'UPDATE indexes SET locked_by=NULL WHERE locked_by=? AND first_id >= ? AND last_id <= ?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($$, $row->{first_id}, $row->{last_id});
+		$self->log->trace('Unlocked indexes between ' . $row->{first_id} . ' and ' . $row->{last_id});
+		
+		# Update the stats table
+		if ($stats and ref($stats) and ref($stats) eq 'HASH'){
+			$query = 'REPLACE INTO stats (type, bytes, count, time) VALUES ("index", ?,?,?)';
+			$sth = $self->db->prepare($query);
+			$sth->execute($stats->{bytes}, $stats->{docs}, (time() - $start_time));
+		}
+		$total_docs += $stats->{docs};
+	}
+	
+	return $total_docs;
+}
+
+sub old_index_records {
 	my $self = shift;
 	my $args = shift;
 	die 'Invalid args: ' . Dumper($args)
@@ -1341,7 +1772,7 @@ sub index_records {
 	if ($args->{import}){
 		$table_type = 'import';
 	}
-	$query = "SELECT DISTINCT table_id AS id, table_name, IF(min_id < ?, ?, min_id) AS min_id,\n" .
+	$query = "SELECT DISTINCT table_id AS id, table_name, min_id AS actual_min, max_id AS actual_max, IF(min_id < ?, ?, min_id) AS min_id,\n" .
 		"IF(max_id > ?, ?, max_id) AS max_id\n" .
 		"FROM v_directory\n" .
 		"WHERE table_type=? AND (? BETWEEN min_id AND max_id\n" .
@@ -1361,7 +1792,22 @@ sub index_records {
 	$self->log->trace("Tables needed: " . Dumper(\@tables_needed));
 	
 	# There should be exactly one table
-	if (scalar @tables_needed > 1){		
+	if (scalar @tables_needed > 1){
+		# Verify that none of these overlap
+		for (my $i = 0; $i < @tables_needed; $i++){
+			for (my $j = 0; $j < @tables_needed; $j++){
+				next if $i == $j;
+				if (($tables_needed[$j]->{min_id} >= $tables_needed[$i]->{min_id} 
+					and $tables_needed[$j]->{min_id} <= $tables_needed[$i]->{max_id})
+					or ($tables_needed[$j]->{max_id} >= $tables_needed[$i]->{min_id} 
+					and $tables_needed[$j]->{max_id} <= $tables_needed[$i]->{max_id})){
+					$self->log->error('table ' . Dumper($tables_needed[$i]) . ' overlaps with '
+						. Dumper($tables_needed[$j]));
+					$self->_validate_directory();
+					return 0;
+				}
+			}
+		}
 		# Recursively do each table in a separate run
 		foreach my $row (@tables_needed){
 			$self->index_records({ first_id => $row->{min_id}, last_id => $row->{max_id} });
@@ -1383,30 +1829,36 @@ sub index_records {
 		$sth->execute();
 		my $tmp_hash = $sth->fetchall_hashref('id');
 		$self->_release_lock('directory');
-		die "No tables found for first_id $args->{first_id} and last_id $args->{last_id}" .
-		 ", tables in database: " . Dumper($tmp_hash) . "\n table_type: $table_type\n" . Dumper($args);
+		$self->_unlock_and_die("No tables found for first_id $args->{first_id} and last_id $args->{last_id}" .
+		 ", tables in database: " . Dumper($tmp_hash) . "\n table_type: $table_type\n" . Dumper($args));
 	}
 	
 	my ($count, $start, $end);
-	$count = ($args->{last_id} - $args->{first_id});
-	# This will be much faster than finding the timestamps above since timestamp is not indexed
-	$query = sprintf("SELECT timestamp FROM %s WHERE id=?", $table);
-	$sth = $self->db->prepare($query);
-	$sth->execute($args->{first_id});
-	$row = $sth->fetchrow_hashref;
-	$start = $row->{timestamp};
-	$sth->execute($args->{last_id});
-	$row = $sth->fetchrow_hashref;
-	$end = $row->{timestamp};
+	if ($args->{start} and $args->{end}){
+		$start = $args->{start};
+		$end = $args->{end};
+	}
+	else {
+		$count = ($args->{last_id} - $args->{first_id});
+		# This will be much faster than finding the timestamps above since timestamp is not indexed
+		$query = sprintf("SELECT timestamp FROM %s WHERE id=?", $table);
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{first_id});
+		$row = $sth->fetchrow_hashref;
+		$start = $row->{timestamp};
+		$sth->execute($args->{last_id});
+		$row = $sth->fetchrow_hashref;
+		$end = $row->{timestamp};
+	}
 	
 	$self->log->debug("Data table info: $count, $start, $end");
 	#unless ($count > 0){
 	unless ($args->{last_id} >= $args->{first_id}){
 		$self->_release_lock('directory');
 		
-		die "Unable to find rows we're about to index, only got $count rows " .
+		$self->_unlock_and_die("Unable to find rows we're about to index, only got $count rows " .
 			"from table $table " .
-			"with ids $args->{first_id} and $args->{last_id} a difference of " . ($args->{last_id} - $args->{first_id});
+			"with ids $args->{first_id} and $args->{last_id} a difference of " . ($args->{last_id} - $args->{first_id}));
 	}
 	
 	# Update the index table
@@ -1432,7 +1884,7 @@ sub index_records {
 		$self->_drop_indexes($type, [ sort keys %{ $replaced{$type} } ]);
 	}
 	
-	$self->_get_lock('directory') or die 'Unable to obtain lock';
+	$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
 		
 	# Unlock the indexes we were working on
 	$query = 'UPDATE indexes SET locked_by=NULL WHERE locked_by=?';
@@ -1528,6 +1980,8 @@ sub _sphinx_index {
 	my $self = shift;
 	my $index_name = shift;
 	
+	$self->log->trace('Starting Sphinx indexing for ' . $index_name);
+	
 	my $start_time = time();
 	my $cmd = sprintf("%s --config %s --rotate %s 2>&1", 
 		$self->conf->get('sphinx/indexer'), $self->conf->get('sphinx/config_file'), $index_name);
@@ -1579,20 +2033,20 @@ sub _drop_indexes {
 	my $type = shift;
 	my $ids = shift;
 	
-	die 'Invalid args: ' . Dumper($ids)
+	$self->_unlock_and_die('Invalid args: ' . Dumper($ids))
 		unless $ids and ref($ids) eq 'ARRAY';
 		
 	my ($query, $sth);
 	
-	$self->_get_lock('directory') or die 'Unable to obtain lock';
+	$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
 	
 	# Delete from database
 	foreach my $id (@$ids){
 		$self->log->debug("Deleting index $id of type $type from DB");
 		
-		$query = 'SELECT first_id, last_id, table_name FROM v_directory WHERE id=? AND type=?';
+		$query = 'SELECT first_id, last_id, table_name FROM v_directory WHERE id=? AND type=? AND locked_by=?';
 		$sth = $self->db->prepare($query);
-		$sth->execute($id, $type);
+		$sth->execute($id, $type, $$);
 		#$self->log->trace('executed');
 		my $row = $sth->fetchrow_hashref;
 		if ($row){
@@ -1627,6 +2081,14 @@ sub _drop_indexes {
 		}
 		else {
 			$self->log->error("Unknown index $id");
+			$query = 'SELECT * FROM indexes WHERE locked_by=?';
+			$sth = $self->db->prepare($query);
+			$sth->execute($$);
+			my @locks;
+			while (my $row = $sth->fetchrow_hashref){
+				push @locks, $row->{type} . '_' . $row->{id};
+			}
+			$self->log->debug('my locks: ' . join(',', @locks)); 
 		}
 		
 		$self->log->trace('committed');
@@ -1641,7 +2103,7 @@ sub _drop_indexes {
 					mysql_multi_statements => 1,
 					mysql_bind_type_guessing => 1,
 				}
-			) or die 'sphinx connection failed ' . $! . ' ' . $DBI::errstr;
+			) or $self->_unlock_and_die('sphinx connection failed ' . $! . ' ' . $DBI::errstr);
 			$sphinx_dbh->do('TRUNCATE RTINDEX ' . $index_name);
 		}
 		else {
@@ -1960,7 +2422,7 @@ sub _get_next_index_id {
 		}
 	}
 		
-	die 'All indexes were locked: ' . Dumper($ids);
+	$self->_unlock_and_die('All indexes were locked: ' . Dumper($ids));
 }
 
 sub _get_index_name {
@@ -1977,7 +2439,7 @@ sub _get_index_name {
 		return sprintf('real_%d', $id);
 	}
 	else {
-		die 'Unknown index type: ' . $type;
+		$self->_unlock_and_die('Unknown index type: ' . $type);
 	}
 }
 
@@ -2069,7 +2531,7 @@ sub record_host_stats {
 	my $overall_start = Time::HiRes::time();
 		
 	my ($query, $sth);
-	$query = 'SELECT id, records FROM v_indexes WHERE type="temporary" ORDER BY end DESC LIMIT 1,1';
+	$query = 'SELECT id, records FROM v_indexes WHERE type="temporary" ORDER BY end DESC LIMIT 1';
 	$sth = $self->db->prepare($query);
 	$sth->execute;
 	my $row = $sth->fetchrow_hashref;
@@ -2137,7 +2599,8 @@ sub record_host_stats {
 sub _current_disk_space_available {
 	my $self = shift;
 	my $data_dir = $self->conf->get('sphinx/index_path');
-	$data_dir =~ s/\/.*$//;
+	$data_dir =~ /^(\/[^\/]+)/;
+	$data_dir = $1;
 	my @lines = qx(df -B 1);
 	my ($default, $total, $used, $available, $percentage_used, $mounted_on);
 	foreach my $line (@lines){
@@ -2154,6 +2617,29 @@ sub _current_disk_space_available {
 	}
 	
 	return @$default;
+}
+
+sub _unlock_and_die {
+	my $self = shift;
+	my $msg = shift;
+	
+	$self->log->fatal($msg);
+	$self->_release_lock('directory');
+	$self->_release_lock('query');
+	my ($query, $sth);
+	$query = 'UPDATE buffers SET pid=NULL WHERE pid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($$);
+	$query = 'UPDATE indexes SET locked_by=NULL WHERE locked_by=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($$);
+	$query = 'UPDATE tables SET table_locked_by=NULL WHERE table_locked_by=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($$);
+	$sth->finish;
+	
+	
+	die($msg);
 }
 
 __PACKAGE__->meta->make_immutable;

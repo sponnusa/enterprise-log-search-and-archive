@@ -9,10 +9,18 @@ use IO::Handle;
 use IO::File;
 use Digest::HMAC_SHA1;
 use Socket;
-use Time::HiRes;
+use Time::HiRes qw(time);
+use Hash::Merge::Simple qw(merge);
+use AnyEvent::HTTP;
+use URI::Escape qw(uri_escape);
+use Time::HiRes qw(time);
+use Digest::SHA qw(sha512_hex);
+
+use Results;
 
 our $Db_timeout = 3;
 our $Bulk_dir = '/tmp';
+our $Auth_timestamp_grace_period = 86400;
 
 has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
 has 'conf' => (is => 'rw', isa => 'Object', required => 1);
@@ -99,9 +107,9 @@ sub _dbh_error_handler {
 
 	$errstr .= " QUERY: $query";
 	Log::Log4perl::get_logger('App')->error($errstr);
-	foreach my $sth (grep { defined } @{$dbh->{ChildHandles}}){
-		$sth->rollback; # in case there was an active transaction
-	}
+#	foreach my $sth (grep { defined } @{$dbh->{ChildHandles}}){
+#		$sth->rollback; # in case there was an active transaction
+#	}
 	
 	confess($errstr);
 }
@@ -140,7 +148,7 @@ sub epoch2iso {
 	return $date;
 }
 
-sub get_hash {
+sub _get_hash {
 	my ($self, $data) = shift;
 	my $digest = new Digest::HMAC_SHA1($self->conf->get('link_key'));
 	$digest->add($data);
@@ -149,17 +157,18 @@ sub get_hash {
 
 sub _get_node_info {
 	my $self = shift;
-	my $user = shift;
+	my $is_lite = shift;
 	my ($query, $sth);
 	
-	my $nodes = $self->_get_nodes($user);
+	my $overall_start = time();
+	my $nodes = $self->_get_nodes();
 	$self->log->trace('got nodes: ' . Dumper($nodes));
 	
-	unless (scalar keys %$nodes){
-		die('No nodes available');
-	}
-		
 	my $ret = { nodes => {} };
+	
+	unless (scalar keys %$nodes){
+		return $ret;
+	}
 	
 	# Get indexes from all nodes in parallel
 	my $cv = AnyEvent->condvar;
@@ -177,15 +186,42 @@ sub _get_node_info {
 			db => $nodes->{$node}->{db},
 			#dbh => $nodes->{$node}->{dbh},
 		};
+		
+		if ($is_lite){
+			# Just get min/max times for indexes, count
+			$query = sprintf('SELECT UNIX_TIMESTAMP(MIN(start)) AS start_int, UNIX_TIMESTAMP(MAX(end)) AS end_int, ' .
+				'UNIX_TIMESTAMP(MAX(start)) AS start_max, SUM(records) AS records, type FROM %s.v_indexes ' .
+				'WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime"', $nodes->{$node}->{db});
+			$cv->begin;
+			$self->log->trace($query);
+			$nodes->{$node}->{dbh}->query($query, sub {
+				my ($dbh, $rows, $rv) = @_;
 				
-		# Get indexes
-		$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, 
-		UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records 
-		FROM %s.v_indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime" ORDER BY start', 
-			$nodes->{$node}->{db});
-		$cv->begin;
-		$self->log->trace($query);
-		$nodes->{$node}->{dbh}->query($query, sub {
+				if ($rv and $rows){
+					#$self->log->trace('node returned rv: ' . $rv);
+					$ret->{nodes}->{$node}->{indexes} = {
+						min => $rows->[0]->{start_int},
+						max => $rows->[0]->{end_int},
+						start_max => $rows->[0]->{start_max},
+						records => $rows->[0]->{records},
+					};
+				}
+				else {
+					$self->log->error('No indexes for node ' . $node . ', rv: ' . $rv);
+					$ret->{nodes}->{$node}->{error} = 'No indexes for node ' . $node;
+				}
+				$cv->end;
+			});
+		}
+		else {		
+			# Get indexes
+			$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, 
+			UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records 
+			FROM %s.v_indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime" ORDER BY start', 
+				$nodes->{$node}->{db});
+			$cv->begin;
+			$self->log->trace($query);
+			$nodes->{$node}->{dbh}->query($query, sub {
 				my ($dbh, $rows, $rv) = @_;
 				
 				if ($rv and $rows){
@@ -203,15 +239,44 @@ sub _get_node_info {
 				}
 				$cv->end;
 			});
+		}
 		
-		# Get tables
-		$query = sprintf('SELECT table_name, start, UNIX_TIMESTAMP(start) AS start_int, end, ' .
-			'UNIX_TIMESTAMP(end) AS end_int, table_type, min_id, max_id, max_id - min_id AS records ' .
-			'FROM %s.tables t1 JOIN table_types t2 ON (t1.table_type_id=t2.id) ORDER BY start', 
-			$nodes->{$node}->{db});
-		$cv->begin;
-		$self->log->trace($query);
-		$nodes->{$node}->{dbh}->query($query, sub {
+		if ($is_lite){
+			# Just get min/max times, count
+			$query = sprintf('SELECT UNIX_TIMESTAMP(MIN(start)) AS start_int, ' .
+				'UNIX_TIMESTAMP(MIN(end)) AS end_int, SUM(max_id - min_id) AS records ' .
+				'FROM %s.tables t1 JOIN table_types t2 ON (t1.table_type_id=t2.id) WHERE t2.table_type="archive"', 
+				$nodes->{$node}->{db});
+			$cv->begin;
+			$self->log->trace($query);
+			$nodes->{$node}->{dbh}->query($query, sub {
+				my ($dbh, $rows, $rv) = @_;
+				
+				if ($rv and $rows){
+					#$self->log->trace('node returned rv: ' . $rv);
+					$ret->{nodes}->{$node}->{tables} = {
+						min => $rows->[0]->{start_int},
+						max => $rows->[0]->{end_int},
+						start_max => $rows->[0]->{start_int},
+						records => $rows->[0]->{records},
+					};
+				}
+				else {
+					$self->log->error('No tables for node ' . $node);
+					$ret->{nodes}->{$node}->{error} = 'No tables for node ' . $node;
+				}
+				$cv->end;
+			});
+		}
+		else {
+			# Get tables
+			$query = sprintf('SELECT table_name, start, UNIX_TIMESTAMP(start) AS start_int, end, ' .
+				'UNIX_TIMESTAMP(end) AS end_int, table_type, min_id, max_id, max_id - min_id AS records ' .
+				'FROM %s.tables t1 JOIN table_types t2 ON (t1.table_type_id=t2.id) ORDER BY start', 
+				$nodes->{$node}->{db});
+			$cv->begin;
+			$self->log->trace($query);
+			$nodes->{$node}->{dbh}->query($query, sub {
 				my ($dbh, $rows, $rv) = @_;
 				
 				if ($rv and $rows){
@@ -229,26 +294,27 @@ sub _get_node_info {
 				}
 				$cv->end;
 			});
+		}
 		
 		# Get classes
 		$query = "SELECT id, class FROM classes";
 		$cv->begin;
 		$self->log->trace($query);
 		$nodes->{$node}->{dbh}->query($query, sub {
-				my ($dbh, $rows, $rv) = @_;
-				
-				if ($rv and $rows){
-					$ret->{nodes}->{$node}->{classes} = {};
-					foreach my $row (@$rows){
-						$ret->{nodes}->{$node}->{classes}->{ $row->{id} } = $row->{class};
-					}
+			my ($dbh, $rows, $rv) = @_;
+			
+			if ($rv and $rows){
+				$ret->{nodes}->{$node}->{classes} = {};
+				foreach my $row (@$rows){
+					$ret->{nodes}->{$node}->{classes}->{ $row->{id} } = $row->{class};
 				}
-				else {
-					$self->log->error('No classes for node ' . $node);
-					$ret->{nodes}->{$node}->{error} = 'No classes for node ' . $node;
-				}
-				$cv->end;
-			});
+			}
+			else {
+				$self->log->error('No classes for node ' . $node);
+				$ret->{nodes}->{$node}->{error} = 'No classes for node ' . $node;
+			}
+			$cv->end;
+		});
 		
 		# Get fields
 		$query = sprintf("SELECT DISTINCT field, class, field_type, input_validation, field_id, class_id, field_order,\n" .
@@ -259,31 +325,31 @@ sub _get_node_info {
 		$cv->begin;
 		$self->log->trace($query);
 		$nodes->{$node}->{dbh}->query($query, sub {
-				my ($dbh, $rows, $rv) = @_;
-				
-				if ($rv and $rows){
-					$ret->{nodes}->{$node}->{fields} = [];
-					foreach my $row (@$rows){
-						push @{ $ret->{nodes}->{$node}->{fields} }, {
-							fqdn_field => $row->{fqdn_field},
-							class => $row->{class}, 
-							value => $row->{field}, 
-							text => uc($row->{field}),
-							field_id => $row->{field_id},
-							class_id => $row->{class_id},
-							field_order => $row->{field_order},
-							field_type => $row->{field_type},
-							input_validation => $row->{input_validation},
-							pattern_type => $row->{pattern_type},
-						};
-					}
+			my ($dbh, $rows, $rv) = @_;
+			
+			if ($rv and $rows){
+				$ret->{nodes}->{$node}->{fields} = [];
+				foreach my $row (@$rows){
+					push @{ $ret->{nodes}->{$node}->{fields} }, {
+						fqdn_field => $row->{fqdn_field},
+						class => $row->{class}, 
+						value => $row->{field}, 
+						text => uc($row->{field}),
+						field_id => $row->{field_id},
+						class_id => $row->{class_id},
+						field_order => $row->{field_order},
+						field_type => $row->{field_type},
+						input_validation => $row->{input_validation},
+						pattern_type => $row->{pattern_type},
+					};
 				}
-				else {
-					$self->log->error('No fields for node ' . $node);
-					$ret->{nodes}->{$node}->{error} = 'No fields for node ' . $node;
-				}
-				$cv->end;
-			});
+			}
+			else {
+				$self->log->error('No fields for node ' . $node);
+				$ret->{nodes}->{$node}->{error} = 'No fields for node ' . $node;
+			}
+			$cv->end;
+		});
 	}
 	$cv->end;
 	
@@ -309,8 +375,13 @@ sub _get_node_info {
 				$max = $ret->{nodes}->{$node}->{$key}->{max};
 				$start_max = $ret->{nodes}->{$node}->{$key}->{start_max};
 			}
-			foreach my $hash (@{ $ret->{nodes}->{$node}->{$key}->{$key} }){
-				$ret->{totals}->{$type} += $hash->{records};
+			if ($is_lite){
+				$ret->{totals}->{$type} += $ret->{nodes}->{$node}->{$key}->{records};
+			}
+			else {
+				foreach my $hash (@{ $ret->{nodes}->{$node}->{$key}->{$key} }){
+					$ret->{totals}->{$type} += $hash->{records};
+				}
 			}
 		}
 		if ($min == 2**32 and $max == 0){
@@ -414,19 +485,22 @@ sub _get_node_info {
 	}
 	
 	$ret->{updated_at} = time();
-	$ret->{updated_for_admin} = $user->is_admin;
+	#$ret->{updated_for_admin} = $user->is_admin;
+	$ret->{took} = (time() - $overall_start);
 	
-	
-	foreach my $node (keys %{ $ret->{nodes} }){
-		
+	if ($is_lite){
+		foreach my $node (keys %{ $ret->{nodes} }){
+			$ret->{nodes}->{$node} = {};
+		}
 	}
+	
+	$self->log->trace('get_node_info finished in ' . $ret->{took});
 	
 	return $ret;
 }
 
 sub _get_nodes {
 	my $self = shift;
-	my $user = shift;
 	my %nodes;
 	my $node_conf = $self->conf->get('nodes');
 	
@@ -446,11 +520,8 @@ sub _get_nodes {
 
 		eval {
 			$nodes{$node} = { db => $db_name };
-			
-			$cv->begin;
-			my $node_start = Time::HiRes::time();	
-			$nodes{$node}->{dbh} = AsyncDB->new(log => $self->log, db_args => [
-				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
+			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
+				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
 				$node_conf->{$node}->{username}, 
 				$node_conf->{$node}->{password}, 
 				{
@@ -458,10 +529,22 @@ sub _get_nodes {
 					PrintError => 0,
 					mysql_multi_statements => 1,
 				}
-			], cb => sub {
-				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (Time::HiRes::time() - $node_start));
-				$cv->end;
-			});
+			]);
+#			$cv->begin;
+#			my $node_start = Time::HiRes::time();	
+#			$nodes{$node}->{dbh} = AsyncDB->new(log => $self->log, db_args => [
+#				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
+#				$node_conf->{$node}->{username}, 
+#				$node_conf->{$node}->{password}, 
+#				{
+#					mysql_connect_timeout => $self->db_timeout,
+#					PrintError => 0,
+#					mysql_multi_statements => 1,
+#				}
+#			], cb => sub {
+#				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (Time::HiRes::time() - $node_start));
+#				$cv->end;
+#			});
 			
 		};
 		if ($@){
@@ -495,7 +578,7 @@ sub old_get_nodes {
 		}
 		eval {
 			$nodes{$node} = { db => $db_name };
-			$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
+			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
 				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
 				$node_conf->{$node}->{username}, 
 				$node_conf->{$node}->{password}, 
@@ -516,6 +599,264 @@ sub old_get_nodes {
 	return \%nodes;
 }
 
+sub info {
+	my $self = shift;
+	
+	my ($query, $sth);
+	my $overall_start = time();
+	
+	# Execute search on every peer
+	my @peers;
+	foreach my $peer (keys %{ $self->conf->get('peers') }){
+		push @peers, $peer;
+	}
+	$self->log->trace('Executing global node_info on peers ' . join(', ', @peers));
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin;
+	my %stats;
+	my %results;
+	foreach my $peer (@peers){
+		$cv->begin;
+		my $peer_conf = $self->conf->get('peers/' . $peer);
+		my $url = $peer_conf->{url} . 'API/';
+		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_info' : 'info';
+		$self->log->trace('Sending request to URL ' . $url);
+		my $start = time();
+		my $headers = { 
+			Authorization => $self->_get_auth_header($peer),
+		};
+		$results{$peer} = http_get $url, headers => $headers, sub {
+			my ($body, $hdr) = @_;
+			eval {
+				my $raw_results = $self->json->decode($body);
+				$stats{$peer}->{total_request_time} = (time() - $start);
+				$results{$peer} = { %$raw_results }; #undef's the guard
+			};
+			if ($@){
+				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
+				$self->add_warning('peer ' . $peer . ': ' . $@);
+				delete $results{$peer};
+			}
+			$cv->end;
+		};
+	}
+	$cv->end;
+	$cv->recv;
+	$stats{overall} = (time() - $overall_start);
+	$self->log->debug('stats: ' . Dumper(\%stats));
+	
+	my $overall_final = $self->_merge_node_info(\%results);
+	
+	return $overall_final;
+}
 
+sub _merge_node_info {
+	my ($self, $results) = @_;
+	$self->log->debug('merging: ' . Dumper($results));
+	
+	# Merge these results
+	my $overall_final = merge values %$results;
+	
+	# Merge the times and counts
+	my %final = (nodes => {});
+	foreach my $peer (keys %$results){
+		next unless $results->{$peer} and ref($results->{$peer}) eq 'HASH';
+		if ($results->{$peer}->{nodes}){
+			foreach my $node (keys %{ $results->{$peer}->{nodes} }){
+				if ($node eq '127.0.0.1' or $node eq 'localhost'){
+					$final{nodes}->{$peer} ||= $results->{$peer}->{nodes};
+				}
+				else {
+					$final{nodes}->{$node} ||= $results->{$peer}->{nodes};
+				}
+			}
+		}
+		foreach my $key (qw(archive_min indexes_min)){
+			if (not $final{$key} or $results->{$peer}->{$key} < $final{$key}){
+				$final{$key} = $results->{$peer}->{$key};
+			}
+		}
+		foreach my $key (qw(archive indexes)){
+			$final{totals} ||= {};
+			$final{totals}->{$key} += $results->{$peer}->{totals}->{$key};
+		}
+		foreach my $key (qw(archive_max indexes_max indexes_start_max archive_start_max)){
+			if (not $final{$key} or $results->{$peer}->{$key} > $final{$key}){
+				$final{$key} = $results->{$peer}->{$key};
+			}
+		}
+	}
+	$self->log->debug('final: ' . Dumper(\%final));
+	foreach my $key (keys %final){
+		$overall_final->{$key} = $final{$key};
+	}
+	
+	return $overall_final;
+}
+
+sub _peer_query {
+	my ($self, $q) = @_;
+	my ($query, $sth);
+	
+	# Check for batching
+	unless ($q->system or $q->livetail){
+		my $is_batch = 0;	
+		if ($q->analytics or $q->archive){
+			# Find estimated query time
+			my $estimated_query_time = $self->_estimate_query_time($q);
+			$self->log->trace('Found estimated query time ' . $estimated_query_time . ' seconds.');
+			my $query_time_batch_threshold = 120;
+			if ($self->conf->get('query_time_batch_threshold')){
+				$query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
+			}
+			if ($estimated_query_time > $query_time_batch_threshold){
+				$is_batch = 'Batching because estimated query time is ' . int($estimated_query_time) . ' seconds.';
+				$self->log->info($is_batch);
+			}
+		}
+		
+		# Batch if we're allowing a huge number of results
+		if ($q->limit == 0 or $q->limit > $Results::Unbatched_results_limit){
+			$is_batch = q{Batching because an unlimited number or large number of results has been requested.};
+			$self->log->info($is_batch);
+		}	
+			
+		if ($is_batch){
+			# Check to see if this user is already running an archive query
+			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND (ISNULL(num_results) OR num_results=-1)';
+			$sth = $self->db->prepare($query);
+			$sth->execute();
+			my $counter = 0;
+			while (my $row = $sth->fetchrow_hashref){
+				$counter++;
+				if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
+					#TODO create a queuing mechanism for this
+					$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
+					return;
+				}
+			}
+			
+			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
+			$q->batch_message($is_batch . '  You will receive an email with your results.');
+			$q->batch(1);
+			return $q;
+		}
+	}
+	
+	# Execute search on every peer
+	my @peers;
+	foreach my $peer (keys %{ $self->conf->get('peers') }){
+		if (scalar keys %{ $q->nodes->{given} }){
+			next unless $q->nodes->{given}->{$peer};
+		}
+		elsif (scalar keys %{ $q->nodes->{excluded} }){
+			next if $q->nodes->{excluded}->{$peer};
+		}
+		push @peers, $peer;
+	}
+	$self->log->trace('Executing global query on peers ' . join(', ', @peers));
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin;
+	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded' };
+	foreach my $peer (@peers){
+		$cv->begin;
+		my $peer_conf = $self->conf->get('peers/' . $peer);
+		my $url = $peer_conf->{url} . 'API/';
+		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'query';
+		my $request_body = 'permissions=' . uri_escape($self->json->encode($q->user->permissions))
+			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $q->meta_params }))
+			. '&peer_label=' . ((($peer eq '127.0.0.1' or $peer eq 'localhost') and $q->peer_label) ? $q->peer_label : $peer);
+		$self->log->trace('Sending request to URL ' . $url . ' with body ' . $request_body);
+		my $start = time();
+		
+		if ($peer_conf->{headers}){
+			foreach my $header_name (keys %{ $peer_conf->{headers} }){
+				$headers->{$header_name} = $peer_conf->{headers}->{$header_name};
+			}
+		}
+		$headers->{Authorization} = $self->_get_auth_header($peer);
+		$q->peer_requests->{$peer} = http_post $url, $request_body, headers => $headers, sub {
+			my ($body, $hdr) = @_;
+			eval {
+				my $raw_results = $self->json->decode($body);
+				my $results_package = $q->has_groupby ? 'Results::Groupby' : 'Results';
+				if ($q->has_groupby and ref($raw_results->{results}) ne 'HASH'){
+					$self->log->error('Wrong: ' . Dumper($q->TO_JSON) . "\n" . Dumper($raw_results));
+				}
+				#my $results_package = ref($raw_results->{results}) eq 'ARRAY' ? 'Results' : 'Results::Groupby';
+				my $results_obj = $results_package->new(results => $raw_results->{results}, total_records => $raw_results->{totalRecords});
+				if ($results_obj->records_returned and not $q->results->records_returned){
+					$q->results($results_obj);
+				}
+				elsif ($results_obj->records_returned){
+					$self->log->debug('query returned ' . $results_obj->records_returned . ' records, merging ' . Dumper($q->results) . ' with ' . Dumper($results_obj));
+					$q->results->merge($results_obj, $q);
+				}
+				my $stats = $raw_results->{stats};
+				$stats ||= {};
+				$stats->{total_request_time} = (time() - $start);
+				$q->stats->{peers} ||= {};
+				$q->stats->{peers}->{$peer} = { %$stats };
+			};
+			if ($@){
+				$self->log->error($@ . 'url: ' . $url . "\nbody: " . $request_body);
+				$self->add_warning($@);
+			}	
+			delete $q->peer_requests->{$peer};
+			$cv->end;
+		};
+	}
+	$cv->end;
+	$cv->recv;
+	$self->log->debug('stats: ' . Dumper($q->stats));
+	
+	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+	
+	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
+
+	return $q;
+}
+
+sub _get_auth_header {
+	my $self = shift;
+	my $peer = shift;
+	
+	my $timestamp = CORE::time();
+	
+	my $peer_conf = $self->conf->get('peers/' . $peer);
+	die('no apikey or user found for peer ' . $peer) unless $peer_conf->{username} and $peer_conf->{apikey};
+	return 'ApiKey ' . $peer_conf->{username} . ':' . $timestamp . ':' . sha512_hex($timestamp . $peer_conf->{apikey});
+}
+
+sub _check_auth_header {
+	my $self = shift;
+	my $req = shift;
+	
+	my ($username, $timestamp, $apikey);
+	if ($req->header('Authorization')){
+		($username, $timestamp, $apikey) = $req->header('Authorization') =~ /ApiKey ([^\:]+)\:([^\:]+)\:([^\s]+)/;
+	}
+	
+	# Authenticate via apikey
+	unless ($username and $timestamp and $apikey){
+		$self->log->error('No apikey given');
+		return 0;
+	}
+	unless ($timestamp > (CORE::time() - $Auth_timestamp_grace_period)
+		and $timestamp <= (CORE::time() + $Auth_timestamp_grace_period)){
+		$self->log->error('timestamp is out of date');
+		return 0;
+	}
+	if ($self->conf->get('apikeys')->{$username} 
+		and sha512_hex($timestamp . $self->conf->get('apikeys')->{$username}) eq $apikey){
+		$self->log->trace('Authenticated ' . $username);
+	}
+	else {
+		$self->log->error('Invalid apikey: '  . $username . ':' . $apikey);
+		return 0;
+	}
+}
 
 1;

@@ -1,0 +1,442 @@
+package API::Peers;
+use Moose;
+extends 'API';
+use Data::Dumper;
+use Log::Log4perl::Level;
+use AnyEvent::HTTP;
+use URI::Escape qw(uri_escape);
+use File::Copy;
+use Archive::Extract;
+use Digest::MD5;
+use IO::File;
+use Time::HiRes qw(time);
+use Hash::Merge::Simple qw(merge);
+
+sub local_query {
+	my ($self, $args) = @_;
+	
+	my $q;
+	if (ref($args) eq 'Query'){
+		# We were given a query object natively
+		$q = $args;
+	}
+	else {
+		unless ($args and ref($args) eq 'HASH'){
+			die('Invalid query args');
+		}
+		# Get our node info
+		if (not $self->node_info->{updated_at} 
+			or ($self->conf->get('node_info_cache_timeout') and 
+				((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout')))){
+			$self->node_info($self->_get_node_info());
+		}
+		if ($args->{q}){
+			if ($args->{qid}){
+				$self->log->level($ERROR);
+				$q = new Query(conf => $self->conf, permissions => $args->{permissions}, q => $args->{q}, 
+					node_info => $self->node_info, qid => $args->{qid}, peer_label => $args->{peer_label});
+			}
+			else {
+				$q = new Query(conf => $self->conf, permissions => $args->{permissions}, q => $args->{q}, 
+					node_info => $self->node_info, peer_label => $args->{peer_label});
+			}
+		}
+		elsif ($args->{query_string}){
+			$q = new Query(
+				conf => $self->conf, 
+				node_info => $self->node_info,
+				%$args,
+			);
+		}
+		else {
+			delete $args->{user};
+			$self->log->error('Bad args: ' . Dumper($args));
+			die('Invalid query args, no q or query_string');
+		}
+	}
+	
+	foreach my $warning (@{ $q->warnings }){
+		$self->add_warning($warning);
+	}
+
+	my ($query, $sth);
+	
+	# Check for batching
+	unless ($q->system or $q->livetail){
+		my $is_batch = 0;	
+		if ($q->analytics or $q->archive){
+			# Find estimated query time
+			my $estimated_query_time = $self->_estimate_query_time($q);
+			$self->log->trace('Found estimated query time ' . $estimated_query_time . ' seconds.');
+			my $query_time_batch_threshold = 120;
+			if ($self->conf->get('query_time_batch_threshold')){
+				$query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
+			}
+			if ($estimated_query_time > $query_time_batch_threshold){
+				$is_batch = 'Batching because estimated query time is ' . int($estimated_query_time) . ' seconds.';
+				$self->log->info($is_batch);
+			}
+		}
+		
+		# Batch if we're allowing a huge number of results
+		if ($q->limit == 0 or $q->limit > $Results::Unbatched_results_limit){
+			$is_batch = q{Batching because an unlimited number or large number of results has been requested.};
+			$self->log->info($is_batch);
+		}	
+			
+		if ($is_batch){
+			# Check to see if this user is already running an archive query
+			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND (ISNULL(num_results) OR num_results=-1)';
+			$sth = $self->db->prepare($query);
+			$sth->execute();
+			my $counter = 0;
+			while (my $row = $sth->fetchrow_hashref){
+				if ($args->{user} and $row->{uid} eq $args->{user}->uid){
+					$self->_error('User ' . $args->{user}->username . ' already has an archive query running: ' . $row->{qid});
+					return;
+				}
+				$counter++;
+				if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
+					#TODO create a queuing mechanism for this
+					$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
+					return;
+				}
+			}
+			
+			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
+			$q->batch_message($is_batch . '  You will receive an email with your results.');
+			$q->batch(1);
+			return $q;
+		}
+	}
+	
+	# Execute search
+	if (not $q->datasources->{sphinx}){
+		$self->_external_query($q);
+	}
+	elsif ($q->livetail){
+		$self->_livetail_query($q);
+	}
+	elsif ($q->archive){
+		$self->_archive_query($q);
+	}
+	elsif ($q->analytics or ($q->limit > $API::Max_limit)){
+		$self->_unlimited_sphinx_query($q);
+	}
+	else {
+		$self->_sphinx_query($q);
+	}
+	
+	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+	
+	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
+
+	# Apply transforms
+	if ($q->has_transforms){	
+		$self->transform($q);
+	}
+	
+	# Send to connectors
+	if ($q->has_connectors){
+		$self->send_to($q);
+	}
+
+	return $q;
+}
+
+sub query {
+	my ($self, $args) = @_;
+	
+	my $q;
+	if (ref($args) eq 'Query'){
+		# We were given a query object natively
+		$q = $args;
+	}
+	else {
+		unless ($args and ref($args) eq 'HASH'){
+			die('Invalid query args');
+		}
+		# Get our node info
+		if (not $self->node_info->{updated_at} 
+			or ($self->conf->get('node_info_cache_timeout') and 
+				((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout')))){
+			$self->node_info($self->_get_node_info());
+		}
+		if ($args->{q}){
+			if ($args->{qid}){
+				$self->log->level($ERROR);
+				$q = new Query(conf => $self->conf, permissions => $args->{permissions}, q => $args->{q},
+					node_info => $self->node_info, qid => $args->{qid}, peer_label => $args->{peer_label});
+			}
+			else {
+				$q = new Query(conf => $self->conf, permissions => $args->{permissions}, q => $args->{q}, 
+					node_info => $self->node_info, peer_label => $args->{peer_label});
+			}
+		}
+		elsif ($args->{query_string}){
+			$q = new Query(
+				conf => $self->conf, 
+				node_info => $self->node_info,
+				%$args,
+			);
+		}
+		else {
+			delete $args->{user};
+			$self->log->error('Bad args: ' . Dumper($args));
+			die('Invalid query args, no q or query_string');
+		}
+	}
+	
+	foreach my $warning (@{ $q->warnings }){
+		$self->add_warning($warning);
+	}
+	
+	return $self->_peer_query($q);
+
+#	my ($query, $sth);
+#	
+#	# Check for batching
+#	unless ($q->system or $q->livetail){
+#		my $is_batch = 0;	
+#		if ($q->analytics or $q->archive){
+#			# Find estimated query time
+#			my $estimated_query_time = $self->_estimate_query_time($q);
+#			$self->log->trace('Found estimated query time ' . $estimated_query_time . ' seconds.');
+#			my $query_time_batch_threshold = 120;
+#			if ($self->conf->get('query_time_batch_threshold')){
+#				$query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
+#			}
+#			if ($estimated_query_time > $query_time_batch_threshold){
+#				$is_batch = 'Batching because estimated query time is ' . int($estimated_query_time) . ' seconds.';
+#				$self->log->info($is_batch);
+#			}
+#		}
+#		
+#		# Batch if we're allowing a huge number of results
+#		if ($q->limit == 0 or $q->limit > $Results::Unbatched_results_limit){
+#			$is_batch = q{Batching because an unlimited number or large number of results has been requested.};
+#			$self->log->info($is_batch);
+#		}	
+#			
+#		if ($is_batch){
+#			# Check to see if this user is already running an archive query
+#			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND (ISNULL(num_results) OR num_results=-1)';
+#			$sth = $self->db->prepare($query);
+#			$sth->execute();
+#			my $counter = 0;
+#			while (my $row = $sth->fetchrow_hashref){
+#				if ($args->{user} and $row->{uid} eq $args->{user}->uid){
+#					$self->_error('User ' . $args->{user}->username . ' already has an archive query running: ' . $row->{qid});
+#					return;
+#				}
+#				$counter++;
+#				if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
+#					#TODO create a queuing mechanism for this
+#					$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
+#					return;
+#				}
+#			}
+#			
+#			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
+#			$q->batch_message($is_batch . '  You will receive an email with your results.');
+#			$q->batch(1);
+#			return $q;
+#		}
+#	}
+#	
+#	# Execute search on every peer
+#	my @peers;
+#	foreach my $peer (keys %{ $self->conf->get('peers') }){
+#		if (scalar keys %{ $q->nodes->{given} }){
+#			next unless $q->nodes->{given}->{$peer};
+#		}
+#		elsif (scalar keys %{ $q->nodes->{excluded} }){
+#			next if $q->nodes->{excluded}->{$peer};
+#		}
+#		push @peers, $peer;
+#	}
+#	$self->log->trace('Executing global query on peers ' . join(', ', @peers));
+#	
+#	my $cv = AnyEvent->condvar;
+#	$cv->begin;
+#	foreach my $peer (@peers){
+#		$cv->begin;
+#		my $peer_conf = $self->conf->get('peers/' . $peer);
+#		my $url = $peer_conf->{url} . 'API/';
+#		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'global_query';
+#		my $body = 'apikey=' . $peer_conf->{apikey} . '&permissions=' . uri_escape($self->json->encode($q->user->permissions))
+#			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $q->meta_params }));
+#		$self->log->trace('Sending request to URL ' . $url . ' with body ' . $body);
+#		my $start = time();
+#		$q->peer_requests->{$peer} = http_post $url, $body, headers => { 'Content-type' => 'application/x-www-form-urlencoded' }, sub {
+#			my ($body, $hdr) = @_;
+#			eval {
+#				my $raw_results = $self->json->decode($body);
+#				my $results_package = $q->has_groupby ? 'Results::Groupby' : 'Results';
+#				my $results_obj = $results_package->new(results => $raw_results->{results}, total_records => $raw_results->{totalRecords});
+#				$self->log->debug('merging ' . Dumper($q->results) . ' with ' . Dumper($results_obj));
+#				$q->results->merge($results_obj, $q);
+#				my $stats = $raw_results->{stats};
+#				$stats ||= {};
+#				$stats->{total_request_time} = (time() - $start);
+#				$q->stats->{peers} ||= {};
+#				$q->stats->{peers}->{$peer} = { %$stats };
+#			};
+#			if ($@){
+#				$self->log->error($@);
+#				$self->add_warning($@);
+#			}	
+#			delete $q->peer_requests->{$peer};
+#			$cv->end;
+#		};
+#	}
+#	$cv->end;
+#	$cv->recv;
+#	$self->log->debug('stats: ' . Dumper($q->stats));
+#	
+#	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+#	
+#	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
+#
+#	# Send to connectors
+#	if ($q->has_connectors){
+#		$self->send_to($q);
+#	}
+#	
+#	return $q;
+}
+
+sub local_info {
+	my ($self, $args) = @_;
+	
+	return $self->_get_node_info(1);
+}
+
+sub local_stats {
+	my ($self, $args) = @_;
+	
+	return $self->get_stats($args);
+}
+
+sub stats {
+	my ($self, $args) = @_;
+	
+	my ($query, $sth);
+	my $overall_start = time();
+	
+	# Execute search on every peer
+	my @peers;
+	foreach my $peer (keys %{ $self->conf->get('peers') }){
+		push @peers, $peer;
+	}
+	$self->log->trace('Executing global node_info on peers ' . join(', ', @peers));
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin;
+	my %stats;
+	my %results;
+	foreach my $peer (@peers){
+		$cv->begin;
+		my $peer_conf = $self->conf->get('peers/' . $peer);
+		my $url = $peer_conf->{url} . 'API/';
+		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_stats' : 'stats';
+		$url .= '?start=' . uri_escape($args->{start}) . '&end=' . uri_escape($args->{end});
+		$self->log->trace('Sending request to URL ' . $url);
+		my $start = time();
+		my $headers = { 
+			Authorization => $self->_get_auth_header($peer),
+		};
+		$results{$peer} = http_get $url, headers => $headers, sub {
+			my ($body, $hdr) = @_;
+			eval {
+				my $raw_results = $self->json->decode($body);
+				$stats{$peer}->{total_request_time} = (time() - $start);
+				$results{$peer} = { %$raw_results }; #undef's the guard
+			};
+			if ($@){
+				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
+				$self->add_warning('peer ' . $peer . ': ' . $@);
+				delete $results{$peer};
+			}
+			$cv->end;
+		};
+	}
+	$cv->end;
+	$cv->recv;
+	$stats{overall} = (time() - $overall_start);
+	$self->log->debug('stats: ' . Dumper(\%stats));
+	
+	$self->log->debug('merging: ' . Dumper(\%results));
+	my $overall_final = merge values %results;
+	
+	return $overall_final;
+}
+
+sub upload {
+	my ($self, $args) = @_;
+	
+	$self->log->info('Received file ' . $args->{upload}->basename . ' with size ' . $args->{upload}->size 
+		. ' from client ' . $args->{address});
+	my ($query, $sth);
+	
+	my $syslog_db_name = 'syslog';
+	if ($self->conf->get('syslog_db_name')){
+		$syslog_db_name = $self->conf->get('syslog_db_name');
+	}
+		
+	my $ae = Archive::Extract->new( archive => $args->{upload}->path );
+	my $id = $args->{address} . '_' . $args->{md5};
+	# make a working dir for these files
+	my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
+	mkdir($working_dir);
+	$ae->extract( to => $working_dir ) or die($ae->error);
+	my $files = $ae->files;
+	foreach my $unzipped_file_shortname (@$files){
+		my $unzipped_file = $working_dir . '/' . $unzipped_file_shortname;
+		my $file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $unzipped_file_shortname;
+		move($unzipped_file, $file);
+		
+		if ($unzipped_file_shortname =~ /programs/){
+			$self->log->info('Loading programs file ' . $file);
+			$query = 'LOAD DATA LOCAL INFILE "' . $file . '" INTO TABLE ' . $syslog_db_name . '.programs';
+			$self->db->do($query);
+			next;
+		}
+		
+		# Check md5
+		my $md5 = new Digest::MD5;
+		my $upload_fh = new IO::File($file);
+		$md5->addfile($upload_fh);
+		my $local_md5 = $md5->hexdigest;
+		close($upload_fh);
+		unless ($local_md5 eq $args->{md5}){
+			my $msg = 'MD5 mismatch! Found: ' . $local_md5 . ' expected: ' . $args->{md5};
+			$self->log->error($msg);
+			unlink($file);
+			return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+		}
+		unless ($args->{start} and $args->{end}){
+			my $msg = 'Did not receive valid start/end times';
+			$self->log->error($msg);
+			unlink($file);
+			return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+		}
+		
+		# Record our received file in the database
+		$query = 'INSERT INTO ' . $syslog_db_name . '.buffers (filename, start, end) VALUES (?,?,?)';
+		$sth = $self->db->prepare($query);
+		$sth->execute($file, $args->{start}, $args->{end});
+		my $buffers_id = $self->db->{mysql_insertid};
+		
+		# Record the upload
+		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{address}, $args->{count}, $args->{size}, $args->{batch_time}, 
+			$args->{total_errors}, $args->{start}, $args->{end}, $buffers_id);
+		$sth->finish;
+	}
+	rmdir($working_dir);
+	return [ 200, [ 'Content-Type' => 'text/plain' ], [ 'ok' ] ];
+}
+
+__PACKAGE__->meta->make_immutable;

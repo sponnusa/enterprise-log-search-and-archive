@@ -91,7 +91,8 @@ sub call {
 					comment => $query->{label},
 					type => $chart->{type},
 				};
-				$query_meta_params->{groupby} = [$self->groupby] unless $query->{query} =~ /\sgroupby[:=]/ or $query->{query} =~ /sum\([^\)]+\)$/;
+				#$query_meta_params->{groupby} = [$self->groupby] unless $query->{query} =~ /\sgroupby[:=]/ or $query->{query} =~ /sum\([^\)]+\)$/;
+				$query->{query_string} .= ' groupby:' . $args->{groupby} unless $query->{query_string} =~ /\sgroupby[:=]/ or $query->{query_string} =~ /sum\([^\)]+\)$/;
 				$query->{query_string} = delete $query->{query};
 				$query->{query_meta_params} = $query_meta_params;
 				$query->{user} = $self->user;

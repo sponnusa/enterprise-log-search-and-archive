@@ -69,8 +69,8 @@ sub call {
 	
 		if ($ret->has_groupby){
 			#$self->api->log->debug('ret: ' . Dumper($ret));
-			$self->api->log->debug('ret: ' . Dumper($ret->all_groupbys));
-			$self->api->log->debug('ret: ' . Dumper($ret->groupby));
+			$self->api->log->debug('all_groupbys: ' . Dumper($ret->all_groupbys));
+			$self->api->log->debug('groupby: ' . Dumper($ret->groupby));
 			
 			# First add columns
 			foreach my $groupby ($ret->all_groupbys){

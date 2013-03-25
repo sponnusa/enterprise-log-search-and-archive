@@ -131,6 +131,13 @@ builder {
 			unless ($local_md5 eq $params->{md5}){
 				my $msg = 'MD5 mismatch! Found: ' . $local_md5 . ' expected: ' . $params->{md5};
 				$Log->error($msg);
+				unlink($file);
+				return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+			}
+			unless ($params->{start} and $params->{end}){
+				my $msg = 'Did not receive valid start/end times';
+				$Log->error($msg);
+				unlink($file);
 				return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
 			}
 			

@@ -17,18 +17,20 @@ use Module::Pluggable sub_name => 'info_plugins', require => 1, search_path => [
 use Module::Pluggable sub_name => 'transform_plugins', require => 1, search_path => [ qw(Transform) ];
 use Module::Pluggable sub_name => 'connector_plugins', require => 1, search_path => [ qw(Connector) ];
 use Module::Pluggable sub_name => 'datasource_plugins', require => 1, search_path => [ qw(Datasource) ];
-use URI::Escape qw(uri_unescape);
+use URI::Escape qw(uri_unescape uri_escape);
 use Mail::Internet;
 use Email::LocalDelivery;
 use Carp;
 use Log::Log4perl::Level;
 use Storable qw(freeze thaw);
+use AnyEvent::HTTP;
 
 use User;
 use Query;
 use Results;
+use SyncMysql;
 #use AsyncMysql;
-use AsyncDB;
+#use AsyncDB;
 
 our $Max_limit = 1000;
 our $Max_query_terms = 128;
@@ -242,7 +244,7 @@ sub get_saved_result {
 	}
 	
 	# Authenticate the hash if given (so that the uid doesn't have to match)
-	if ($args->{hash} and $args->{hash} ne $self->get_hash($args->{qid}) ){
+	if ($args->{hash} and $args->{hash} ne $self->_get_hash($args->{qid}) ){
 		$self->_error(q{You are not authorized to view another user's saved queries});
 		return;
 	}
@@ -589,6 +591,7 @@ sub get_stats {
 		}
 	}
 	
+	#$stats->{nodes} = $self->_get_nodes($user);
 	$stats->{nodes} = $self->_get_nodes($user);
 		
 	my $intervals = 100;
@@ -603,7 +606,7 @@ sub get_stats {
 		my $load_stats = {};
 		
 		my $cv = AnyEvent->condvar;
-		$cv->begin(sub { shift->send });
+		$cv->begin;
 		foreach my $item (qw(load archive index)){
 			$load_stats->{$item} = {
 				data => {
@@ -625,11 +628,11 @@ sub get_stats {
 			$self->log->trace('get stat ' . $item . ' for node ' . $node);
 			$stats->{nodes}->{$node}->{dbh}->query($query, $item, $args->{start}, $args->{end}, sub {
 				my ($dbh, $rows, $rv) = @_;
-				#$self->log->trace('got stat ' . $item . ' for node ' . $node . ': ' . Dumper($rows));
+				$self->log->trace('got stat ' . $item . ' for node ' . $node . ': ' . Dumper($rows));
 				$load_stats->{$item}->{summary} = $rows->[0];
 				$cv->end;
 			
-				my $query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
+				$query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
 				$cv->begin;
 				$stats->{nodes}->{$node}->{dbh}->query($query, $item, $args->{start}, $args->{end}, sub {
 					my ($dbh, $rows, $rv) = @_;
@@ -638,7 +641,7 @@ sub get_stats {
 						$cv->end;
 						return;
 					}
-					#$self->log->trace('$load_stats->{$item}->{summary}: ' . Dumper($load_stats->{$item}->{summary}));
+					$self->log->trace('$load_stats->{$item}->{summary}: ' . Dumper($load_stats->{$item}->{summary}));
 					# arrange in the number of buckets requested
 					my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
 					unless ($bucket_size){
@@ -738,11 +741,8 @@ sub _get_sphinx_nodes {
 		}
 		eval {
 			$nodes{$node} = { db => $db_name };
-			
-			$cv->begin;
-			my $node_start = time();	
-			$nodes{$node}->{dbh} = AsyncDB->new(log => $self->log, db_args => [
-				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
+			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
+				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
 				$node_conf->{$node}->{username}, 
 				$node_conf->{$node}->{password}, 
 				{
@@ -750,16 +750,10 @@ sub _get_sphinx_nodes {
 					PrintError => 0,
 					mysql_multi_statements => 1,
 				}
-			], cb => sub {
-				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (time() - $node_start));
-				$cv->end;
-			});
-			
+			]);
 			$self->log->trace('connecting to sphinx on node ' . $node);
 			
-			$cv->begin;
-			$node_start = time();
-			$nodes{$node}->{sphinx} = AsyncDB->new(log => $self->log, db_args => [
+			$nodes{$node}->{sphinx} = SyncMysql->new(log => $self->log, db_args => [
 				'dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef,
 				{
 					mysql_connect_timeout => $self->db_timeout,
@@ -767,10 +761,39 @@ sub _get_sphinx_nodes {
 					mysql_multi_statements => 1,
 					mysql_bind_type_guessing => 1,
 				}
-			], cb => sub {
-				$self->log->trace('connected to ' . $node . ' on ' . $sphinx_port . ' in ' . (time() - $node_start));
-				$cv->end;
-			});
+			]);
+#			$cv->begin;
+#			my $node_start = time();	
+#			$nodes{$node}->{dbh} = AsyncDB->new(log => $self->log, db_args => [
+#				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
+#				$node_conf->{$node}->{username}, 
+#				$node_conf->{$node}->{password}, 
+#				{
+#					mysql_connect_timeout => $self->db_timeout,
+#					PrintError => 0,
+#					mysql_multi_statements => 1,
+#				}
+#			], cb => sub {
+#				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (time() - $node_start));
+#				$cv->end;
+#			});
+#			
+#			$self->log->trace('connecting to sphinx on node ' . $node);
+#			
+#			$cv->begin;
+#			$node_start = time();
+#			$nodes{$node}->{sphinx} = AsyncDB->new(log => $self->log, db_args => [
+#				'dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef,
+#				{
+#					mysql_connect_timeout => $self->db_timeout,
+#					PrintError => 0,
+#					mysql_multi_statements => 1,
+#					mysql_bind_type_guessing => 1,
+#				}
+#			], cb => sub {
+#				$self->log->trace('connected to ' . $node . ' on ' . $sphinx_port . ' in ' . (time() - $node_start));
+#				$cv->end;
+#			});
 		};
 		if ($@){
 			$self->add_warning($@);
@@ -815,7 +838,7 @@ sub old_get_sphinx_nodes {
 		eval {
 			$nodes{$node} = { db => $db_name };
 									
-			$nodes{$node}->{dbh} = AsyncMysql->new(log => $self->log, db_args => [
+			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
 				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
 				$node_conf->{$node}->{username}, 
 				$node_conf->{$node}->{password}, 
@@ -828,7 +851,7 @@ sub old_get_sphinx_nodes {
 			
 			$self->log->trace('connecting to sphinx on node ' . $node);
 			
-			$nodes{$node}->{sphinx} = AsyncMysql->new(log => $self->log, db_args => [
+			$nodes{$node}->{sphinx} = SyncMysql->new(log => $self->log, db_args => [
 				'dbi:mysql:port=' . $sphinx_port .';host=' . $node, undef, undef,
 				{
 					mysql_connect_timeout => $self->db_timeout,
@@ -851,14 +874,25 @@ sub get_form_params {
 	my ( $self, $user) = @_;
 	
 	eval {	
-		$self->node_info($self->_get_node_info($user));
+		my $node_info = $self->info();
+		$self->log->trace('got node_info: ' . Dumper($node_info));
+		$self->node_info($node_info);
 	};
 	if ($@){
 		$self->add_warning($@);
 		$self->log->error($@);
 		return;
 	}
-	#$self->log->trace('got node_info: ' . Dumper($self->node_info));
+	
+#	eval {	
+#		$self->node_info($self->_get_node_info($user));
+#	};
+#	if ($@){
+#		$self->add_warning($@);
+#		$self->log->error($@);
+#		return;
+#	}
+	
 	my $form_params;
 	
 	eval {			
@@ -1511,7 +1545,7 @@ sub _get_saved_queries {
 			query => $query, 
 			num_results => $row->{num_results}, 
 			comments => $row->{comments},
-			hash => $self->get_hash($row->{qid}),
+			hash => $self->_get_hash($row->{qid}),
 		};
 	}
 	return { 
@@ -1639,10 +1673,23 @@ sub query {
 		if (not $self->node_info->{updated_at} 
 			or ($self->conf->get('node_info_cache_timeout') and ((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout')))
 			or ($args->{user} and not $args->{user}->is_admin)){
-			$self->node_info($self->_get_node_info($args->{user}));
+			#$self->node_info($self->_get_node_info($args->{user}));
+			eval {	
+				my $node_info = $self->info();
+				$self->log->trace('got node_info: ' . Dumper($node_info));
+				$self->node_info($node_info);
+			};
+			if ($@){
+				$self->log->error($@);
+				die($@);
+			}
+		}
+		else {
+			$self->log->trace('Using cached node_info, updated: ' . (time() - $self->node_info->{updated_at}));
 		}
 		if ($args->{q}){
 			if ($args->{qid}){
+				die('Polling not implemented'); # remove when livetail is put back in
 				$self->log->level($ERROR);
 				$q = new Query(conf => $self->conf, user => $args->{user}, q => $args->{q}, node_info => $self->node_info, qid => $args->{qid});
 			}
@@ -1668,92 +1715,126 @@ sub query {
 	foreach my $warning (@{ $q->warnings }){
 		$self->add_warning($warning);
 	}
+	
+	return $self->_peer_query($q);
 
-	my ($query, $sth);
-	
-	# Check for batching
-	unless ($q->system or $q->livetail){
-		my $is_batch = 0;	
-		if ($q->analytics or $q->archive){
-			# Find estimated query time
-			my $estimated_query_time = $self->_estimate_query_time($q);
-			$self->log->trace('Found estimated query time ' . $estimated_query_time . ' seconds.');
-			my $query_time_batch_threshold = 120;
-			if ($self->conf->get('query_time_batch_threshold')){
-				$query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
-			}
-			if ($estimated_query_time > $query_time_batch_threshold){
-				$is_batch = 'Batching because estimated query time is ' . int($estimated_query_time) . ' seconds.';
-				$self->log->info($is_batch);
-			}
-		}
-		
-		# Batch if we're allowing a huge number of results
-		if ($q->limit == 0 or $q->limit > $Results::Unbatched_results_limit){
-			$is_batch = q{Batching because an unlimited number or large number of results has been requested.};
-			$self->log->info($is_batch);
-		}	
-			
-		if ($is_batch){
-			# Check to see if this user is already running an archive query
-			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND (ISNULL(num_results) OR num_results=-1)';
-			$sth = $self->db->prepare($query);
-			$sth->execute();
-			my $counter = 0;
-			while (my $row = $sth->fetchrow_hashref){
-				if ($row->{uid} eq $args->{user}->uid){
-					$self->_error('User ' . $args->{user}->username . ' already has an archive query running: ' . $row->{qid});
-					return;
-				}
-				$counter++;
-				if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
-					#TODO create a queuing mechanism for this
-					$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
-					return;
-				}
-			}
-			
-			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
-			$q->batch_message($is_batch . '  You will receive an email with your results.');
-			$q->batch(1);
-			return $q;
-		}
-	}
-	
-	# Execute search
-	if (not $q->datasources->{sphinx}){
-		$self->_external_query($q);
-	}
-	elsif ($q->livetail){
-		$self->_livetail_query($q);
-	}
-	elsif ($q->archive){
-		$self->_archive_query($q);
-	}
-	elsif ($q->analytics or ($q->limit > $Max_limit)){
-		$self->_unlimited_sphinx_query($q);
-	}
-	else {
-		$self->_sphinx_query($q);
-	}
-	
-	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
-	
-	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
-
-	# Apply transforms
-	if ($q->has_transforms){	
-		$self->transform($q);
-	}
-	
-	# Send to connectors
-	if ($q->has_connectors){
-		$self->send_to($q);
-	}
-
-	return $q;
+#	my ($query, $sth);
+#	
+#	# Check for batching
+#	unless ($q->system or $q->livetail){
+#		my $is_batch = 0;	
+#		if ($q->analytics or $q->archive){
+#			# Find estimated query time
+#			my $estimated_query_time = $self->_estimate_query_time($q);
+#			$self->log->trace('Found estimated query time ' . $estimated_query_time . ' seconds.');
+#			my $query_time_batch_threshold = 120;
+#			if ($self->conf->get('query_time_batch_threshold')){
+#				$query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
+#			}
+#			if ($estimated_query_time > $query_time_batch_threshold){
+#				$is_batch = 'Batching because estimated query time is ' . int($estimated_query_time) . ' seconds.';
+#				$self->log->info($is_batch);
+#			}
+#		}
+#		
+#		# Batch if we're allowing a huge number of results
+#		if ($q->limit == 0 or $q->limit > $Results::Unbatched_results_limit){
+#			$is_batch = q{Batching because an unlimited number or large number of results has been requested.};
+#			$self->log->info($is_batch);
+#		}	
+#			
+#		if ($is_batch){
+#			# Check to see if this user is already running an archive query
+#			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND (ISNULL(num_results) OR num_results=-1)';
+#			$sth = $self->db->prepare($query);
+#			$sth->execute();
+#			my $counter = 0;
+#			while (my $row = $sth->fetchrow_hashref){
+#				if ($row->{uid} eq $args->{user}->uid){
+#					$self->_error('User ' . $args->{user}->username . ' already has an archive query running: ' . $row->{qid});
+#					return;
+#				}
+#				$counter++;
+#				if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
+#					#TODO create a queuing mechanism for this
+#					$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
+#					return;
+#				}
+#			}
+#			
+#			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
+#			$q->batch_message($is_batch . '  You will receive an email with your results.');
+#			$q->batch(1);
+#			return $q;
+#		}
+#	}
+#	
+#	# Execute search on every peer
+#	my @peers;
+#	foreach my $peer (keys %{ $self->conf->get('peers') }){
+#		if (scalar keys %{ $q->nodes->{given} }){
+#			next unless $q->nodes->{given}->{$peer};
+#		}
+#		elsif (scalar keys %{ $q->nodes->{excluded} }){
+#			next if $q->nodes->{excluded}->{$peer};
+#		}
+#		push @peers, $peer;
+#	}
+#	$self->log->trace('Executing global query on peers ' . join(', ', @peers));
+#	
+#	my $cv = AnyEvent->condvar;
+#	$cv->begin;
+#	foreach my $peer (@peers){
+#		$cv->begin;
+#		my $peer_conf = $self->conf->get('peers/' . $peer);
+#		my $url = $peer_conf->{url} . 'API/';
+#		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'global_query';
+#		my $body = 'apikey=' . $peer_conf->{apikey} . '&permissions=' . uri_escape($self->json->encode($q->user->permissions))
+#			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $q->meta_params }));
+#		$self->log->trace('Sending request to URL ' . $url . ' with body ' . $body);
+#		my $start = time();
+#		$q->peer_requests->{$peer} = http_post $url, $body, headers => { 'Content-type' => 'application/x-www-form-urlencoded' }, sub {
+#			my ($body, $hdr) = @_;
+#			eval {
+#				my $raw_results = $self->json->decode($body);
+#				my $results_package = $q->has_groupby ? 'Results::Groupby' : 'Results';
+#				my $results_obj = $results_package->new(results => $raw_results->{results}, total_records => $raw_results->{totalRecords});
+#				if ($results_obj->records_returned and not $q->results->records_returned){
+#					$q->results($results_obj);
+#				}
+#				elsif ($results_obj->records_returned){
+#					$self->log->debug('query returned ' . $results_obj->records_returned . ' records, merging ' . Dumper($q->results) . ' with ' . Dumper($results_obj));
+#					$q->results->merge($results_obj, $q);
+#				}
+#				my $stats = $raw_results->{stats};
+#				$stats ||= {};
+#				$stats->{total_request_time} = (time() - $start);
+#				$q->stats->{peers} ||= {};
+#				$q->stats->{peers}->{$peer} = { %$stats };
+#			};
+#			if ($@){
+#				$self->log->error($@);
+#				$self->add_warning($@);
+#			}
+#			delete $q->peer_requests->{$peer};
+#			$cv->end;
+#		};
+#	}
+#	$cv->end;
+#	$cv->recv;
+#	$self->log->debug('stats: ' . Dumper($q->stats));
+#	
+#	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+#	
+#	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
+#
+#	# Send to connectors
+#	if ($q->has_connectors){
+#		$self->send_to($q);
+#	}
+#	
+#	return $q;
 }
-
 sub _estimate_query_time {
 	my ($self, $q) = @_;
 	
@@ -1913,6 +1994,7 @@ sub check_local {
 sub _sphinx_query {
 	my ($self, $q) = @_;
 	
+	$self->log->debug('peer_label: ' . $q->peer_label);
 	my $overall_start = time();
 	my %stats;
 	my $start_time = time();
@@ -1998,6 +2080,9 @@ sub _sphinx_query {
 				}
 				if ($q->orderby){
 					$search_query .= ' ORDER BY _orderby ' . $q->orderby_dir;
+				}
+				elsif (exists $query->{groupby}){
+					$search_query .= ' ORDER BY _count DESC';
 				}
 				$search_query .= ' LIMIT ?,? OPTION ranker=none';
 				if ($q->cutoff){
@@ -2105,7 +2190,7 @@ sub _sphinx_query {
 							$self->log->debug('in fork, %orderby_map  ' . Dumper(\%orderby_map));
 							foreach my $row (@$rows){
 								$ret->{$node}->{results} ||= {};
-								$row->{node} = $node;
+								$row->{node} = $q->peer_label ? $q->peer_label : $node;
 								$row->{node_id} = unpack('N*', inet_aton($node));
 								foreach my $import_col (@{ $Fields::Import_fields }){
 									unless ($row->{$import_col}){
@@ -2167,7 +2252,8 @@ sub _sphinx_query {
 			foreach my $node (sort keys %$ret){
 				# One-off for grouping by node
 				if ($groupby eq 'node'){
-					$agg{$node} = $ret->{$node}->{meta}->{total_found};
+					my $node_label = $q->peer_label ? $q->peer_label : $node;
+					$agg{$node_label} = int($ret->{$node}->{meta}->{total_found});
 					next;
 				}
 				foreach my $sphinx_row (@{ $ret->{$node}->{sphinx_rows} }){
@@ -2367,7 +2453,8 @@ sub _sphinx_query {
 		$keyword_stats{$keyword_id}->{percentage} = $keyword_stats{$keyword_id}->{docs} / $total_docs * 100;
 	}  
 	
-	$q->stats({ 
+	$q->stats({
+		%{ $q->stats },
 		keywords => \%keyword_stats, 
 		total_docs => $total_docs, 
 		total_time => (time() - $overall_start),
@@ -2997,11 +3084,11 @@ sub format_results {
 			foreach my $row (@{ $args->{results} }){
 				my @tmp;
 				foreach my $key (@default_columns){
-					push @tmp, $row->{$key};
+					push @tmp, $row->{$key} if defined $row->{$key};
 				}
 				my @fields;
 				foreach my $field (@{ $row->{_fields} }){
-					push @fields, $field->{field} . '=' . $field->{value};
+					push @fields, ($field->{field} ? $field->{field} : '') . '=' . ($field->{value} ? $field->{value} : '');
 				}
 				$ret .= join("\t", @tmp, join(' ', @fields)) . "\n";
 			}
@@ -3015,7 +3102,7 @@ sub format_results {
 		else {
 			foreach my $row (@{ $args->{results} }){
 				foreach my $field (@{ $row->{_fields} }){
-					next if $field->{class} eq 'any';
+					next if $field->{class} eq 'any' or not $field->{class};
 					$row->{ $field->{class} . '.' . $field->{field} } = $field->{value};
 				}
 				delete $row->{_fields};

@@ -337,6 +337,7 @@ YAHOO.ELSA.getRunningArchiveQuery = function(){
 
 YAHOO.ELSA.Query = function(){
 	
+	this.query_url = 'Query/query';
 	this.save = function(p_sName){
 		logger.log('saveSearch', this);
 		
@@ -1591,7 +1592,7 @@ YAHOO.ELSA.Results = function(){
 		oColumns.push({ key:'_fields', label:'Fields', sortable:true, formatter:this.formatFields }); //formatter adds highlights
 		
 		// DataSource instance
-		this.base_query = 'Query/query?q=' + encodeURIComponent(this.sentQuery);
+		this.base_query = this.query_url + '?q=' + encodeURIComponent(this.sentQuery);
 		this.dataSource = new YAHOO.util.DataSource(this.base_query);
 		this.dataSource.maxCacheEntries = 4; //cache these
 	    this.dataSource.responseType = YAHOO.util.DataSource.TYPE_JSON;
@@ -2650,7 +2651,7 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 	//logger.log('query obj:', p_oQuery);
 	logger.log('sending query:' + this.sentQuery);//.toString());
 	var request = YAHOO.util.Connect.asyncRequest('GET', 
-			'Query/query?q=' + encodeURIComponent(this.sentQuery),//.toString()),
+			this.query.query_url + '?q=' + encodeURIComponent(this.sentQuery),//.toString()),
 			{ 
 				success:function(oResponse){
 					var oRequest = oResponse.argument[0];

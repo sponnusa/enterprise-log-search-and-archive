@@ -17,6 +17,9 @@ LOCAL_SYSLOG_CONF="/etc/elsa_syslog-ng.conf"
 # Set this in /etc/elsa_vars.sh to be "1" if you want to skip updating the syslog-ng.conf file entirely
 USE_LOCAL_SYSLOG_CONF="0"
 
+# Version to download
+VERSION=HEAD
+
 MYSQL_NODE_DB="syslog"
 
 # Web DB settings
@@ -86,7 +89,7 @@ CRONTAB_DIR="/var/spool/cron/crontabs"
 WEB_USER="www-data"
 CRON_SERVICE="cron"
 INIT_DIR=/etc/init.d/
-if [ -f /etc/redhat-release ] || [ -f /etc/fedora-release ]; then
+if [ -f /etc/redhat-release ] || [ -f /etc/fedora-release ] || [ -f /etc/system-release ]; then
 	DISTRO="centos"
 	MYSQL_SERVICE_NAME="mysqld"
 	CRONTAB_DIR="/var/spool/cron"
@@ -286,9 +289,10 @@ get_elsa(){
 	if [ $? -ne 0 ]; then 
 		SVN_TRUST_SERVER_CERT=""
 	fi
-	svn --non-interactive $SVN_TRUST_SERVER_CERT --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" &&
+	svn -r $VERSION --non-interactive $SVN_TRUST_SERVER_CERT --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" &&
 	mkdir -p "$BASE_DIR/elsa/node/tmp/locks" && 
 	touch "$BASE_DIR/elsa/node/tmp/locks/directory"
+	touch "$BASE_DIR/elsa/node/tmp/locks/query"
 	UPDATE_OK=$?
 			
 	DOWNLOADED="$BASE_DIR/elsa/contrib/$THIS_FILE"
@@ -341,7 +345,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -454,8 +458,28 @@ build_syslogng(){
 mk_node_dirs(){
 	# Make data directories on node
 	mkdir -p "$DATA_DIR/elsa/log" && mkdir -p "$DATA_DIR/elsa/tmp/buffers" &&
-	mkdir -p "$DATA_DIR/sphinx/log"
+	mkdir -p "$DATA_DIR/sphinx/log" && mkdir -p "$DATA_DIR/elsa/mysql"
 	UPDATE_OK=$?
+	
+	# Set apparmor settings if necessary
+	if [ -f /etc/apparmor.d/local/usr.sbin.mysqld ]; then
+		echo "Updating apparmor config for MySQL dir $DATA_DIR/elsa/mysql/";
+		echo "$DATA_DIR/elsa/mysql/ r,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
+		echo "$DATA_DIR/elsa/mysql/** rwk,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
+		sh /etc/init.d/apparmor reload
+	fi
+	
+	# Set SELinux settings for the auxilliary MySQL dir if necessary
+	if [ -f /usr/sbin/selinuxenabled ]; then
+		/usr/sbin/selinuxenabled
+		if [ $? -eq 0 ]; then
+			if [ -f /usr/bin/chcon ]; then
+				chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
+			else
+				echo "WARNING: chcon SELinux utility not found!"
+			fi
+		fi
+	fi
 	
 	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
 		mkfifo $DATA_DIR/elsa/tmp/realtime;
@@ -678,7 +702,7 @@ build_web_perl(){
 		# PAM requires some user input for testing, and we don't want that
 		#cpanm -n Authen::PAM Crypt::DH &&
 		#Authen::Simple::PAM 
-		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5
+		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5 Hash::Merge::Simple Digest::SHA Archive::Extract Apache::Admin::Config
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -845,13 +869,28 @@ suse_set_apache(){
 	echo "LoadModule perl_module                 /usr/lib/apache2/mod_perl.so" >> /etc/apache2/sysconfig.d/loadmodule.conf &&
 	# Verify that we can write to logs
 	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
+	
+	# Ensure that Apache has the right prefork settings
+	APACHE_CONF="/etc/apache2/server-tuning.conf"
+	cp $APACHE_CONF "$APACHE_CONF.elsabak"
+	set_apache_tuning($APACHE_CONF);
 	service apache2 restart
+	
 	enable_service "apache2"
 	return $?
 }
 
 ubuntu_set_apache(){
 	# For Apache, locations vary, but this is the gist:
+	cat "$BASE_DIR/elsa/web/conf/startup.pl" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/elsa_startup.pl
+	if [ ! -f /etc/apache2/mods-available/perl.conf ]; then
+		echo "PerlPostConfigRequire /etc/apache2/elsa_startup.pl" > /etc/apache2/mods-available/perl.conf;
+	else
+		grep elsa_startup.pl /etc/apache2/mods-available/perl.conf
+		if [ $? -ne 0 ]; then
+			echo "PerlPostConfigRequire /etc/apache2/elsa_startup.pl" >> /etc/apache2/mods-available/perl.conf;
+		fi
+	fi
 	cpanm Plack::Handler::Apache2 &&
 	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/sites-available/elsa &&
 	# Enable the site
@@ -859,13 +898,28 @@ ubuntu_set_apache(){
 	a2dissite default &&
 	a2enmod rewrite &&
 	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
+	
+	# Ensure that Apache has the right prefork settings
+	APACHE_CONF="/etc/apache2/apache2.conf"
+	cp $APACHE_CONF "$APACHE_CONF.elsabak"
+	set_apache_tuning($APACHE_CONF);
 	service apache2 restart
 	enable_service "apache2"
 	return $?
 }
 
+set_apache_tuning(){
+	FILE=$1
+	perl -le 'use Apache::Admin::Config; my $ap = new Apache::Admin::Config("$ARGV[0]"); my @ar = $ap->select(-name => "IfModule", -value => "mpm_prefork_module"); use Data::Dumper; $ar[0]->directive("MaxRequestsPerChild")->set_value(2); $ap->save();' $FILE
+}
+
 centos_set_apache(){
 	# For Apache, locations vary, but this is the gist:
+	cat "$BASE_DIR/elsa/web/conf/startup.pl" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/httpd/conf/elsa_startup.pl
+	grep elsa_startup.pl /etc/httpd/conf.d/perl.conf
+	if [ $? -ne 0 ]; then
+		echo "PerlPostConfigRequire /etc/httpd/conf/elsa_startup.pl" >> /etc/httpd/conf.d/perl.conf;
+	fi
 	cpanm Plack::Handler::Apache2 &&
 	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/httpd/conf.d/ZZelsa.conf &&
 	
@@ -875,6 +929,13 @@ centos_set_apache(){
 	chcon --reference=/var/log/httpd -R $DATA_DIR
 	setsebool -P httpd_can_network_connect on
 	setsebool -P httpd_can_network_connect_db on
+	
+	# Ensure that Apache has the right prefork settings
+	APACHE_CONF="/etc/httpd/conf/httpd.conf"
+	cp $APACHE_CONF "$APACHE_CONF.elsabak"
+	set_apache_tuning($APACHE_CONF);
+	service apache2 restart
+	
 	service httpd restart
 	enable_service "httpd"
 	# Set firewall
@@ -907,7 +968,13 @@ freebsd_set_apache(){
 	fi
 	cpanm Plack::Handler::Apache2 &&
 	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /usr/local/etc/$APACHE/Includes/elsa.conf &&
-	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
+	chown -R $WEB_USER "$DATA_DIR/elsa/log"
+	
+	# Ensure that Apache has the right prefork settings
+	APACHE_CONF="/usr/local/etc/apache22/httpd.conf"
+	cp $APACHE_CONF "$APACHE_CONF.elsabak"
+	set_apache_tuning($APACHE_CONF);
+	
 	service $APACHE restart
 	
 	return $?
@@ -969,13 +1036,18 @@ check_web_installed(){
 	fi
 }
 
+validate_config(){
+	perl $BASE_DIR/elsa/contrib/validate_config.pl
+	return $?
+}
+
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate"; do
+		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "set_node_mysql" "init_elsa" "test_elsa""set_logrotate" "validate_config" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "update_node_mysql" "update_syslogng" "restart_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "update_node_mysql" "update_syslogng" "validate_config" "restart_elsa"; do
 			exec_func $FUNCTION
 		done
 	else
@@ -983,11 +1055,11 @@ if [ "$INSTALL" = "node" ]; then
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_web_installed" $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate"; do
+		for FUNCTION in "check_web_installed" $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate" "validate_config" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql" "restart_apache"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql" "validate_config" "restart_apache"; do
 			exec_func $FUNCTION
 		done
 	else
