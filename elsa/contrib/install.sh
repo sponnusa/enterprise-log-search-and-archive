@@ -910,7 +910,7 @@ ubuntu_set_apache(){
 
 set_apache_tuning(){
 	FILE=$1
-	perl -le 'use Apache::Admin::Config; my $ap = new Apache::Admin::Config("$ARGV[0]"); my @ar = $ap->select(-name => "IfModule", -value => "mpm_prefork_module"); use Data::Dumper; $ar[0]->directive("MaxRequestsPerChild")->set_value(2); $ap->save();' $FILE
+	perl -le 'use Apache::Admin::Config; my $ap = new Apache::Admin::Config("$ARGV[0]"); my @ar = $ap->select(-name => "IfModule", -value => "prefork.c"); use Data::Dumper; $ar[0]->directive("MaxRequestsPerChild")->set_value(2); $ap->save();' $FILE
 }
 
 centos_set_apache(){
