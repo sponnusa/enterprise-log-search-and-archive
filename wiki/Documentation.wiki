@@ -225,27 +225,27 @@ Archive Query → Parse → Authorize → Log → Batch message to user
 
 =Web Services API=
 Web services currently expose three URL's for use in external apps or between nodes:
-* /API/query
-* /API/stats
-* /API/upload
+ * /API/query
+ * /API/stats
+ * /API/upload
 
 /API/query parameters:
-* q: The literal query JSON object comprised of query_string and query_meta_params
-* permissions: The literal JSON object containing ELSA permissions
-* peer_label: The optional label to assign results from this peer (so they aren't "127.0.0.1")
+ * q: The literal query JSON object comprised of query_string and query_meta_params
+ * permissions: The literal JSON object containing ELSA permissions
+ * peer_label: The optional label to assign results from this peer (so they aren't "127.0.0.1")
 
 /API/stats parameters:
-* start: Start date of stats
-* end: End date of stats
+ * start: Start date of stats
+ * end: End date of stats
 
 /API/upload parameters:
-* filename: Name of the file being uploaded.  Must have the header "Content-disposition" with "attachment; filename=" in the client request.
-* start: Client declared start of the log data
-* end: Client declared end of the log data
-* md5: Client calculated MD5 of the entire file.  This *must* match what the server calculates.
-* total_errors: (optional) error count
-* count: (optional) declared count of records by the client
-* batch_time: (optional) time period over which the records were collected, in seconds (e.g. 60)
+ * filename: Name of the file being uploaded.  Must have the header "Content-disposition" with "attachment; filename=" in the client request.
+ * start: Client declared start of the log data
+ * end: Client declared end of the log data
+ * md5: Client calculated MD5 of the entire file.  This *must* match what the server calculates.
+ * total_errors: (optional) error count
+ * count: (optional) declared count of records by the client
+ * batch_time: (optional) time period over which the records were collected, in seconds (e.g. 60)
 
 =Alerts=
 
