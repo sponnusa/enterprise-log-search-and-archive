@@ -344,7 +344,7 @@ sub initial_validate_directory {
 		my $row = $sth->fetchrow_hashref;
 		next if $row;
 		eval {
-			$ins_sth->execute($file, $$);
+			$ins_sth->execute($file);
 		};
 		if ($@){
 			my $e = $@;
