@@ -328,7 +328,7 @@ sub initial_validate_directory {
 	
 	$query = 'SELECT pid FROM buffers WHERE filename=?';
 	$sth = $self->db->prepare($query);
-	$query = 'INSERT IGNORE INTO buffers (filename, pid) VALUES (?,?)';
+	$query = 'INSERT IGNORE INTO buffers (filename) VALUES (?)';
 	my $ins_sth = $self->db->prepare($query);
 	$self->log->debug('files: ' . Dumper(\@files));
 	foreach my $file (@files){
@@ -820,7 +820,7 @@ sub load_buffers {
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my $row = $sth->fetchrow_arrayref;
-	if ($row and $row->[0] > 0){
+	if ($row and $row->[0] > 0 and $row->[0] ne $$){
 		$self->log->warn('Already load records jobs running, will not load buffers.');
 		return 0;
 	}
@@ -1932,8 +1932,20 @@ sub _over_mem_limit {
 	
 	# Find out how much memory we've got in comparison with how much Sphinx is using
 	#my $total_used = $self->_get_mem_used_by_sphinx();
-	my $total_mem = totalmem() + totalswap();
-	my $total_free = freemem() + freeswap();
+	my $total_mem = totalmem();
+	my $total_free = freemem();
+	
+	# On Linux, use a better method
+	if (-f '/proc/meminfo'){
+		open(FH, '/proc/meminfo');
+		while (<FH>){
+			if ($_ =~ /^Buffers:\s+(\d+) kB/ or $_ =~ /^Cached:\s+(\d+) kB/){
+				$total_free += ($1 * 1024);
+				$self->log->trace('Adjusting for bytes in buffers: ' . ($1 * 1024));
+			}
+		}
+		close(FH);
+	}
 	
 	my $index_sizes = $self->_get_sphinx_index_sizes();
 	$query = "SELECT id, type\n" .
