@@ -146,7 +146,7 @@ my $Additions = {
 		
 		# Remove any pending tasks for peers/127.0.0.1
 		for (my $i = 0; $i < @$fails; $i++){
-			if ($fails->[$i]->{keypath} =~ /^peers\/127\.0\.0\.1/){
+			if ($fails->[$i]->{keypath} =~ /^peers\/127\.0\.0\.1/ or $fails->[$i]->{keypath} eq 'peers'){
 				splice(@$fails, $i, 1);
 				warn 'removed $i ' . $i;
 			}
@@ -172,7 +172,6 @@ _validate($Required->{$version}->{node}, $node_config, '', $fails);
 my $backed_up;
 for (my $i = 0; $i < @$fails; $i++){
 	my $fail = $fails->[$i];
-	warn $fail->{type};
 	if ($fail->{type} eq 'add'){
 		unless ($backed_up){
 			$backed_up = $fail->{conf}->pathToFile() . '.bak.' . CORE::time();
