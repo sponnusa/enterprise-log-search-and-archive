@@ -27,6 +27,7 @@ sub call {
 	}
 	
 	my $args = $req->parameters->as_hashref;
+	$args->{from_peer} = $req->address;
 	$self->api->log->debug('args: ' . Dumper($args));
 	
 	# Authenticate via apikey
@@ -47,7 +48,6 @@ sub call {
 		$self->api->freshen_db;
 		if ($req->upload and $req->uploads->{filename}){
 			$args->{upload} = $req->uploads->{filename};
-			$args->{address} = $req->address;
 		}
 		$ret = $self->api->$method($args);
 		unless ($ret){

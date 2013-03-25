@@ -696,7 +696,7 @@ sub _merge_node_info {
 }
 
 sub _peer_query {
-	my ($self, $q) = @_;
+	my ($self, $q, $from_peer) = @_;
 	my ($query, $sth);
 	
 	# Check for batching

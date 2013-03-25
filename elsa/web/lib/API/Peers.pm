@@ -166,11 +166,11 @@ sub query {
 			if ($args->{qid}){
 				$self->log->level($ERROR);
 				$q = new Query(conf => $self->conf, permissions => $args->{permissions}, q => $args->{q},
-					node_info => $self->node_info, qid => $args->{qid}, peer_label => $args->{peer_label});
+					node_info => $self->node_info, qid => $args->{qid}, peer_label => $args->{peer_label}, from_peer => $args->{from_peer});
 			}
 			else {
 				$q = new Query(conf => $self->conf, permissions => $args->{permissions}, q => $args->{q}, 
-					node_info => $self->node_info, peer_label => $args->{peer_label});
+					node_info => $self->node_info, peer_label => $args->{peer_label}, from_peer => $args->{from_peer});
 			}
 		}
 		elsif ($args->{query_string}){
@@ -191,7 +191,7 @@ sub query {
 		$self->add_warning($warning);
 	}
 	
-	return $self->_peer_query($q);
+	return $self->_peer_query($q, $args->{from_peer});
 
 #	my ($query, $sth);
 #	
@@ -327,7 +327,7 @@ sub stats {
 	# Execute search on every peer
 	my @peers;
 	foreach my $peer (keys %{ $self->conf->get('peers') }){
-		push @peers, $peer;
+		push @peers, $peer unless $peer eq $args->{from_peer};
 	}
 	$self->log->trace('Executing global node_info on peers ' . join(', ', @peers));
 	
@@ -376,7 +376,7 @@ sub upload {
 	my ($self, $args) = @_;
 	
 	$self->log->info('Received file ' . $args->{upload}->basename . ' with size ' . $args->{upload}->size 
-		. ' from client ' . $args->{address});
+		. ' from client ' . $args->{from_peer});
 	my ($query, $sth);
 	
 	my $syslog_db_name = 'syslog';
@@ -385,7 +385,7 @@ sub upload {
 	}
 		
 	my $ae = Archive::Extract->new( archive => $args->{upload}->path );
-	my $id = $args->{address} . '_' . $args->{md5};
+	my $id = $args->{from_peer} . '_' . $args->{md5};
 	# make a working dir for these files
 	my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
 	mkdir($working_dir);
@@ -431,7 +431,7 @@ sub upload {
 		# Record the upload
 		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
 		$sth = $self->db->prepare($query);
-		$sth->execute($args->{address}, $args->{count}, $args->{size}, $args->{batch_time}, 
+		$sth->execute($args->{from_peer}, $args->{count}, $args->{size}, $args->{batch_time}, 
 			$args->{total_errors}, $args->{start}, $args->{end}, $buffers_id);
 		$sth->finish;
 	}
