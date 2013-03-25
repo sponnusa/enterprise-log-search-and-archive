@@ -39,6 +39,10 @@ Live, continuously:
 
 Network → Syslog-NG (PatternDB) → Raw text file
 
+or
+
+HTTP upload → Raw text file
+
 Batch load (by default every minute):
 
 Raw text file → MySQL → Sphinx
@@ -69,6 +73,8 @@ Most Linux distributions do not ship recent versions of Syslog-NG.  Therefore, t
 
 Archive tables typically compress at a 10:1 ratio, and therefore use only about 5% of the total space allocated to logs compared with the index tables and indexes themselves.  The index tables are necessary because Sphinx searches return only the ID's of the matching logs, not the logs themselves, therefore a primary key lookup is required to retrieve the raw log for display.  For this reason, archive tables alone are insufficient because they do not contain a primary key.
 
+If desired, MySQL database files can be stored in a specified directory by adding the "mysql_dir" directive to elsa_node.conf and pointing it to a folder created which has proper permissions and SELinux/apparmor security settings.
+
 ==Hosting all files locally==
 If your ELSA web server will not have Internet access, you will need to host the Javascript for the web pages locally.  To do this, after installing:
 {{{
@@ -89,6 +95,8 @@ The server is backended on the ELSA web database, (elsa_web by default), which s
 
 Admins are designated by configuration variables in the elsa_web.conf file, either by system group when using local auth, or by LDAP/AD group when using LDAP auth.  To designate a group as an admin, add the group to the array in the configuration.  Under the “none” auth mode, all users are admins because they are all logged in under a single pseudo-username.  
 
+The web server is required for both log collectors and log searchers (node and web) because searches query nodes (peers) using a web services API.
+
 =Configuration=
 
 Most settings in the elsa_web.conf and elsa_node.conf files should be fine with the defaults, but there are a few important settings which need to be changed depending on the environment.
@@ -108,6 +116,20 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
   "excluded_classes": {
     "BRO_SSL": 1
   },
+}}}
+* APIKeys: The "apikeys" hash holds all known username/apikey combinations, such as:
+{{{
+"apikeys": { "elsa": "abc" }
+}}}
+* Peers: Configuration for how this ELSA node will talk to other ELSA nodes.  Note that a configuration for itself (127.0.0.1) is required for any query to complete.  An example configuration is:
+{{{
+"peers": {
+  "127.0.0.1": {
+    "url": "http://127.0.0.1/",
+    "user": "elsa",
+    "apikey": "abc"
+  }
+}
 }}}
 
 ==elsa_node.conf:==
@@ -137,9 +159,16 @@ Then logout, login, and restart searchd.
 ||Source||Destination||Port||
 ||Web Clients||Web Node||TCP 80/443||
 ||Web Node||LDAP/AD Server||TCP 389/636||
-||Web Node||Log Node||TCP 3306||
-||Web Node||Log Node||TCP 9306 (formerly 3307)||
+||Web Node||Log Node||TCP 3306 *_deprecated_*||
+||Web Node||Log Node||TCP 9306 (formerly 3307) *_deprecated_*||
+||Web Node||Log Node||TCP 80/443||
 ||Log Clients||Log Node||TCP/UDP 514||
+
+==API Keys==
+The literal structure of an APIKey as it is transmitted is in the form of an HTTP Authorization header.  The format is this:
+{{{Authorization: ApiKey <username>:<current epoch timestamp>:<SHA512 hex digest of timestamp concatenated with configured API key>}}}
+
+To revoke an API key, simply remove that username from the list of "apikeys" in elsa_web.conf or change the key for that username to reset it.
 
 =Permissions=
 
@@ -193,6 +222,30 @@ Queries for logs in the archive tables take much longer than indexed queries.  F
 
 Archive Query → Parse → Authorize → Log → Batch message to user
  				(then in background)	→ MySQL → Store in web MySQL → Email
+
+=Web Services API=
+Web services currently expose three URL's for use in external apps or between nodes:
+* /API/query
+* /API/stats
+* /API/upload
+
+/API/query parameters:
+* q: The literal query JSON object comprised of query_string and query_meta_params
+* permissions: The literal JSON object containing ELSA permissions
+* peer_label: The optional label to assign results from this peer (so they aren't "127.0.0.1")
+
+/API/stats parameters:
+* start: Start date of stats
+* end: End date of stats
+
+/API/upload parameters:
+* filename: Name of the file being uploaded.  Must have the header "Content-disposition" with "attachment; filename=" in the client request.
+* start: Client declared start of the log data
+* end: Client declared end of the log data
+* md5: Client calculated MD5 of the entire file.  This *must* match what the server calculates.
+* total_errors: (optional) error count
+* count: (optional) declared count of records by the client
+* batch_time: (optional) time period over which the records were collected, in seconds (e.g. 60)
 
 =Alerts=
 
@@ -571,6 +624,7 @@ Query_template parameters (all are required):
  # LIMIT
 
 =Livetail=
+*_Livetail is deprecated until further notice due to stability issues._*
 ELSA has the ability to allow each user to get a live feed of a given search delivered to a browser window.  Livetail allows you to use full PCRE to search incoming logs without impacting logging performance.  This is done by forking a separate process on each node that reads the text file being written by the main logging process, ensuring that no extra load is put on the main process and therefore avoiding log loss in high volume situations.
 
 ==Starting a Livetail==
