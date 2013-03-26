@@ -794,6 +794,7 @@ sub _peer_query {
 					$self->log->debug('query returned ' . $results_obj->records_returned . ' records, merging ' . Dumper($q->results) . ' with ' . Dumper($results_obj));
 					$q->results->merge($results_obj, $q);
 				}
+				$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
 				my $stats = $raw_results->{stats};
 				$stats ||= {};
 				$stats->{total_request_time} = (time() - $start);
