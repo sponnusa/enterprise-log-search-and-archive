@@ -611,6 +611,8 @@ test_elsa(){
 	echo "Sleeping for 60 seconds to allow ELSA to load batch..."
 	sleep 60
 	
+	perl -le 'use lib $ARGV[0]; use Indexer; my $indexer = new Indexer(config_file => "/etc/elsa_node.conf"); $indexer->load_buffers();' "$BASE_DIR/elsa/node" 
+	
 	# Watch the log file to make sure it's working (after wiping indexes you should see batches processed and rows indexed)
 	grep "Indexed temp_" "$DATA_DIR/elsa/log/node.log" | tail -1 | perl -e '$l = <>; $l =~ /Indexed temp_\d+ with (\d+)/; if ($1 > 1){ exit 0; } exit 1;'
 	return $?
