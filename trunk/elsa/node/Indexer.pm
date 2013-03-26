@@ -810,28 +810,76 @@ sub _check_consolidate {
 	}
 }
 
+sub _find_pid {
+	my $locked_pid = shift;
+	# See if that process is dead
+	my @output = qx(ps -ef | grep $0 | grep -v grep);
+	my $found = 0;
+	foreach (@output){
+		my @line = split(/\s+/, $_);
+		my $pid = $line[1];
+		if ($pid eq $locked_pid){
+			$found = 1;
+			last;
+		}
+	}
+	return $found;
+}
+
 sub load_buffers {
 	my ($self, $is_import) = @_;
 	
 	my ($query, $sth);
 	
 	# Guard against processes piling up if we get overwhelmed
-	$query = 'SELECT COUNT(DISTINCT pid) FROM buffers';
+	$query = 'SELECT DISTINCT pid FROM buffers';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
-	my $row = $sth->fetchrow_arrayref;
-	if ($row and $row->[0] > 0 and $row->[0] ne $$){
-		$self->log->warn('Already load records jobs running, will not load buffers.');
-		return 0;
+	my @pids;
+	while (my $row = $sth->fetchrow_hashref){
+		next if $row->{pid} eq $$ or not $row->{pid};
+		push @pids, $row->{pid};
+	}
+	if (scalar @pids > 0){
+		foreach my $locked_pid (@pids){
+			my $found = _find_pid($locked_pid);
+			if ($found){
+				$self->log->warn('Already load records jobs running, will not load buffers.');
+				return 0;
+			}
+			else {
+				$self->log->error('Buffers locked by a dead pid ' . $locked_pid . '.  Unlocking.');
+				$query = 'UPDATE buffers SET pid=NULL WHERE pid=?';
+				$sth = $self->db->prepare($query);
+				$sth->execute($locked_pid);
+			}
+		}
 	}
 	
-	$query = 'SELECT COUNT(DISTINCT locked_by) FROM indexes';
+	$query = 'SELECT DISTINCT locked_by AS pid FROM indexes';
 	$sth = $self->db->prepare($query);
 	$sth->execute();
-	$row = $sth->fetchrow_arrayref;
-	if ($row and $row->[0] > 1){
-		$self->log->warn('Already ' . $row->[0] . ' indexers running, will not load buffers.');
-		return 0;
+	@pids = ();
+	while (my $row = $sth->fetchrow_hashref){
+		next if $row->{pid} eq $$ or not $row->{pid};
+		push @pids, $row->{pid};
+	}
+	if (scalar @pids > 1){
+		for (my $i = 0; $i < @pids; $i++){
+			my $locked_pid = $pids[$i];
+			my $found = _find_pid($locked_pid);
+			unless ($found){
+				$self->log->error('Indexes locked by a dead pid ' . $locked_pid . '.  Unlocking.');
+				$query = 'UPDATE indexes SET locked_by=NULL WHERE locked_by=?';
+				$sth = $self->db->prepare($query);
+				$sth->execute($locked_pid);
+				splice(@pids, $i, 1);
+			}
+		}
+		if (scalar @pids > 1){
+			$self->log->warn('Already ' . (scalar @pids) . ' indexers running, will not load buffers.');
+			return 0;
+		}
 	}
 	
 	$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
@@ -1132,7 +1180,7 @@ sub load_records {
 	
 	$self->log->debug("args: " . Dumper($args));
 	
-	$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
+	#$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
 		
 	# Create table
 	my $full_table = $self->_create_table($args);
@@ -1227,7 +1275,7 @@ sub load_records {
 	$sth = $self->db->prepare($query);
 	$sth->execute((-s $args->{file}), $records, $load_time);
 	
-	$self->_release_lock('directory');
+	#$self->_release_lock('directory');
 	
 	return { first_id => $first_id, last_id => $last_id };
 }
