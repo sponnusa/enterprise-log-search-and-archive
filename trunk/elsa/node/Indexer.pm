@@ -812,6 +812,15 @@ sub _check_consolidate {
 
 sub _find_pid {
 	my $locked_pid = shift;
+	# Use /proc file system if available
+	if (-d '/proc'){
+		if (-d '/proc/' . $locked_pid){
+			return 1;
+		}
+		else {
+			return 0;
+		}
+	}
 	# See if that process is dead
 	my @output = qx(ps -ef | grep $0 | grep -v grep);
 	my $found = 0;
