@@ -40,11 +40,12 @@ die('Cannot find node config file, specify with -n or env variable ELSA_NODE_CON
 
 $ENV{DEBUG_LEVEL} = 'ERROR'; # we don't want to fill our logs up with automated query logs
 
+my $indexer = Indexer->new(config_file => $node_config_file);
+
 eval {
 	# Handle node activities, like loading buffers
 	print "Indexing buffers...\n";
-	my $indexer = Indexer->new(config_file => $node_config_file);
-	$indexer->load_buffers() or die('Unable to start from given config file.');
+	$indexer->load_buffers() or return;
 	print "...finished.\n";
 	
 	# Attempt to get a lock to ensure there are no other cron.pl's querying right now
@@ -61,19 +62,20 @@ eval {
 	my $user = User->new(conf => $api->conf, username => 'system');
 	my $num_run = $api->run_schedule({user => $user});
 	my $duration = time() - $start;
-	print "Ran $num_run queries in $duration seconds.\n";
+	$api->log->trace("Ran $num_run queries in $duration seconds.");
 	
 	# Unlock so that the next cron.pl can make schedule queries
 	$indexer->_release_lock('query');
 	
 	# Archive queries are expected to take a long time and can run concurrently
-	print "Running archive queries...\n";
+	$api->log->trace("Running archive queries...");
 	$api->run_archive_queries({user => $user});
 };
 if ($@){
 	warn('Error: ' . $@);
+	$indexer->log->error('Error: ' . $@);
 }
 
-print "done.\n";
+$indexer->log->trace('cron.pl finished.');
 
 
