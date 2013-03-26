@@ -218,8 +218,10 @@ sub _validate {
 				push @$fails, { type => 'invalid', keypath => $keypath, conf => $config_json };
 				next;
 			}
+			my $orig_keypath = $keypath;
 			foreach my $subkey (keys %{ $conf->{$key} }){
 				next unless $required->{$key}->[0];
+				$keypath = $orig_keypath;
 				$keypath .= '/' . $subkey;
 				unless (_validate($required->{$key}->[0], $config_json, $keypath, $fails)){ #$conf->{$key}->{$subkey})){
 					say 'Invalid hash child: ' . $keypath;
