@@ -166,7 +166,11 @@ Then logout, login, and restart searchd.
 
 ==API Keys==
 The literal structure of an APIKey as it is transmitted is in the form of an HTTP Authorization header.  The format is this:
-{{{Authorization: ApiKey <username>:<current epoch timestamp>:<SHA512 hex digest of timestamp concatenated with configured API key>}}}
+{{{ Authorization: ApiKey <username>:<current epoch timestamp>:<SHA512 hex digest of timestamp concatenated with configured API key> }}}
+
+As an example, if the API key were "abc," then the request would look like this for a user of "myuser" and a timestamp of 1364322947 would be:
+
+<pre>Authorization: ApiKey myuser:1364322947:05e84771a03cf3aaf88e947e915f73b4ef3685a382f8ca603b787168eb464a06eb178a908b868832af6ff913ca9b096880c4f4089bc4e0585fe6ac40e29f061d</pre>
 
 To revoke an API key, simply remove that username from the list of "apikeys" in elsa_web.conf or change the key for that username to reset it.
 
