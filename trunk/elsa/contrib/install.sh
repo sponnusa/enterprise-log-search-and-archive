@@ -87,6 +87,7 @@ DISTRO="ubuntu"
 MYSQL_SERVICE_NAME="mysql"
 CRONTAB_DIR="/var/spool/cron/crontabs"
 WEB_USER="www-data"
+MYSQL_USER="mysql"
 CRON_SERVICE="cron"
 INIT_DIR=/etc/init.d/
 if [ -f /etc/redhat-release ] || [ -f /etc/fedora-release ] || [ -f /etc/system-release ]; then
@@ -458,7 +459,8 @@ build_syslogng(){
 mk_node_dirs(){
 	# Make data directories on node
 	mkdir -p "$DATA_DIR/elsa/log" && mkdir -p "$DATA_DIR/elsa/tmp/buffers" &&
-	mkdir -p "$DATA_DIR/sphinx/log" && mkdir -p "$DATA_DIR/elsa/mysql"
+	mkdir -p "$DATA_DIR/sphinx/log" && mkdir -p "$DATA_DIR/elsa/mysql" &&
+	chown -R $MYSQL_USER "$DATA_DIR/elsa/mysql"
 	UPDATE_OK=$?
 	
 	# Set apparmor settings if necessary
