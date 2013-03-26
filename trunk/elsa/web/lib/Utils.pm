@@ -73,7 +73,7 @@ around BUILDARGS => sub {
 		$Db_timeout = $params{conf}->get('db/timeout');
 	}
 	
-	$params{db} = DBI->connect_cached(
+	$params{db} = DBI->connect(
 		$params{conf}->get('meta_db/dsn'),
 		$params{conf}->get('meta_db/username'),
 		$params{conf}->get('meta_db/password'),
@@ -117,7 +117,7 @@ sub _dbh_error_handler {
 sub freshen_db {
 	my $self = shift;
 	$self->db(
-		DBI->connect_cached(
+		DBI->connect(
 			$self->conf->get('meta_db/dsn'),
 			$self->conf->get('meta_db/username'),
 			$self->conf->get('meta_db/password'),
