@@ -15,7 +15,7 @@ our $Max_values = 4096;
 sub BUILD {
 	my $self = shift;
 	# Validate connection
-	DBI->connect_cached(@{$self->db_args}) or die('cannot connect to ' . $self->db_args->[0]);
+	DBI->connect(@{$self->db_args}) or die('cannot connect to ' . $self->db_args->[0]);
 	
 	return $self;
 }
@@ -33,7 +33,7 @@ sub query {
 	while ($attempts < $Retries){
 		$attempts++;
 		eval {
-			$dbh = DBI->connect_cached(@{$self->db_args}) or die($DBI::errstr);
+			$dbh = DBI->connect(@{$self->db_args}) or die($DBI::errstr);
 			$attempts = $Retries;
 		};
 		if ($@){
@@ -78,7 +78,7 @@ sub multi_query {
 	while ($attempts < $Retries){
 		$attempts++;
 		eval {
-			$dbh = DBI->connect_cached(@{$self->db_args}) or die($DBI::errstr);
+			$dbh = DBI->connect(@{$self->db_args}) or die($DBI::errstr);
 			$attempts = $Retries;
 		};
 		if ($@){
@@ -131,7 +131,7 @@ sub sphinx {
 	my $dbh;
 		
 	eval {
-		$dbh = DBI->connect_cached(@{$self->db_args}) or die($DBI::errstr);
+		$dbh = DBI->connect(@{$self->db_args}) or die($DBI::errstr);
 		# Make sure RaiseError is enabled so we can catch problems in this eval block
 		$dbh->{RaiseError} = 1;
 				

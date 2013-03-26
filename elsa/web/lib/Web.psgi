@@ -68,7 +68,7 @@ elsif ($api->conf->get('auth/method') eq 'db'){
 		my ( $self, $username, $password ) = @_;
 		my ( $dsn, $dbh, $sth ) = ( $self->dsn, undef, undef );
 
-		unless ( $dbh = DBI->connect_cached( $dsn, $self->username, $self->password, $self->attributes ) ) {
+		unless ( $dbh = DBI->connect( $dsn, $self->username, $self->password, $self->attributes ) ) {
 			my $error = DBI->errstr;
 			$self->log->error( qq/Failed to connect to database using dsn '$dsn'. Reason: '$error'/ ) if $self->log;
 		}
@@ -101,7 +101,7 @@ elsif ($api->conf->get('auth/method') eq 'security_onion'){
 
 		my ( $dsn, $dbh, $sth, $encrypted ) = ( $self->dsn, undef, undef, undef );
 
-		unless ( $dbh = DBI->connect_cached( $dsn, $self->username, $self->password, $self->attributes ) ) {
+		unless ( $dbh = DBI->connect( $dsn, $self->username, $self->password, $self->attributes ) ) {
 			my $error = DBI->errstr;
 			$self->log->error( qq/Failed to connect to database using dsn '$dsn'. Reason: '$error'/ ) if $self->log;
 		}
