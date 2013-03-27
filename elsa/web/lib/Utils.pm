@@ -696,7 +696,7 @@ sub _merge_node_info {
 }
 
 sub _peer_query {
-	my ($self, $q, $from_peer) = @_;
+	my ($self, $q) = @_;
 	my ($query, $sth);
 	
 	# Check for batching
@@ -759,7 +759,7 @@ sub _peer_query {
 	
 	my $cv = AnyEvent->condvar;
 	$cv->begin;
-	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded' };
+	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded', 'User-Agent' => $self->user_agent_name };
 	foreach my $peer (@peers){
 		$cv->begin;
 		my $peer_conf = $self->conf->get('peers/' . $peer);
@@ -781,7 +781,8 @@ sub _peer_query {
 			my ($body, $hdr) = @_;
 			eval {
 				my $raw_results = $self->json->decode($body);
-				my $results_package = $q->has_groupby ? 'Results::Groupby' : 'Results';
+				my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
+				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
 				if ($q->has_groupby and ref($raw_results->{results}) ne 'HASH'){
 					$self->log->error('Wrong: ' . Dumper($q->TO_JSON) . "\n" . Dumper($raw_results));
 				}
