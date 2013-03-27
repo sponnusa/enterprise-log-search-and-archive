@@ -75,6 +75,7 @@ has 'node_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', r
 		],
 	}
 } });
+has 'user_agent_name' => (is => 'ro', isa => 'Str', required => 1, default => 'ELSA API');
 
 sub BUILD {
 	my $self = shift;
