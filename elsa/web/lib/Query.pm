@@ -856,7 +856,7 @@ sub _parse_query {
 		(scalar localtime($self->end)) . ' (' . $self->end . ')');
 	
 	# Exclude our from_peer
-	if ($self->from_peer){
+	if ($self->from_peer and $self->from_peer ne '_external'){
 		$self->log->debug('Not executing query on ' . $self->from_peer . ' which is my from_peer to avoid a loop.');
 		$self->nodes->{excluded}->{ $self->from_peer } = 1;
 	}
