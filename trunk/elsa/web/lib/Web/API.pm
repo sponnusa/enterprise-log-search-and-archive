@@ -27,7 +27,12 @@ sub call {
 	}
 	
 	my $args = $req->parameters->as_hashref;
-	$args->{from_peer} = $req->address if $req->user_agent eq $self->api->user_agent_name;
+	if ($req->user_agent eq $self->api->user_agent_name){
+		$args->{from_peer} = $req->address;
+	}
+	else {
+		$args->{from_peer} = '_external';
+	}
 	$self->api->log->debug('args: ' . Dumper($args));
 	
 	# Authenticate via apikey
