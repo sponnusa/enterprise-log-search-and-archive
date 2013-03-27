@@ -930,6 +930,7 @@ sub load_buffers {
 		# Send to index load records
 		if ($self->conf->get('sphinx/perm_index_size')){
 			my $batch_ids  = $self->load_records({ file => $row->{filename}, start => $row->{start}, end => $row->{end}, import => $is_import });
+			next unless $batch_ids;
 			$first_id ||= $batch_ids->{first_id};
 			$last_id = $batch_ids->{last_id};
 			if ($is_import){
@@ -1182,12 +1183,18 @@ sub load_records {
 	my $self = shift;
 	my $args = shift;
 	
-	$self->_unlock_and_die('Invalid args: ' . Dumper($args))
-		unless $args and ref($args) eq 'HASH';
-	$self->_unlock_and_die('Invalid file: ' . Dumper($args))
-		unless $args->{file} and -f $args->{file};
-	
 	$self->log->debug("args: " . Dumper($args));
+	$self->_unlock_and_die('Invalid args: ' . Dumper($args))
+		unless $args and ref($args) eq 'HASH' and $args->{file};
+	
+	my ($query, $sth);	
+	unless (-f $args->{file}){
+		$self->log->error('Invalid file: ' . Dumper($args));
+		$query = 'DELETE FROM buffers WHERE filename=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{file});
+		return 0;
+	}
 	
 	#$self->_get_lock('directory') or $self->_unlock_and_die('Unable to obtain lock');
 		
@@ -1195,7 +1202,7 @@ sub load_records {
 	my $full_table = $self->_create_table($args);
 	my ($db, $table) = split(/\./, $full_table);
 	
-	my ($query, $sth);
+	
 	
 	# Update the database to show that this child is working on it
 	$query = 'UPDATE buffers SET pid=? WHERE filename=?';
