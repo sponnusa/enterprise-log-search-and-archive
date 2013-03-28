@@ -947,7 +947,6 @@ centos_set_apache(){
 	APACHE_CONF="/etc/httpd/conf/httpd.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
 	set_apache_tuning $APACHE_CONF;
-	service apache2 restart
 	
 	service httpd restart
 	enable_service "httpd"
