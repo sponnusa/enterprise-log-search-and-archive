@@ -438,9 +438,13 @@ YAHOO.ELSA.Dashboard.prototype.addChart = function(p_oEvent, p_Obj, p_bAddBefore
 			oCreatePanel.panel.hide();
 			// Account for non-time-based summation
 			var oMeta = YAHOO.ELSA.queryMetaParamsDefaults;
-			if (response.query.match(/groupby[\:\=]/) || response.query.match(/\| sum\(/)){
-				delete oMeta.groupby;
+			if (!response.query.match(/groupby[\:\=]/) && !response.query.match(/\| sum\(/)){
+				response.query += ' groupby:' + oMeta.groupby[0];
 			}
+			delete oMeta.groupby;
+//			if (response.query.match(/groupby[\:\=]/) || response.query.match(/\| sum\(/)){
+//				delete oMeta.groupby;
+//			}
 			
 			var oNewChart = {
 				chart_id: response.chart_id,
@@ -774,12 +778,24 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 		for (var i in oSelf.queries){
 			var oIndividualQuery = oSelf.queries[i];
 			logger.log('oIndividualQuery', oIndividualQuery);
-			if (typeof(oIndividualQuery.query_meta_params) != 'undefined' && typeof(oIndividualQuery.query_meta_params.groupby) != 'undefined'){
+			if ((typeof(oIndividualQuery.query_meta_params) != 'undefined' 
+				&& typeof(oIndividualQuery.query_meta_params.groupby) != 'undefined')){
 				logger.log('oIndividualQuery.groupby', oIndividualQuery.query_meta_params.groupby);
 				if (YAHOO.ELSA.timeTypes[ oIndividualQuery.query_meta_params.groupby[0] ]){
 					sTime = oIndividualQuery.query_meta_params.groupby[0];
 					logger.log('set sTime to true because found group ' + oIndividualQuery.query_meta_params.groupby[0]);
 					break;
+				}
+			}
+			else {
+				var aMatches = oIndividualQuery.query_string.match(/groupby[\:\=](\w+)/i);
+				if (aMatches){
+					logger.log('oIndividualQuery.groupby', aMatches[1]);
+					if (YAHOO.ELSA.timeTypes[ aMatches[1] ]){
+						sTime = aMatches[1];
+						logger.log('set sTime to true because found group ' + aMatches[1]);
+						break;
+					}
 				}
 			}
 		}
