@@ -346,7 +346,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -559,6 +559,10 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS imports (	id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,	name VARCHAR(255) NOT NULL,	description VARCHAR(255) NOT NULL,	datatype VARCHAR(255) NOT NULL,	imported TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB AUTO_INCREMENT=2130706434'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'UPDATE fields SET field_type="INT", pattern_type="NUMBER" WHERE field="sig_priority"'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS uploads (id INT NOT NULL PRIMARY KEY AUTO_INCREMENT, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, client_ip INT UNSIGNED NOT NULL, count INT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL, batch_time SMALLINT UNSIGNED NOT NULL, errors SMALLINT UNSIGNED NOT NULL, start INT UNSIGNED NOT NULL, end INT UNSIGNED NOT NULL, buffers_id INT UNSIGNED NOT NULL) ENGINE=InnoDB'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD COLUMN first_id BIGINT UNSIGNED' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD COLUMN last_id BIGINT UNSIGNED' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD KEY(first_id)' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD KEY(last_id)' > /dev/null 2>&1
 	return $?
 }
 
