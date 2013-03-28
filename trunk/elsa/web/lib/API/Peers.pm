@@ -12,6 +12,10 @@ use IO::File;
 use Time::HiRes qw(time);
 use Hash::Merge::Simple qw(merge);
 
+use lib qw(../);
+
+use Import;
+
 sub local_query {
 	my ($self, $args) = @_;
 	
@@ -191,7 +195,7 @@ sub query {
 		$self->add_warning($warning);
 	}
 	
-	return $self->_peer_query($q, $args->{from_peer});
+	return $self->_peer_query($q);
 
 #	my ($query, $sth);
 #	
@@ -376,7 +380,7 @@ sub upload {
 	my ($self, $args) = @_;
 	
 	$self->log->info('Received file ' . $args->{upload}->basename . ' with size ' . $args->{upload}->size 
-		. ' from client ' . $args->{from_peer});
+		. ' from client ' . $args->{client_ip_address});
 	my ($query, $sth);
 	
 	my $syslog_db_name = 'syslog';
@@ -385,7 +389,7 @@ sub upload {
 	}
 		
 	my $ae = Archive::Extract->new( archive => $args->{upload}->path );
-	my $id = $args->{from_peer} . '_' . $args->{md5};
+	my $id = $args->{client_ip_address} . '_' . $args->{md5};
 	# make a working dir for these files
 	my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
 	mkdir($working_dir);
@@ -415,25 +419,35 @@ sub upload {
 			unlink($file);
 			return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
 		}
-		unless ($args->{start} and $args->{end}){
-			my $msg = 'Did not receive valid start/end times';
-			$self->log->error($msg);
-			unlink($file);
-			return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+		
+		if ($args->{description} or $args->{name}){
+			# We're doing an import
+			$args->{host} = $args->{client_ip_address};
+			delete $args->{start};
+			delete $args->{end};
+			my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
 		}
-		
-		# Record our received file in the database
-		$query = 'INSERT INTO ' . $syslog_db_name . '.buffers (filename, start, end) VALUES (?,?,?)';
-		$sth = $self->db->prepare($query);
-		$sth->execute($file, $args->{start}, $args->{end});
-		my $buffers_id = $self->db->{mysql_insertid};
-		
-		# Record the upload
-		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
-		$sth = $self->db->prepare($query);
-		$sth->execute($args->{from_peer}, $args->{count}, $args->{size}, $args->{batch_time}, 
-			$args->{total_errors}, $args->{start}, $args->{end}, $buffers_id);
-		$sth->finish;
+		else {
+			unless ($args->{start} and $args->{end}){
+				my $msg = 'Did not receive valid start/end times';
+				$self->log->error($msg);
+				unlink($file);
+				return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+			}
+			
+			# Record our received file in the database
+			$query = 'INSERT INTO ' . $syslog_db_name . '.buffers (filename, start, end) VALUES (?,?,?)';
+			$sth = $self->db->prepare($query);
+			$sth->execute($file, $args->{start}, $args->{end});
+			my $buffers_id = $self->db->{mysql_insertid};
+			
+			# Record the upload
+			$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
+			$sth = $self->db->prepare($query);
+			$sth->execute($args->{client_ip_address}, $args->{count}, $args->{size}, $args->{batch_time}, 
+				$args->{total_errors}, $args->{start}, $args->{end}, $buffers_id);
+			$sth->finish;
+		}
 	}
 	rmdir($working_dir);
 	return [ 200, [ 'Content-Type' => 'text/plain' ], [ 'ok' ] ];

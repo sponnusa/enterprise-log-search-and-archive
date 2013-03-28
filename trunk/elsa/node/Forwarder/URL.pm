@@ -58,7 +58,11 @@ sub forward {
 			compressed => $args->{compressed} ? 1 : 0,
 			batch_time => $args->{batch_time},
 			total_errors => $args->{total_errors},
-			filename => [ $args->{file} ]
+			filename => [ $args->{file} ],
+			format => $args->{format},
+			name => $args->{name},
+			description => $args->{description},
+			program => $args->{program},
 		],
 		'Content_Type' => 'form-data',
 		'Authorization' => $self->_get_auth_header());

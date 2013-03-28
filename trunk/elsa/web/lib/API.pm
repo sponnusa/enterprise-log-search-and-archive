@@ -2150,25 +2150,79 @@ sub _sphinx_query {
 					# Go get the actual rows from the dbh
 					my @table_queries;
 					my @table_query_values;
+					my @import_queries;
+					my @import_query_values;
 					foreach my $table (sort keys %tables){
 						my $placeholders = join(',', map { '?' } @{ $tables{$table} });
+						
+						if ($table =~ /import/){
+							push @import_query_values, @{ $tables{$table} };
+						}
+
 						my $table_query = sprintf("SELECT %1\$s.id,\n" .
 							#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
 							"timestamp,\n" .
-							"imports.name AS import_name, imports.description AS import_description, imports.datatype AS import_type, imports.imported AS import_date,\n" .
+							#"imports.name AS import_name, imports.description AS import_description, imports.datatype AS import_type, imports.imported AS import_date,\n" .
 							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
 							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 							"FROM %1\$s\n" .
 							"LEFT JOIN %2\$s.programs ON %1\$s.program_id=programs.id\n" .
 							"LEFT JOIN %2\$s.classes ON %1\$s.class_id=classes.id\n" .
-							"LEFT JOIN %2\$s.imports ON %1\$s.host_id=imports.id\n" .
+							#"LEFT JOIN %2\$s.imports ON %1\$s.host_id=imports.id\n" .
 							'WHERE %1$s.id IN (' . $placeholders . ')',
 							$table, $nodes->{$node}->{db});
+						
 						push @table_queries, $table_query;
 						push @table_query_values, @{ $tables{$table} };
 					}
-					my $table_query = join(';', @table_queries);
 					
+					my %import_info;
+					if (@import_query_values){
+						my $import_info_query = 'SELECT name AS import_name, description AS import_description, ' .
+							'datatype AS import_type, imported AS import_date, first_id, last_id FROM ' . $nodes->{$node}->{db} 
+							. '.imports WHERE ';
+						my @import_info_query_clauses;
+						foreach (@import_query_values){
+							push @import_info_query_clauses, '? BETWEEN first_id AND last_id';
+						}
+						$import_info_query .= join(' OR ', @import_info_query_clauses);
+						$cv->begin;
+						$nodes->{$node}->{dbh}->query($import_info_query, @import_query_values,
+							sub { 
+								my ($dbh, $rows, $rv) = @_;
+								if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
+									my $errstr = 'node ' . $node . ' got error ' . $rows;
+									$self->log->error($errstr);
+									$self->add_warning($errstr);
+									$cv->end;
+									return;
+								}
+								elsif (not scalar @$rows){
+									$self->log->error('Did not get import info rows though we had import tables: ' 
+										. Dumper(\%tables)); 
+								}
+								$self->log->trace('node '. $node . ' got import info db rows: ' . (scalar @$rows));
+								
+								# Map each id to the right import info
+								foreach my $table (sort keys %tables){
+									$self->log->debug('table: ' . $table);
+									foreach my $id (@{ $tables{$table} }){
+										$self->log->debug('id: ' . $id);
+										foreach my $row (@$rows){
+											$self->log->debug('row: ' . Dumper($row));
+											if ($row->{first_id} <= $id and $id <= $row->{last_id}){
+												$import_info{$id} = $row;
+												last;
+											}
+										}
+									}
+								}
+								$cv->end;
+						});
+						$self->log->debug('import_info: ' . Dumper(\%import_info));
+					}
+					
+					my $table_query = join(';', @table_queries);
 					$self->log->trace('table query for node ' . $node . ': ' . $table_query 
 						. ', placeholders: ' . join(',', @table_query_values));
 					$cv->begin;
@@ -2193,24 +2247,25 @@ sub _sphinx_query {
 								$ret->{$node}->{results} ||= {};
 								$row->{node} = $q->peer_label ? $q->peer_label : $node;
 								$row->{node_id} = unpack('N*', inet_aton($node));
-								foreach my $import_col (@{ $Fields::Import_fields }){
-									unless ($row->{$import_col}){
-										delete $row->{$import_col};
-									}
-								}
 								if ($q->orderby){
 									$row->{_orderby} = $orderby_map{ $row->{id} };
 								}
 								else {
 									$row->{_orderby} = $row->{timestamp};
 								}
+								# Copy import info into the row
+								if (exists $import_info{ $row->{id} }){
+									foreach my $import_col (@{ $Fields::Import_fields }){
+										if ($import_info{ $row->{id} }->{$import_col}){
+											$row->{$import_col} = $import_info{ $row->{id} }->{$import_col};
+										}
+									}
+								}
 								$ret->{$node}->{results}->{ $row->{id} } = $row;
 							}
 							$stats{mysql_query} += (time() - $start);
 							$cv->end;
-						},
-						#@table_query_values);
-						);
+					});
 					$cv->end; #end sphinx query
 				}
 				elsif (@$rows) {
