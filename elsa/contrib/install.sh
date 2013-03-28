@@ -464,7 +464,7 @@ mk_node_dirs(){
 	UPDATE_OK=$?
 	
 	# Set apparmor settings if necessary
-	if [ -f /etc/apparmor.d/local/usr.sbin.mysqld ]; then
+	if [ -f /etc/apparmor.d/usr.sbin.mysqld ]; then
 		echo "Updating apparmor config for MySQL dir $DATA_DIR/elsa/mysql/";
 		echo "$DATA_DIR/elsa/mysql/ r,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
 		echo "$DATA_DIR/elsa/mysql/** rwk,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
@@ -485,11 +485,15 @@ mk_node_dirs(){
 	
 	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
 		mkfifo $DATA_DIR/elsa/tmp/realtime;
+		# Anyone can send logs to this
+		chown 666 $DATA_DIR/elsa/tmp/realtime;
 		UPDATE_OK=$?
 	fi
 	
 	if [ ! -p $DATA_DIR/elsa/tmp/import ]; then
 		mkfifo $DATA_DIR/elsa/tmp/import;
+		# Anyone can send logs to this
+		chown 666 $DATA_DIR/elsa/tmp/import;
 		UPDATE_OK=$?
 	fi
 	
@@ -522,6 +526,7 @@ update_node_mysql(){
 	echo "Updating MySQL..."
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE buffers ADD COLUMN start INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE buffers ADD COLUMN end INT UNSIGNED' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE buffers ADD COLUMN import_id INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE fields ADD UNIQUE KEY (field, field_type)' > /dev/null 2>&1
 	echo "Updating Windows fields..."
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("domain", "string", "QSTRING")'
