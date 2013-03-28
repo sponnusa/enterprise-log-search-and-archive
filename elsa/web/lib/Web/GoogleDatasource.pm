@@ -73,18 +73,19 @@ sub call {
 			$self->api->log->debug('groupby: ' . Dumper($ret->groupby));
 			
 			# First add columns
+			my $value_id = 0;
 			foreach my $groupby ($ret->all_groupbys){
 				$self->api->log->debug('groupby: ' . Dumper($groupby));
 				my $label = $ret->meta_params->{comment} ? $ret->meta_params->{comment} : 'count'; 
 				if ($Fields::Time_values->{$groupby}){
-					$datatable->add_columns({id => $groupby, label => $groupby, type => 'datetime'}, {id => 'value', label => $label, type => 'number'});
+					$datatable->add_columns({id => $groupby, label => $groupby, type => 'datetime'}, {id => 'value' . $value_id++, label => $label, type => 'number'});
 				}
 				else {
 					if ($query_args->{query_meta_params}->{type} and $query_args->{query_meta_params}->{type} =~ /geo/i){
-						$datatable->add_columns({id => $groupby, label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
+						$datatable->add_columns({id => $groupby, label => $groupby, type => 'string'}, {id => 'value' . $value_id++, label => $label, type => 'number'});
 					}
 					else {
-						$datatable->add_columns({id => $groupby, label => $groupby, type => 'string'}, {id => 'value', label => $label, type => 'number'});
+						$datatable->add_columns({id => $groupby, label => $groupby, type => 'string'}, {id => 'value' . $value_id++, label => $label, type => 'number'});
 					}
 				}
 			}
