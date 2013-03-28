@@ -103,7 +103,12 @@ unless (-f $Conf->{sphinx}->{config_file}){
 if ($Opts{f}){
 	$Log->trace("Processing file $Opts{f}...");
 	print "Processing file $Opts{f}...\n";
-	_process_batch($Opts{f});
+	if ($Opts{f} eq '__IMPORT__'){
+		_import();
+	}
+	else {
+		_process_batch($Opts{f});
+	}
 	exit;
 }
 
@@ -287,6 +292,140 @@ sub _process_batch {
 		return $args->{batch_counter};
 	}
 	
+	_forward($args, $reader);
+	
+	if (scalar keys %{ $reader->to_add }){
+		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
+		$indexer->add_programs($reader->to_add);
+		$reader->to_add({});
+	}
+	
+	my ($query,$sth);
+	if ($args->{batch_counter}){
+		$query = 'INSERT INTO buffers (filename, start, end) VALUES (?,?,?)';
+		$sth = $Dbh->prepare($query);
+		$sth->execute($args->{file}, $args->{start}, $args->{end});
+		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter} 
+			. ' and start ' . (scalar localtime($args->{start})) . ' and end ' . (scalar localtime($args->{end})));
+	}
+	
+	return $args->{batch_counter};
+}
+
+sub _import {
+	if (getppid == 1){
+		$Log->error('We lost our parent process');
+		exit; #die gets caught, we want a complete exit
+	}
+	
+	my $args = {};
+	my $fh = \*STDIN;
+	$fh->autoflush(1);
+	$fh->blocking(1);
+	
+	die "Non-existent buffer_dir: " . $Conf->{buffer_dir}
+		unless -d $Conf->{buffer_dir};
+		
+	$args->{start_time} = Time::HiRes::time();
+	$args->{error_counter} = 0;
+	
+	# Reset the miss cache
+	$args->{cache_add} = {};
+	
+	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . CORE::time();
+	
+	# Open the file now that we've forked
+	my $tempfile;
+	sysopen($tempfile, $tempfile_name, O_RDWR|O_CREAT) or die('Unable to open our tempfile: ' . $!);
+	$Log->debug('Using tempfile ' . $tempfile_name); 
+	
+	my $reader = new Reader(log => $Log, conf => $Config_json, cache => $Cache, offline_processing => $args->{offline_processing});
+
+	my $run = 1;
+	# End the loop after index_interval seconds
+	local $SIG{ALRM} = sub {
+		$Log->trace("Finished with import loop.");
+		$run = 0;
+		# safety in case we don't receive any logs, we'll still do post_proc and restart loop
+		$fh->blocking(0); 
+	};
+	
+	my $batch_counter = 0; # we make this a standard variable instead of using $arg->{batch_counter} to save the hash deref in loop
+	while (<$fh>){
+		eval {
+			if ($. eq 1){
+				# The first line will be our meta data
+				my @line = split(/\t/, $_);
+				if ($line[4] =~ /^ELSA_IMPORT_ID=(\d+)$/){
+					$args->{import_id} = $1;
+					$Log->trace('Received ELSA_IMPORT_ID of ' . $1);
+				}
+				else {
+					# We weren't given an ID, this is a normal log line
+					$tempfile->syswrite(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
+					$batch_counter++;
+				}
+				next;
+			}
+			$tempfile->syswrite(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
+			$batch_counter++;
+		};
+		if ($@){
+			my $e = $@;
+			$args->{error_counter}++;
+			if ($Conf->{log_parse_errors}){
+				$Log->error($e) 
+			}
+		}
+		last unless $run;
+		# We want to stop as soon as we're done processing the file
+		alarm(1);
+	}
+			
+	# Update args to be results
+	$args->{batch_counter} = $batch_counter;
+	$args->{file} = $tempfile_name;
+	$args->{file_size} = -s $args->{file};
+	$args->{start} = $reader->processing_times->{start};
+	$args->{end} = $reader->processing_times->{end};
+	$args->{total_processed} = $args->{batch_counter};
+	$args->{total_errors} = $args->{error_counter};
+	$args->{batch_time} = $Conf->{sphinx}->{index_interval};
+	
+	# Report back that we've finished
+	$Log->debug("Finished job process_batch with $args->{batch_counter} logs processed and " . (scalar keys %{ $args->{cache_add} }) . ' new programs');
+	$Log->debug('Total errors: ' . $args->{error_counter} . ' (%' . (($args->{error_counter} / $args->{batch_counter}) * 100) . ')' ) if $args->{batch_counter};
+	$Log->debug('file size for file ' . $args->{file} . ' is ' . $args->{file_size});
+	
+	unless ($args->{batch_counter}){
+		$Log->trace('No logs recorded');
+		unlink ($args->{file}) if -f $args->{file};
+		return $args->{batch_counter};
+	}
+	
+	_forward($args, $reader);
+	
+	if (scalar keys %{ $reader->to_add }){
+		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
+		$indexer->add_programs($reader->to_add);
+		$reader->to_add({});
+	}
+	
+	my ($query,$sth);
+	if ($args->{batch_counter}){
+		$query = 'INSERT INTO buffers (filename, start, end, import_id) VALUES (?,?,?,?)';
+		$sth = $Dbh->prepare($query);
+		$sth->execute($args->{file}, $args->{start}, $args->{end}, $args->{import_id});
+		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter} 
+			. ' and start ' . (scalar localtime($args->{start})) . ' and end ' . (scalar localtime($args->{end})));
+	}
+	
+	return $args->{batch_counter};
+}
+
+sub _forward {
+	my $args = shift;
+	my $reader = shift;
 	# Are we forwarding events?
 	if ($Conf->{forwarding}){
 		require Archive::Zip;
@@ -305,7 +444,7 @@ sub _process_batch {
 				
 				# Calculate the MD5
 				my $md5 = new Digest::MD5;
-				$tempfile->open($tempfile_name);
+				my $tempfile = new IO::File($args->{file}) or die($!);
 				$md5->addfile($tempfile);
 				$args->{md5} = $md5->hexdigest;
 				close($tempfile);
@@ -327,9 +466,9 @@ sub _process_batch {
 				my $zip = Archive::Zip->new();
 				$args->{file} =~ /\/([^\/]+$)/;
 				my $shortfile = $1;
-				my $compressed_filename = $tempfile_name . '.zip';
+				my $compressed_filename = $args->{file} . '.zip';
 				my $start = Time::HiRes::time();
-				$zip->addFile($tempfile_name, $shortfile);
+				$zip->addFile($args->{file}, $shortfile);
 				
 				if ($program_filename){
 					$program_filename =~ /\/([^\/]+$)/;
@@ -382,7 +521,7 @@ sub _process_batch {
 				unlink($program_filename) if $program_filename;
 				
 				if ($Conf->{forwarding}->{forward_only}){
-					unlink($tempfile_name);
+					unlink($args->{file});
 				}
 			};
 			if ($@){
@@ -392,41 +531,6 @@ sub _process_batch {
 			exit; # done with child
 		}
 	}
-	
-	if (scalar keys %{ $reader->to_add }){
-		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
-		$indexer->add_programs($reader->to_add);
-		$reader->to_add({});
-	}
-	
-	my ($query,$sth);
-	if ($args->{batch_counter}){
-		$query = 'INSERT INTO buffers (filename, start, end) VALUES (?,?,?)';
-		$sth = $Dbh->prepare($query);
-		$sth->execute($args->{file}, $args->{start}, $args->{end});
-		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter} 
-			. ' and start ' . (scalar localtime($args->{start})) . ' and end ' . (scalar localtime($args->{end})));
-	}
-	
-	return $args->{batch_counter};
-		
-#	# Fork our post-batch processor
-#	my $pid = fork();
-#	if ($pid){
-#		# Parent
-#		return $args->{batch_counter};
-#	}
-#	# Child
-#	$Log->trace('Child started');
-#	eval {
-#		my $indexer = new Indexer(log => $Log, conf => $Config_json);
-#		$indexer->load_buffers($filename eq '__IMPORT__' ? 1 : 0);
-#	};
-#	if ($@){
-#		$Log->error('Child encountered error: ' . $@);
-#	}
-#	$Log->trace('Child finished');
-#	exit; # done with child
 }
 
 sub _realtime_process {

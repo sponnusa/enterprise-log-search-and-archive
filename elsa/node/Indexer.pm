@@ -230,7 +230,8 @@ sub rotate_logs {
 	# Delete buffers that are finished
 	my ($query, $sth);
 	if ($self->conf->get('archive/percentage')){
-		$query = 'SELECT filename FROM buffers WHERE archive_complete=1 AND index_complete=1';
+		$query = 'SELECT filename FROM buffers WHERE (archive_complete=1 AND index_complete=1) '
+		. 'OR (index_complete=1 AND NOT ISNULL(import_id))';
 	}
 	else {
 		$query = 'SELECT filename FROM buffers WHERE index_complete=1';
@@ -836,7 +837,7 @@ sub _find_pid {
 }
 
 sub load_buffers {
-	my ($self, $is_import) = @_;
+	my ($self) = @_;
 	
 	my ($query, $sth);
 	
@@ -897,7 +898,7 @@ sub load_buffers {
 	$sth = $self->db->prepare($query);
 	$sth->execute($$);
 	
-	$query = 'SELECT id, filename, start, end FROM buffers WHERE pid=? ORDER BY id ASC';
+	$query = 'SELECT id, filename, start, end, import_id FROM buffers WHERE pid=? ORDER BY id ASC';
 	$sth = $self->db->prepare($query);
 	$sth->execute($$);
 	my @rows;
@@ -908,12 +909,13 @@ sub load_buffers {
 	
 	$self->log->debug('rows for load_records: ' . Dumper(\@rows));
 	
-	my ($first_id, $last_id, $start, $end, $multiple_loads);
+	my ($first_id, $last_id, $previous_last, $start, $end, $previous_end, $multiple_loads, $was_import);
 	while (my $row = shift(@rows)){
 		$start ||= $row->{start};
+		$previous_end = $end;
 		$end = $row->{end};
-		# Run plugins
 		
+		# Run plugins
 		foreach my $plugin ($self->postprocessor_plugins){
 			eval {
 				my %plugin_args = %$row;
@@ -929,30 +931,34 @@ sub load_buffers {
 
 		# Send to index load records
 		if ($self->conf->get('sphinx/perm_index_size')){
-			my $batch_ids  = $self->load_records({ file => $row->{filename}, start => $row->{start}, end => $row->{end}, import => $is_import });
+			my $batch_ids  = $self->load_records({ file => $row->{filename}, start => $row->{start}, end => $row->{end}, import_id => $row->{import_id} });
 			next unless $batch_ids;
 			$first_id ||= $batch_ids->{first_id};
+			$previous_last = $last_id;
 			$last_id = $batch_ids->{last_id};
-			if ($is_import){
-				$batch_ids->{import} = 1;
-			}
-#			if (scalar @rows == 1){
-#				# Standard case, just do the indexing
-#				$self->index_records($batch_ids);
-#				$self->record_host_stats();
-#			}
-#			els
-			if ($batch_ids->{first_id} - $last_id > 1){
-				# Non-consecutive, must do an index for this batch
-				$self->log->debug('non-consecutive ids: ' . $batch_ids->{first_id} . ' and ' . $last_id);
-				$self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, start => $start, end => $end });
+			if (($was_import and not $row->{import_id}) or (defined $was_import and not $was_import and $row->{import_id})){
+				$self->log->trace('Switched between import and regular index, must index here');
+				# Queue the previous sequence, not the current one
+				$self->_queue_for_indexing({ first_id => $first_id, last_id => $previous_last, 
+					start => $start, end => $previous_end, import_id => $was_import });
 				$self->_index_records();
 				$first_id = $batch_ids->{first_id};
+				$start = $row->{start};
+			}
+			elsif ($previous_last and $batch_ids->{first_id} - $previous_last > 1){
+				# Non-consecutive, must do an index for this batch
+				$self->log->debug('non-consecutive ids: ' . $batch_ids->{first_id} . ' and ' . $last_id);
+				$self->_queue_for_indexing({ first_id => $first_id, last_id => $previous_last, 
+					start => $start, end => $previous_end, import_id => $was_import });
+				$self->_index_records();
+				$first_id = $batch_ids->{first_id};
+				$start = $row->{start};
 			}
 			else {
 				# Consecutive, keep loading, we will index at the end
 				$multiple_loads++;
 			}
+			
 			if (($last_id - $first_id) > $self->conf->get('sphinx/perm_index_size')){
 				$self->log->warn('Hit our perm_index_size of ' . $self->conf->get('sphinx/perm_index_size') .
 					', not loading any more buffers.');
@@ -963,8 +969,10 @@ sub load_buffers {
 			}
 		}
 		
+		$was_import = $row->{import_id} ? 1 : 0;
+		
 		# Send to archive
-		if (not $is_import and $self->conf->get('archive/percentage')){
+		if (not $was_import and $self->conf->get('archive/percentage')){
 			$self->archive_records({ file => $row->{filename} })
 		}
 	}
@@ -974,7 +982,8 @@ sub load_buffers {
 	if ($multiple_loads and $self->conf->get('sphinx/perm_index_size')){
 		$self->log->trace('Loading multiple buffers between ' . $first_id . ' and ' . $last_id);
 		#$self->index_records({ first_id => $first_id, last_id => $last_id, start => $start, end => $end });
-		my $index_id = $self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, start => $start, end => $end });
+		my $index_id = $self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, 
+			start => $start, end => $end, import_id => $was_import });
 	}
 	
 	$self->_release_lock('directory');
@@ -1045,7 +1054,7 @@ sub _queue_for_indexing {
 	# Find the table(s) we'll be indexing
 	my $table;
 	my $table_type = 'index';
-	if ($args->{import}){
+	if ($args->{import_id}){
 		$table_type = 'import';
 	}
 	$query = "SELECT DISTINCT table_id AS id, table_name, min_id AS actual_min, max_id AS actual_max, IF(min_id < ?, ?, min_id) AS min_id,\n" .
@@ -1221,6 +1230,13 @@ sub load_records {
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my $records = $sth->rows();
+	unless ($records){
+		$self->log->error('Empty file: ' . Dumper($args));
+		$query = 'DELETE FROM buffers WHERE filename=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{file});
+		return 0;
+	}
 	my $load_time = time() - $load_start;
 	my $rps = $records / $load_time;
 
@@ -1285,6 +1301,15 @@ sub load_records {
 	$query = 'UPDATE buffers SET index_complete=1 WHERE filename=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{file});
+	
+	# Update imports as necessary
+	if ($args->{import_id}){
+		$query = 'UPDATE imports SET first_id=?, last_id=? WHERE id=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($first_id, $last_id, $args->{import_id});
+		$self->log->trace('Updated imports table for import_id ' 
+			. $args->{import_id} . ' with first_id ' . $first_id . ' and last_id ' . $last_id);
+	}
 	
 	# Record the load stats
 	$query = 'REPLACE INTO stats (type, bytes, count, time) VALUES("load", ?,?,?)';
@@ -1408,14 +1433,13 @@ sub _get_table {
 	my $args = shift;
 	$self->_unlock_and_die('Invalid args: ' . Dumper($args)) unless $args and ref($args) eq 'HASH';
 	
-	my $table_type = 'index';
+	$args->{table_type} = 'index';
 	if ($args->{archive}){
-		$table_type = 'archive';
+		$args->{table_type} = 'archive';
 	}
-	elsif ($args->{import}){
-		$table_type = 'import';
+	elsif ($args->{import_id}){
+		$args->{table_type} = 'import';
 	}
-	$args->{table_type} = $table_type;
 	
 	my ($query, $sth, $row);
 	
@@ -1432,12 +1456,12 @@ sub _get_table {
 #		'WHERE table_type_id=(SELECT id FROM %1$s.table_types WHERE table_type=?)' . "\n" .
 #		"ORDER BY tables.id DESC LIMIT 1", $Meta_db_name);
 	$sth = $self->db->prepare($query);
-	$sth->execute($table_type) or $self->_unlock_and_die($self->db->errstr);
+	$sth->execute($args->{table_type}) or $self->_unlock_and_die($self->db->errstr);
 	$row = $sth->fetchrow_hashref;
 	if ($row){
 		# Is it time for a new index?
 		my $size = $self->conf->get('sphinx/perm_index_size');
-		if ($table_type eq 'archive'){
+		if ($args->{table_type} eq 'archive'){
 			$size = $self->conf->get('archive/table_size');
 		}
 		# See if the table is too big
@@ -1445,7 +1469,7 @@ sub _get_table {
 		if ($row->{table_rows} >= $size){
 			my $new_id = $row->{max_id} + 1;
 			$self->log->debug("suggesting new table with id $new_id because row was: " . Dumper($row) . ' and size was ' . $row->{table_rows});
-			$args->{table_name} = sprintf("%s.syslogs_%s_%d", $Data_db_name, $table_type, $new_id);
+			$args->{table_name} = sprintf("%s.syslogs_%s_%d", $Data_db_name, $args->{table_type}, $new_id);
 			return $args;
 		}
 		else {
@@ -1456,7 +1480,7 @@ sub _get_table {
 	}
 	else {
 		# This is the first table
-		$args->{table_name} = sprintf("%s.syslogs_%s_%d", $Data_db_name, $table_type, 1);
+		$args->{table_name} = sprintf("%s.syslogs_%s_%d", $Data_db_name, $args->{table_type}, 1);
 		return $args;
 	}
 }
@@ -1604,12 +1628,11 @@ sub consolidate_indexes {
 	}
 	$table = $row->{table_name};
 	
-	$self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, start => $args->{start}, end => $args->{end}, import => $args->{type} eq 'import' ? 1 : 0 });
+	$self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, start => $args->{start}, end => $args->{end}, import_id => $args->{type} eq 'import' ? 1 : 0 });
 	
 	$self->_release_lock('directory');
 	
 	# Do the indexing
-	#my $replaced = $self->index_records({ first_id => $first_id, last_id => $last_id, import => $args->{type} eq 'import' ? 1 : 0 });	
 	$self->_index_records();
 	$self->_get_lock('directory') or die 'Unable to obtain lock';
 	

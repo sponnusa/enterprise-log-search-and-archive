@@ -88,18 +88,19 @@ elsif ($Format eq 'bro'){
 elsif ($Format eq 'snort'){
 	$lines_imported = _read_snort();
 }
-elsif ($Format eq 'preformatted_class_only'){
-	$lines_imported = _read_local_preformatted_class_only();
-}
-elsif ($Format eq 'preformatted'){
-	$lines_imported = _read_local_preformatted();
-}
-elsif ($Format eq 'csv'){
-	$lines_imported = _read_csv();
-}
-elsif ($Format eq 'tsv'){
-	$lines_imported = _read_tsv();
-}
+# These are deprecated, use POST to /API/upload instead
+#elsif ($Format eq 'preformatted_class_only'){
+#	$lines_imported = _read_local_preformatted_class_only();
+#}
+#elsif ($Format eq 'preformatted'){
+#	$lines_imported = _read_local_preformatted();
+#}
+#elsif ($Format eq 'csv'){
+#	$lines_imported = _read_csv();
+#}
+#elsif ($Format eq 'tsv'){
+#	$lines_imported = _read_tsv();
+#}
 elsif ($Format eq 'sidewinder'){
 	$lines_imported = _read_sidewinder();
 }

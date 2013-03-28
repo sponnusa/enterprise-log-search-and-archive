@@ -33,6 +33,8 @@ sub call {
 	else {
 		$args->{from_peer} = '_external';
 	}
+	$args->{client_ip_address} = $req->address;
+	
 	$self->api->log->debug('args: ' . Dumper($args));
 	
 	# Authenticate via apikey
