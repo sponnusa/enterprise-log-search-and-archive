@@ -43,11 +43,6 @@ else
 	MD5SUM="md5sum"
 fi
 
-# Include local config
-if [ -f /etc/elsa_vars.sh ]; then
-	. /etc/elsa_vars.sh
-fi
-
 if [ "x$SHELL"=="x" ]; then
 	SHELL="/bin/bash"
 fi
@@ -114,6 +109,12 @@ elif [ -f /etc/freebsd-update.conf ]; then
 		APACHE="apache22";
 	fi
 fi
+
+# Include local config
+if [ -f /etc/elsa_vars.sh ]; then
+	. /etc/elsa_vars.sh
+fi
+
 echo "Assuming distro to be $DISTRO"
 
 MYSQL_PASS_SWITCH=""
