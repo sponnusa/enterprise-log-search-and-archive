@@ -887,7 +887,7 @@ suse_set_apache(){
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/etc/apache2/server-tuning.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
-	set_apache_tuning $APACHE_CONF;
+	set_apache_tuning $APACHE_CONF "mpm_prefork_module";
 	service apache2 restart
 	
 	enable_service "apache2"
@@ -916,7 +916,7 @@ ubuntu_set_apache(){
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/etc/apache2/apache2.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
-	set_apache_tuning $APACHE_CONF;
+	set_apache_tuning $APACHE_CONF "mpm_prefork_module";
 	service apache2 restart
 	enable_service "apache2"
 	return $?
@@ -924,7 +924,8 @@ ubuntu_set_apache(){
 
 set_apache_tuning(){
 	FILE=$1
-	perl -le 'use Apache::Admin::Config; my $ap = new Apache::Admin::Config("$ARGV[0]"); my @ar = $ap->select(-name => "IfModule", -value => "prefork.c"); use Data::Dumper; $ar[0]->directive("MaxRequestsPerChild")->set_value(2); $ap->save();' $FILE
+	MODULE=$2
+	perl -le 'use Apache::Admin::Config; my $ap = new Apache::Admin::Config("$ARGV[0]"); my @ar = $ap->select(-name => "IfModule", -value => "$MODULE"); use Data::Dumper; $ar[0]->directive("MaxRequestsPerChild")->set_value(2); $ap->save();' $FILE
 }
 
 centos_set_apache(){
@@ -947,7 +948,7 @@ centos_set_apache(){
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/etc/httpd/conf/httpd.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
-	set_apache_tuning $APACHE_CONF;
+	set_apache_tuning $APACHE_CONF "prefork.c";
 	
 	service httpd restart
 	enable_service "httpd"
@@ -986,7 +987,7 @@ freebsd_set_apache(){
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/usr/local/etc/apache22/httpd.conf"
 	cp $APACHE_CONF "$APACHE_CONF.elsabak"
-	set_apache_tuning $APACHE_CONF;
+	set_apache_tuning $APACHE_CONF "mpm_prefork_module";
 	
 	service $APACHE restart
 	
