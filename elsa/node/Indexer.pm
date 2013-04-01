@@ -942,6 +942,7 @@ sub load_buffers {
 				$self->_queue_for_indexing({ first_id => $first_id, last_id => $previous_last, 
 					start => $start, end => $previous_end, import_id => $was_import });
 				$self->_index_records();
+				$self->record_host_stats();
 				$first_id = $batch_ids->{first_id};
 				$start = $row->{start};
 			}
@@ -951,6 +952,7 @@ sub load_buffers {
 				$self->_queue_for_indexing({ first_id => $first_id, last_id => $previous_last, 
 					start => $start, end => $previous_end, import_id => $was_import });
 				$self->_index_records();
+				$self->record_host_stats();
 				$first_id = $batch_ids->{first_id};
 				$start = $row->{start};
 			}
@@ -993,6 +995,7 @@ sub load_buffers {
 	$sth->execute($$);
 	
 	$self->_index_records();
+	$self->record_host_stats();
 	
 #	# Check to see if we need to index anything we were unable to before due to max concurrent indexing
 #	# This may be an index job that needs to happen from a previous run.
