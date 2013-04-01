@@ -251,6 +251,16 @@ Web services currently expose three URL's for use in external apps or between no
  * count: (optional) declared count of records by the client
  * batch_time: (optional) time period over which the records were collected, in seconds (e.g. 60)
 
+==Imports==
+You can also use /API/upload to invoke imports which allows you to POST arbitrary, unparsed files and have them imported properly.  To do so, you need to set the above parameters for /API/upload, plus:
+ * name: (required) Arbitrary name to give this upload, filename works well, does not have to be unique.
+ * description: Arbitrary description, can include original client IP, etc.
+ * format: Specific format to use for parsing this file (optional in some cases)
+ * program: Optional syslog program name to assign, necessary for certain parsers.
+
+===Importer Plugins===
+You can add custom importer plugins for parsing log messages.  Plugins do any necessary data preparation as well as the actual loading or queueing of data.  They declare what formats they parse (to allow for an exact match with a provided "format" POST parameter), as well as an optional heuristic method which will assign a score for that parser as to what priority it should be given when ELSA determines the best parser to use for an imported log which doesn't declare its format.  See the plugins in {{{elsa/web/lib/Importer/}}} for examples.
+
 =Alerts=
 
 Any query that has been run may be turned into an alert by clicking the “Results...” menu button and choosing “alert.”  This will execute the exact same search after every new batch of logs is loaded, and will notify the user via email of new hits in a manner similar to the archive search results.
