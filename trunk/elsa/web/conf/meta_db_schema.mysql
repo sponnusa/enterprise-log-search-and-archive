@@ -146,4 +146,15 @@ CREATE TABLE preferences (
 	UNIQUE KEY (uid, type, name),
 	FOREIGN KEY (uid) REFERENCES users (uid) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB;
+
+CREATE TABLE foreign_queries (
+	qid INT UNSIGNED NOT NULL,
+	peer VARCHAR(255) NOT NULL,
+	foreign_qid INT UNSIGNED NOT NULL,
+	completed INT UNSIGNED,
+	PRIMARY KEY (qid, peer, foreign_qid),
+	FOREIGN KEY (qid) REFERENCES query_log (qid) ON DELETE CASCADE ON UPDATE CASCADE,
+	KEY (foreign_qid),
+	KEY(completed)
+) ENGINE=InnoDB;
 	

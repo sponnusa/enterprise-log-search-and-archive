@@ -250,9 +250,19 @@ sub get_saved_result {
 		return;
 	}
 	
+	my ($query, $sth);
+	
+	# Check to see if this is a foreign query (has results elsewhere)
+	$query = 'SELECT COUNT(*) FROM foreign_queries WHERE qid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{qid});
+	if ($sth->fetchrow_arrayref->[0]){
+		return $self->_get_foreign_saved_result($args);
+	}
+	
 	my @values = ($args->{qid});
 	
-	my ($query, $sth);
+	
 	$query = 'SELECT t2.uid, t2.query, milliseconds FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
 		'WHERE t1.qid=?';
 	if (not $args->{hash}){
@@ -281,6 +291,47 @@ sub get_saved_result {
 	else {
 		return $data;
 	}
+}
+
+sub _get_foreign_saved_result {
+	my ($self, $args) = @_;
+	
+	# Switch over from this API to the Peers API for a global query using web services
+	my $peer = '127.0.0.1';
+	my $peer_conf = $self->conf->get('peers/' . $peer);
+	unless ($peer_conf){
+		$peer = 'localhost';
+		$peer_conf = $self->conf->get('peers/' . $peer);
+	}
+	unless ($peer_conf){
+		die('No local $peer_conf for web services');
+	}
+	my $url = $peer_conf->{url} . 'API/result?qid=' . int($args->{qid});
+	$self->log->trace('Sending request to URL ' . $url);
+	my $start = time();
+	my $headers = { 
+		Authorization => $self->_get_auth_header($peer),
+	};
+	my $results;
+	my $cv = AnyEvent->condvar;
+	my $guard; $guard = http_get $url, headers => $headers, sub {
+		my ($body, $hdr) = @_;
+		eval {
+			$results = $self->json->decode($body);
+			undef $guard;
+		};
+		if ($@){
+			$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
+			$self->add_warning('peer ' . $peer . ': ' . $@);
+			undef $guard;
+		}
+		$cv->send;
+	};
+	$cv->recv;
+	
+	$self->log->trace('got foreign results: ' . Dumper($results));
+	
+	return $results;
 }
 
 sub _error {
@@ -876,7 +927,7 @@ sub get_form_params {
 	
 	eval {	
 		my $node_info = $self->info();
-		$self->log->trace('got node_info: ' . Dumper($node_info));
+		#$self->log->trace('got node_info: ' . Dumper($node_info));
 		$self->node_info($node_info);
 	};
 	if ($@){
@@ -1364,7 +1415,7 @@ sub _save_results {
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid});
 	my $row = $sth->fetchrow_hashref;
-	unless ($row and $row->{uid} eq $args->{user}->uid){
+	unless (not $args->{user} or ($row and $row->{uid} eq $args->{user}->uid)){
 		die('Insufficient permissions');
 	}
 	
@@ -1470,21 +1521,21 @@ sub get_saved_results {
 	}
 	
 	
-	my $saved_queries;
+	my $saved_results;
 	if ($args->{qid} and not ($args->{startIndex} or $args->{results})){
 		# We're just getting one known query
-		$saved_queries = $self->_get_saved_query(sprintf('%d', $args->{qid}));
+		$saved_results = $self->_get_saved_result(sprintf('%d', $args->{qid}));
 	}
 	else {
-		$saved_queries = $self->_get_saved_queries($uid, $offset, $limit, $args->{search});
+		$saved_results = $self->_get_saved_results($uid, $offset, $limit, $args->{search});
 	}
 	
 
-	$self->log->debug( "saved_queries: " . Dumper($saved_queries) );
-	return $saved_queries;
+	$self->log->debug( "saved_results: " . Dumper($saved_results) );
+	return $saved_results;
 }
 
-sub _get_saved_query {
+sub _get_saved_result {
 	my ($self, $qid) = @_;
 	
 	my ( $query, $sth, $row );
@@ -1498,7 +1549,7 @@ sub _get_saved_query {
 	return $sth->fetchrow_hashref or {error => 'QID ' . $qid . ' not found.'};
 }
 
-sub _get_saved_queries {
+sub _get_saved_results {
 	my ( $self, $uid, $offset, $limit, $search ) = @_;
 	$limit = 100 unless $limit;
 
@@ -1507,7 +1558,10 @@ sub _get_saved_queries {
 	# First find total number
 	$query =
 	    'SELECT COUNT(*) AS totalRecords ' . "\n"
-	  . 'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n"
+	  #. 'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n"
+	  . 'FROM saved_results t1 '
+	  . 'LEFT JOIN foreign_queries t2 ON (t1.qid=t2.foreign_qid) '
+	  . 'JOIN query_log t3 ON (t1.qid=t3.qid OR t2.qid=t3.qid) '
 	  . 'WHERE uid=?'; #AND comments!=\'_alert\'';
 	$sth = $self->db->prepare($query) or die( $self->db->errstr );
 	$sth->execute( $uid );
@@ -1516,11 +1570,14 @@ sub _get_saved_queries {
 
 	my @placeholders = ($uid);
 	$query =
-	    'SELECT t1.qid, t2.query, comments, num_results, UNIX_TIMESTAMP(timestamp) AS timestamp ' . "\n"
-	  . 'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid) ' . "\n"
+	    'SELECT t3.qid, t3.query, comments, num_results, UNIX_TIMESTAMP(timestamp) AS timestamp ' . "\n"
+	  #. 'FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid) ' . "\n"
+	  . 'FROM saved_results t1 '
+	  . 'LEFT JOIN foreign_queries t2 ON (t1.qid=t2.foreign_qid) '
+	  . 'JOIN query_log t3 ON (t1.qid=t3.qid OR t2.qid=t3.qid) '
 	  . 'WHERE uid=?' . "\n";
 	if ($search){
-		$query .= ' AND SUBSTRING_INDEX(SUBSTRING_INDEX(CONCAT(t2.query, " ", IF(ISNULL(comments), "", comments)), \'"\', 4), \'"\', -1) LIKE CONCAT("%", ?, "%")' . "\n";
+		$query .= ' AND SUBSTRING_INDEX(SUBSTRING_INDEX(CONCAT(t3.query, " ", IF(ISNULL(comments), "", comments)), \'"\', 4), \'"\', -1) LIKE CONCAT("%", ?, "%")' . "\n";
 		push @placeholders, $search;
 	}
 	push @placeholders, $offset, $limit;
@@ -3689,7 +3746,7 @@ sub send_to {
 		if (not $self->node_info->{updated_at} 
 			or (time() - $self->node_info->{updated_at} >= $self->conf->get('node_info_cache_timeout'))
 			or not $args->{user}->is_admin){
-			$self->node_info($self->_get_node_info($args->{user}));
+			$self->node_info($self->_get_node_info());
 		}
 		if($args->{query}){
 			$self->log->debug('args: ' . Dumper($args));
@@ -3810,6 +3867,34 @@ sub send_to {
 	return [ $q->results->all_results ];
 }
 
+sub _check_foreign_queries {
+	my $self = shift;
+	
+	$self->log->trace('Checking foreign queries');
+	my ($query, $sth);
+	
+	$query = 'SELECT DISTINCT qid FROM foreign_queries WHERE ISNULL(completed)';
+	$sth = $self->db->prepare($query);
+	$sth->execute;
+	my @incomplete;
+	while (my $row = $sth->fetchrow_hashref){
+		push @incomplete, $row;
+	}
+	
+	foreach my $row (@incomplete){
+		eval {
+			if (my $result = $self->get_saved_result($row)){
+				$self->log->info('Foreign query ' . $row->{qid} . ' completed: ' . Dumper($result));
+				my $q = new Query(conf => $self->conf, qid => $row->{qid}, node_info => $self->node_info);
+				$q->results(new Results(results => $result->{results}));
+				$self->_batch_notify($q);
+			}
+		};
+		if ($@){
+			$self->log->error('Error getting result for qid ' . $row->{qid} . ': ' . $@);
+		}
+	}
+}
 
 sub run_schedule {
 	my ($self, $args) = @_;
@@ -4074,6 +4159,8 @@ sub run_archive_queries {
 		die('Only system can run the schedule');
 	}
 	
+	$self->node_info($self->_get_node_info());
+	
 	my ($query, $sth);
 	$query = 'SELECT qid, username, query FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) WHERE ISNULL(num_results) AND archive=1';
 	$sth = $self->db->prepare($query);
@@ -4082,13 +4169,13 @@ sub run_archive_queries {
 	while (my $row = $sth->fetchrow_hashref){
 		my $user = $self->get_user($row->{username});
 		
-		# Get our node info
-		if (not $self->node_info->{updated_at} 
-			or ($self->conf->get('node_info_cache_timeout') 
-				and (time() - $self->node_info->{updated_at} >= $self->conf->get('node_info_cache_timeout')))
-			or not $user->is_admin){
-			$self->node_info($self->_get_node_info($user));
-		}
+#		# Get our node info
+#		if (not $self->node_info->{updated_at} 
+#			or ($self->conf->get('node_info_cache_timeout') 
+#				and (time() - $self->node_info->{updated_at} >= $self->conf->get('node_info_cache_timeout')))
+#			or not $user->is_admin){
+#			$self->node_info($self->_get_node_info());
+#		}
 		
 		my $q = new Query(conf => $self->conf, user => $user, q => $row->{query}, qid => $row->{qid}, 
 			node_info => $self->node_info);
@@ -4139,7 +4226,9 @@ sub run_archive_queries {
 		$q->comments(($q->archive ? 'archive' : 'analytics') . ' query');
 		$self->_save_results($q->TO_JSON);
 		$self->_batch_notify($q);
-	} 
+	}
+	
+	$self->_check_foreign_queries();
 }	
 
 sub _archive_query {
@@ -4178,7 +4267,8 @@ sub _archive_query {
 			}
 		}	
 		unless (@table_arr){
-			$self->log->debug('no tables for node ' . $node);
+			$self->log->info('none of the ' . (scalar @{ $node_info->{tables}->{tables} }) 
+				. ' tables had relevant times for node ' . $node);
 			next;
 		}
 		
@@ -4867,7 +4957,7 @@ sub cancel_livetail {
 	if (not $self->node_info->{updated_at} 
 		or ($self->conf->get('node_info_cache_timeout') and ((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout')))
 		or not $args->{user}->is_admin){
-		$self->node_info($self->_get_node_info($args->{user}));
+		$self->node_info($self->_get_node_info());
 	}
 	
 	$query = 'DELETE FROM livetail WHERE qid=?';

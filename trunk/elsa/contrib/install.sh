@@ -717,7 +717,7 @@ build_web_perl(){
 		# PAM requires some user input for testing, and we don't want that
 		#cpanm -n Authen::PAM Crypt::DH &&
 		#Authen::Simple::PAM 
-		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5 Hash::Merge::Simple Digest::SHA Archive::Extract Apache::Admin::Config
+		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5 Hash::Merge::Simple Digest::SHA Archive::Extract Apache::Admin::Config Text::CSV
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -835,6 +835,16 @@ LEFT JOIN chart_queries ON (charts.id=chart_queries.chart_id)
 JOIN users ON (dashboards.uid=users.uid)
 LEFT JOIN dashboard_auth ON (dashboards.id=dashboard_auth.dashboard_id)
 LEFT JOIN groups ON (dashboard_auth.gid=groups.gid);
+CREATE TABLE IF NOT EXISTS foreign_queries (
+	qid INT UNSIGNED NOT NULL,
+	peer VARCHAR(255) NOT NULL,
+	foreign_qid INT UNSIGNED NOT NULL,
+	completed INT UNSIGNED,
+	PRIMARY KEY (qid, peer, foreign_qid),
+	FOREIGN KEY (qid) REFERENCES query_log (qid) ON DELETE CASCADE ON UPDATE CASCADE,
+	KEY (foreign_qid),
+	KEY(completed)
+) ENGINE=InnoDB;
 	" > /dev/null 2>&1
 	
 mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "

@@ -79,6 +79,16 @@ sub BUILDARGS {
 	my $class = shift;
 	my %params = @_;
 	
+	if ($params{qid}){
+		my ($query, $sth);
+		$query = 'SELECT username, query FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) WHERE qid=?';
+		$sth = $params{db}->prepare($query);
+		$sth->execute($params{qid});
+		my $row = $sth->fetchrow_hashref;
+		die('Invalid qid ' . $params{qid}) unless $row;
+		$params{q} = $row->{query};
+		$params{user} = User->new(username => $row->{username}, conf => $params{conf});
+	}
 	if ($params{q}){
 		# JSON-encoded query from web
 		my $decode = $params{json}->decode($params{q});
@@ -130,7 +140,7 @@ sub BUILD {
 	if ($self->schedule_id){
 		$self->system(1);
 	}
-	elsif ($self->user->username eq 'system'){
+	elsif (not $self->peer_label and $self->user->username eq 'system'){
 		$self->system(1);
 	}
 	
@@ -140,7 +150,7 @@ sub BUILD {
 	}
 	
 	unless ($self->node_info){
-		$self->node_info($self->_get_node_info($self->user));
+		$self->node_info($self->_get_node_info());
 	}	
 		
 	# Set known values here
@@ -167,13 +177,14 @@ sub BUILD {
 	}
 	
 	if ($self->qid){
+		$self->resolve_field_permissions($self->user); # finish this up from BUILDARGS now that we're blessed
 		# Verify that this user owns this qid
 		$query = 'SELECT qid FROM query_log WHERE qid=? AND uid=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($self->qid, $self->user->uid);
 		my $row = $sth->fetchrow_hashref;
 		die('User is not authorized for this qid') unless $row;
-		$self->log->level($ERROR);
+		#$self->log->level($ERROR);
 	}
 	else {
 		# Log the query
@@ -289,11 +300,13 @@ sub _set_batch {
 sub _set_time_taken {
 	my ( $self, $new_val, $old_val ) = @_;
 	my ($query, $sth);
+	
 	# Update the db to ack
 	$query = 'UPDATE query_log SET num_results=?, milliseconds=? '
 	  		. 'WHERE qid=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute( $self->results->records_returned, $new_val, $self->qid );
+	
 	return $sth->rows;
 }
 
