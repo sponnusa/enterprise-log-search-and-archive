@@ -162,7 +162,7 @@ sub _get_node_info {
 	
 	my $overall_start = time();
 	my $nodes = $self->_get_nodes();
-	$self->log->trace('got nodes: ' . Dumper($nodes));
+	#$self->log->trace('got nodes: ' . Dumper($nodes));
 	
 	my $ret = { nodes => {} };
 	
@@ -699,51 +699,6 @@ sub _peer_query {
 	my ($self, $q) = @_;
 	my ($query, $sth);
 	
-	# Check for batching
-	unless ($q->system or $q->livetail){
-		my $is_batch = 0;	
-		if ($q->analytics or $q->archive){
-			# Find estimated query time
-			my $estimated_query_time = $self->_estimate_query_time($q);
-			$self->log->trace('Found estimated query time ' . $estimated_query_time . ' seconds.');
-			my $query_time_batch_threshold = 120;
-			if ($self->conf->get('query_time_batch_threshold')){
-				$query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
-			}
-			if ($estimated_query_time > $query_time_batch_threshold){
-				$is_batch = 'Batching because estimated query time is ' . int($estimated_query_time) . ' seconds.';
-				$self->log->info($is_batch);
-			}
-		}
-		
-		# Batch if we're allowing a huge number of results
-		if ($q->limit == 0 or $q->limit > $Results::Unbatched_results_limit){
-			$is_batch = q{Batching because an unlimited number or large number of results has been requested.};
-			$self->log->info($is_batch);
-		}	
-			
-		if ($is_batch){
-			# Check to see if this user is already running an archive query
-			$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND (ISNULL(num_results) OR num_results=-1)';
-			$sth = $self->db->prepare($query);
-			$sth->execute();
-			my $counter = 0;
-			while (my $row = $sth->fetchrow_hashref){
-				$counter++;
-				if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
-					#TODO create a queuing mechanism for this
-					$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
-					return;
-				}
-			}
-			
-			# Cron job will pickup the query from the query log and execute it from here if it's an archive query.
-			$q->batch_message($is_batch . '  You will receive an email with your results.');
-			$q->batch(1);
-			return $q;
-		}
-	}
-	
 	# Execute search on every peer
 	my @peers;
 	foreach my $peer (keys %{ $self->conf->get('peers') }){
@@ -760,6 +715,7 @@ sub _peer_query {
 	my $cv = AnyEvent->condvar;
 	$cv->begin;
 	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded', 'User-Agent' => $self->user_agent_name };
+	my %batches;
 	foreach my $peer (@peers){
 		$cv->begin;
 		my $peer_conf = $self->conf->get('peers/' . $peer);
@@ -781,6 +737,7 @@ sub _peer_query {
 			my ($body, $hdr) = @_;
 			eval {
 				my $raw_results = $self->json->decode($body);
+				$self->log->debug('raw_results: ' . Dumper($raw_results));
 				my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
 				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
 				if ($q->has_groupby and ref($raw_results->{results}) ne 'HASH'){
@@ -794,6 +751,13 @@ sub _peer_query {
 				elsif ($results_obj->records_returned){
 					$self->log->debug('query returned ' . $results_obj->records_returned . ' records, merging ' . Dumper($q->results) . ' with ' . Dumper($results_obj));
 					$q->results->merge($results_obj, $q);
+				}
+				elsif ($raw_results->{batch}){
+					my $current_message = $q->batch_message;
+					$current_message .= $peer . ': ' . $raw_results->{batch_message};
+					$q->batch_message($current_message);
+					$q->batch(1);
+					$batches{$peer} = $raw_results->{qid};
 				}
 				$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
 				my $stats = $raw_results->{stats};
@@ -817,7 +781,16 @@ sub _peer_query {
 	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
 	
 	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
-
+	
+	if (scalar keys %batches){
+		$query = 'INSERT INTO foreign_queries (qid, peer, foreign_qid) VALUES (?,?,?)';
+		$sth = $self->db->prepare($query);
+		foreach my $peer (sort keys %batches){
+			$sth->execute($q->qid, $peer, $batches{$peer});
+		}
+		$self->log->trace('Updated query to have foreign_qids ' . Dumper(\%batches));
+	}
+	
 	return $q;
 }
 
@@ -854,9 +827,10 @@ sub _check_auth_header {
 	if ($self->conf->get('apikeys')->{$username} 
 		and sha512_hex($timestamp . $self->conf->get('apikeys')->{$username}) eq $apikey){
 		$self->log->trace('Authenticated ' . $username);
+		return 1;
 	}
 	else {
-		$self->log->error('Invalid apikey: '  . $username . ':' . $apikey);
+		$self->log->error('Invalid apikey: '  . $username . ':' . $timestamp . ':' . $apikey);
 		return 0;
 	}
 }
