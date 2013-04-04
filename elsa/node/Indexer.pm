@@ -702,10 +702,15 @@ sub _check_consolidate {
 		$sth = $self->db->prepare($query);
 		$sth->execute;
 		$row = $sth->fetchrow_hashref;
-		$self->log->warn('We have ' . $total . ' permanent indexes, need to consolidate table ' . $row->{table_name}
-			. ' with its ' . $row->{num_indexes} . ' indexes');
-		$self->consolidate_indexes({ first_id => $row->{min_id}, last_id => $row->{max_id}, type => $row->{table_type}, 
-			start => $row->{table_start_int}, end => $row->{table_end_int} });
+		if ($row){
+			$self->log->warn('We have ' . $total . ' permanent indexes, need to consolidate table ' . $row->{table_name}
+				. ' with its ' . $row->{num_indexes} . ' indexes');
+			$self->consolidate_indexes({ first_id => $row->{min_id}, last_id => $row->{max_id}, type => $row->{table_type}, 
+				start => $row->{table_start_int}, end => $row->{table_end_int} });
+		}
+		else {
+			$self->log->warn('All permanent indexes used and none to consolidate, we will have to overwrite a permanent index.');
+		}
 	}
 	
 	# Check to see if we're low on temporary indexes and need to consolidate
