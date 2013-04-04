@@ -83,7 +83,7 @@ sub local_query {
 		}
 		
 		# Batch if we're allowing a huge number of results
-		if ($q->limit == 0 or $q->limit > $Results::Unbatched_results_limit){
+		if (not $q->has_groupby and ($q->limit == 0 or $q->limit > $Results::Unbatched_results_limit)){
 			$is_batch = q{Batching because an unlimited number or large number of results has been requested.};
 			$self->log->info($is_batch);
 		}	
@@ -124,7 +124,7 @@ sub local_query {
 	elsif ($q->archive){
 		$self->_archive_query($q);
 	}
-	elsif ($q->analytics or ($q->limit > $API::Max_limit)){
+	elsif (($q->analytics or ($q->limit > $API::Max_limit)) and not $q->has_groupby){
 		$self->_unlimited_sphinx_query($q);
 	}
 	else {
