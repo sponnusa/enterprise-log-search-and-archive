@@ -270,11 +270,12 @@ sub upload {
 	}
 	
 	# See if this is a Zip file
-	open(FH, $args->{upload}->path);
-	my $first_upload_line = <FH>;
+	open(FH, $args->{upload}->path) or die('Unable to read file ' . $args->{upload}->path . ': ' . $!);
+	my $buf;
+	read(FH, $buf, 2);
 	my $is_zipped = 0;
-	if ($first_upload_line =~ /^PK/){
-		$self->log->trace('Detected file upload is an archive');
+	if ($buf eq 'PK'){
+		$self->log->trace('Detected that file upload is an archive');
 		$is_zipped = 1;
 	}
 	close(FH);
