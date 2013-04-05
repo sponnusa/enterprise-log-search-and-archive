@@ -283,7 +283,7 @@ sub upload {
 	my $file;
 	
 	if ($is_zipped){
-		my $ae = Archive::Extract->new( archive => $args->{upload}->path );
+		my $ae = Archive::Extract->new( archive => $args->{upload}->path ) or die('Error extracting file ' . $args->{upload}->path . ': ' . $!);
 		my $id = $args->{client_ip_address} . '_' . $args->{md5};
 		# make a working dir for these files
 		my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
