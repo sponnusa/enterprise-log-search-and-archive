@@ -737,7 +737,7 @@ sub _peer_query {
 			my ($body, $hdr) = @_;
 			eval {
 				my $raw_results = $self->json->decode($body);
-				$self->log->debug('raw_results: ' . Dumper($raw_results));
+				#$self->log->debug('raw_results: ' . Dumper($raw_results));
 				my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
 				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
 				if ($q->has_groupby and ref($raw_results->{results}) ne 'HASH'){
