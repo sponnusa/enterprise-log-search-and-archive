@@ -18,7 +18,7 @@ use lib $FindBin::Bin;
 
 use Module::Pluggable sub_name => 'import_plugins', require => 1, search_path => [ qw( Importer ) ];
 
-has 'format' => (is => 'rw', isa => 'Str', required => 1);
+has 'format' => (is => 'rw', isa => 'Str', required => 1, default => '0');
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => sub { 'Unnamed import' });
 has 'description' => (is => 'rw', isa => 'Str', required => 1, default => sub { '' });
 has 'infile' => (is => 'rw', isa => 'Str', required => 1);
