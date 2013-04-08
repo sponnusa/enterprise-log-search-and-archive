@@ -547,6 +547,8 @@
 					<pattern>@ESTRING:: [**]@@QSTRING:s0:[]@ @ESTRING:s1: {@@ESTRING:i1:}@ @IPv4:i2:@:@NUMBER:i3:@-&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
 					<pattern>@ESTRING:: [**]@@QSTRING:s0:[]@ @ESTRING:s1: [**] [@Classification:@QSTRING:s2: ]@[Priority: @NUMBER:i0:@] @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
 					<pattern>@ESTRING:: [**]@@QSTRING:s0:[]@ @ESTRING:s1: [**] [@Classification:@QSTRING:s2: ]@[Priority: @NUMBER:i0:@] @QSTRING:i1:{}@ @IPv4:i2:@ -&gt; @IPv4:i4:@</pattern>
+					<pattern>@ESTRING:: [**]@ @QSTRING:s0:[]@ @ESTRING:s1: [**] [@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
+					<pattern>@ESTRING:: [**]@ @QSTRING:s0:[]@ @ESTRING:s1: [**] [@Classification:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@] @QSTRING:i1:{}@ @IPv4:i2:@ -&gt; @IPv4:i4:@</pattern>
 					<pattern>@ESTRING:: [**]@@QSTRING:s0:[]@ @ESTRING:s1: [**] [@Classification:@QSTRING:s2: ]@[Priority: @NUMBER:i0:@]: @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
 					<pattern>@ESTRING:: [**]@@QSTRING:s0:[]@ @ESTRING:s1: [**] [@Classification:@QSTRING:s2: ]@[Priority: @NUMBER:i0:@]: @QSTRING:i1:{}@ @IPv4:i2:@ -&gt; @IPv4:i4:@</pattern>
 					<pattern>@ESTRING:: [**]@@QSTRING:s0:[]@ @ESTRING:s1: [**] {@@ESTRING:i1:}@@IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
