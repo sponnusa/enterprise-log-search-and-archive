@@ -488,14 +488,14 @@ mk_node_dirs(){
 	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
 		mkfifo $DATA_DIR/elsa/tmp/realtime;
 		# Anyone can send logs to this
-		chown 666 $DATA_DIR/elsa/tmp/realtime;
+		chmod 666 $DATA_DIR/elsa/tmp/realtime;
 		UPDATE_OK=$?
 	fi
 	
 	if [ ! -p $DATA_DIR/elsa/tmp/import ]; then
 		mkfifo $DATA_DIR/elsa/tmp/import;
 		# Anyone can send logs to this
-		chown 666 $DATA_DIR/elsa/tmp/import;
+		chmod 666 $DATA_DIR/elsa/tmp/import;
 		UPDATE_OK=$?
 	fi
 	
