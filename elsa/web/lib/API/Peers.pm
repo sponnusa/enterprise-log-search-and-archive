@@ -338,12 +338,14 @@ sub upload {
 		return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
 	}
 	
+	my $ret = { ok => 1 };
 	if ($args->{description} or $args->{name}){
 		# We're doing an import
 		$args->{host} = $args->{client_ip_address};
 		delete $args->{start};
 		delete $args->{end};
 		my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
+		$ret->{import_id} = $importer->id;
 	}
 	else {
 		unless ($args->{start} and $args->{end}){
@@ -357,17 +359,18 @@ sub upload {
 		$query = 'INSERT INTO ' . $syslog_db_name . '.buffers (filename, start, end) VALUES (?,?,?)';
 		$sth = $self->db->prepare($query);
 		$sth->execute($file, $args->{start}, $args->{end});
-		my $buffers_id = $self->db->{mysql_insertid};
+		$ret->{buffers_id} = $self->db->{mysql_insertid};
 		
 		# Record the upload
 		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{client_ip_address}, $args->{count}, $args->{size}, $args->{batch_time}, 
-			$args->{total_errors}, $args->{start}, $args->{end}, $buffers_id);
+			$args->{total_errors}, $args->{start}, $args->{end}, $ret->{buffers_id});
+		$ret->{upload_id} = $self->db->{mysql_insertid};
 		$sth->finish;
 	}
 		
-	return [ 200, [ 'Content-Type' => 'text/plain' ], [ 'ok' ] ];
+	return $ret;
 }
 
 sub local_result {
