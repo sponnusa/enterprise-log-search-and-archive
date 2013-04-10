@@ -502,6 +502,29 @@ mk_node_dirs(){
 	return $UPDATE_OK
 }
 
+allow_mysql_symbolic_links(){
+	# Check if we need to enable symbolic-link
+	MYCNF="/etc/my.cnf"
+	if [ $DISTRO = "ubuntu" ]; then
+		MYCNF="/etc/mysql/my.cnf"
+	fi	
+	echo "Checking $MYCNF for symbolic-links=0"
+	grep -P "^symbolic-links=0" $MYCNF
+	if [ $? -eq 0 ]; then
+		echo "Removing symbolic-links=0 from $MYCNF"
+		cp $MYCNF $MYCNF.elsabak &&
+		cat $MYCNF.elsabak | grep -vP "^symbolic-links=0" > $MYCNF
+		if [ $DISTRO = "centos" ]; then
+			service mysqld restart
+			return $?
+		else
+			service mysql restart
+			return $?
+		fi
+	fi
+	return 0
+}
+
 set_node_mysql(){
 	# Test to see if schema is already installed
 	mysql -u$MYSQL_USER -p$MYSQL_PASS $MYSQL_NODE_DB -e "select count(*) from programs" > /dev/null 2>&1
@@ -509,6 +532,8 @@ set_node_mysql(){
 		echo "MySQL and schema already installed."
 		return 0;
 	fi
+	
+	allow_mysql_symbolic_links
 	
 	# Install mysql schema
 	service $MYSQL_SERVICE_NAME start
@@ -525,6 +550,8 @@ set_node_mysql(){
 }
 
 update_node_mysql(){
+	allow_mysql_symbolic_links
+	
 	echo "Updating MySQL..."
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE buffers ADD COLUMN start INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE buffers ADD COLUMN end INT UNSIGNED' > /dev/null 2>&1
