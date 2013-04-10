@@ -254,6 +254,17 @@ sub stats {
 	$self->log->debug('merging: ' . Dumper(\%results));
 	my $overall_final = merge values %results;
 	
+	# Touch up nodes
+	my %nodes;
+	foreach my $peer (keys %results){
+		$nodes{$peer} = 1;
+		foreach my $node (@{ $results{$peer}->{nodes} }){
+			next if $node eq 'localhost' or $node eq '127.0.0.1';
+			$nodes{$node} = 1;
+		}
+	}
+	$overall_final->{nodes} = [ sort keys %nodes ];
+	
 	return $overall_final;
 }
 
