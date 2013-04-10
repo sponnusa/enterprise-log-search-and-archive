@@ -735,7 +735,7 @@ sub get_stats {
 		
 	# Combine the stats info for the nodes
 	my $combined = {};
-	$self->log->debug('got stats: ' . Dumper($stats->{nodes}));
+	#$self->log->debug('got stats: ' . Dumper($stats->{nodes}));
 	
 	foreach my $stat (qw(load index archive)){
 		$combined->{$stat} = { x => [], LogsPerSec => [], KBytesPerSec => [] };
@@ -755,6 +755,20 @@ sub get_stats {
 		}
 	}
 	$stats->{combined_load_stats} = $combined;
+	
+	my $node_info = $self->_get_node_info(1);
+	$stats->{start} = $node_info->{indexes_min} ? epoch2iso($node_info->{indexes_min}) : epoch2iso($node_info->{archive_min});
+	$stats->{start_int} = $node_info->{indexes_min} ? $node_info->{indexes_min} : $node_info->{archive_min};
+	$stats->{display_start_int} = $node_info->{indexes_min} ? $node_info->{indexes_min} : $node_info->{archive_min};
+	$stats->{archive_start} = epoch2iso($node_info->{archive_min});
+	$stats->{archive_start_int} = $node_info->{archive_min};
+	$stats->{archive_display_start_int} = $node_info->{archive_min};
+	$stats->{end} = $node_info->{indexes_max} ? epoch2iso($node_info->{indexes_max}) : epoch2iso($node_info->{archive_max});
+	$stats->{end_int} = $node_info->{indexes_max} ? $node_info->{indexes_max} : $node_info->{archive_max};
+	$stats->{archive_end} = epoch2iso($node_info->{archive_max});
+	$stats->{archive_end_int} = $node_info->{archive_max};
+	$stats->{nodes} = [ keys %{ $node_info->{nodes} } ];
+	$stats->{totals} = $node_info->{totals};
 		
 	$self->log->debug('got stats: ' . Dumper($stats));
 	return $stats;
