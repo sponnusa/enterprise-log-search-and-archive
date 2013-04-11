@@ -738,7 +738,8 @@ sub _peer_query {
 			eval {
 				my $raw_results = $self->json->decode($body);
 				#$self->log->debug('raw_results: ' . Dumper($raw_results));
-				my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
+				#my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
+				my $is_groupby = $raw_results->{groupby} ? 1 : 0;
 				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
 				if ($q->has_groupby and ref($raw_results->{results}) ne 'HASH'){
 					$self->log->error('Wrong: ' . Dumper($q->TO_JSON) . "\n" . Dumper($raw_results));
@@ -759,7 +760,13 @@ sub _peer_query {
 					$q->batch(1);
 					$batches{$peer} = $raw_results->{qid};
 				}
-				$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
+				#$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
+				if ($is_groupby){
+					$q->groupby($raw_results->{groupby});
+				}
+				else {
+					$q->groupby([]);
+				}
 				my $stats = $raw_results->{stats};
 				$stats ||= {};
 				$stats->{total_request_time} = (time() - $start);
