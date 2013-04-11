@@ -767,7 +767,6 @@ sub get_stats {
 	$stats->{end_int} = $node_info->{indexes_max} ? $node_info->{indexes_max} : $node_info->{archive_max};
 	$stats->{archive_end} = epoch2iso($node_info->{archive_max});
 	$stats->{archive_end_int} = $node_info->{archive_max};
-	$stats->{nodes} = [ keys %{ $node_info->{nodes} } ];
 	$stats->{totals} = $node_info->{totals};
 		
 	$self->log->debug('got stats: ' . Dumper($stats));
