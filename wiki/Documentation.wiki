@@ -573,6 +573,33 @@ Charts can be added either from the main ELSA query interface using the "Results
 Queries are easiest to add using the above method in which a query you've just run in the standard ELSA query interface is added via the "Results" button.  If the query has a "Report On" or "groupby" value, that value will be used to create the chart.  Otherwise, the query will be plotted over time by count of occurrences.
 ==Editing Charts==
 Charts can be edited from the edit dashboard interface in two ways: the appearance and the queries.  The appearance will dictate what kind of chart it is, the title, and other formatting variables.  The queries dictate the underlying data series.  When editing charts, changes appear live as you edit.
+===Advanced Chart Editing===
+In some cases, you may need to edit the actual JSON used to construct a dashboard to get exactly the right look and feel.  Here's an excerpt from the ELSA mailing list touching on how to do that:
+<pre>
+the width (fixed) is located into /opt/elsa/web/lib/Web/GoogleDashboard.pm
+I set
+our $Default_width = 1850;
+for fit 46" screen 1920pixel
+
+For the number of elements (charts?) I found something into /opt/elsa/web/lib/API/Charts.pm
+There is:
+ # Sanity check
+ if ($args->{x} > 2){
+ die('Cannot have more than 3 charts on one line: ' . $args->{x});
+ }
+
+So 3 charts per line, if you need more, increase the number 2.
+
+
+For the height there isn't a unique value to modify as width but as Martin suggested to me some post ago, you can export dashboard, modify values, then create new dashboard with new values.
+For example for a map I needed to set height:
+         "y" : "6",
+         "options" : {
+            "width" : 940,
+            "height": 500,
+
+In this case you can modify height (and width) for each chart.
+</pre>
 ==Chart Types==
 ELSA uses [https://developers.google.com/chart/ Google Visualizations] to draw charts.  See their documentation for what chart types are available.  Of particular note is the "table" type, which is hidden under the "More" menu of available char types.  It's a great way to display long text in a readable format.
 ==Viewing Dashboards==
