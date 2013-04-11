@@ -2248,15 +2248,15 @@ sub _sphinx_query {
 	#$self->log->debug('conversions: ' . Dumper($self->node_info->{field_conversions}));
 	
 	if ($q->has_groupby){
-		# Swap the host for the import_groupby if necessary
-		if ($q->import_groupby){
-			my @groupbys = $q->all_groupbys;
-			for (my $i = 0; $i < @groupbys; $i++){
-				if ($groupbys[$i] eq 'host'){
-					$q->groupby->[$i] = $q->import_groupby;
-				}
-			}
-		}
+#		# Swap the host for the import_groupby if necessary
+#		if ($q->import_groupby){
+#			my @groupbys = $q->all_groupbys;
+#			for (my $i = 0; $i < @groupbys; $i++){
+#				if ($groupbys[$i] eq 'host'){
+#					$q->groupby->[$i] = $q->import_groupby;
+#				}
+#			}
+#		}
 		my %results;
 		foreach my $groupby ($q->all_groupbys){
 			my %agg;
@@ -2294,10 +2294,10 @@ sub _sphinx_query {
 						$key = $self->resolve_value($sphinx_row->{class_id}, 
 							$sphinx_row->{'_groupby'}, $groupby);
 					}
-					elsif ($q->import_groupby){
-						# Resolve with the mysql row
-						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{ $q->import_groupby };
-					}
+#					elsif ($q->import_groupby){
+#						# Resolve with the mysql row
+#						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{ $q->import_groupby };
+#					}
 					else {
 						# Resolve with the mysql row
 						my $field_order = $self->get_field($groupby)->{ $sphinx_row->{class_id} }->{field_order};
@@ -2387,8 +2387,8 @@ sub _sphinx_query {
 					}
 				}
 				if ($is_import){
-					# Remove host
-					shift(@{ $row->{_fields} });
+#					# Remove host
+#					shift(@{ $row->{_fields} });
 					
 					# Add node
 					push @{ $row->{_fields} }, { field => 'node', value => $row->{node}, class => 'any' };
@@ -2474,6 +2474,252 @@ sub _sphinx_query {
 	});
 	
 	return 1;
+}
+
+sub _get_ids {
+	my $self = shift;
+	my $q = shift;
+	my %stats;
+	my $start_time = time();
+	my $nodes = $self->_get_sphinx_nodes($q);
+	$stats{connect_to_nodes} = (time() - $start_time);
+	
+	my $ret = {};
+	
+	foreach my $node (keys %{ $nodes }){
+		if (exists $nodes->{$node}->{error}){
+			my $err_str = 'not using node ' . $node . ' because ' . $nodes->{$node}->{error};
+			$self->add_warning($err_str);
+			$self->log->warn($err_str);
+			delete $nodes->{$node};
+		}
+	}
+	
+	unless (scalar keys %$nodes){
+		die('No nodes available');
+	}
+	
+	# Get indexes from all nodes in parallel
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub {
+		$cv->send;
+	});
+	
+	my $counter = 0;
+	my $total_records = 0;
+	foreach my $node (keys %$nodes){
+		$ret->{$node} = {};
+		my $node_info = $self->node_info->{nodes}->{$node};
+		eval {
+			foreach my $range ($q->all_id_ranges){
+				$total_records += $range->{values}->[1] - $range->{values}->[0];
+				next if $counter >= $q->limit;
+				# Find what tables we need to query to resolve rows
+				my %tables;
+				my %orderby_map;
+				ROW_LOOP: for (my $id = $range->{values}->[0]; $id <= $range->{values}->[1]; $id++){
+					foreach my $table_hash (@{ $self->node_info->{nodes}->{$node}->{tables}->{tables} }){
+						last ROW_LOOP if $counter >= $q->limit;
+						next unless $table_hash->{table_type} eq 'index' or $table_hash->{table_type} eq 'import';
+						if ($table_hash->{min_id} <= $id and $id <= $table_hash->{max_id}){
+							$tables{ $table_hash->{table_name} } ||= [];
+							push @{ $tables{ $table_hash->{table_name} } }, $id;
+							$counter++;
+							next ROW_LOOP;
+						}
+					}
+				}
+				$self->log->debug('%orderby_map  ' . Dumper(\%orderby_map));
+				
+				if (scalar keys %tables){				
+					# Go get the actual rows from the dbh
+					my @table_queries;
+					my @table_query_values;
+					my @import_queries;
+					my @import_query_values;
+					foreach my $table (sort keys %tables){
+						my $placeholders = join(',', map { '?' } @{ $tables{$table} });
+						
+						if ($table =~ /import/){
+							push @import_query_values, @{ $tables{$table} };
+						}
+
+						my $table_query = sprintf("SELECT %1\$s.id,\n" .
+							"timestamp,\n" .
+							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+							"FROM %1\$s\n" .
+							"LEFT JOIN %2\$s.programs ON %1\$s.program_id=programs.id\n" .
+							"LEFT JOIN %2\$s.classes ON %1\$s.class_id=classes.id\n" .
+							'WHERE %1$s.id IN (' . $placeholders . ')',
+							$table, $nodes->{$node}->{db});
+						
+						push @table_queries, $table_query;
+						push @table_query_values, @{ $tables{$table} };
+					}
+					
+					my %import_info;
+					if (@import_query_values){
+						my $import_info_query = 'SELECT name AS import_name, description AS import_description, ' .
+							'datatype AS import_type, imported AS import_date, first_id, last_id FROM ' . $nodes->{$node}->{db} 
+							. '.imports WHERE ';
+						my @import_info_query_clauses;
+						foreach (@import_query_values){
+							push @import_info_query_clauses, '? BETWEEN first_id AND last_id';
+						}
+						$import_info_query .= join(' OR ', @import_info_query_clauses);
+						$cv->begin;
+						$nodes->{$node}->{dbh}->query($import_info_query, @import_query_values,
+							sub { 
+								my ($dbh, $rows, $rv) = @_;
+								if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
+									my $errstr = 'node ' . $node . ' got error ' . $rows;
+									$self->log->error($errstr);
+									$self->add_warning($errstr);
+									$cv->end;
+									return;
+								}
+								elsif (not scalar @$rows){
+									$self->log->error('Did not get import info rows though we had import tables: ' 
+										. Dumper(\%tables)); 
+								}
+								$self->log->trace('node '. $node . ' got import info db rows: ' . (scalar @$rows));
+								
+								# Map each id to the right import info
+								foreach my $table (sort keys %tables){
+									$self->log->debug('table: ' . $table);
+									foreach my $id (@{ $tables{$table} }){
+										$self->log->debug('id: ' . $id);
+										foreach my $row (@$rows){
+											$self->log->debug('row: ' . Dumper($row));
+											if ($row->{first_id} <= $id and $id <= $row->{last_id}){
+												$import_info{$id} = $row;
+												last;
+											}
+										}
+									}
+								}
+								$cv->end;
+						});
+						$self->log->debug('import_info: ' . Dumper(\%import_info));
+					}
+					
+					my $table_query = join(';', @table_queries);
+					$self->log->trace('table query for node ' . $node . ': ' . $table_query 
+						. ', placeholders: ' . join(',', @table_query_values));
+					$cv->begin;
+					my $start = time();
+					$nodes->{$node}->{dbh}->multi_query($table_query, @table_query_values,
+						sub { 
+							my ($dbh, $rows, $rv) = @_;
+							if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
+								my $errstr = 'node ' . $node . ' got error ' . $rows;
+								$self->log->error($errstr);
+								$self->add_warning($errstr);
+								$cv->end;
+								return;
+							}
+							elsif (not scalar @$rows){
+								$self->log->error('Did not get rows though we had Sphinx results! tables: ' 
+									. Dumper(\%tables)); 
+							}
+							$self->log->trace('node '. $node . ' got db rows: ' . (scalar @$rows));
+							
+							$self->log->debug('in fork, %orderby_map  ' . Dumper(\%orderby_map));
+							foreach my $row (@$rows){
+								$ret->{$node}->{results} ||= {};
+								$row->{node} = $q->peer_label ? $q->peer_label : $node;
+								$row->{node_id} = unpack('N*', inet_aton($node));
+								if ($q->orderby){
+									$row->{_orderby} = $orderby_map{ $row->{id} };
+								}
+								else {
+									$row->{_orderby} = $row->{timestamp};
+								}
+								# Copy import info into the row
+								if (exists $import_info{ $row->{id} }){
+									foreach my $import_col (@{ $Fields::Import_fields }){
+										if ($import_info{ $row->{id} }->{$import_col}){
+											$row->{$import_col} = $import_info{ $row->{id} }->{$import_col};
+										}
+									}
+								}
+								$ret->{$node}->{results}->{ $row->{id} } = $row;
+							}
+							$stats{mysql_query} += (time() - $start);
+							$cv->end;
+					});
+					$cv->end; #end sphinx query
+				}
+				else {
+					$self->add_warning('No MySQL tables found for search hits.');
+					$self->log->error('No tables found for result. tables: ' . Dumper($self->node_info->{nodes}->{$node}->{tables}));
+					$cv->end; #end sphinx query
+				}
+			}
+		};
+		if ($@){
+			$ret->{$node}->{error} = 'sphinx query error: ' . $@;
+			$self->log->error('sphinx query error: ' . $@);
+			$cv->end;
+		}
+	}
+	$cv->end; # bookend initial begin
+	$cv->recv; # block until all of the above completes
+	
+	my @tmp;
+	foreach my $node (keys %$ret){
+		foreach my $id (sort { $a <=> $b } keys %{ $ret->{$node}->{results} }){
+			my $row = $ret->{$node}->{results}->{$id};
+			$row->{datasource} = 'Sphinx';
+			$row->{_fields} = [
+					{ field => 'host', value => $row->{host}, class => 'any' },
+					{ field => 'program', value => $row->{program}, class => 'any' },
+					{ field => 'class', value => $row->{class}, class => 'any' },
+				];
+			my $is_import = 0;
+			foreach my $import_col (@{ $Fields::Import_fields }){
+				if (exists $row->{$import_col}){
+					$is_import++;
+					push @{ $row->{_fields} }, { field => $import_col, value => $row->{$import_col}, class => 'any' };
+				}
+			}
+			if ($is_import){
+				# Add node
+				push @{ $row->{_fields} }, { field => 'node', value => $row->{node}, class => 'any' };
+			}
+			# Resolve column names for fields
+			foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
+				my $value = delete $row->{$col};
+				# Swap the generic name with the specific field name for this class
+				my $field = $self->node_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
+				if (defined $value and $field){
+					# See if we need to apply a conversion
+					$value = $self->resolve_value($row->{class_id}, $value, $col);
+					push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $self->node_info->{classes_by_id}->{ $row->{class_id} } };
+				}
+			}
+			push @tmp, $row;
+		}
+	}
+	
+	# Now that we've got our results, order by our given order by
+	if ($q->orderby_dir eq 'DESC'){
+		foreach my $row (sort { $b->{_orderby} <=> $a->{_orderby} } @tmp){
+			$q->results->add_result($row);
+			last if not $q->analytics and $q->results->records_returned >= $q->limit;
+		}
+	}
+	else {
+		foreach my $row (sort { $a->{_orderby} <=> $b->{_orderby} } @tmp){
+			$q->results->add_result($row);
+			last if not $q->analytics and $q->results->records_returned >= $q->limit;
+		}
+	}
+	
+	$q->results->total_records($total_records);
+	
+	return $ret;
 }
 
 sub _unlimited_sphinx_query {
@@ -2766,6 +3012,14 @@ sub _build_archive_match_str {
 	return $match_str;
 }
 
+sub _build_sql_regex_term {
+	my $self = shift;
+	my $term_hash = shift;
+	return '(' . $term_hash->{field} . q{ REGEXP CONCAT("[^a-zA-Z0-9'-'\@\_\.]+", ?) OR }
+		.  $term_hash->{field} . q{ REGEXP CONCAT(?, "[^a-zA-Z0-9'-'\@\_\.]+") OR }
+		. $term_hash->{field} . '=?)';
+}
+
 sub _build_query {
 	my $self = shift;
 	my $q = shift;
@@ -2777,6 +3031,7 @@ sub _build_query {
 		or => { clauses => [], vals => [] }, 
 		not => { clauses => [], vals => [] },
 		permissions =>  { clauses => [], vals => [] },
+		id_ranges => { clauses => [], vals => [] },
 	);
 	
 	# Create permissions clauses
@@ -2849,6 +3104,17 @@ sub _build_query {
 	foreach my $class_id (keys %{ $q->classes->{excluded} }){
 		push @{ $clauses{not}->{clauses} }, [ 'class_id=?' ];
 		push @{ $clauses{not}->{vals} }, $class_id;
+	}
+	
+	# Handle specified id ranges
+	foreach my $boolean (qw(and or not)){
+		my @clauses;
+		foreach my $range ($q->all_id_ranges){
+			next unless $range->{boolean} eq $boolean;
+			push @clauses, '(id >= ? AND id <= ?)';
+			push @{ $clauses{$boolean}->{vals} }, @{ $range->{values} };
+		}
+		push @{ $clauses{$boolean}->{clauses} }, [ @clauses ] if @clauses;
 	}
 	
 	# Handle our basic equalities
