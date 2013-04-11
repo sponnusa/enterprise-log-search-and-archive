@@ -324,6 +324,15 @@ sub stats {
 				my $raw_results = $self->json->decode($body);
 				$stats{$peer}->{total_request_time} = (time() - $start);
 				$results{$peer} = { %$raw_results }; #undef's the guard
+				# Touch up nodes to have the correct label
+				foreach my $node (keys %{ $results{$peer}->{nodes} }){
+					if (($peer eq 'localhost' or $peer eq '127.0.0.1') and $args->{peer_label}){
+						$results{$peer}->{nodes}->{ $args->{peer_label} } = delete $results{$peer}->{nodes}->{$node};
+					}
+					elsif ($node eq 'localhost' or $node eq '127.0.0.1'){
+						$results{$peer}->{nodes}->{$peer} = delete $results{$peer}->{nodes}->{$node};
+					}
+				}
 			};
 			if ($@){
 				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
@@ -340,17 +349,6 @@ sub stats {
 	
 	$self->log->debug('merging: ' . Dumper(\%results));
 	my $overall_final = merge values %results;
-	
-	# Touch up nodes
-	my %nodes;
-	foreach my $peer (keys %results){
-		$nodes{$peer} = 1;
-		foreach my $node (@{ $results{$peer}->{nodes} }){
-			next if $node eq 'localhost' or $node eq '127.0.0.1';
-			$nodes{$node} = 1;
-		}
-	}
-	$overall_final->{nodes} = [ sort keys %nodes ];
 	
 	return $overall_final;
 }
