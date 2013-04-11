@@ -61,6 +61,11 @@ has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', require
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'timezone_difference' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { start => 0, end => 0 } });
 has 'peer_requests' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
+has 'import_search_terms' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
+	handles => { 'has_import_search_terms' => 'count', 'all_import_search_terms' => 'elements' });
+has 'id_ranges' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
+	handles => { 'has_id_ranges' => 'count', 'all_id_ranges' => 'elements' });
+has 'query_term_count' => (is => 'rw', isa => 'Num', required => 1, default => 0);
 
 # Optional
 has 'query_string' => (is => 'rw', isa => 'Str');
@@ -71,7 +76,7 @@ has 'comments' => (is => 'rw', isa => 'Str');
 has 'time_taken' => (is => 'rw', isa => 'Num', trigger => \&_set_time_taken);
 has 'batch_message' => (is => 'rw', isa => 'Str');
 has 'node_info' => (is => 'rw', isa => 'HashRef');
-has 'import_groupby' => (is => 'rw', isa => 'Str');
+#has 'import_groupby' => (is => 'rw', isa => 'Str');
 has 'peer_label' => (is => 'rw', isa => 'Str');
 has 'from_peer' => (is => 'rw', isa => 'Str');
 
@@ -795,6 +800,9 @@ sub _parse_query {
 		}
 	}
 	
+	# Save this query_term_count for later use
+	$self->query_term_count($query_term_count);
+	
 	# we might have a class-only query
 	foreach my $class (keys %{ $self->classes->{distinct} }){
 		unless ($num_removed_terms){ # this query used to have terms, so it wasn't really class-only
@@ -804,7 +812,7 @@ sub _parse_query {
 	
 	$self->log->debug('query_term_count: ' . $query_term_count . ', num_added_terms: ' . $num_added_terms);
 	
-	unless ($query_term_count){
+	unless ($query_term_count or $self->has_import_search_terms){
 		die 'All query terms were stripped based on permissions or they were too common';
 	}
 	
@@ -984,12 +992,13 @@ sub _parse_query_term {
 			}
 			elsif ($term_hash->{field} eq 'groupby'){
 				my $value = lc($term_hash->{value});
-				if ($value =~ /^import\_/){
-					die('Invalid groupby ' . $value) unless grep { $_ eq $value } @$Fields::Import_fields;
-					$self->import_groupby($value);
-					$self->log->trace('Setting groupby to host on behalf of an import groupby ' . $self->import_groupby);
-					$value = 'host';
-				}
+				#TODO implement groupby import with new import system
+#				if ($value =~ /^import\_/){
+#					die('Invalid groupby ' . $value) unless grep { $_ eq $value } @$Fields::Import_fields;
+#					$self->import_groupby($value);
+#					$self->log->trace('Setting groupby to host on behalf of an import groupby ' . $self->import_groupby);
+#					$value = 'host';
+#				}
 				my $field_infos = $self->get_field($value);
 				$self->log->trace('$field_infos ' . Dumper($field_infos));
 				if ($field_infos or $value eq 'node'){
@@ -1064,6 +1073,12 @@ sub _parse_query_term {
 				$self->meta_params->{analytics} = 1;
 				$self->analytics(1);
 				$self->log->trace("Set analytics.");
+				next;
+			}
+			elsif ($term_hash->{field} =~ /^import\_(\w+)/){
+				die('Invalid import field ' . $term_hash->{field}) unless grep { $_ eq $term_hash->{field} } @$Fields::Import_fields;
+				push @{ $self->import_search_terms }, { field => $1, value => $term_hash->{value}, 
+					op => $term_hash->{op}, boolean => $effective_operator };
 				next;
 			}
 			

@@ -115,7 +115,94 @@ sub local_query {
 	}
 	
 	# Execute search
-	if (not $q->datasources->{sphinx}){
+	if ($q->has_import_search_terms){
+		my $db = 'syslog';
+		if ($self->conf->get('syslog_db_name')){
+			$db = $self->conf->get('syslog_db_name');
+		}
+		my $start = time();
+		
+		# Handle dates specially
+		my %date_terms;
+		foreach my $term_hash ($q->all_import_search_terms){
+			next unless $term_hash->{field} eq 'date';
+			my $boolean = $term_hash->{boolean} eq '+' ? 'and' : $term_hash->{boolean} eq '-' ? 'not' : 'or';
+			$date_terms{$boolean} ||= [];
+			push @{ $date_terms{$boolean} }, $term_hash;
+		}
+		
+		if (scalar keys %date_terms){
+			$query = 'SELECT * from ' . $db . '.imports WHERE ';
+			my @clauses;
+			my @terms;
+			my @values;
+			foreach my $term_hash (@{ $date_terms{and} }){
+				push @terms, 'imported ' . $term_hash->{op} . ' ?';
+				push @values, $term_hash->{value};
+			}
+			if (@terms){
+				push @clauses, '(' . join(' AND ', @terms) . ') ';
+			}
+			@terms = ();
+			foreach my $term_hash (@{ $date_terms{or} }){
+				push @terms, 'imported ' . $term_hash->{op} . ' ?';
+				push @values, $term_hash->{value};
+			}
+			if (@terms){
+				push @clauses, '(' . join(' OR ', @terms) . ') ';
+			}
+			@terms = ();
+			foreach my $term_hash (@{ $date_terms{not} }){
+				push @terms, 'NOT imported ' . $term_hash->{op} . ' ?';
+				push @values, $term_hash->{value};
+			}
+			if (@terms){
+				push @clauses, '(' . join(' AND ', @terms) . ') ';
+			}
+			$query .= join(' AND ', @clauses);
+			
+			$sth = $self->db->prepare($query);
+			$sth->execute(@values);
+			my $counter = 0;
+			while (my $row = $sth->fetchrow_hashref){
+				push @{ $q->id_ranges }, { boolean => 'and', values => [ $row->{first_id}, $row->{last_id} ] };
+				$counter++;
+			}
+			unless ($counter){
+				$self->log->trace('No matching imports found for dates given');
+				return $q;
+			}
+		}
+		
+		# Handle name/description
+		foreach my $term_hash ($q->all_import_search_terms){
+			next if $term_hash->{field} eq 'date';
+			$query = 'SELECT * from ' . $db . '.imports WHERE ' . $self->_build_sql_regex_term($term_hash);
+			$self->log->trace('import search query: ' . $query);
+			my @values = ($term_hash->{value}, $term_hash->{value}, $term_hash->{value});
+			$self->log->trace('import search values: ' . Dumper(\@values));
+			$sth = $self->db->prepare($query);
+			$sth->execute(@values);
+			my $counter = 0;
+			while (my $row = $sth->fetchrow_hashref){
+				push @{ $q->id_ranges }, { boolean => ($term_hash->{boolean} eq '+' ? 'and' : $term_hash->{boolean} eq '-' ? 'not' : 'or'), 
+					values => [ $row->{first_id}, $row->{last_id} ] };
+				$counter++;
+			}
+			if ($term_hash->{op} eq '+' and not $counter){
+				$self->log->trace('No matching imports found for ' . $term_hash->{field} . ':' . $term_hash->{value});
+				return $q;
+			}
+		}
+		my $taken = time() - $start;
+		$q->stats->{import_range_search} = $taken;
+	}
+	
+	if ($q->has_import_search_terms and not $q->query_term_count){
+		# Request id's based solely on the import
+		$self->_get_ids($q);
+	}
+	elsif (not $q->datasources->{sphinx}){
 		$self->_external_query($q);
 	}
 	elsif ($q->livetail){
