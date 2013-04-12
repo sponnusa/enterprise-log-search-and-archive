@@ -250,6 +250,8 @@ Web services currently expose three URL's for use in external apps or between no
  * total_errors: (optional) error count
  * count: (optional) declared count of records by the client
  * batch_time: (optional) time period over which the records were collected, in seconds (e.g. 60)
+Required headers in addition to Authorization:
+ * Content-type: application/x-www-form-urlencoded
 
 ==Imports==
 You can also use /API/upload to invoke imports which allows you to POST arbitrary, unparsed files and have them imported properly.  To do so, you need to set the above parameters for /API/upload, plus:
