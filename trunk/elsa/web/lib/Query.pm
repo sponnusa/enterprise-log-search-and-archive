@@ -1075,12 +1075,6 @@ sub _parse_query_term {
 				$self->log->trace("Set analytics.");
 				next;
 			}
-			elsif ($term_hash->{field} =~ /^import\_(\w+)/){
-				die('Invalid import field ' . $term_hash->{field}) unless grep { $_ eq $term_hash->{field} } @$Fields::Import_fields;
-				push @{ $self->import_search_terms }, { field => $1, value => $term_hash->{value}, 
-					op => $term_hash->{op}, boolean => $effective_operator };
-				next;
-			}
 			
 			my $orig_value = $term_hash->{value};
 			if ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host' or $term_hash->{field} =~ /proto/){
@@ -1159,6 +1153,13 @@ sub _parse_query_term {
 				# Default unknown operators to AND
 				unless ($operators->{ $term_hash->{op} }){
 					$term_hash->{op} = '=';
+				}
+				
+				if ($term_hash->{field} =~ /^import\_(\w+)/){
+					die('Invalid import field ' . $term_hash->{field}) unless grep { $_ eq $term_hash->{field} } @$Fields::Import_fields;
+					push @{ $self->import_search_terms }, { field => $1, value => $term_hash->{value}, 
+						op => $term_hash->{op}, boolean => $effective_operator };
+					next;
 				}
 				
 				my $values = $self->resolve(

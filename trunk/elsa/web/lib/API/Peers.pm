@@ -177,9 +177,16 @@ sub local_query {
 		# Handle name/description
 		foreach my $term_hash ($q->all_import_search_terms){
 			next if $term_hash->{field} eq 'date';
-			$query = 'SELECT * from ' . $db . '.imports WHERE ' . $self->_build_sql_regex_term($term_hash);
+			my @values;
+			if ($term_hash->{field} eq 'id'){
+				$query = 'SELECT * from ' . $db . '.imports WHERE id ' . $term_hash->{op} . ' ?';
+				@values = ($term_hash->{value});
+			}
+			else {
+				$query = 'SELECT * from ' . $db . '.imports WHERE ' . $self->_build_sql_regex_term($term_hash);
+				@values = ($term_hash->{value}, $term_hash->{value}, $term_hash->{value});
+			}
 			$self->log->trace('import search query: ' . $query);
-			my @values = ($term_hash->{value}, $term_hash->{value}, $term_hash->{value});
 			$self->log->trace('import search values: ' . Dumper(\@values));
 			$sth = $self->db->prepare($query);
 			$sth->execute(@values);
