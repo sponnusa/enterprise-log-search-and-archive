@@ -247,11 +247,11 @@ Web services currently expose three URL's for use in external apps or between no
  * start: Client declared start of the log data
  * end: Client declared end of the log data
  * md5: Client calculated MD5 of the entire file.  This *must* match what the server calculates.
+ * count: declared count of records by the client
  * total_errors: (optional) error count
- * count: (optional) declared count of records by the client
  * batch_time: (optional) time period over which the records were collected, in seconds (e.g. 60)
 Required headers in addition to Authorization:
- * Content-type: application/x-www-form-urlencoded
+ * Content-type: form-data
 
 ==Imports==
 You can also use /API/upload to invoke imports which allows you to POST arbitrary, unparsed files and have them imported properly.  To do so, you need to set the above parameters for /API/upload, plus:
