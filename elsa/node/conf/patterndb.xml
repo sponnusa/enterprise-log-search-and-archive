@@ -235,6 +235,7 @@
 		<rules>
 			<rule provider="ELSA" class='4' id='4'>
 				<patterns>
+					<pattern>@ESTRING::|@@ESTRING:i0:|@@ESTRING::Account Name@:  @ESTRING:s1: @@ESTRING::Account Domain@:  @ESTRING:s2: @</pattern>
 					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@	@ESTRING:i0:	@@ESTRING:s0:	@@ESTRING:s1:	@@ESTRING:s2:	@@ESTRING:s3:	@@ESTRING:s4:	@@ESTRING:s5:	@@ESTRING::	@@ESTRING::	@</pattern>
 					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@|@ESTRING:i0:|@@ESTRING:s0:|@@ESTRING::|@@ESTRING::|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@|Logon Failure:@ESTRING::	@Reason:		@ESTRING:s2:	@User Name:	@ESTRING:s1: @</pattern>
 					<pattern>@STRING::@ @NUMBER::@ @NUMBER::@:@NUMBER::@:@NUMBER::@ @NUMBER::@|@ESTRING:i0:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@ESTRING:s5:|@@ESTRING::|@@ESTRING::|@</pattern>
