@@ -416,6 +416,7 @@ sub upload {
 	else {
 		$file = $args->{upload}->path;
 	}
+	$args->{size} = -s $file;
 	
 	# Check md5
 	my $md5 = new Digest::MD5;
