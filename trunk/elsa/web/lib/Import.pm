@@ -34,6 +34,7 @@ has 'program' => (is => 'rw', isa => 'Str', required => 1, default => sub { 'unk
 has 'start' => (is => 'rw', isa => 'Int');
 has 'end' => (is => 'rw', isa => 'Int');
 has 'class' => (is => 'rw', isa => 'Str');
+has 'host' => (is => 'rw', isa => 'Str');
 
 #sub BUILDARGS {
 #	my $class = shift;
@@ -99,7 +100,7 @@ sub BUILD {
 	$self->id($self->db->{mysql_insertid});
 	
 	my $start = time();
-	my $lines_imported = $best{plugin}->process($self->infile, $self->program, $self->id);
+	my $lines_imported = $best{plugin}->process($self->infile, $self->program, $self->id, $self->host);
 	my $end_time = time() - $start;
 	$self->start($best{plugin}->start) if $best{plugin}->start;
 	$self->end($best{plugin}->end) if $best{plugin}->end;

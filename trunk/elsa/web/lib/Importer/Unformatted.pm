@@ -16,10 +16,16 @@ sub process {
 	my $infile_name = shift;
 	my $program = shift;
 	my $id = shift;
+	my $host = shift;
 	
 	my $infile = new IO::File($infile_name) or die($!);
 	my $program_id = crc32($program);
-	my $host = inet_ntoa(pack('N*', $id));
+	if ($host){
+		$host = unpack('N*', inet_aton($host));
+	}
+	else {
+		$host = unpack('N*', inet_aton('127.0.0.1'));
+	}
 	
 	my $db = 'syslog';
 	if ($self->conf->get('syslog_db_name')){

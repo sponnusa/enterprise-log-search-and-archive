@@ -2,6 +2,7 @@ package Importer::CSV;
 use Moose;
 extends 'Importer';
 use IO::File;
+use Socket;
 use Text::CSV;
 use String::CRC32 qw(crc32);
 
@@ -54,6 +55,15 @@ sub process {
 	my $infile_name = shift;
 	my $program = shift;
 	my $id = shift;
+	my $host = shift;
+	
+	if ($host){
+		$host = unpack('N*', inet_aton($host));
+	}
+	else {
+		$host = unpack('N*', inet_aton('127.0.0.1'));
+	}
+	
 	my $infile = new IO::File($infile_name) or die($!);
 	
 	my $csv = new Text::CSV({
@@ -113,7 +123,7 @@ sub process {
 	my $default_time = time();
 	my ($earliest, $latest);
 	while (my $line = $csv->getline($infile)){
-		my @ordered_line = (0, $default_time, $id, $program_id, $class_id, join(',', @$line),
+		my @ordered_line = (0, $default_time, $host, $program_id, $class_id, join(',', @$line),
 			undef, undef, undef, undef, undef, undef, undef, undef, undef, undef, undef, undef);
 		for (my $i = 0; $i < @$line; $i++){
 			# Escape backslashes
