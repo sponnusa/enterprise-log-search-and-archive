@@ -2132,7 +2132,7 @@ sub _sphinx_query {
 					
 					my %import_info;
 					if (@import_query_values){
-						my $import_info_query = 'SELECT name AS import_name, description AS import_description, ' .
+						my $import_info_query = 'SELECT id AS import_id, name AS import_name, description AS import_description, ' .
 							'datatype AS import_type, imported AS import_date, first_id, last_id FROM ' . $nodes->{$node}->{db} 
 							. '.imports WHERE ';
 						my @import_info_query_clauses;
