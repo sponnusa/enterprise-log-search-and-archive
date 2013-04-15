@@ -340,7 +340,7 @@ sub _parse_query_string {
 	$self->_parse_query_term($parsed_query);
 }
 
-sub _timezone_diff {
+sub timezone_diff {
 	my $self = shift;
 	my $time = shift;
 	
@@ -437,7 +437,7 @@ sub _parse_query {
 	}
 	
 	if ($self->meta_params->{start}){
-		my $tz_diff = $self->_timezone_diff($self->meta_params->{start});
+		my $tz_diff = $self->timezone_diff($self->meta_params->{start});
 		if ($self->meta_params->{start} =~ /^\d+(?:\.\d+)?$/){
 			$self->start(int($self->meta_params->{start}));
 		}
@@ -452,7 +452,7 @@ sub _parse_query {
 		}
 	}
 	if ($self->meta_params->{end}){
-		my $tz_diff = $self->_timezone_diff($self->meta_params->{end});
+		my $tz_diff = $self->timezone_diff($self->meta_params->{end});
 		if ($self->meta_params->{end} =~ /^\d+(?:\.\d+)?$/){
 			$self->end(int($self->meta_params->{end}));
 		}
@@ -932,7 +932,7 @@ sub _parse_query_term {
 				}
 				else {
 					#$self->start(UnixDate(ParseDate($term_hash->{value}), "%s"));
-					my $tz_diff = $self->_timezone_diff($term_hash->{value});
+					my $tz_diff = $self->timezone_diff($term_hash->{value});
 					$self->start(UnixDate(ParseDate($term_hash->{value}), "%s") + $tz_diff);
 				}
 				$self->log->debug('start is now: ' . $self->start .', ' . (scalar localtime($self->start)));
@@ -945,7 +945,7 @@ sub _parse_query_term {
 				}
 				else {
 					#$self->end(UnixDate(ParseDate($term_hash->{value}), "%s"));
-					my $tz_diff = $self->_timezone_diff($term_hash->{value});
+					my $tz_diff = $self->timezone_diff($term_hash->{value});
 					$self->end(UnixDate(ParseDate($term_hash->{value}), "%s") + $tz_diff);
 				}
 				next;
