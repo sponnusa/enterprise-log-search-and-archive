@@ -2322,12 +2322,13 @@ sub _sphinx_query {
 					#if ($increment > $gmt_offset){
 					#	$unixtime -= $gmt_offset; # remove GMT offset
 					#}
-										
+					
+					my $client_localtime = $unixtime - $q->timezone_diff($unixtime);					
 					$self->log->trace('key: ' . $key . ', tv: ' . $increment . 
-						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($unixtime)));
+						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($client_localtime)));
 					push @tmp, { 
 						intval => $unixtime, 
-						'_groupby' => epoch2iso($unixtime, $use_gmt), #$self->resolve_value(0, $key, $groupby), 
+						'_groupby' => epoch2iso($client_localtime, $use_gmt), #$self->resolve_value(0, $key, $groupby), 
 						'_count' => $agg{$key}
 					};
 				}
