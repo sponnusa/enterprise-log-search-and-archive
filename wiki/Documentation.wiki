@@ -757,3 +757,4 @@ You can set per-user preferences by navigating to the "Preferences" dialog under
 
 =External Documentation=
  * Adding additional disk to an ELSA VM http://opensecgeek.blogspot.com/2013/02/mysql-and-elsa-when-your-storage-runs.html
+ * FreeBSD timezone issues: https://rt.cpan.org/Public/Bug/Display.html?id=55029#txn-740063
