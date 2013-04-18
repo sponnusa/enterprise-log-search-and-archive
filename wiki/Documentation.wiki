@@ -179,8 +179,45 @@ To revoke an API key, simply remove that username from the list of "apikeys" in 
 Log access is permitted by allowing certain groups either universal access (admins) or a whitelist of attributes.  The attributes can be log hosts (the hosts that initially generate the logs), ranges of hosts (by IP), log classes, or log nodes (the nodes that store the logs).  Groups can be either AD groups or local system groups, as per the configuration.  Those in the admins group have the "Admin" drop-down menu next to the "ELSA" drop down menu in the web interface which has a "Manage Permissions" item which opens a new window for administrating group privileges.
 
 =Queries=
+==Syntax==
+Query syntax is loosely based on Google search syntax.  Terms are searched as whole keywords (no wildcards).  Searches may contain boolean operations specifying that a term is required using the plus sign, negating using the minus sign, or no sign indicating that it is an “OR.”  Parenthesis may be used to group terms.  Numeric fields, including hosts, may have greater than or less than (and equal to) operators combined with the boolean operators.  
 
-Query syntax is loosely based on Google search syntax.  Terms are searched as whole keywords (no wildcards).  Searches may contain boolean operations specifying that a term is required using the plus sign, negating using the minus sign, or no sign indicating that it is an “OR.”  Parenthesis may be used to group terms.  Numeric fields, including hosts, may have greater than or less than (and equal to) operators combined with the boolean operators.  Queries can be very simple, like looking for any mention of an IP address:
+===Boolean Operators===
+
+|| Operator || Meaning ||
+|| +keyword || Query MUST include the keyword ||
+|| -keyword || Query MUST NOT include the keyword ||
+|| keyword || Query MAY include the keyword ||
+
+===Range Operators===
+Range operators can only be used to filter search results, not provide the results to be filtered.  That is, you must include a keyword in addition to the range operator.  You can provide a single range operator; they do not need to be in pairs.
+
+|| Operator || Meaning ||
+|| attribute>value || Attribute MAY be greater than value ||
+|| attribute<value || Attribute MAY be less than value ||
+|| attribute>=value || Attribute MAY be greater than or equal to value ||
+|| attribute<=value || Attribute MAY be less than or equal to value ||
+|| +attribute>value || Attribute MUST be greater than value ||
+|| +attribute<value || Attribute MUST be less than value ||
+|| +attribute>=value || Attribute MUST be greater than or equal to value ||
+|| +attribute<=value || Attribute MUST be less than or equal to value ||
+|| -attribute>value || Attribute MUST NOT be greater than value ||
+|| -attribute<value || Attribute MUST NOT be less than value ||
+|| -attribute>=value || Attribute MUST NOT be greater than or equal to value ||
+|| -attribute<=value || Attribute MUST NOT be less than or equal to value ||
+
+===Transforms===
+Queries can have transforms applied to them.  Transforms are covered later in the documentation.  The syntax for using transforms is represented below.
+|| Term || Meaning||
+|| search clause || Any combination of keywords and filters, as defined above ||
+|| transform name || Name of the transform as defined in the transform plugin ||
+|| param || Parameter supplied to the transform to direct its behavior ||
+
+{{{ <search clause> [ | <transform name>([param1,param2,paramN]) ] [ | <transform name>([param1,param2,paramN]) ]  }}}
+
+
+===Query examples===
+Queries can be very simple, like looking for any mention of an IP address:
 {{{
 10.0.20.1
 }}}
