@@ -616,7 +616,13 @@ sub get_stats {
 	my ($query, $sth);
 	my $stats = {};
 	my $days_ago = 7;
+	if ($args->{seconds}){
+		$days_ago = int($args->{seconds} / 86_400);
+	}
 	my $limit = 20;
+	if ($args->{limit}){
+		$limit = int($args->{limit});
+	}
 	
 	# Queries per user
 	$query = 'SELECT username, COUNT(*) AS count FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid)' . "\n" .
