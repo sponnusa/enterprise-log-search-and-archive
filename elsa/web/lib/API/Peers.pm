@@ -66,8 +66,8 @@ sub local_query {
 	my ($query, $sth);
 	
 	# Check for batching
-	unless ($q->system or $q->livetail){
-		my $is_batch = 0;	
+	unless ($q->meta_params->{nobatch} or $q->system or $q->livetail){
+		my $is_batch = 0;
 		if ($q->analytics or $q->archive){
 			# Find estimated query time
 			my $estimated_query_time = $self->_estimate_query_time($q);
