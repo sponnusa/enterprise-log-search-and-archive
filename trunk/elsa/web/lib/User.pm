@@ -346,7 +346,18 @@ sub _init_db {
 sub _init_security_onion {
 	my $self = shift;
 	$self->is_admin(1);
-	$self->email($self->conf->get('email/to') ? $self->conf->get('email/to') : 'root@localhost');
+	
+	my ($query, $sth);
+	$query = 'SELECT email FROM users WHERE username=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute( $self->username );
+	my $row = $sth->fetchrow_hashref;
+	if ($row) {
+		$self->email($row->{email});
+	}
+	else {
+		$self->email($self->conf->get('email/to') ? $self->conf->get('email/to') : 'root@localhost');
+	}
 }
 
 sub _create_user {
