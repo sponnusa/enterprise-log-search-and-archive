@@ -4054,6 +4054,7 @@ sub _check_foreign_queries {
 	foreach my $row (@incomplete){
 		eval {
 			if (my $result = $self->get_saved_result($row)){
+				next unless $result->{results};
 				$self->log->info('Foreign query ' . $row->{qid} . ' completed: ' . Dumper($result));
 				my $q = new Query(conf => $self->conf, qid => $row->{qid}, node_info => $self->node_info);
 				$q->results(new Results(results => $result->{results}));
