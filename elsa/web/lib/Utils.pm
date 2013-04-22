@@ -64,10 +64,12 @@ around BUILDARGS => sub {
 		log4perl.appender.Syncer            = Log::Log4perl::Appender::Synchronized
 		log4perl.appender.Syncer.appender   = File
 	);
-		
-	Log::Log4perl::init( \$log_conf ) or die("Unable to init logger\n");
+	
+	if (not Log::Log4perl->initialized()){
+		Log::Log4perl::init( \$log_conf ) or die("Unable to init logger");
+	}
 	$params{log} = Log::Log4perl::get_logger('App')
-	  or die("Unable to init logger\n");
+	  or die("Unable to init logger");
 	
 	if ($params{conf}->get('db/timeout')){
 		$Db_timeout = $params{conf}->get('db/timeout');
