@@ -2250,7 +2250,7 @@ searchd {
         max_children = 128
         max_filter_values = 4096
         max_filters = 256
-        max_matches = 1000
+        max_matches = 10000
         max_packet_size = 8M
         max_batch_queries = 1000
         subtree_docs_cache = 8M
