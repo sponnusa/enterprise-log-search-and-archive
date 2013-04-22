@@ -91,8 +91,10 @@ sub call {
 				$ret->{warnings} = $self->api->warnings;
 			}
 		}
-		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning')){
-			$ret->warnings($self->api->warnings);
+		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->api->has_warnings){
+			foreach my $warning ($self->api->all_warnings){
+				$ret->add_warning($warning);
+			}
 		}
 		$res->body([encode_utf8($self->api->json->encode($ret))]);
 	}

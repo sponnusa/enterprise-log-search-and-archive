@@ -760,6 +760,11 @@ sub _peer_query {
 					$q->batch(1);
 					$batches{$peer} = $raw_results->{qid};
 				}
+				if ($raw_results->{warnings} and ref($raw_results->{warnings}) eq 'ARRAY'){
+					foreach my $warning (@{ $raw_results->{warnings} }){ 
+						$q->add_warning($warning);
+					}
+				}
 				#$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
 				if ($is_groupby){
 					$q->groupby($raw_results->{groupby});
@@ -775,7 +780,7 @@ sub _peer_query {
 			};
 			if ($@){
 				$self->log->error($@ . 'url: ' . $url . "\nbody: " . $request_body);
-				$self->add_warning($@);
+				$q->add_warning($@);
 			}	
 			delete $q->peer_requests->{$peer};
 			$cv->end;
