@@ -32,7 +32,7 @@ use SyncMysql;
 #use AsyncMysql;
 #use AsyncDB;
 
-our $Max_limit = 1000;
+our $Max_limit = 10000;
 our $Max_query_terms = 128;
 our $Livetail_poll_interval = 5;
 our $Scheduled_query_cols = { map { $_ => 1 } (qw(id username query frequency start end connector params enabled last_alert alert_threshold)) };
