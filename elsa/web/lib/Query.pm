@@ -57,7 +57,7 @@ has 'nodes' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 
 has 'hash' => (is => 'rw', isa => 'Str', required => 1, default => '');
 has 'highlights' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
-	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear' });
+	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear', 'all_warnings' => 'elements' });
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'timezone_difference' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { start => 0, end => 0 } });
 has 'peer_requests' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });

@@ -60,8 +60,10 @@ sub call {
 				$ret->{ret}->{warnings} = $self->api->warnings;
 			}
 		}
-		elsif (ref($ret->{ret}) and blessed($ret->{ret}) and $ret->{ret}->can('add_warning')){
-			$ret->warnings($self->api->warnings);
+		elsif (ref($ret->{ret}) and blessed($ret->{ret}) and $ret->{ret}->can('add_warning') and $self->api->has_warnings){
+			foreach my $warning ($self->api->all_warnings){
+				$ret->{ret}->add_warning($warning);
+			}
 		}
 		$res->body($ret->{ret});
 		if ($ret->{filename}){
@@ -74,8 +76,10 @@ sub call {
 				$ret->{warnings} = $self->api->warnings;
 			}
 		}
-		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning')){
-			$ret->warnings($self->api->warnings);
+		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->api->has_warnings){
+			foreach my $warning ($self->api->all_warnings){
+				$ret->add_warning($warning);
+			}
 		}
 		$res->body([encode_utf8($self->api->json->encode($ret))]);
 	}

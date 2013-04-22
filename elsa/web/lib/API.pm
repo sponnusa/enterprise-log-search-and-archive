@@ -41,7 +41,7 @@ has 'ldap' => (is => 'rw', isa => 'Object', required => 0);
 has 'last_error' => (is => 'rw', isa => 'Str', required => 1, default => '');
 has 'cache' => (is => 'rw', isa => 'Object', required => 1, default => sub { return CHI->new( driver => 'RawMemory', global => 1) });
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
-	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear' });
+	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear', 'all_warnings' => 'elements' });
 has 'system_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
 } });
 has 'web_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
@@ -2161,15 +2161,12 @@ sub _sphinx_query {
 									$self->log->error('Did not get import info rows though we had import tables: ' 
 										. Dumper(\%tables)); 
 								}
-								$self->log->trace('node '. $node . ' got import info db rows: ' . (scalar @$rows));
+								#$self->log->trace('node '. $node . ' got import info db rows: ' . (scalar @$rows));
 								
 								# Map each id to the right import info
 								foreach my $table (sort keys %tables){
-									$self->log->debug('table: ' . $table);
 									foreach my $id (@{ $tables{$table} }){
-										$self->log->debug('id: ' . $id);
 										foreach my $row (@$rows){
-											$self->log->debug('row: ' . Dumper($row));
 											if ($row->{first_id} <= $id and $id <= $row->{last_id}){
 												$import_info{$id} = $row;
 												last;
@@ -2179,7 +2176,7 @@ sub _sphinx_query {
 								}
 								$cv->end;
 						});
-						$self->log->debug('import_info: ' . Dumper(\%import_info));
+						#$self->log->debug('import_info: ' . Dumper(\%import_info));
 					}
 					
 					my $table_query = join(';', @table_queries);
