@@ -139,6 +139,51 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
  * Archive/percentage: Percentage of log_size_limit reserved for archive.
  * Archive/days: Max number of days to retain logs for in the archive
  * Sphinx/days: Max number of days to retain logs for in the indexes
+ * forwarding/forward_only: This node will only forward logs and not index them.
+ * forwarding/destinations: An array of hashes of forwarders, as detailed in the Forwarding section.
+
+==Forwarding Logs==
+ELSA can be setup to forward (replicate) logs to an unlimited number of destinations in several ways:
+|| Method || Config Directive ||
+|| File Copy || `cp` ||
+|| SSH || `scp` ||
+|| HTTP/S || `url` ||
+
+===File Copy===
+Configuration options:
+|| Option || Meaning || Required ||
+|| `dir` || Directory to copy the file to.  This can be a destination where backup agent reads from or an NFS mount. || Yes ||
+
+===SSH===
+Configuration options:
+|| Option || Meaning || Required ||
+|| `user` || Username for SSH || Yes ||
+|| `password` || Password for the user || If no `key_path` ||
+||  `key_path` || Path for RSA/DSA keypair files (.pub) || If no `password` ||
+|| `host` || IP or DNS name of host to forward to || Yes ||
+|| `dir` || Remote directory to copy to || Yes ||
+
+===URL===
+Configuration items:
+|| Option || Meaning || Required ||
+|| `url` || Full URL, (including https://), of where to send logs || Yes ||
+|| `verify_mode` || Boolean indicating whether strict SSL certificate checking is to be enforced.  Use zero for certificates that don't have a trusted certificate authority on the forwarder (default self-signed, for instance) || No ||
+|| `timeout` || Number of seconds to issue a timeout on. Defaults to zero (no timeout) || No ||
+|| `ca_file` || SSL certificate authority file to use to verify the remote server's certificate || No ||
+|| `cert_file` || Client-side SSL certificate the server may require to verify the client's identity || No ||
+|| `key_file` || Key corresponding with `cert_file` || No ||
+
+An example forwarding configuration may look like this:
+{{{
+"forwarding": {
+  "forward_only": "1",
+  "destinations": [
+    { "method": "url", "url": "http://example.com/API/upload" },
+    { "method": "url", "url": "https://secure.example.com/API/upload", "ca_file": "/etc/mycafile.pem" }
+  ]
+}
+}}}
+
 ==Low volume configuration tuning==
 If your ELSA node isn't receiving many logs (less than a few hundred per minute), you may need to tune your setup so that permanent indexes aren't underutilized.  There are at most {{{num_indexes}}} number of permanent indexes, and if there isn't a free one available, the oldest one will be overwritten.  If this happens before the {{{log_size_limit}}} has been reached, then it means that you rolled logs before you wanted to.  This means you need to tweak some settings in {{{elsa_node.conf}}}:
 
