@@ -2049,6 +2049,18 @@ sub _sphinx_query {
 				if ($q->cutoff){
 					$search_query .= ',cutoff=' . $q->cutoff;
 				}
+				if ($q->max_query_time){
+					# max_query_time is set per-index, so divide
+					my $num_indexes = scalar @index_arr;
+					if ($num_indexes == 1){ # distributed_local
+						$num_indexes = scalar @{ $node_info->{indexes}->{indexes} };
+					}
+					if ($num_indexes){
+						my $max_query_time = int($q->max_query_time / $num_indexes);
+						$self->log->debug('q->max_query_time: ' . $q->max_query_time . ', num_indexes: ' . $num_indexes . ', max_query_time: ' . $max_query_time);
+						$search_query .= ',max_query_time=' . $max_query_time;
+					}
+				}
 				push @sphinx_values, @{ $query->{values } }, $q->offset, $q->limit;
 				$self->log->debug('sphinx_query: ' . $search_query . ', values: ' . 
 					Dumper($query->{values}));
@@ -2078,10 +2090,15 @@ sub _sphinx_query {
 				
 				#$self->log->trace('$ret->{$node}->{meta}: ' . Dumper($ret->{$node}->{meta}));
 				if ($result->{meta}->{warning}){
-					if ($result->{meta}->{warning} =~ /fullscan requires extern docinfo/){
+					if ($result->{meta}->{warning} =~ /fullscan requires extern docinfo/
+						or $result->{meta}->{warning} =~ /index \w+: .{1023}/ ){ #warnings can be cut off
 						unless ($self->has_warnings){
 							$self->add_warning('Incomplete results: Query did not contain any search keywords, just filters. See documentation on temporary indexes for details.');
 						}
+					}
+					elsif ($result->{meta}->{warning} =~ /query time exceeded max_query_time/){
+						$q->results->is_approximate(1);
+						$self->log->warn('Results approximated due to ' . $result->{meta}->{warning});
 					}
 					else {
 						$self->add_warning($result->{meta}->{warning});

@@ -66,6 +66,7 @@ has 'import_search_terms' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRe
 has 'id_ranges' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_id_ranges' => 'count', 'all_id_ranges' => 'elements' });
 has 'query_term_count' => (is => 'rw', isa => 'Num', required => 1, default => 0);
+has 'max_query_time' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 
 # Optional
 has 'query_string' => (is => 'rw', isa => 'Str');
@@ -115,6 +116,7 @@ sub BUILDARGS {
 	
 	if ($params{conf}->get('query_timeout')){
 		$params{timeout} = sprintf("%d", ($params{conf}->get('query_timeout') * 1000));
+		$params{max_query_time} = .9 * $params{timeout}; #90%
 	}
 	
 	unless ($params{user}){
@@ -125,7 +127,7 @@ sub BUILDARGS {
 			$params{log}->trace('Set permissions: ' . Dumper($params{user}->permissions));
 		}
 	}
-		
+	
 	return \%params;
 }
  
@@ -166,8 +168,6 @@ sub BUILD {
 		$self->livetail(1);
 	}
 	
-	$self->log->trace("Using timeout of " . $self->timeout);
-	
 	# Set a default orderby if one is available in preferences
 	if ($self->user->preferences and $self->user->preferences->{tree}->{default_settings} and
 		$self->user->preferences->{tree}->{default_settings}->{orderby_dir}){
@@ -176,6 +176,8 @@ sub BUILD {
 		
 	# Parse first to see if limit gets set which could incidate a batch job
 	$self->_parse_query();
+	
+	$self->log->trace("Using timeout of " . $self->timeout);
 	
 	if ($self->has_groupby){
 		$self->results( new Results::Groupby() );
@@ -258,6 +260,7 @@ sub TO_JSON {
 		hash => $self->hash,
 		highlights => $self->highlights,
 		stats => $self->stats,
+		approximate => $self->results->is_approximate,
 	};
 	
 	$ret->{query_meta_params}->{archive} = 1 if $self->archive;
@@ -1087,6 +1090,12 @@ sub _parse_query_term {
 			elsif ($self->livetail){
 				# Escape any slashes since this will become a regex
 				$term_hash->{value} =~ s/\//\\\//g;
+			}
+			elsif ($term_hash->{field} eq 'timeout'){
+				# special case for limit
+				$self->timeout(int($term_hash->{value}) * 1000);
+				$self->max_query_time($self->timeout * .9);
+				next;
 			}
 			else {
 				# Get rid of any non-indexed chars
