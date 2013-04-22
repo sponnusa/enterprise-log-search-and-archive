@@ -1257,7 +1257,8 @@ YAHOO.ELSA.Results = function(){
 	        metaFields: {
 	            totalRecords: 'totalRecords', // Access to value in the server response
 	            recordsReturned: 'recordsReturned',
-	            startIndex: 'startIndex'
+	            startIndex: 'startIndex',
+	            approximate: 'approximate'
 	        }
 	    };
 	    
@@ -1266,7 +1267,7 @@ YAHOO.ELSA.Results = function(){
 	        rowsPerPage        : 15,
 	        rowsPerPageOptions : [15,50,100],
 	        template           : '{CurrentPageReport} {FirstPageLink} {PreviousPageLink} {PageLinks} {NextPageLink} {LastPageLink} {RowsPerPageDropdown}',
-	        pageReportTemplate : '<strong>Records: {totalRecords} / ' + this.dataSource.liveData.totalRecords + ' </strong> '
+	        pageReportTemplate : '<strong>Records: {totalRecords} / ' + this.formatNumResults() + ' </strong> '
 	        	+ this.dataSource.liveData.totalTime + ' ms <a href="#" id="explain_query_' + this.dataSource.liveData.qid + '">?</a>'
 	    });
 	    
@@ -1686,6 +1687,21 @@ YAHOO.ELSA.Results = function(){
 			logger.log('stack:',e.stack);
 	    	return;
 	    }
+	}
+	
+	this.formatNumResults = function(){
+		if (this.results.approximate){
+			if (this.results.totalRecords > 1000000000){
+				return 'billions';
+			}
+			else if (this.results.totalRecords > 1000000){
+				return 'millions';
+			}
+			else if (this.results.totalRecords > 1000){
+				return 'thousands';
+			}
+		}
+		return this.results.totalRecords;
 	}
 };
 
@@ -2333,7 +2349,7 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 					oLabelEl.innerHTML += ' [batched]';
 				}
 				else {
-					oLabelEl.innerHTML += ' (' + this.results.totalRecords + ')';
+					oLabelEl.innerHTML += ' (' + this.formatNumResults() + ')';
 			    	if (p_oResults.query_string){ //saved result
 				    	this.sentQuery = YAHOO.lang.JSON.stringify({
 							query_string: this.results.query_string, 

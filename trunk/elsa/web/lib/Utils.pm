@@ -745,7 +745,8 @@ sub _peer_query {
 					$self->log->error('Wrong: ' . Dumper($q->TO_JSON) . "\n" . Dumper($raw_results));
 				}
 				#my $results_package = ref($raw_results->{results}) eq 'ARRAY' ? 'Results' : 'Results::Groupby';
-				my $results_obj = $results_package->new(results => $raw_results->{results}, total_records => $raw_results->{totalRecords});
+				my $results_obj = $results_package->new(results => $raw_results->{results}, 
+					total_records => $raw_results->{totalRecords}, is_approximate => $raw_results->{approximate});
 				if ($results_obj->records_returned and not $q->results->records_returned){
 					$q->results($results_obj);
 				}
@@ -780,7 +781,7 @@ sub _peer_query {
 			};
 			if ($@){
 				$self->log->error($@ . 'url: ' . $url . "\nbody: " . $request_body);
-				$q->add_warning($@);
+				$q->add_warning('Invalid results back from peer ' . $peer);
 			}	
 			delete $q->peer_requests->{$peer};
 			$cv->end;

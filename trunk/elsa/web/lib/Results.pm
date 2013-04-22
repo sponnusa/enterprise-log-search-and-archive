@@ -17,6 +17,7 @@ has 'total_docs' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'bulk_file' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', handles => { is_bulk => 'count' });
 has 'bulk_dir' => (is => 'rw', isa => 'Str', required => 1, default => $Bulk_dir);
 has 'json' => (is => 'rw', isa => 'JSON', required => 1, default => sub { return JSON->new->allow_nonref->allow_blessed->pretty(0) });
+has 'is_approximate' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 
 sub BUILDARGS {
 	my $class = shift;
@@ -34,7 +35,8 @@ sub TO_JSON {
 	return { 
 		results => $self->results, 
 		totalRecords => $self->total_records, 
-		recordsReturned => $self->records_returned 
+		recordsReturned => $self->records_returned,
+		approximate => $self->is_approximate,
 	};
 }
 
@@ -96,6 +98,11 @@ sub merge {
 		my $sort_fn = $q->orderby_dir eq 'DESC' ? $gt : $lt;
 		my @final = sort $sort_fn  @{ $self->results };
 		$self->results([ @final[0..($q->limit - 1)] ]);
+	}
+	
+	# Mark if approximate
+	if ($results_obj->is_approximate){
+		$self->is_approximate(1);
 	}
 }
 
@@ -273,6 +280,11 @@ sub merge {
 			last if $q and scalar @tmp >= $q->limit;
 		}
 		$results{$groupby} = [ @tmp ];
+	}
+	
+	# Mark if approximate
+	if ($results_obj->is_approximate){
+		$self->is_approximate(1);
 	}
 }
 
