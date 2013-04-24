@@ -13,6 +13,7 @@ use JSON;
 use IO::File;
 use Digest::MD5;
 use Time::HiRes;
+use File::Copy;
 
 # Include the directory this script is in
 use lib $FindBin::Bin;
@@ -412,7 +413,8 @@ sub _import {
 	}
 	
 	my ($query,$sth);
-	if ($args->{batch_counter}){
+	if ($args->{batch_counter} and (not $Conf->{forwarding} or 
+		($Conf->{forwarding} and not $Conf->{forwarding}->{forward_only}))){
 		$query = 'INSERT INTO buffers (filename, start, end, import_id) VALUES (?,?,?,?)';
 		$sth = $Dbh->prepare($query);
 		$sth->execute($args->{file}, $args->{start}, $args->{end}, $args->{import_id});
@@ -426,6 +428,8 @@ sub _import {
 sub _forward {
 	my $args = shift;
 	my $reader = shift;
+	my ($query, $sth);
+	
 	# Are we forwarding events?
 	if ($Conf->{forwarding}){
 		require Archive::Zip;
@@ -482,7 +486,8 @@ sub _forward {
 				$args->{compression_time} = $taken;
 				my $new_size = -s $compressed_filename;
 				$Log->trace('Compressed file to ' . $compressed_filename . ' in ' . $taken . ' at a rate of ' 
-					. ($new_size/$taken) . ' bytes/sec and ratio of ' . ($args->{file_size} / $new_size)) if $taken;
+					. ($new_size/$taken) . ' bytes/sec and ratio of ' . (-s $args->{file} / $new_size)) if $taken;
+				my $original_file = $args->{file};
 				$args->{file} = $compressed_filename;
 				
 			
@@ -508,11 +513,14 @@ sub _forward {
 					my $ok = $forwarder->forward($args);
 					unless ($ok){
 						$forwarding_errors++;
+						$query = 'INSERT IGNORE INTO failed_buffers (hash, filename, args) VALUES (MD5(?),?,?)';
+						$sth = $Dbh->prepare($query);
+						$sth->execute($compressed_filename . encode_json($dest_hash), $compressed_filename, encode_json($dest_hash));
 					}
 				}
 				
 				if ($forwarding_errors){
-					move($compressed_filename, $compressed_filename . '_FORWARDING_FAILED');
+					#move($compressed_filename, $compressed_filename . '_FORWARDING_FAILED');
 				}
 				else {
 					# Delete our forward zip file
@@ -521,12 +529,91 @@ sub _forward {
 				unlink($program_filename) if $program_filename;
 				
 				if ($Conf->{forwarding}->{forward_only}){
-					unlink($args->{file});
+					unlink($original_file);
 				}
+			
+				# Retry any fails from this or any other session
+				$query = 'SELECT hash, filename, args FROM failed_buffers';
+				$sth = $Dbh->prepare($query);
+				$sth->execute;
+				my @to_delete;
+				while (my $row = $sth->fetchrow_hashref){
+					my $forwarder;
+					my $dest_hash = decode_json($row->{args});
+					# Verify this destination is still valid
+					my $found = 0;
+					foreach my $config_dest_hash (@{ $Conf->{forwarding}->{destinations} }){
+						if ($dest_hash->{method} eq $config_dest_hash->{method}){
+							if ($dest_hash->{method} eq 'cp' and $dest_hash->{dir} eq $config_dest_hash->{dir}){
+								$found = 1;
+								last;
+							}
+							elsif ($dest_hash->{method} eq 'scp' and $dest_hash->{dir} eq $config_dest_hash->{dir} 
+									and $dest_hash->{host} eq $config_dest_hash->{host}){								
+								$found = 1;
+								last;
+							}
+							elsif ($dest_hash->{method} eq 'url' and $dest_hash->{url} eq $config_dest_hash->{url}){
+								$found = 1;
+								last;
+							}
+						}
+					}
+					if (not $found){
+						$Log->warn('Retry destination of ' . $row->{args} . ' no longer needed, removing retry.');
+						push @to_delete, $row;
+						next;
+					}
+					$Log->info('Retrying forward of file ' . $row->{filename} . ' with args ' . Dumper($dest_hash));
+					if ($dest_hash->{method} eq 'cp'){
+						require Forwarder::Copy;
+						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
+					}
+					elsif ($dest_hash->{method} eq 'scp'){
+						require Forwarder::SSH;
+						$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
+					}
+					elsif ($dest_hash->{method} eq 'url'){
+						require Forwarder::URL;
+						$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
+					}
+					else {
+						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
+					}
+					my $ok = $forwarder->forward({ file => $row->{filename} });
+					if ($ok){
+						push @to_delete, $row;
+					}
+					else {
+						$Log->error('Failed once again to forward file ' . $row->{filename});
+					}
+				}
+				
+				# Find any that have failed for too long
+				$query = 'SELECT hash, filename FROM failed_buffers WHERE timestamp < DATE_SUB(NOW(), INTERVAL ? SECOND)';
+				$sth = $Dbh->prepare($query);
+				my $timeout_seconds = 86400;
+				if ($Conf->{forwarding}->{retry_timeout}){
+					$timeout_seconds = $Conf->{forwarding}->{retry_timeout};
+				}
+				$sth->execute($timeout_seconds);
+				while (my $row = $sth->fetchrow_hashref){
+					$Log->warn('Retry timeout hit of ' . $timeout_seconds . ' seconds, removing buffer ' . $row->{filename});
+					push @to_delete, $row;
+				}
+				
+				foreach my $row (@to_delete){
+					$query = 'DELETE FROM failed_buffers WHERE hash=?';
+					$sth = $Dbh->prepare($query);
+					$sth->execute($row->{hash});
+					move($row->{filename}, $row->{filename} . '_FORWARDING_FAILED');
+				}
+			
 			};
 			if ($@){
 				$Log->error('Child encountered error: ' . $@);
 			}
+			
 			$Log->trace('Child finished');
 			exit; # done with child
 		}
