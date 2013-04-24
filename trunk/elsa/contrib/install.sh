@@ -560,7 +560,6 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE tables CHANGE COLUMN table_locked_by table_locked_by INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes CHANGE COLUMN locked_by locked_by INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE fields ADD UNIQUE KEY (field, field_type)' > /dev/null 2>&1
-	echo "Updating Windows fields..."
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("domain", "string", "QSTRING")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_name", "string", "QSTRING")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_path", "string", "QSTRING")'
@@ -588,13 +587,14 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="bytes_out"), 13)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_out"), 14)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CONN"), (SELECT id FROM fields WHERE field="pkts_in"), 15)'
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS imports (	id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,	name VARCHAR(255) NOT NULL,	description VARCHAR(255) NOT NULL,	datatype VARCHAR(255) NOT NULL,	imported TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB AUTO_INCREMENT=2130706434'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS imports (	id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,	name VARCHAR(255) NOT NULL,	description VARCHAR(255) NOT NULL,	datatype VARCHAR(255) NOT NULL,	imported TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'UPDATE fields SET field_type="INT", pattern_type="NUMBER" WHERE field="sig_priority"'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS uploads (id INT NOT NULL PRIMARY KEY AUTO_INCREMENT, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, client_ip INT UNSIGNED NOT NULL, count INT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL, batch_time SMALLINT UNSIGNED NOT NULL, errors SMALLINT UNSIGNED NOT NULL, start INT UNSIGNED NOT NULL, end INT UNSIGNED NOT NULL, buffers_id INT UNSIGNED NOT NULL) ENGINE=InnoDB'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD COLUMN first_id BIGINT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD COLUMN last_id BIGINT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD KEY(first_id)' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD KEY(last_id)' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS failed_buffers (hash CHAR(32) NOT NULL PRIMARY KEY, filename VARCHAR(255) NOT NULL, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, args TEXT) ENGINE=InnoDB'
 	return $?
 }
 
