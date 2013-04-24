@@ -53,6 +53,7 @@ sub BUILD {
 		
 	# Find our format/plugin
 	my %best = (priority => 0);
+	my @errors;
 	foreach my $plugin_name ($self->import_plugins()){
 		my %other_args;
 		if ($self->class){
@@ -83,12 +84,14 @@ sub BUILD {
 			}
 		};
 		if ($@){
+			# errors only matter if no valid plugin is found, because Unformatted should always work
+			push @errors, $@;
 			#$self->log->warn('Error building plugin: ' . $@);
 		}
 	}
 	
 	unless ($best{plugin}){
-		$self->log->error('No plugin found to handle format ' . $self->format);
+		$self->log->error('No plugin found to handle format ' . $self->format . ', errors: ' . join("\n", @errors));
 		return $self;
 	}
 	$self->log->trace('Using importer plugin ' . $best{plugin_name} . ' to process file ' . $self->infile);
