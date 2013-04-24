@@ -168,10 +168,16 @@ sub BUILD {
 		$self->livetail(1);
 	}
 	
-	# Set a default orderby if one is available in preferences
+	# Set a defaults if available in preferences
 	if ($self->user->preferences and $self->user->preferences->{tree}->{default_settings} and
-		$self->user->preferences->{tree}->{default_settings}->{orderby_dir}){
-		$self->orderby_dir($self->user->preferences->{tree}->{default_settings}->{orderby_dir});
+		$self->user->preferences->{tree}){
+		my $prefs = $self->user->preferences->{tree}->{default_settings};
+		if ($prefs->{orderby_dir}){
+			$self->orderby_dir($prefs->{orderby_dir});
+		}
+		if ($prefs->{timeout}){
+			$self->timeout($prefs->{timeout});
+		}
 	}
 		
 	# Parse first to see if limit gets set which could incidate a batch job
