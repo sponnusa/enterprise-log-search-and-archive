@@ -2099,6 +2099,9 @@ sub _sphinx_query {
 					elsif ($result->{meta}->{warning} =~ /query time exceeded max_query_time/){
 						$q->results->is_approximate(1);
 						$self->log->warn('Results approximated due to ' . $result->{meta}->{warning});
+						if (not $result->{meta}->{total_found}){
+							$self->add_warning('Search timed out before any results were found, re-run with timeout:0');
+						}
 					}
 					else {
 						$self->add_warning($result->{meta}->{warning});
