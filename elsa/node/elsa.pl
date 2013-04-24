@@ -302,7 +302,8 @@ sub _process_batch {
 	}
 	
 	my ($query,$sth);
-	if ($args->{batch_counter}){
+	if ($args->{batch_counter} and (not $Conf->{forwarding} or 
+		($Conf->{forwarding} and not $Conf->{forwarding}->{forward_only}))){
 		$query = 'INSERT INTO buffers (filename, start, end) VALUES (?,?,?)';
 		$sth = $Dbh->prepare($query);
 		$sth->execute($args->{file}, $args->{start}, $args->{end});
