@@ -371,6 +371,34 @@ sub _validate_directory {
 	# DEFINITELY going to need a directory lock for this
 	$self->_get_lock('directory');
 	
+	# Validate that all table mins are less than max
+	$query = 'SELECT * FROM tables WHERE min_id > max_id';
+	$sth = $self->db->prepare($query);
+	$sth->execute();
+	while (my $row = $sth->fetchrow_hashref){
+		$query = 'SELECT MIN(id), MAX(id) FROM ' . $row->{table_name};
+		my $sth2 = $self->db->prepare($query);
+		$sth2->execute;
+		my $row2 = $sth2->fetchrow_arrayref;
+		if ($row2->[0] > $row2->[1]){
+			$self->log->error('Table ' . $row->{table_name} . ' is invalid: min_id ' . $row2->[0] . ' is greater than '
+				. $row2->[1] . ', dropping');
+			$self->db->do('DROP TABLE ' . $row->{table_name});
+			$query = 'DELETE FROM tables WHERE table_name=?';
+			$sth2 = $self->db->prepare($query);
+			$sth2->execute($row->{table_name});
+			# foreign key cascade deletes from indexes
+		}
+		else {
+			$self->log->info('Repairing table entry for table ' . $row->{table_name}
+				. ' to have min_id ' . $row2->[0] . ', max_id ' . $row2->[1]);
+			$query = 'UPDATE tables SET min_id=?, max_id=? WHERE table_name=?';
+			$sth2 = $self->db->prepare($query);
+			$sth2->execute($row2->[0], $row2->[1], $row->{table_name});
+		}
+		$sth2->finish;
+	}
+	
 	# Validate that all real tables are accounted for in the directory
 	$query = 'INSERT INTO tables (table_name, start, end, min_id, max_id, table_type_id) VALUES (?,?,?,?,?,' .
 		'(SELECT id FROM table_types WHERE table_type=?))';
@@ -1419,7 +1447,7 @@ sub _get_max_id {
 	$sth->execute($type);
 	$row = $sth->fetchrow_hashref;
 	my $max_id = $row->{max_id};
-	$max_id = 0 unless $max_id;
+	$max_id ||= 0;
 	
 	# Import tables need a different ID space than regular index tables
 	if ($type eq 'import' and $max_id < $Peer_id_multiplier){
@@ -1529,7 +1557,8 @@ sub _create_table {
 		$query = "INSERT INTO tables (table_name, start, end, min_id, max_id, table_type_id)\n" .
 			"VALUES( ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?), ?, ?, (SELECT id FROM table_types WHERE table_type=?) )";
 		$sth = $self->db->prepare($query);
-		$sth->execute( $needed_table, ($args->{start} ? $args->{start} : CORE::time()), ($args->{end} ? $args->{end} : CORE::time()), $current_max_id + 1, $current_max_id + 1, $args->{table_type});
+		$sth->execute( $needed_table, ($args->{start} ? $args->{start} : CORE::time()), 
+			($args->{end} ? $args->{end} : CORE::time()), $current_max_id + 1, $current_max_id + 1, $args->{table_type});
 		my $id = $self->db->{mysql_insertid};
 		#$self->log->debug(sprintf("Created table id %d with start %s, end %s, first_id %lu, last_id %lu", 
 		#	$id, _epoch2iso($args->{start}), _epoch2iso($args->{end}), $args->{first_id}, $args->{last_id} ));	
@@ -2643,7 +2672,9 @@ sub record_host_stats {
 	$sth->execute;
 	my $row = $sth->fetchrow_hashref;
 	unless ($row){
-		$self->log->error("No latest index found");
+		unless ($self->conf->get('forwarding/forward_only')){
+			$self->log->error("No latest index found");
+		}
 		#die('No latest index found');
 		return 0;
 	}

@@ -599,7 +599,7 @@ sub _forward {
 				}
 				$sth->execute($timeout_seconds);
 				while (my $row = $sth->fetchrow_hashref){
-					$Log->warn('Retry timeout hit of ' . $timeout_seconds . ' seconds, removing buffer ' . $row->{filename});
+					$Log->warn('Retry timeout hit of ' . $timeout_seconds . ' seconds, abandoning buffer ' . $row->{filename});
 					push @to_delete, $row;
 				}
 				
