@@ -552,6 +552,13 @@ CREATE TABLE IF NOT EXISTS buffers (
 	UNIQUE KEY (filename)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS failed_buffers (
+	hash CHAR(32) NOT NULL PRIMARY KEY,
+	filename VARCHAR(255) NOT NULL,
+	timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	args TEXT
+) ENGINE=InnoDB;
+
 CREATE OR REPLACE VIEW v_indexes AS
 SELECT id, type, FROM_UNIXTIME(start) AS start, FROM_UNIXTIME(end) AS end, last_id-first_id AS records, locked_by
 FROM indexes;
