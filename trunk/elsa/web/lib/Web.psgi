@@ -154,14 +154,16 @@ builder {
 		enable match_if all( path('!', '/favicon.ico'), path('!', qr!^/inc/!), path('!', qr!^/transform!), path('!', qr!^/API/!) ), 'Auth::Basic', authenticator => $auth, realm => $api->conf->get('auth/realm');
 	}
 	
-	mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
-	mount '/Query' => Web::Query->new(api => $api)->to_app;
 	mount '/API' => Web::API->new(api => $peers_api)->to_app;
-	mount '/datasource' => Web::GoogleDatasource->new(api => $charts_api)->to_app;
-	mount '/dashboard' => Web::GoogleDashboard->new(api => $charts_api)->to_app;
-	mount '/Charts' => Web::Query->new(api => $charts_api)->to_app;
-	mount '/m' => Web::Mobile->new(api => $api)->to_app;
-	mount '/' => Web->new(api => $api)->to_app;
+	if (not $api->conf->get('api_only')){
+		mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
+		mount '/Query' => Web::Query->new(api => $api)->to_app;
+		mount '/datasource' => Web::GoogleDatasource->new(api => $charts_api)->to_app;
+		mount '/dashboard' => Web::GoogleDashboard->new(api => $charts_api)->to_app;
+		mount '/Charts' => Web::Query->new(api => $charts_api)->to_app;
+		mount '/m' => Web::Mobile->new(api => $api)->to_app;
+		mount '/' => Web->new(api => $api)->to_app;
+	}
 };
 
 
