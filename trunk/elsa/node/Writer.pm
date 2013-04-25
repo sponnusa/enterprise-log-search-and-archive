@@ -2,6 +2,7 @@ package Writer;
 use Moose;
 use Data::Dumper;
 with 'MooseX::Traits';
+with 'Log';
 use DBI;
 
 use Indexer;
@@ -52,31 +53,31 @@ sub BUILDARGS {
 	$Log = $params{log}; # for use below
 	
 	if ($params{conf}){ # wrap this in a condition so that the right error message will be thrown if no conf
-		unless ($params{log}){
-			my $logdir = $params{conf}->get('logdir');
-			my $debug_level = $params{conf}->get('debug_level');
-			my $l4pconf = qq(
-				log4perl.category.ELSA       = $debug_level, File
-				log4perl.appender.File			 = Log::Log4perl::Appender::File
-				log4perl.appender.File.filename  = $logdir/node.log
-				log4perl.appender.File.syswrite = 1
-				log4perl.appender.File.recreate = 1
-				log4perl.appender.File.layout = Log::Log4perl::Layout::PatternLayout
-				log4perl.appender.File.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
-				log4perl.filter.ScreenLevel               = Log::Log4perl::Filter::LevelRange
-				log4perl.filter.ScreenLevel.LevelMin  = $debug_level
-				log4perl.filter.ScreenLevel.LevelMax  = ERROR
-				log4perl.filter.ScreenLevel.AcceptOnMatch = true
-				log4perl.appender.Screen         = Log::Log4perl::Appender::Screen
-				log4perl.appender.Screen.Filter = ScreenLevel 
-				log4perl.appender.Screen.stderr  = 1
-				log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
-				log4perl.appender.Screen.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
-			);
-			Log::Log4perl::init( \$l4pconf ) or die("Unable to init logger\n");
-			$params{log} = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n");
-			$Log = $params{log}; # for use below
-		}
+#		unless ($params{log}){
+#			my $logdir = $params{conf}->get('logdir');
+#			my $debug_level = $params{conf}->get('debug_level');
+#			my $l4pconf = qq(
+#				log4perl.category.ELSA       = $debug_level, File
+#				log4perl.appender.File			 = Log::Log4perl::Appender::File
+#				log4perl.appender.File.filename  = $logdir/node.log
+#				log4perl.appender.File.syswrite = 1
+#				log4perl.appender.File.recreate = 1
+#				log4perl.appender.File.layout = Log::Log4perl::Layout::PatternLayout
+#				log4perl.appender.File.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
+#				log4perl.filter.ScreenLevel               = Log::Log4perl::Filter::LevelRange
+#				log4perl.filter.ScreenLevel.LevelMin  = $debug_level
+#				log4perl.filter.ScreenLevel.LevelMax  = ERROR
+#				log4perl.filter.ScreenLevel.AcceptOnMatch = true
+#				log4perl.appender.Screen         = Log::Log4perl::Appender::Screen
+#				log4perl.appender.Screen.Filter = ScreenLevel 
+#				log4perl.appender.Screen.stderr  = 1
+#				log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
+#				log4perl.appender.Screen.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
+#			);
+#			Log::Log4perl::init( \$l4pconf ) or die("Unable to init logger\n");
+#			$params{log} = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n");
+#			$Log = $params{log}; # for use below
+#		}
 		my $dbh = DBI->connect(($params{conf}->get('database/dsn') or 'dbi:mysql:database=syslog;'), 
 			$params{conf}->get('database/username'), 
 			$params{conf}->get('database/password'), 

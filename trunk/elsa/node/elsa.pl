@@ -18,6 +18,7 @@ use File::Copy;
 # Include the directory this script is in
 use lib $FindBin::Bin;
 
+use Log;
 use Indexer;
 use Reader;
 use Writer;
@@ -57,26 +58,30 @@ my $Conf = $Config_json->{config}; # native hash is 10x faster than using Config
 # Setup logger
 my $logdir = $Conf->{logdir};
 my $debug_level = $Conf->{debug_level};
-my $l4pconf = qq(
-	log4perl.category.ELSA       = $debug_level, File
-	log4perl.appender.File			 = Log::Log4perl::Appender::File
-	log4perl.appender.File.filename  = $logdir/node.log
-	log4perl.appender.File.syswrite = 1
-	log4perl.appender.File.recreate = 1
-	log4perl.appender.File.layout = Log::Log4perl::Layout::PatternLayout
-	log4perl.appender.File.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
-	log4perl.filter.ScreenLevel               = Log::Log4perl::Filter::LevelRange
-	log4perl.filter.ScreenLevel.LevelMin  = $debug_level
-	log4perl.filter.ScreenLevel.LevelMax  = ERROR
-	log4perl.filter.ScreenLevel.AcceptOnMatch = true
-	log4perl.appender.Screen         = Log::Log4perl::Appender::Screen
-	log4perl.appender.Screen.Filter = ScreenLevel 
-	log4perl.appender.Screen.stderr  = 1
-	log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
-	log4perl.appender.Screen.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
-);
-Log::Log4perl::init( \$l4pconf ) or die("Unable to init logger\n");
-my $Log = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n");
+#my $l4pconf = qq(
+#	log4perl.category.ELSA       = $debug_level, File
+#	log4perl.appender.File			 = Log::Log4perl::Appender::File
+#	log4perl.appender.File.filename  = $logdir/node.log
+#	log4perl.appender.File.syswrite = 1
+#	log4perl.appender.File.recreate = 1
+#	log4perl.appender.File.layout = Log::Log4perl::Layout::PatternLayout
+#	log4perl.appender.File.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
+#	log4perl.filter.ScreenLevel               = Log::Log4perl::Filter::LevelRange
+#	log4perl.filter.ScreenLevel.LevelMin  = $debug_level
+#	log4perl.filter.ScreenLevel.LevelMax  = ERROR
+#	log4perl.filter.ScreenLevel.AcceptOnMatch = true
+#	log4perl.appender.Screen         = Log::Log4perl::Appender::Screen
+#	log4perl.appender.Screen.Filter = ScreenLevel 
+#	log4perl.appender.Screen.stderr  = 1
+#	log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
+#	log4perl.appender.Screen.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %m%n
+#);
+#Log::Log4perl::init( \$l4pconf ) or die("Unable to init logger\n");
+#my $Log = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n");
+
+Log::config_logger($Config_json);
+my $Log = Log::Log4perl::get_logger('App')
+  or die("Unable to init logger");
 
 my $Dbh = DBI->connect(($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'), 
 	$Conf->{database}->{username}, 
@@ -331,17 +336,9 @@ sub _import {
 	$args->{start_time} = Time::HiRes::time();
 	$args->{error_counter} = 0;
 	
-	# Reset the miss cache
-	$args->{cache_add} = {};
+	my %imports;
 	
-	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . CORE::time();
-	
-	# Open the file now that we've forked
-	my $tempfile;
-	sysopen($tempfile, $tempfile_name, O_RDWR|O_CREAT) or die('Unable to open our tempfile: ' . $!);
-	$Log->debug('Using tempfile ' . $tempfile_name); 
-	
-	my $reader = new Reader(log => $Log, conf => $Config_json, cache => $Cache, offline_processing => $args->{offline_processing});
+	my $reader = new Reader(log => $Log, conf => $Config_json, cache => $Cache, offline_processing => 1);
 
 	my $run = 1;
 	# End the loop after index_interval seconds
@@ -352,29 +349,20 @@ sub _import {
 		$fh->blocking(0); 
 	};
 	
-	my $batch_counter = 0; # we make this a standard variable instead of using $arg->{batch_counter} to save the hash deref in loop
 	while (<$fh>){
-		eval {
-			if ($. eq 1){
-				# The first line will be our meta data
-				my @line = split(/\t/, $_);
-				if ($line[4] =~ /^ELSA_IMPORT_ID=(\d+)$/){
-					$args->{import_id} = $1;
-					$Log->trace('Received ELSA_IMPORT_ID of ' . $1);
-				}
-				else {
-					# We weren't given an ID, this is a normal log line
-					$tempfile->syswrite(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
-					$batch_counter++;
-				}
-				next;
+		eval {		
+			my $line = $reader->parse_line($_);
+			if (not exists $imports{$Reader::IMPORT_ID}){
+				$imports{$Reader::IMPORT_ID}->{args} = { %$args };
+				$imports{$Reader::IMPORT_ID}->{args}->{file} = $Conf->{buffer_dir} . '/' . Time::HiRes::time();
+				sysopen($imports{$Reader::IMPORT_ID}->{fh}, $imports{$Reader::IMPORT_ID}->{args}->{file}, O_RDWR|O_CREAT) or die('Unable to open our tempfile: ' . $!);
 			}
-			$tempfile->syswrite(join("\t", 0, @{ $reader->parse_line($_) }) . "\n"); # tack on zero for auto-inc value
-			$batch_counter++;
+			$imports{$Reader::IMPORT_ID}->{fh}->syswrite(join("\t", 0, @$line) . "\n"); # tack on zero for auto-inc value
+			$imports{$Reader::IMPORT_ID}->{args}->{batch_counter}++;
 		};
 		if ($@){
 			my $e = $@;
-			$args->{error_counter}++;
+			$imports{$Reader::IMPORT_ID}->{args}->{error_counter}++;
 			if ($Conf->{log_parse_errors}){
 				$Log->error($e) 
 			}
@@ -383,47 +371,46 @@ sub _import {
 		# We want to stop as soon as we're done processing the file
 		alarm(1);
 	}
-			
-	# Update args to be results
-	$args->{batch_counter} = $batch_counter;
-	$args->{file} = $tempfile_name;
-	$args->{file_size} = -s $args->{file};
-	$args->{start} = $reader->processing_times->{start};
-	$args->{end} = $reader->processing_times->{end};
-	$args->{total_processed} = $args->{batch_counter};
-	$args->{total_errors} = $args->{error_counter};
-	$args->{batch_time} = $Conf->{sphinx}->{index_interval};
 	
-	# Report back that we've finished
-	$Log->debug("Finished job process_batch with $args->{batch_counter} logs processed and " . (scalar keys %{ $args->{cache_add} }) . ' new programs');
-	$Log->debug('Total errors: ' . $args->{error_counter} . ' (%' . (($args->{error_counter} / $args->{batch_counter}) * 100) . ')' ) if $args->{batch_counter};
-	$Log->debug('file size for file ' . $args->{file} . ' is ' . $args->{file_size});
-	
-	unless ($args->{batch_counter}){
-		$Log->trace('No logs recorded');
-		unlink ($args->{file}) if -f $args->{file};
-		return $args->{batch_counter};
+	foreach my $import_id (keys %imports){
+		my $import_args = $imports{$import_id}->{args};
+		# Update args to be results
+		$import_args->{file_size} = -s $import_args->{file};
+		$import_args->{start} = $reader->processing_times->{start};
+		$import_args->{end} = $reader->processing_times->{end};
+		$import_args->{total_processed} = $args->{batch_counter};
+		$import_args->{total_errors} = $import_args->{error_counter};
+		$import_args->{batch_time} = $Conf->{sphinx}->{index_interval};
+		
+		# Report back that we've finished
+		$Log->debug("Finished import ID $import_id process_batch with $import_args->{batch_counter} logs processed and " . (scalar keys %{ $reader->cache }) . ' new programs');
+		$Log->debug('Total errors: ' . $import_args->{error_counter} . ' (%' . (($import_args->{error_counter} / $import_args->{batch_counter}) * 100) . ')' ) if $import_args->{batch_counter};
+		$Log->debug('file size for file ' . $import_args->{file} . ' is ' . $import_args->{file_size});
+		
+		unless ($import_args->{batch_counter}){
+			$Log->trace('No logs recorded');
+			unlink ($import_args->{file}) if -f $import_args->{file};
+			next;
+		}
+		
+		_forward($import_args, $reader);
+		
+		if (scalar keys %{ $reader->to_add }){
+			my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
+			$indexer->add_programs($reader->to_add);
+			$reader->to_add({});
+		}
+		
+		my ($query,$sth);
+		if ($import_args->{batch_counter} and (not $Conf->{forwarding} or 
+			($Conf->{forwarding} and not $Conf->{forwarding}->{forward_only}))){
+			$query = 'INSERT INTO buffers (filename, start, end, import_id) VALUES (?,?,?,?)';
+			$sth = $Dbh->prepare($query);
+			$sth->execute($import_args->{file}, $import_args->{start}, $import_args->{end}, $import_id);
+			$Log->trace('inserted filename ' . $import_args->{file} . ' with import_id ' . $import_id . ' and batch_counter ' . $import_args->{batch_counter} 
+				. ' and start ' . (scalar localtime($import_args->{start})) . ' and end ' . (scalar localtime($import_args->{end})));
+		}
 	}
-	
-	_forward($args, $reader);
-	
-	if (scalar keys %{ $reader->to_add }){
-		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
-		$indexer->add_programs($reader->to_add);
-		$reader->to_add({});
-	}
-	
-	my ($query,$sth);
-	if ($args->{batch_counter} and (not $Conf->{forwarding} or 
-		($Conf->{forwarding} and not $Conf->{forwarding}->{forward_only}))){
-		$query = 'INSERT INTO buffers (filename, start, end, import_id) VALUES (?,?,?,?)';
-		$sth = $Dbh->prepare($query);
-		$sth->execute($args->{file}, $args->{start}, $args->{end}, $args->{import_id});
-		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter} 
-			. ' and start ' . (scalar localtime($args->{start})) . ' and end ' . (scalar localtime($args->{end})));
-	}
-	
-	return $args->{batch_counter};
 }
 
 sub _forward {

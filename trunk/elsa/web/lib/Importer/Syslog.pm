@@ -5,6 +5,7 @@ use IO::File;
 use DateTime;
 use DateTime::Format::Strptime;
 
+
 sub local_syslog { return 1 }
 sub heuristic {
 	my $self = shift;
@@ -49,21 +50,24 @@ sub process {
 	my $year = $localtime[5] + 1900;
 	
 	# Write header
-	$outfile->print($self->get_header($id) . "\n");
+	#$outfile->print($self->get_header($id) . "\n");
 	
 	while (<$infile>){
 		if ($. <= $lines_to_skip){
 			next;
 		}
-		$_ =~ /^((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\ \d{2}\:\d{2}\:\d{2})\ /;
+		$_ =~ /^((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\ \d{2}\:\d{2}\:\d{2})\ ([\w\.]+)\ ([\w\_]+)[^\:]+: ([^\n]+)/;
 		my $dt = $parser->parse_datetime("$1 $year") or next;
+		my ($host, $program, $msg) = ($2, $3, $4);
+		my $date = $dt->strftime('%Y-%m-%dT%H:%M:%S.000Z');
 		if ($dt->epoch < $start){
 			$start = $dt->epoch;
 		}
 		if ($dt->epoch > $end){
 			$end = $dt->epoch;
 		}
-		$outfile->print($_);
+		#$outfile->print($_);
+		$outfile->print("1 $date $host $program - $id - $msg\n");
 		$counter++;
 	}
 	$self->start($start);
