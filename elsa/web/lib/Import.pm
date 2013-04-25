@@ -15,8 +15,12 @@ use Socket;
 
 # Include the directory this script is in
 use lib $FindBin::Bin;
-
 use Module::Pluggable sub_name => 'import_plugins', require => 1, search_path => [ qw( Importer ) ];
+# For some very dumb reason, a mod_perl/Apache bug is very occasionally causing Module::Pluggable to fail without these
+#   specific require statements per-plugin.
+require Importer::Unformatted;
+require Importer::Syslog;
+require Importer::CSV;
 
 has 'format' => (is => 'rw', isa => 'Str', required => 1, default => '0');
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => sub { 'Unnamed import' });
@@ -107,7 +111,7 @@ sub BUILD {
 	my $end_time = time() - $start;
 	$self->start($best{plugin}->start) if $best{plugin}->start;
 	$self->end($best{plugin}->end) if $best{plugin}->end;
-	$self->log->info("Sent $lines_imported lines to ELSA in $end_time seconds");
+	$self->log->info("Import ID " . $self->id . " sent $lines_imported lines to ELSA in $end_time seconds");
 	$self->lines_imported($lines_imported);
 	
 	return $self;

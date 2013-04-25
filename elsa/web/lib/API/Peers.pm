@@ -438,6 +438,9 @@ sub upload {
 		delete $args->{start};
 		delete $args->{end};
 		my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
+		if (not $importer->id){
+			return [ 500, [ 'Content-Type' => 'application/javascript' ], [ $self->json->encode({ error => 'Import failed' }) ] ];
+		}
 		$ret->{import_id} = $importer->id;
 	}
 	else {

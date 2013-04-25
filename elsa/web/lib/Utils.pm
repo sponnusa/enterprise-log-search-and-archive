@@ -46,15 +46,20 @@ around BUILDARGS => sub {
 		$log_level = $params{conf}->get('debug_level');
 	}
 	my $logdir = $params{conf}->get('logdir');
-	my $logfile = 'web.log';
+	my $logfile = 'web';
 	if ($params{conf}->get('logfile')){
 		$logfile = $params{conf}->get('logfile');
 	}
 	
-	my $log_conf = qq(
-		log4perl.category.App       = $log_level, File
+	my $log_format = 'File';
+	if ($params{conf}->get('log_format')){
+		$log_format = $params{conf}->get('log_format');
+	}
+	
+	my $log_conf = qq{
+		log4perl.category.App       = $log_level, $log_format
 		log4perl.appender.File			 = Log::Log4perl::Appender::File
-		log4perl.appender.File.filename  = $logdir/$logfile 
+		log4perl.appender.File.filename  = $logdir/$logfile.log 
 		log4perl.appender.File.layout = Log::Log4perl::Layout::PatternLayout
 		log4perl.appender.File.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %x%n%m%n
 		log4perl.appender.Screen         = Log::Log4perl::Appender::Screen
@@ -63,7 +68,13 @@ around BUILDARGS => sub {
 		log4perl.appender.Screen.layout.ConversionPattern = * %p [%d] %F (%L) %M %P %x%n%m%n
 		log4perl.appender.Syncer            = Log::Log4perl::Appender::Synchronized
 		log4perl.appender.Syncer.appender   = File
-	);
+		log4perl.appender.Dat			 = Log::Log4perl::Appender::File
+		log4perl.appender.Dat.filename  = $logdir/elsa.dat
+		log4perl.appender.Dat.layout = Log::Log4perl::Layout::PatternLayout
+		log4perl.appender.Dat.layout.ConversionPattern = %d{e.SSSSSS}\0%p\0%M\0%F\0%L\0%P\0%m%n\1
+		log4perl.appender.SyncerDat            = Log::Log4perl::Appender::Synchronized
+		log4perl.appender.SyncerDat.appender   = Dat
+	};
 	
 	if (not Log::Log4perl->initialized()){
 		Log::Log4perl::init( \$log_conf ) or die("Unable to init logger");
