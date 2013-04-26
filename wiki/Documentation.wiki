@@ -262,21 +262,21 @@ Queries can have transforms applied to them.  Transforms are covered later in th
 
 ===Directives===
 Queries have a number of modifiers in the form of directives which instruct ELSA how to query.
-|| Term || Meaning || Default Value || Example ||
-|| limit || Return this number of results.  A limit of zero means return an unlimited number, which constitutes a bulk query and forces the query to run in batch mode, with results delivered via a link in an email. || `100` || `limit:1000` ||
-|| cutoff || Like limit, except it tells ELSA to stop searching after finding this many records, which is valuable when searching a common term and the total number of hits (as opposed to total returned) is irrelevant. || undefined || `cutoff:100` ||
-|| offset || Partners with limit to indicate how far into a result set to go before returning results.  Meaningless unless a limit larger than the default 100 is used. || `0` || `offset:900` ||
-|| orderby || Order results by this attribute.  Defaults to timestamp, ascending.|| `orderby:host` ||
-|| orderby_dir || Direction to order results.  Must be used in conjunction with orderby. || `asc` || `orderby_dir:desc` ||
-|| start || Quoted value representing the earliest timestamp to return.  Valid values are almost any date representation.  See details for the complete documentation [http://search.cpan.org/~sbeck/Date-Manip-6.39/lib/Date/Manip/Date.pod#VALID_DATE_FORMATS here]. || undefined || `end:"2013-01-01 00:00:00"` ||
-|| end || Quoted value representing the latest timestamp to return.  Valid values are as with start. || undefined || `end:"2013-01-01 00:00:00"` ||
-|| groupby || Similar to SQL GROUP BY, returns the unique values for a given attribute and the count of the distinct values. || undefined || `groupby:host` ||
-|| node || Apply a filter for results only from this node (subject to boolean representations as detailed above. || undefined || `node:192.168.1.1` ||
-|| datasource || Query the given datasource as configured in the elsa_web.conf file. || undefined || `datasource:hr` ||
-|| timeout || Stop querying and return any results found after this number of seconds. || `300` ||  `timeout:10` ||
-|| archive || If set to a true value, query will be run on archived data instead of indexed data, batching if the estimated query time exceeds the configured value (with a default of 30 seconds). || `0` || `archive:1` ||
-|| analytics || If set to a true value, the query will automatically be batched and have no limit set.  Results will be saved to a bulk result file, with a link to that file emailed. || `0` || `analytics:1` ||
-|| nobatch || Run the query in the foreground, regardless of the estimated time it will take. || `0` || `nobatch:1` ||
+|| Term || Meaning || Default Value || Query can Batch || Example ||
+|| limit || Return this number of results.  A limit of zero means return an unlimited number, which constitutes a bulk query and forces the query to run in batch mode, with results delivered via a link in an email. || `100` || Batch can occur when limit set to 0 or > Max matches (default is 1000) || `limit:1000` ||
+|| cutoff || Like limit, except it tells ELSA to stop searching after finding this many records, which is valuable when searching a common term and the total number of hits (as opposed to total returned) is irrelevant. || undefined || No || `cutoff:100` ||
+|| offset || Partners with limit to indicate how far into a result set to go before returning results.  Meaningless unless a limit larger than the default 100 is used. || `0` || No || `offset:900` ||
+|| orderby || Order results by this attribute. || Technically, undefined, but effectively timestamp, ascending in most scenarios. || No || `orderby:host` ||
+|| orderby_dir || Direction to order results.  Must be used in conjunction with orderby. || `asc` || No || `orderby_dir:desc` ||
+|| start || Quoted value representing the earliest timestamp to return.  Valid values are almost any date representation.  See details for the complete documentation [http://search.cpan.org/~sbeck/Date-Manip-6.39/lib/Date/Manip/Date.pod#VALID_DATE_FORMATS here]. || undefined || No || `end:"2013-01-01 00:00:00"` ||
+|| end || Quoted value representing the latest timestamp to return.  Valid values are as with start. || undefined || No || `end:"2013-01-01 00:00:00"` ||
+|| groupby || Similar to SQL GROUP BY, returns the unique values for a given attribute and the count of the distinct values. || undefined || No || `groupby:host` ||
+|| node || Apply a filter for results only from this node (subject to boolean representations as detailed above. || undefined || No || `node:192.168.1.1` ||
+|| datasource || Query the given datasource as configured in the elsa_web.conf file. || undefined || No || `datasource:hr` ||
+|| timeout || Stop querying and return any results found after this number of seconds. || `300` || No ||  `timeout:10` ||
+|| archive || If set to a true value, query will be run on archived data instead of indexed data, batching if the estimated query time exceeds the configured value (with a default of 30 seconds). || `0` || Yes, if estimated time is > query_time_batch_threshold (30 seconds by default) || `archive:1` ||
+|| analytics || If set to a true value, the query will automatically be batched and have no limit set.  Results will be saved to a bulk result file, with a link to that file emailed. || `0` || Yes, always || `analytics:1` ||
+|| nobatch || Run the query in the foreground, regardless of the estimated time it will take. || `0` || No, never || `nobatch:1` ||
 || livetail || _Deprecated_ || || || 
 
 ===Query examples===
