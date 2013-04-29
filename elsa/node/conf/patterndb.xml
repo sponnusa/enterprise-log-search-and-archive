@@ -55,6 +55,25 @@
 					</example>
 				</examples>
 			</rule>
+			<rule provider="ELSA" class='36' id='36'>
+				<patterns>
+					<pattern>Group =@QSTRING:s0: ,@ Username =@QSTRING:s1: ,@ IP = @IPv4:i0:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%FWSM-4-113019">Group = Produccion, Username = pepe, IP = 10.245.102.86, Session disconnected. Session Type: IPsecOverNatT, Duration: 1h:38m:44s, Bytes xmt: 24545367, Bytes rcv: 3046464, Reason: Lost Service</test_message>
+						<test_value name="i0">10.245.102.86</test_value>
+						<test_value name="s0">Produccion</test_value>
+						<test_value name="s1">pepe</test_value>
+					</example>
+					<example>
+						<test_message program="%FWSM-4-113019">Group = Acceso, Username = juan, IP = 10.229.201.171, Session disconnected. Session Type: IPsecOverNatT, Duration: 0h:05m:56s, Bytes xmt: 122161, Bytes rcv: 28794, Reason: User Requested</test_message>
+						<test_value name="i0">10.229.201.171</test_value>
+						<test_value name="s0">Acceso</test_value>
+						<test_value name="s1">juan</test_value>
+					</example>
+				</examples>
+			</rule>
 		</rules>
 	</ruleset>
 	<ruleset name="ASA" id='2_ASA'>
@@ -109,6 +128,25 @@
 					</example>
 				</examples>
 			</rule>
+			<rule provider="ELSA" class='36' id='36'>
+				<patterns>
+					<pattern>Group =@QSTRING:s0: ,@ Username =@QSTRING:s1: ,@ IP = @IPv4:i0:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%ASA-4-113019">Group = Produccion, Username = pepe, IP = 10.245.102.86, Session disconnected. Session Type: IPsecOverNatT, Duration: 1h:38m:44s, Bytes xmt: 24545367, Bytes rcv: 3046464, Reason: Lost Service</test_message>
+						<test_value name="i0">10.245.102.86</test_value>
+						<test_value name="s0">Produccion</test_value>
+						<test_value name="s1">pepe</test_value>
+					</example>
+					<example>
+						<test_message program="%ASA-4-113019">Group = Acceso, Username = juan, IP = 10.229.201.171, Session disconnected. Session Type: IPsecOverNatT, Duration: 0h:05m:56s, Bytes xmt: 122161, Bytes rcv: 28794, Reason: User Requested</test_message>
+						<test_value name="i0">10.229.201.171</test_value>
+						<test_value name="s0">Acceso</test_value>
+						<test_value name="s1">juan</test_value>
+					</example>
+				</examples>
+			</rule>
 		</rules>
 	</ruleset>
 	<ruleset name="PIX" id='2_PIX'>
@@ -138,6 +176,25 @@
 							<test_value name="s2">0:00:00</test_value>
 							<test_value name="i5">1476</test_value>
 						</test_values>
+					</example>
+				</examples>
+			</rule>
+			<rule provider="ELSA" class='36' id='36'>
+				<patterns>
+					<pattern>Group =@QSTRING:s0: ,@ Username =@QSTRING:s1: ,@ IP = @IPv4:i0:@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="%PIX-4-113019">Group = Produccion, Username = pepe, IP = 10.245.102.86, Session disconnected. Session Type: IPsecOverNatT, Duration: 1h:38m:44s, Bytes xmt: 24545367, Bytes rcv: 3046464, Reason: Lost Service</test_message>
+						<test_value name="i0">10.245.102.86</test_value>
+						<test_value name="s0">Produccion</test_value>
+						<test_value name="s1">pepe</test_value>
+					</example>
+					<example>
+						<test_message program="%PIX-4-113019">Group = Acceso, Username = juan, IP = 10.229.201.171, Session disconnected. Session Type: IPsecOverNatT, Duration: 0h:05m:56s, Bytes xmt: 122161, Bytes rcv: 28794, Reason: User Requested</test_message>
+						<test_value name="i0">10.229.201.171</test_value>
+						<test_value name="s0">Acceso</test_value>
+						<test_value name="s1">juan</test_value>
 					</example>
 				</examples>
 			</rule>
