@@ -46,6 +46,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(20, "BRO_CONN", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(33, "WEB_CONTENT_FILTER", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(34, "NETFLOW", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(35, "OSSEC_ALERTS", 0);*/
+INSERT INTO classes (id, class, parent_id) VALUES(36, "VPN", 0);
 
 CREATE TABLE class_program_map (
 	class_id SMALLINT UNSIGNED NOT NULL,
@@ -442,6 +443,9 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="OSSEC_ALERTS"), (SELECT id FROM fields WHERE field="user"), 13);
 */
 
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="VPN"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="VPN"), (SELECT id FROM fields WHERE field="group"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="VPN"), (SELECT id FROM fields WHERE field="user"), 12);
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
