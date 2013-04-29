@@ -123,14 +123,14 @@ sub call {
 		
 		#$self->api->log->debug('dashboard args: ' . Dumper($args));
 		if (exists $args->{start}){
-			$args->{start_time} = UnixDate(ParseDate(delete $args->{start}), '%s');
+			$args->{start_time} = UnixDate(ParseDate($args->{start}), '%s');
 			$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
 		}
 		else {
 			$args->{start_time} = (time() - (86400*7));
 		}
 		if (exists $args->{end}){
-			$args->{end_time} = UnixDate(ParseDate(delete $args->{end}), '%s');
+			$args->{end_time} = UnixDate(ParseDate($args->{end}), '%s');
 			$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
 		}
 		else {
