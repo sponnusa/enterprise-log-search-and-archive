@@ -17,7 +17,10 @@ sub BUILD {
 	}	 
 	
 	# See if the pattern is in user prefs and override with it
-	if ($self->user->preferences->{tree}->{patterns} and $self->user->preferences->{tree}->{patterns}->{$pattern_name}){
+	if ($self->user->preferences and 
+		$self->user->preferences->{tree} and
+		$self->user->preferences->{tree}->{patterns} and 
+		$self->user->preferences->{tree}->{patterns}->{$pattern_name}){
 		$patterns = $self->user->preferences->{tree}->{patterns}->{$pattern_name};
 	}
 	die('Unable to find pattern ' . $pattern_name) unless $patterns;
