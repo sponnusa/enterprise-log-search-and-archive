@@ -347,7 +347,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA MooseX::Log::Log4perl
+		cpanm Time::HiRes CGI Moose Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA MooseX::Log::Log4perl Log::Log4perl::Appender::Socket::UNIX
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -487,17 +487,17 @@ mk_node_dirs(){
 	
 	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
 		mkfifo $DATA_DIR/elsa/tmp/realtime;
-		# Anyone can send logs to this
-		chmod 666 $DATA_DIR/elsa/tmp/realtime;
 		UPDATE_OK=$?
 	fi
+	# Anyone can send logs to this
+	chmod 666 $DATA_DIR/elsa/tmp/realtime;
 	
 	if [ ! -p $DATA_DIR/elsa/tmp/import ]; then
 		mkfifo $DATA_DIR/elsa/tmp/import;
-		# Anyone can send logs to this
-		chmod 666 $DATA_DIR/elsa/tmp/import;
 		UPDATE_OK=$?
 	fi
+	# Anyone can send logs to this
+	chmod 666 $DATA_DIR/elsa/tmp/import;
 	
 	return $UPDATE_OK
 }
@@ -599,6 +599,16 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="VPN"), (SELECT id FROM fields WHERE field="srcip"), 5)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="VPN"), (SELECT id FROM fields WHERE field="group"), 11)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="VPN"), (SELECT id FROM fields WHERE field="user"), 12)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO classes (id, class) VALUES(99, "ELSA_OPS")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields (field, field_type, pattern_type) VALUES ("pid", "int", "NUMBER")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields (field, field_type, pattern_type) VALUES ("priority", "string", "QSTRING")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields (field, field_type, pattern_type) VALUES ("file", "string", "QSTRING")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="line_number"), 5)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="pid"), 6)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="priority"), 11)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="file"), 12)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="method"), 13)'
+	
 	return $?
 }
 
@@ -751,7 +761,7 @@ build_web_perl(){
 		# PAM requires some user input for testing, and we don't want that
 		#cpanm -n Authen::PAM Crypt::DH &&
 		#Authen::Simple::PAM 
-		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5 Hash::Merge::Simple Digest::SHA Archive::Extract Apache::Admin::Config Text::CSV
+		cpanm Time::Local Time::HiRes Moose Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute Data::Serializable MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5 Hash::Merge::Simple Digest::SHA Archive::Extract Apache::Admin::Config Text::CSV Log::Log4perl::Appender::Socket::UNIX Plack::Middleware::XForwardedFor
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;

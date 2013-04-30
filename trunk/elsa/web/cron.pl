@@ -57,6 +57,7 @@ eval {
 	}
 	
 	# Handle web activities, like scheduled searches
+	$Log::Log4perl::Logger::INITIALIZED = 0; #deinit log4perl se we can re-init here
 	my $api = API->new(config_file => $config_file) or die('Unable to start from given config file.');
 	my $start = time();
 	my $user = User->new(conf => $api->conf, username => 'system');
