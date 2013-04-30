@@ -39,6 +39,8 @@ sub call {
 	
 	$self->api->clear_warnings;
 	
+	Log::Log4perl::MDC->put('client_ip_address', $req->address);
+	
 	my $body;
 	my $method = $self->_extract_method($req->request_uri);
 	$method ||= 'index';

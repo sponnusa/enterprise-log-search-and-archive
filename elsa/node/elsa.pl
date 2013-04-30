@@ -82,6 +82,10 @@ my $debug_level = $Conf->{debug_level};
 Log::config_logger($Config_json);
 my $Log = Log::Log4perl::get_logger('App')
   or die("Unable to init logger");
+# Don't log ops logs if this is the ops logger elsa.pl instance
+if ($Opts{f} eq '__OPS__'){
+	$Log->remove_appender('RFC5424');
+}
 
 my $Dbh = DBI->connect(($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'), 
 	$Conf->{database}->{username}, 
@@ -210,14 +214,20 @@ sub _process_batch {
 	my $args = {};
 	my $fh = \*STDIN;
 	my $offline_processing;
+	my $is_ops;
 	if ($filename){
-		unless ($filename eq '__IMPORT__'){
-			open($fh, $filename) or die 'Unable to open file: ' . $!;
-			$Log->debug('Reading from file ' . $filename);
+		if ($filename eq '__OPS__'){
+			$is_ops = 1;
 		}
-		$args->{offline_processing} = $offline_processing = 1;
-		$args->{offline_processing_start} = time();
-		$args->{offline_processing_end} = 0;
+		else {
+			unless ($filename eq '__IMPORT__'){
+				open($fh, $filename) or die 'Unable to open file: ' . $!;
+				$Log->debug('Reading from file ' . $filename);
+			}
+			$args->{offline_processing} = $offline_processing = 1;
+			$args->{offline_processing_start} = time();
+			$args->{offline_processing_end} = 0;
+		}
 	}
 	$fh->autoflush(1);
 	$fh->blocking(1);
@@ -230,7 +240,7 @@ sub _process_batch {
 	
 	# Reset the miss cache
 	$args->{cache_add} = {};
-	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . CORE::time();
+	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . Time::HiRes::time();
 	
 #	my $tail_watcher = _fork_livetail_manager($tempfile_name) unless $Opts{o} or $args->{offline_processing};
 	
@@ -298,7 +308,9 @@ sub _process_batch {
 		return $args->{batch_counter};
 	}
 	
-	_forward($args, $reader);
+	_forward($args, $reader, $is_ops);
+	
+	return $args->{batch_counter} if $is_ops;
 	
 	if (scalar keys %{ $reader->to_add }){
 		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
@@ -416,6 +428,7 @@ sub _import {
 sub _forward {
 	my $args = shift;
 	my $reader = shift;
+	my $is_ops = shift;
 	my ($query, $sth);
 	
 	# Are we forwarding events?
@@ -483,6 +496,7 @@ sub _forward {
 				my $forwarding_errors = 0;
 				foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
 					my $forwarder;
+					next if ($is_ops and not exists $dest_hash->{ops}) or (not $is_ops and exists $dest_hash->{ops});
 					if ($dest_hash->{method} eq 'cp'){
 						require Forwarder::Copy;
 						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
@@ -516,7 +530,7 @@ sub _forward {
 				}
 				unlink($program_filename) if $program_filename;
 				
-				if ($Conf->{forwarding}->{forward_only}){
+				if ($Conf->{forwarding}->{forward_only} or $is_ops){
 					unlink($original_file);
 				}
 			
@@ -528,6 +542,7 @@ sub _forward {
 				while (my $row = $sth->fetchrow_hashref){
 					my $forwarder;
 					my $dest_hash = decode_json($row->{args});
+					next if ($is_ops and not exists $dest_hash->{ops}) or (not $is_ops and exists $dest_hash->{ops});
 					# Verify this destination is still valid
 					my $found = 0;
 					foreach my $config_dest_hash (@{ $Conf->{forwarding}->{destinations} }){

@@ -62,6 +62,8 @@ sub local_query {
 	foreach my $warning (@{ $q->warnings }){
 		$self->add_warning($warning);
 	}
+	
+	Log::Log4perl::MDC->put('qid', $q->qid);
 
 	my ($query, $sth);
 	
@@ -234,10 +236,10 @@ sub local_query {
 		$self->transform($q);
 	}
 	
-	# Send to connectors
-	if ($q->has_connectors){
-		$self->send_to($q);
-	}
+#	# Send to connectors
+#	if ($q->has_connectors){
+#		$self->send_to($q);
+#	}
 
 	return $q;
 }
@@ -278,11 +280,20 @@ sub query {
 		}
 	}
 	
+	Log::Log4perl::MDC->put('qid', $q->qid);
+	
 	foreach my $warning (@{ $q->warnings }){
 		$self->add_warning($warning);
 	}
 	
-	return $self->_peer_query($q);
+	$q = $self->_peer_query($q);
+	
+	# Send to connectors
+	if ($q->has_connectors){
+		$self->send_to($q);
+	}
+	
+	return $q;
 }
 
 sub local_info {

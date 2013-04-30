@@ -1789,11 +1789,20 @@ sub query {
 		}
 	}
 	
+	Log::Log4perl::MDC->put('qid', $q->qid);
+	
 	foreach my $warning (@{ $q->warnings }){
 		$self->add_warning($warning);
 	}
 	
-	return $self->_peer_query($q, 'self');
+	$q = $self->_peer_query($q, 'self');
+	
+	# Send to connectors
+	if ($q->has_connectors){
+		$self->send_to($q);
+	}
+	
+	return $q;
 }
 
 sub _estimate_query_time {

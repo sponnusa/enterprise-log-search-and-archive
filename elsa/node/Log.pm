@@ -36,12 +36,13 @@ sub config_logger {
 		$log_level = $config->get('debug_level');
 	}
 	my $logdir = $config->get('logdir');
+	my $tmpdir = $logdir . '/../tmp';
 	my $logfile = 'node';
 	if ($config->get('logfile')){
 		$logfile = $config->get('logfile');
 	}
 	
-	my $log_format = 'File';
+	my $log_format = 'File, RFC5424';
 	if ($config->get('log_format')){
 		$log_format = $config->get('log_format');
 	}
@@ -64,6 +65,10 @@ sub config_logger {
 		log4perl.appender.Dat.layout.ConversionPattern = %d{e.SSSSSS}\0%p\0%M\0%F\0%L\0%P\0%m%n\1
 		log4perl.appender.SyncerDat            = Log::Log4perl::Appender::Synchronized
 		log4perl.appender.SyncerDat.appender   = Dat
+		log4perl.appender.RFC5424         = Log::Log4perl::Appender::Socket::UNIX
+        log4perl.appender.RFC5424.Socket = $tmpdir/ops
+        log4perl.appender.RFC5424.layout = Log::Log4perl::Layout::PatternLayout
+        log4perl.appender.RFC5424.layout.ConversionPattern = 1 %d{yyyy-MM-ddTHH:mm:ss.000}Z 127.0.0.1 elsa - 99 [elsa\@32473 priority="%p" method="%M" file="%F{2}" line_number="%L" pid="%P"] %m%n
 	};
 	
 	if (not Log::Log4perl->initialized()){
