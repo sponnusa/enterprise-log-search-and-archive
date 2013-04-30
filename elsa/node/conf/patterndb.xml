@@ -1396,7 +1396,7 @@
 	    	</rule>
     	</rules>
     </ruleset>
-    <!--<ruleset name="CEF">
+    <ruleset name="CEF">
     	<rules>
     		<rule provider="ELSA" class="32" id="32">
     			<pattern>CEF:@NUMBER::@|@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING:s4:|@@NUMBER:i0:@|@ANYSTRING:s5:@</pattern>
@@ -1414,7 +1414,7 @@
 	    		</examples>
 	    	</rule>
     	</rules>
-	</ruleset>-->
+	</ruleset>
 	<ruleset name="Watchguard Firewall">
 		<pattern>firewall</pattern>
 		<rules>
