@@ -101,6 +101,7 @@ around BUILDARGS => sub {
 			AutoCommit => 1,
 			mysql_connect_timeout => $Db_timeout,
 			mysql_auto_reconnect => 1, # we will auto-reconnect on disconnect
+			mysql_local_infile => 1, # allow LOAD DATA LOCAL
 		}
 	) or die($DBI::errstr);
 	
@@ -146,6 +147,7 @@ sub freshen_db {
 				AutoCommit => 1,
 				mysql_connect_timeout => $Db_timeout,
 				mysql_auto_reconnect => 1, # we will auto-reconnect on disconnect
+				mysql_local_infile => 1, # allow LOAD DATA LOCAL
 			})
 	);
 }
