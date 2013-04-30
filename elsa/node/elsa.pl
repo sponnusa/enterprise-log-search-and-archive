@@ -515,9 +515,9 @@ sub _forward {
 					my $ok = $forwarder->forward($args);
 					unless ($ok){
 						$forwarding_errors++;
-						$query = 'INSERT IGNORE INTO failed_buffers (hash, filename, args) VALUES (MD5(?),?,?)';
+						$query = 'INSERT IGNORE INTO failed_buffers (hash, dest, args) VALUES (MD5(?),?,?)';
 						$sth = $Dbh->prepare($query);
-						$sth->execute($compressed_filename . encode_json($dest_hash), $compressed_filename, encode_json($dest_hash));
+						$sth->execute(encode_json($args), encode_json($dest_hash), encode_json($args));
 					}
 				}
 				
@@ -535,13 +535,14 @@ sub _forward {
 				}
 			
 				# Retry any fails from this or any other session
-				$query = 'SELECT hash, filename, args FROM failed_buffers';
+				$query = 'SELECT hash, dest, args FROM failed_buffers';
 				$sth = $Dbh->prepare($query);
 				$sth->execute;
 				my @to_delete;
 				while (my $row = $sth->fetchrow_hashref){
 					my $forwarder;
-					my $dest_hash = decode_json($row->{args});
+					my $dest_hash = decode_json($row->{dest});
+					my $file_args = decode_json($row->{args});
 					next if ($is_ops and not exists $dest_hash->{ops}) or (not $is_ops and exists $dest_hash->{ops});
 					# Verify this destination is still valid
 					my $found = 0;
@@ -563,11 +564,11 @@ sub _forward {
 						}
 					}
 					if (not $found){
-						$Log->warn('Retry destination of ' . $row->{args} . ' no longer needed, removing retry.');
-						push @to_delete, $row;
+						$Log->warn('Retry destination of ' . $row->{dest} . ' no longer needed, removing retry.');
+						push @to_delete, [ $row->{hash}, $file_args ];
 						next;
 					}
-					$Log->info('Retrying forward of file ' . $row->{filename} . ' with args ' . Dumper($dest_hash));
+					$Log->info('Retrying forward of file ' . $file_args->{file} . ' with args ' . Dumper($dest_hash));
 					if ($dest_hash->{method} eq 'cp'){
 						require Forwarder::Copy;
 						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
@@ -583,17 +584,17 @@ sub _forward {
 					else {
 						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
 					}
-					my $ok = $forwarder->forward({ file => $row->{filename} });
+					my $ok = $forwarder->forward($file_args);
 					if ($ok){
-						push @to_delete, $row;
+						push @to_delete, [ $row->{hash}, $file_args ];
 					}
 					else {
-						$Log->error('Failed once again to forward file ' . $row->{filename});
+						$Log->error('Failed once again to forward file ' . $file_args->{file});
 					}
 				}
 				
 				# Find any that have failed for too long
-				$query = 'SELECT hash, filename FROM failed_buffers WHERE timestamp < DATE_SUB(NOW(), INTERVAL ? SECOND)';
+				$query = 'SELECT hash, args FROM failed_buffers WHERE timestamp < DATE_SUB(NOW(), INTERVAL ? SECOND)';
 				$sth = $Dbh->prepare($query);
 				my $timeout_seconds = 86400;
 				if ($Conf->{forwarding}->{retry_timeout}){
@@ -601,17 +602,20 @@ sub _forward {
 				}
 				$sth->execute($timeout_seconds);
 				while (my $row = $sth->fetchrow_hashref){
-					$Log->warn('Retry timeout hit of ' . $timeout_seconds . ' seconds, abandoning buffer ' . $row->{filename});
-					push @to_delete, $row;
+					my $file_args = decode_json($row->{args});
+					$Log->warn('Retry timeout hit of ' . $timeout_seconds . ' seconds, abandoning buffer ' . $file_args->{file});
+					$file_args->{preserve} = 1;
+					push @to_delete, [ $row->{hash}, $file_args ];
 				}
 				
-				foreach my $row (@to_delete){
+				foreach my $file_ar (@to_delete){
 					$query = 'DELETE FROM failed_buffers WHERE hash=?';
 					$sth = $Dbh->prepare($query);
-					$sth->execute($row->{hash});
-					move($row->{filename}, $row->{filename} . '_FORWARDING_FAILED');
+					$sth->execute($file_ar->[0]);
+					if ($file_ar->[1]->{preserve}){
+						move($file_ar->[1]->{file}, $file_ar->[1]->{file} . '_FORWARDING_FAILED');
+					}
 				}
-			
 			};
 			if ($@){
 				$Log->error('Child encountered error: ' . $@);
