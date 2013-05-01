@@ -1113,7 +1113,7 @@ validate_config(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate" "validate_config" ; do
+		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "update_syslogng" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate" "validate_config" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
