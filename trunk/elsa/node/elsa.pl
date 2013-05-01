@@ -535,10 +535,13 @@ sub _forward {
 				}
 			
 				# Retry any fails from this or any other session
-				$query = 'SELECT hash, dest, args FROM failed_buffers';
+				$query = 'UPDATE failed_buffers SET pid=? WHERE ISNULL(pid)';
 				$sth = $Dbh->prepare($query);
-				$sth->execute;
-				my @to_delete;
+				$sth->execute($$);
+				$query = 'SELECT hash, dest, args FROM failed_buffers WHERE pid=?';
+				$sth = $Dbh->prepare($query);
+				$sth->execute($$);
+				my @rows;
 				while (my $row = $sth->fetchrow_hashref){
 					my $forwarder;
 					my $dest_hash = decode_json($row->{dest});
@@ -565,7 +568,10 @@ sub _forward {
 					}
 					if (not $found){
 						$Log->warn('Retry destination of ' . $row->{dest} . ' no longer needed, removing retry.');
-						push @to_delete, [ $row->{hash}, $file_args ];
+						$query = 'DELETE FROM failed_buffers WHERE hash=?';
+						my $sth2 = $Dbh->prepare($query);
+						$sth2->execute($row->{hash});
+						$sth2->finish;
 						next;
 					}
 					$Log->info('Retrying forward of file ' . $file_args->{file} . ' with args ' . Dumper($dest_hash));
@@ -586,11 +592,15 @@ sub _forward {
 					}
 					my $ok = $forwarder->forward($file_args);
 					if ($ok){
-						push @to_delete, [ $row->{hash}, $file_args ];
+						$query = 'DELETE FROM failed_buffers WHERE hash=?';
+						my $sth2 = $Dbh->prepare($query);
+						$sth2->execute($row->{hash});
+						$sth2->finish;
 					}
 					else {
 						$Log->error('Failed once again to forward file ' . $file_args->{file});
 					}
+					sleep 1; # sleep here to avoid flooding our upstream receiver
 				}
 				
 				# Find any that have failed for too long
@@ -604,21 +614,23 @@ sub _forward {
 				while (my $row = $sth->fetchrow_hashref){
 					my $file_args = decode_json($row->{args});
 					$Log->warn('Retry timeout hit of ' . $timeout_seconds . ' seconds, abandoning buffer ' . $file_args->{file});
-					$file_args->{preserve} = 1;
-					push @to_delete, [ $row->{hash}, $file_args ];
-				}
-				
-				foreach my $file_ar (@to_delete){
 					$query = 'DELETE FROM failed_buffers WHERE hash=?';
-					$sth = $Dbh->prepare($query);
-					$sth->execute($file_ar->[0]);
-					if ($file_ar->[1]->{preserve}){
-						move($file_ar->[1]->{file}, $file_ar->[1]->{file} . '_FORWARDING_FAILED');
-					}
+					my $sth2 = $Dbh->prepare($query);
+					$sth2->execute($row->{hash});
+					$sth2->finish;
+					move($file_args->{file}, $file_args->{file} . '_FORWARDING_FAILED');
 				}
+				# Remove our lock
+				$query = 'UPDATE failed_buffers SET pid=NULL WHERE pid=?';
+				$sth = $Dbh->prepare($query);
+				$sth->execute($$);
 			};
 			if ($@){
 				$Log->error('Child encountered error: ' . $@);
+				# Remove our lock
+				$query = 'UPDATE failed_buffers SET pid=NULL WHERE pid=?';
+				$sth = $Dbh->prepare($query);
+				$sth->execute($$);
 			}
 			
 			$Log->trace('Child finished');
