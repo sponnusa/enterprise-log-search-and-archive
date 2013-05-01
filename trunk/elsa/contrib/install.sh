@@ -32,6 +32,7 @@ MYSQL_ROOT_USER="root"
 MYSQL_ROOT_PASS=""
 
 # These should be fine
+SPHINX_VER="2.0.5-release"
 EVENTLOG_VER="0.2.12"
 SYSLOG_VER="3.2.4"
 GEOIP_DIR="/usr/share/GeoIP/"
@@ -400,7 +401,7 @@ build_sphinx(){
 	cd $TMP_DIR &&
 	#svn --non-interactive --trust-server-cert --force export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn &&
 	#cd sphinx-svn &&
-	curl http://sphinxsearch.com/files/sphinx-2.0.5-release.tar.gz > sphinx-2.0.5-release.tar.gz &&
+	curl http://sphinxsearch.com/files/sphinx-$SPHINX_VER.tar.gz > sphinx-2.0.5-release.tar.gz &&
 	tar xzvf sphinx-2.0.5-release.tar.gz &&
 	cd sphinx-2.0.5-release &&
 	./configure --enable-id64 "--prefix=$BASE_DIR/sphinx" && make && make install &&
