@@ -597,7 +597,8 @@ source s_bro_smtp_entities { file("/usr/local/bro/logs/current/smtp_entities.log
 source s_bro_ssl { file("/usr/local/bro/logs/current/ssl.log"
 flags(no-parse) program_override("bro_ssl")); };
 
-destination d_elsa { tcp("127.0.0.1" port(514)); };
+# If ELSA is not localhost, set the IP here and uncomment
+#destination d_elsa { tcp("remote.elsa.host.ip" port(514)); };
 
 log { source(s_bro_conn); destination(d_elsa); };
 log { source(s_bro_http); destination(d_elsa); };
