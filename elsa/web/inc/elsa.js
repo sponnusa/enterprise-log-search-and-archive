@@ -1247,6 +1247,17 @@ YAHOO.ELSA.Results = function(){
 		oColumns.push({ key:'_fields', label:'Fields', sortable:true, formatter:this.formatFields }); //formatter adds highlights
 		oColumns.push({ key:'_orderby', hidden:true, sortable:true });
 		
+		// If our result set doesn't have a timestamp, delete it to avoid a render problem for the column
+		if (p_oResults.results.length && !p_oResults.results[0].timestamp){
+			delete oFields.timestamp;
+			for (var i in oColumns){
+				if (oColumns[i].key == 'timestamp'){
+					oColumns.splice(i,1);
+					break;
+				}
+			}
+		}
+		
 		// DataSource instance
 	    this.dataSource = new YAHOO.util.DataSource(p_oResults);
 	    this.dataSource.maxCacheEntries = 4; //cache these
