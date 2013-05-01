@@ -11,6 +11,7 @@ use Digest::MD5;
 use IO::File;
 use Time::HiRes qw(time);
 use Hash::Merge::Simple qw(merge);
+use File::Path;
 
 use lib qw(../);
 
@@ -401,7 +402,7 @@ sub upload {
 		my $id = $args->{client_ip_address} . '_' . $args->{md5};
 		# make a working dir for these files
 		my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
-		mkdir($working_dir);
+		mkdir($working_dir) or die("Unable to create working_dir $working_dir");
 		$ae->extract( to => $working_dir ) or die($ae->error);
 		my $files = $ae->files;
 		if (scalar @$files > 2){
@@ -416,13 +417,14 @@ sub upload {
 				$self->log->info('Loading programs file ' . $zipped_file);
 				$query = 'LOAD DATA LOCAL INFILE "' . $zipped_file . '" INTO TABLE ' . $syslog_db_name . '.programs';
 				$self->db->do($query);
+				unlink($zipped_file);
 				next;
 			}
 			else {
 				$file = $zipped_file;
 			}
 		}
-		rmdir($working_dir);
+		rmtree($working_dir);
 	}
 	else {
 		$file = $args->{upload}->path;
