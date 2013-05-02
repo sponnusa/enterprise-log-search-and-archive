@@ -33,7 +33,8 @@ MYSQL_ROOT_USER="root"
 MYSQL_ROOT_PASS=""
 
 # These should be fine
-SPHINX_VER="2.0.5-release"
+#SPHINX_VER="2.0.5-release"
+SPHINX_VER="2.1.1-beta"
 EVENTLOG_VER="0.2.12"
 SYSLOG_VER="3.2.4"
 GEOIP_DIR="/usr/share/GeoIP/"
