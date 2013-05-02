@@ -932,7 +932,7 @@ suse_set_apache(){
 		echo "Not changing apache.conf, using local version"
 	else
 		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/vhosts.d/elsa.conf &&
-	}
+	fi
 	# Allow firewall port for apache web server
 	#echo "opening firewall port 80" &&
 	#cp /etc/sysconfig/SuSEfirewall2 /etc/sysconfig/SuSEfirewall2.bak_by_elsa && 
@@ -972,7 +972,7 @@ ubuntu_set_apache(){
 		echo "Not changing apache.conf, using local version"
 	else
 		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/sites-available/elsa
-	}
+	fi
 	
 	# Enable the site
 	a2ensite elsa &&
