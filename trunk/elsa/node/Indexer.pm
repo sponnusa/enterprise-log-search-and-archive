@@ -2295,6 +2295,7 @@ searchd {
         listen = 0.0.0.0:%9\$s
         expansion_limit = 10
         workers = threads
+        dist_threads = %10\$d
 }
 source permanent {
         sql_attr_timestamp = timestamp
@@ -2454,7 +2455,8 @@ EOT
 		$self->conf->get('database/username'), $self->conf->get('database/password'), 
 		$self->conf->get('sphinx/pid_file'), 
 		$self->conf->get('sphinx/mysql_port') ? $self->conf->get('sphinx/mysql_port') : 9306,
-		$self->conf->get('sphinx/port') ? $self->conf->get('sphinx/port') : 9312);
+		$self->conf->get('sphinx/port') ? $self->conf->get('sphinx/port') : 9312,
+		($self->cpu_count * 2));
 
 	
 	my $perm_template = <<EOT
@@ -2506,23 +2508,28 @@ EOT
 	}
 	
 	my $sphinx_port = $self->conf->get('sphinx/agent_port') ? $self->conf->get('sphinx/agent_port') : 9312;
-	my @local_index_arr;
-	for (my $i = 0; $i < $self->cpu_count; $i++){
-		if ($index_groups[$i] and @{ $index_groups[$i] }){
-			push @local_index_arr, "localhost:$sphinx_port:" . join(',', @{ $index_groups[$i] });
-		}
-	}
+#	my @local_index_arr;
+#	for (my $i = 0; $i < $self->cpu_count; $i++){
+#		if ($index_groups[$i] and @{ $index_groups[$i] }){
+#			push @local_index_arr, "localhost:$sphinx_port:" . join(',', @{ $index_groups[$i] });
+#		}
+#	}
 
 	my $timeout = $Timeout * 1000;
 	my $agent_timeout = $Sphinx_agent_query_timeout * 1000;
 
 	$template .= 'index distributed_local {' . "\n" .
-		"\t" . 'type = distributed' . "\n" .
-		"\t" . 'agent_connect_timeout = ' . $timeout . "\n" .
-		"\t" . 'agent_query_timeout = ' . $agent_timeout . "\n";
+		"\t" . 'type = distributed' . "\n";# .
+		#"\t" . 'agent_connect_timeout = ' . $timeout . "\n" .
+		#"\t" . 'agent_query_timeout = ' . $agent_timeout . "\n";
 	
-	foreach my $line (@local_index_arr){
-		$template .= "\t" . 'agent = ' . $line . "\n";
+#	foreach my $line (@local_index_arr){
+#		$template .= "\t" . 'agent = ' . $line . "\n";
+#	}
+
+	for (my $i = 1; $i <= $self->conf->get('num_indexes'); $i++){
+		$template .= "\t" . 'local = ' . $self->_get_index_name('temporary', $i) . "\n" .
+			"\t" . 'local = ' . $self->_get_index_name('permanent', $i) . "\n";
 	}
 	
 	$template .= '}' . "\n";
