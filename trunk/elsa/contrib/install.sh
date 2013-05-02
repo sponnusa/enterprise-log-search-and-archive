@@ -931,7 +931,7 @@ suse_set_apache(){
 	if [ "$USE_LOCAL_APACHE_CONF" = "1" ]; then
 		echo "Not changing apache.conf, using local version"
 	else
-		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/vhosts.d/elsa.conf &&
+		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/vhosts.d/elsa.conf
 	fi
 	# Allow firewall port for apache web server
 	#echo "opening firewall port 80" &&
@@ -1006,7 +1006,7 @@ centos_set_apache(){
 	if [ "$USE_LOCAL_APACHE_CONF" = "1" ]; then
 		echo "Not changing apache.conf, using local version"
 	else
-		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/httpd/conf.d/ZZelsa.conf &&
+		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/httpd/conf.d/ZZelsa.conf
 	fi
 	
 	# Verify that we can write to logs
@@ -1055,7 +1055,7 @@ freebsd_set_apache(){
 	if [ "$USE_LOCAL_APACHE_CONF" = "1" ]; then
 		echo "Not changing apache.conf, using local version"
 	else
-		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /usr/local/etc/$APACHE/Includes/elsa.conf &&
+		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /usr/local/etc/$APACHE/Includes/elsa.conf
 	fi
 	chown -R $WEB_USER "$DATA_DIR/elsa/log"
 	
