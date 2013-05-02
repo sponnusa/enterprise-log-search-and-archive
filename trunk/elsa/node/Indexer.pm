@@ -2293,7 +2293,7 @@ searchd {
         unlink_old = 1
         listen = 0.0.0.0:%8\$s:mysql41
         listen = 0.0.0.0:%9\$s
-        expansion_limit = 10
+        expansion_limit = 128
         workers = threads
         dist_threads = %10\$d
 }
@@ -2326,6 +2326,9 @@ source permanent {
         type = mysql
 }
 index permanent {
+		dict = keywords
+		enable_star = 1
+		min_prefix_len = 1
         charset_table = 0..9, A..Z->a..z, _, a..z, U+A8->U+B8, U+B8, U+C0..U+DF->U+E0..U+FF, U+E0..U+FF, U+2E, U+40, U+2D
         docinfo = inline
         ondisk_dict = 1
@@ -2365,6 +2368,9 @@ source temporary {
         type = mysql
 }
 index temporary {
+		dict = keywords
+		enable_star = 1
+		min_prefix_len = 1
         charset_table = 0..9, A..Z->a..z, _, a..z, U+A8->U+B8, U+B8, U+C0..U+DF->U+E0..U+FF, U+E0..U+FF, U+2E, U+40, U+2D
         docinfo = extern
         ondisk_dict = 0
