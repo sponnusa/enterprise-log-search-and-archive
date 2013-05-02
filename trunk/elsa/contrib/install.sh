@@ -16,6 +16,7 @@ TMP_DIR="/tmp"
 LOCAL_SYSLOG_CONF="/etc/elsa_syslog-ng.conf"
 # Set this in /etc/elsa_vars.sh to be "1" if you want to skip updating the syslog-ng.conf file entirely
 USE_LOCAL_SYSLOG_CONF="0"
+USE_LOCAL_APACHE_CONF="0"
 
 # Version to download
 VERSION=HEAD
@@ -401,9 +402,9 @@ build_sphinx(){
 	cd $TMP_DIR &&
 	#svn --non-interactive --trust-server-cert --force export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn &&
 	#cd sphinx-svn &&
-	curl http://sphinxsearch.com/files/sphinx-$SPHINX_VER.tar.gz > sphinx-2.0.5-release.tar.gz &&
-	tar xzvf sphinx-2.0.5-release.tar.gz &&
-	cd sphinx-2.0.5-release &&
+	curl http://sphinxsearch.com/files/sphinx-$SPHINX_VER.tar.gz > sphinx-$SPHINX_VER.tar.gz &&
+	tar xzvf sphinx-$SPHINX_VER.tar.gz &&
+	cd sphinx-$SPHINX_VER &&
 	./configure --enable-id64 "--prefix=$BASE_DIR/sphinx" && make && make install &&
 	mkdir -p $BASE_DIR/etc &&
 	touch "$BASE_DIR/etc/sphinx_stopwords.txt"
@@ -926,8 +927,12 @@ mk_web_dirs(){
 
 suse_set_apache(){
 	# For Apache, locations vary, but this is the gist:
-	cpanm Plack::Handler::Apache2 &&
-	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/vhosts.d/elsa.conf &&
+	cpanm Plack::Handler::Apache2
+	if [ "$USE_LOCAL_APACHE_CONF" = "1" ]; then
+		echo "Not changing apache.conf, using local version"
+	else
+		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/vhosts.d/elsa.conf &&
+	}
 	# Allow firewall port for apache web server
 	#echo "opening firewall port 80" &&
 	#cp /etc/sysconfig/SuSEfirewall2 /etc/sysconfig/SuSEfirewall2.bak_by_elsa && 
@@ -962,8 +967,13 @@ ubuntu_set_apache(){
 			echo "PerlPostConfigRequire /etc/apache2/elsa_startup.pl" >> /etc/apache2/mods-available/perl.conf;
 		fi
 	fi
-	cpanm Plack::Handler::Apache2 &&
-	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/sites-available/elsa &&
+	cpanm Plack::Handler::Apache2
+	if [ "$USE_LOCAL_APACHE_CONF" = "1" ]; then
+		echo "Not changing apache.conf, using local version"
+	else
+		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/apache2/sites-available/elsa
+	}
+	
 	# Enable the site
 	a2ensite elsa &&
 	a2dissite default &&
@@ -992,8 +1002,12 @@ centos_set_apache(){
 	if [ $? -ne 0 ]; then
 		echo "PerlPostConfigRequire /etc/httpd/conf/elsa_startup.pl" >> /etc/httpd/conf.d/perl.conf;
 	fi
-	cpanm Plack::Handler::Apache2 &&
-	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/httpd/conf.d/ZZelsa.conf &&
+	cpanm Plack::Handler::Apache2
+	if [ "$USE_LOCAL_APACHE_CONF" = "1" ]; then
+		echo "Not changing apache.conf, using local version"
+	else
+		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /etc/httpd/conf.d/ZZelsa.conf &&
+	fi
 	
 	# Verify that we can write to logs
 	chown -R $WEB_USER "$DATA_DIR/elsa/log"
@@ -1037,8 +1051,12 @@ freebsd_set_apache(){
 		echo "Enabling mod_perl"
 		echo "LoadModule perl_module libexec/$APACHE/mod_perl.so" >> /usr/local/etc/$APACHE/httpd.conf
 	fi
-	cpanm Plack::Handler::Apache2 &&
-	cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /usr/local/etc/$APACHE/Includes/elsa.conf &&
+	cpanm Plack::Handler::Apache2
+	if [ "$USE_LOCAL_APACHE_CONF" = "1" ]; then
+		echo "Not changing apache.conf, using local version"
+	else
+		cat "$BASE_DIR/elsa/web/conf/apache_site.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > /usr/local/etc/$APACHE/Includes/elsa.conf &&
+	fi
 	chown -R $WEB_USER "$DATA_DIR/elsa/log"
 	
 	# Ensure that Apache has the right prefork settings
