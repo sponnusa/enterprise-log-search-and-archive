@@ -24,7 +24,7 @@ sub BUILDARGS {
 	
 	$params{ua} = new LWP::UserAgent(agent => 'ELSA Log Relay/0.1', timeout => 10);
 	
-	my $timeout = $params{timeout} ? $params{timeout} : 0;
+	my $timeout = $params{timeout} ? $params{timeout} : 60;
 	my %ssl_opts = (Timeout => $timeout);
 	foreach (qw(ca_file cert_file key_file verify_mode)){
 		if (exists $params{$_}){
