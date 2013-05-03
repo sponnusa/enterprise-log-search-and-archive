@@ -637,6 +637,10 @@ sub _forward {
 			exit; # done with child
 		}
 	}
+	elsif ($is_ops){
+		$Log->trace('Not forwarding ops file ' . $args->{file} . ', deleting');
+		unlink($args->{file});
+	}
 }
 
 sub _realtime_process {

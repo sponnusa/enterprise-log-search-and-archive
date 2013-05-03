@@ -1235,7 +1235,7 @@ sub load_records {
 	
 	my ($query, $sth);	
 	unless (-f $args->{file}){
-		$self->log->error('Invalid file: ' . Dumper($args));
+		$self->log->error('Nonexistent file: ' . Dumper($args));
 		$query = 'DELETE FROM buffers WHERE filename=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{file});
