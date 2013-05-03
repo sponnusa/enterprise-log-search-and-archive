@@ -5257,8 +5257,15 @@ YAHOO.ELSA.getPreference = function(p_sName, p_sType){
 	return null;
 }
 
-YAHOO.ELSA.getStream = function(p_sType, p_aArgs, p_oRecord){
+YAHOO.ELSA.getStream = function(p_sType, p_aArgs, p_a){
+	var p_oRecord = p_a;
+	var sStreamdbUrl = YAHOO.ELSA.streamdbUrl;
+	if (!(p_a instanceof YAHOO.widget.Record)){
+		p_oRecord = p_a[0];
+		sStreamdbUrl = p_a[1];
+	}
 	logger.log('p_oRecord', p_oRecord);
+	logger.log('p_aArgs', p_aArgs);
 	
 	if (!p_oRecord){
 		YAHOO.ELSA.Error('Need a record selected to get pcap for.');
@@ -5292,8 +5299,8 @@ YAHOO.ELSA.getStream = function(p_sType, p_aArgs, p_oRecord){
 	oEnd.setTime((p_oRecord.getData().timestamp + 60) * 1000);
 	sQuery += '&start=' + getISODateTime(oStart) + '&end=' + getISODateTime(oEnd);
 	
-	logger.log('getting stream url: ' + YAHOO.ELSA.streamdbUrl + '/?' + sQuery);
-	var oPcapWindow = window.open(YAHOO.ELSA.streamdbUrl + '/?' + sQuery);
+	logger.log('getting stream url: ' + sStreamdbUrl + '/?' + sQuery);
+	var oPcapWindow = window.open(sStreamdbUrl + '/?' + sQuery);
 }
 
 YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
@@ -5514,10 +5521,19 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 			});
 		}
 		else {
-			aPluginMenuSources.push({
-				text: sPluginName,
-				onclick: { fn: YAHOO.ELSA[sPluginName], obj:p_oRecord }
-			});
+			aMatches = sPluginName.match(/^getStream_(.+)/);
+			if (aMatches && aMatches.length){
+				aPluginMenuSources.push({
+					text: sPluginName,
+					onclick: { fn: YAHOO.ELSA.getStream, obj:[p_oRecord,aMatches[1]] }
+				});
+			}
+			else {
+				aPluginMenuSources.push({
+					text: sPluginName,
+					onclick: { fn: YAHOO.ELSA[sPluginName], obj:p_oRecord }
+				});
+			}
 		}
 	}
 	var fnSort = function(a,b){ return a.text.charCodeAt(0) < b.text.charCodeAt(0) };
