@@ -1249,7 +1249,6 @@ YAHOO.ELSA.Results = function(){
 		
 		// If our result set doesn't have a timestamp, delete it to avoid a render problem for the column
 		if (p_oResults.results.length && !p_oResults.results[0].timestamp){
-			delete oFields.timestamp;
 			for (var i in oColumns){
 				if (oColumns[i].key == 'timestamp'){
 					oColumns.splice(i,1);
@@ -1360,6 +1359,16 @@ YAHOO.ELSA.Results = function(){
 		}
 		
 		logger.log(p_oResults.grid_results);
+		
+		// If our result set doesn't have a timestamp, delete it to avoid a render problem for the column
+		if (p_oResults.results.length && !p_oResults.results[0].timestamp){
+			for (var i in aColumns){
+				if (aColumns[i].key == 'timestamp'){
+					aColumns.splice(i,1);
+					break;
+				}
+			}
+		}
 		
 		// DataSource instance
 	    this.dataSource = new YAHOO.util.DataSource(p_oResults);
