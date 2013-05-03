@@ -428,6 +428,12 @@ sub upload {
 	}
 	else {
 		$file = $args->{upload}->path;
+		$file =~ /\/([^\/]+)$/;
+		my $shortname = $1;
+		my $destfile = $self->conf->get('buffer_dir') . '/' . $shortname;
+		move($file, $destfile) or die($!);
+		$self->log->debug('moved file ' . $file . ' to ' . $destfile);
+		$file = $destfile;
 	}
 	$args->{size} = -s $file;
 	
