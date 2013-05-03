@@ -476,18 +476,6 @@ mk_node_dirs(){
 		sh /etc/init.d/apparmor reload
 	fi
 	
-	# Set SELinux settings for the auxilliary MySQL dir if necessary
-	if [ -f /usr/sbin/selinuxenabled ]; then
-		/usr/sbin/selinuxenabled
-		if [ $? -eq 0 ]; then
-			if [ -f /usr/bin/chcon ]; then
-				chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
-			else
-				echo "WARNING: chcon SELinux utility not found!"
-			fi
-		fi
-	fi
-	
 	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
 		mkfifo $DATA_DIR/elsa/tmp/realtime;
 		UPDATE_OK=$?
@@ -501,6 +489,21 @@ mk_node_dirs(){
 	fi
 	# Anyone can send logs to this
 	chmod 666 $DATA_DIR/elsa/tmp/import;
+	
+	# Set SELinux settings for the auxilliary MySQL dir if necessary
+	if [ -f /usr/sbin/selinuxenabled ]; then
+		/usr/sbin/selinuxenabled
+		if [ $? -eq 0 ]; then
+			if [ -f /usr/bin/chcon ]; then
+				chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
+				chcon -R -t httpd_tmpfs_t $DATA_DIR/elsa/tmp
+			else
+				echo "WARNING: chcon SELinux utility not found!"
+			fi
+		fi
+	fi
+	
+	
 	
 	return $UPDATE_OK
 }
@@ -1034,6 +1037,7 @@ centos_set_apache(){
 	
 	# Set SELinux
 	semanage fcontext -a -t httpd_log_t "$DATA_DIR(/.*)?" &&
+	semanage fcontext -a -t httpd_tmpfs_t "$DATA_DIR/elsa/tmp(/.*)?" &&
 	restorecon -r -v $DATA_DIR
 	
 	return $?
