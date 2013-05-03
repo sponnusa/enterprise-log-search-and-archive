@@ -565,7 +565,7 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE buffers CHANGE COLUMN pid pid INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE tables CHANGE COLUMN table_locked_by table_locked_by INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes CHANGE COLUMN locked_by locked_by INT UNSIGNED' > /dev/null 2>&1
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE fields ADD UNIQUE KEY (field, field_type)' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE fields ADD UNIQUE KEY `field` (field, field_type)' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("domain", "string", "QSTRING")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_name", "string", "QSTRING")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_path", "string", "QSTRING")'
@@ -926,7 +926,7 @@ mk_web_dirs(){
 	mkdir -p "$DATA_DIR/elsa/log" &&
 	touch "$DATA_DIR/elsa/log/web.log" &&
 	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
-	chown -R $WEB_USER "$DATA_DIR/elsa/buffers"
+	chown -R $WEB_USER "$DATA_DIR/elsa/tmp/buffers"
 	return $?
 }
 
@@ -1017,10 +1017,16 @@ centos_set_apache(){
 	
 	# Verify that we can write to logs
 	chown -R $WEB_USER "$DATA_DIR/elsa/log"
-	echo "Enabling SELINUX policies for Apache..."
-	chcon --reference=/var/log/httpd -R $DATA_DIR
-	setsebool -P httpd_can_network_connect on
-	setsebool -P httpd_can_network_connect_db on
+	if [ -f /usr/sbin/selinuxenabled ]; then
+		echo "Enabling SELINUX policies for Apache..."
+		chcon --reference=/var/log/httpd -R $DATA_DIR
+		setsebool -P httpd_can_network_connect on
+		setsebool -P httpd_can_network_connect_db on
+		semanage fcontext -a -t httpd_log_t "$DATA_DIR(/.*)?" &&
+		semanage fcontext -a -t httpd_tmpfs_t "$DATA_DIR/elsa/tmp(/.*)?" &&
+		restorecon -r -v $DATA_DIR &&
+		echo "type=AVC msg=audit(1367598968.391:231376): avc:  denied  { sendto } for  pid=20032 comm="httpd" path="/data/elsa/tmp/ops" scontext=unconfined_u:system_r:httpd_t:s0 tcontext=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 tclass=unix_dgram_socket" | audit2allow -M write_to_socket && semodule -i write_to_socket.pp
+	fi	
 	
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/etc/httpd/conf/httpd.conf"
@@ -1034,11 +1040,6 @@ centos_set_apache(){
 	#cp /etc/sysconfig/iptables /etc/sysconfig/iptables.bak.elsa &&
 	#cat /etc/sysconfig/iptables.bak.elsa | sed -e "s|-A INPUT -i lo -j ACCEPT|-A INPUT -i lo -j ACCEPT\n-A INPUT -m state --state NEW -m tcp -p tcp --dport 80 -j ACCEPT|" > /etc/sysconfig/iptables &&
 	#service iptables restart
-	
-	# Set SELinux
-	semanage fcontext -a -t httpd_log_t "$DATA_DIR(/.*)?" &&
-	semanage fcontext -a -t httpd_tmpfs_t "$DATA_DIR/elsa/tmp(/.*)?" &&
-	restorecon -r -v $DATA_DIR
 	
 	return $?
 }
