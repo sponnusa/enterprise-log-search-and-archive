@@ -2596,7 +2596,8 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			{text:'Export Results...', value:'exportResults', onclick: { fn: YAHOO.ELSA.exportResults, obj:this.id }},
 			{text:'Alert or schedule...', value:'schedule', onclick:{ fn:YAHOO.ELSA.scheduleQuery, obj:this.results.qid}},
 			{text:'Send to connector...', value:'sendToConnector', onclick:{ fn:YAHOO.ELSA.sendToConnector, obj:this.id}},
-			{text:'Add to Dashboard...', value:'addToDashboard', onclick:{ fn:YAHOO.ELSA.addQueryToChart}}
+			{text:'Add to Dashboard...', value:'addToDashboard', onclick:{ fn:YAHOO.ELSA.addQueryToChart}},
+			{text:'Save Search...', value:'saveSearch', onclick:{ fn:YAHOO.ELSA.saveSearch, obj:this.id}}
 		];
 		
 		var oMenuButtonCfg = {
