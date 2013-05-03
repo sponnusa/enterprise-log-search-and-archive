@@ -4450,7 +4450,7 @@ sub _archive_query {
 		my @table_arr;
 		foreach my $table (@{ $node_info->{tables}->{tables} }){
 			if ($q->start and $q->end){
-				if ($table->{table_type} eq 'archive' and
+				if (($table->{table_type} eq 'archive' or $table->{table_type} eq 'import') and
 					(($q->start >= $table->{start_int} and $q->start <= $table->{end_int})
 					or ($q->end >= $table->{start_int} and $q->end <= $table->{end_int})
 					or ($q->start <= $table->{start_int} and $q->end >= $table->{end_int})
