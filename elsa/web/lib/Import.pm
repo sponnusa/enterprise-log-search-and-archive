@@ -18,9 +18,21 @@ use lib $FindBin::Bin;
 use Module::Pluggable sub_name => 'import_plugins', require => 1, search_path => [ qw( Importer ) ];
 # For some very dumb reason, a mod_perl/Apache bug is very occasionally causing Module::Pluggable to fail without these
 #   specific require statements per-plugin.
-require Importer::Unformatted;
-require Importer::Syslog;
-require Importer::CSV;
+#require Importer::Unformatted;
+#require Importer::Syslog;
+#require Importer::CSV;
+
+my $absolute_path = $INC{'Import.pm'};
+$absolute_path =~ s/Import\.pm$/\/Importer/;
+opendir(DIR, $absolute_path);
+while (my $file = readdir(DIR)){
+	next unless $file =~ /\.pm$/;
+	eval { require 'Importer/' . $file; };
+	if ($@){
+		warn('Unable to include Importer/' . $file . ': ' . $@);
+	}
+}
+closedir(DIR);
 
 has 'format' => (is => 'rw', isa => 'Str', required => 1, default => '0');
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => sub { 'Unnamed import' });
