@@ -922,7 +922,8 @@ mk_web_dirs(){
 	# Make data directories on node
 	mkdir -p "$DATA_DIR/elsa/log" &&
 	touch "$DATA_DIR/elsa/log/web.log" &&
-	chown -R $WEB_USER "$DATA_DIR/elsa/log"
+	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
+	chown -R $WEB_USER "$DATA_DIR/elsa/buffers"
 	return $?
 }
 
@@ -976,6 +977,7 @@ ubuntu_set_apache(){
 	fi
 	
 	# Enable the site
+	a2enmod perl &&
 	a2ensite elsa &&
 	a2dissite default &&
 	a2enmod rewrite &&
