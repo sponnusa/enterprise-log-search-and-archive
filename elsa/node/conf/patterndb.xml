@@ -99,7 +99,31 @@
 			<rule provider="ELSA" class='3' id='3'>
 				<patterns>
 					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
+					<pattern>access-list @ESTRING:: @permitted @ESTRING:i0: @@ESTRING:s0:/@@ESTRING:i1:(@@NUMBER:i2:@) -&gt; @ESTRING:s1:/@@ESTRING:i3:(@@NUMBER:i4:@) hit-cnt @NUMBER:i5:@</pattern>
 				</patterns>
+				<examples>
+					<example>
+						<test_message program="%ASA-7-106100">access-list access_out permitted tcp INSIDE/10.221.221.21(52427) -&gt; OUTSIDE/10.222.222.22(80) hit-cnt 1 first hit [0x487d4278, 0x0]</test_message>
+						<test_value name="i0">tcp</test_value>
+						<test_value name="i1">10.221.221.21</test_value>
+						<test_value name="i2">52427</test_value>
+						<test_value name="i3">10.222.222.22</test_value>
+						<test_value name="i4">80</test_value>
+						<test_value name="i5">1</test_value>
+						<test_value name="s0">INSIDE</test_value>
+						<test_value name="s1">OUTSIDE</test_value>
+					</example>
+					<example>
+						<test_message program="%ASA-6-302013">Built inbound TCP connection 740617324 for inside:10.21.21.221/4087 (10.21.21.221/4087) to CWWAN:172.17.6.80/8192 (172.17.6.80/8192)</test_message>
+						<test_value name="i0">tcp</test_value>
+						<test_value name="i1">10.221.221.21</test_value>
+						<test_value name="i2">4087</test_value>
+						<test_value name="i3">172.17.6.80</test_value>
+						<test_value name="i4">8192</test_value>
+						<test_value name="s0">INSIDE</test_value>
+						<test_value name="s1">OUTSIDE</test_value>
+					</example>
+				</examples>
 			</rule>
 			<rule provider="ELSA" class='7' id='7'>
 				<patterns>
