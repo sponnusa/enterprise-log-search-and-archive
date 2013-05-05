@@ -1312,6 +1312,8 @@ sub _resolve_macro {
 	my $self = shift;
 	my $macro = shift;
 	
+	my ($query, $sth);
+	
 	$macro = lc($macro);
 	
 	# Create whois-based built-ins
@@ -1329,7 +1331,15 @@ sub _resolve_macro {
 		}
 	}
 		
-	if ($self->user->preferences->{tree}->{saved_query} and 
+	if ($self->user->username eq 'system'){
+		# Try to find macro in available local prefs
+		$query = 'SELECT * FROM preferences WHERE type=? AND name=? ORDER BY id DESC LIMIT 1';
+		$sth = $self->db->prepare($query);
+		$sth->execute('saved_query', $macro);
+		my $row = $sth->fetchrow_hashref;
+		return $row ? $row->{value} : '';
+	}
+	elsif ($self->user->preferences and $self->user->preferences->{tree}->{saved_query} and 
 		$self->user->preferences->{tree}->{saved_query}->{$macro}){
 		return $self->user->preferences->{tree}->{saved_query}->{$macro};
 	}
