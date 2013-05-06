@@ -987,6 +987,7 @@ sub get_form_params {
 			totals => $self->node_info->{totals},
 			livetail_poll_interval => $Livetail_poll_interval,
 			preferences => $user->preferences,
+			version => $self->node_info->{version},
 		};
 		
 		# You can change the default start time displayed to web users by changing this config setting

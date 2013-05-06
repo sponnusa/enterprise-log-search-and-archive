@@ -939,6 +939,12 @@ mk_web_dirs(){
 	return $?
 }
 
+set_version(){
+	# set ELSA version
+	svn info http://enterprise-log-search-and-archive.googlecode.com/svn/ | grep "Last Changed" | sed -e "s/Last Changed //g" | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; my ($k,$v) = split(/:/, $_); next unless $k and $v; $c->set("version/$k", $v); } $c->save;'
+	echo $SPHINX_VER | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; exit unless $_; $c->set("version/Sphinx", $_); } $c->save;'
+}
+
 suse_set_apache(){
 	# For Apache, locations vary, but this is the gist:
 	cpanm Plack::Handler::Apache2
@@ -993,7 +999,7 @@ ubuntu_set_apache(){
 	a2ensite elsa &&
 	a2dissite default &&
 	a2enmod rewrite &&
-	chown -R $WEB_USER "$DATA_DIR/elsa/log" &&
+	chown -R $WEB_USER "$DATA_DIR/elsa/log"
 	
 	# Ensure that Apache has the right prefork settings
 	APACHE_CONF="/etc/apache2/apache2.conf"
@@ -1161,11 +1167,11 @@ if [ "$INSTALL" = "node" ]; then
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_web_installed" $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate" "validate_config" ; do
+		for FUNCTION in "check_web_installed" $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate" "set_version" "validate_config" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql" "validate_config" $DISTRO"_set_apache"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql" "set_version" "validate_config" $DISTRO"_set_apache"; do
 			exec_func $FUNCTION
 		done
 	else
