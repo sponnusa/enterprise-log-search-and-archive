@@ -493,14 +493,11 @@ mk_node_dirs(){
 	# Set SELinux settings for the auxilliary MySQL dir if necessary
 	if [ -f /usr/sbin/selinuxenabled ]; then
 		if [ -f /usr/bin/chcon ]; then
-			chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
 			chcon -R -t httpd_tmpfs_t $DATA_DIR/elsa/tmp
 		else
 			echo "WARNING: chcon SELinux utility not found!"
 		fi
 	fi
-	
-	
 	
 	return $UPDATE_OK
 }
@@ -540,6 +537,16 @@ set_node_mysql(){
 	
 	# Install mysql schema
 	service $MYSQL_SERVICE_NAME start
+	
+	# Set SELinux settings for the auxilliary MySQL dir if necessary
+	if [ -f /usr/sbin/selinuxenabled ]; then
+		if [ -f /usr/bin/chcon ]; then
+			chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
+		else
+			echo "WARNING: chcon SELinux utility not found!"
+		fi
+	fi
+	
 	mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create $MYSQL_NODE_DB && mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog_data && 
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "'$MYSQL_USER'"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "'$MYSQL_USER'"@"%" IDENTIFIED BY "'$MYSQL_PASS'"' &&
