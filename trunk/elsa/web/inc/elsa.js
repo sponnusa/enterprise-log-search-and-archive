@@ -666,7 +666,15 @@ YAHOO.ELSA.Query = function(){
 			'day': 1,
 			'any.day': 1,
 			'node': 1,
-			'any.node': 1
+			'any.node': 1,
+			'import_name': 1,
+			'any.import_name': 1,
+			'import_date': 1,
+			'any.import_date': 1,
+			'import_id': 1,
+			'any.import_id': 1,
+			'import_description': 1,
+			'any.import_description': 1
 		};
 		if (oMetas[p_sFQDNField]){
 			return this.validateMeta(p_sFQDNField, oMetas[p_sFQDNField]);
