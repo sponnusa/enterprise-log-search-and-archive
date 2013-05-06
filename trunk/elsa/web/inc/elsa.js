@@ -5043,7 +5043,7 @@ YAHOO.ELSA.getSavedSearches = function(){
 			};
 			var oConn = YAHOO.util.Connect.asyncRequest('POST', 'Query/preference', removeCallback,
 				'action=remove&id=' + p_oData.id);
-		}, oData, 'Really delete dashboard?');
+		}, oData, 'Really delete saved search?');
 	}
 	
 	var formatMenu = function(elLiner, oRecord, oColumn, oData){
