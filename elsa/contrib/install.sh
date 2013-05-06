@@ -492,14 +492,11 @@ mk_node_dirs(){
 	
 	# Set SELinux settings for the auxilliary MySQL dir if necessary
 	if [ -f /usr/sbin/selinuxenabled ]; then
-		/usr/sbin/selinuxenabled
-		if [ $? -eq 0 ]; then
-			if [ -f /usr/bin/chcon ]; then
-				chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
-				chcon -R -t httpd_tmpfs_t $DATA_DIR/elsa/tmp
-			else
-				echo "WARNING: chcon SELinux utility not found!"
-			fi
+		if [ -f /usr/bin/chcon ]; then
+			chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
+			chcon -R -t httpd_tmpfs_t $DATA_DIR/elsa/tmp
+		else
+			echo "WARNING: chcon SELinux utility not found!"
 		fi
 	fi
 	
