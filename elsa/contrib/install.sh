@@ -942,7 +942,7 @@ mk_web_dirs(){
 set_version(){
 	# set ELSA version
 	svn info http://enterprise-log-search-and-archive.googlecode.com/svn/ | grep "Last Changed" | sed -e "s/Last Changed //g" | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; my ($k,$v) = split(/:/, $_); next unless $k and $v; $c->set("version/$k", $v); } $c->write;'
-	echo $SPHINX_VER | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; exit unless $_; $c->set("version/Sphinx", $_); } $c->write;'
+	$BASE_DIR/sphinx/bin/searchd --help | head -1 | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; exit unless $_; $c->set("version/Sphinx", $_); } $c->write;'
 }
 
 suse_set_apache(){
