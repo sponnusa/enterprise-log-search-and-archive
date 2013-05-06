@@ -655,6 +655,13 @@ YAHOO.ELSA.main = function () {
 							onclick: {
 								fn: YAHOO.ELSA.getPreferences
 							}
+						},
+						{
+							text: 'About',
+							helptext: 'View ELSA version',
+							onclick: {
+								fn: YAHOO.ELSA.getVersion
+							}
 						}
 					]
 				}

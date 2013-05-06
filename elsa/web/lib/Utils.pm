@@ -514,6 +514,10 @@ sub _get_node_info {
 		}
 	}
 	
+	if ($self->conf->get('version')){
+		$ret->{version} = $self->conf->get('version');
+	}
+	
 	$self->log->trace('get_node_info finished in ' . $ret->{took});
 	
 	return $ret;

@@ -3845,6 +3845,45 @@ YAHOO.ELSA.getSavedResults = function(){
 	//oPanel.panel.hideEvent.subscribe(function(){ logger.log('panel hidden', arguments); });
 };
 
+YAHOO.ELSA.getVersion = function(){
+	// Build the panel
+	var oPanel = new YAHOO.ELSA.Panel('get_version');
+	oPanel.panel.setHeader('About ELSA');
+		
+	oPanel.panel.renderEvent.subscribe(function(){
+		if (YAHOO.ELSA.formParams.version){
+			if (typeof(YAHOO.ELSA.formParams.version) == 'object'){
+				var oTable = document.createElement('table');
+				var oTbody = document.createElement('tbody');
+				oTable.appendChild(oTbody);
+				for (var sName in YAHOO.ELSA.formParams.version){
+					var oTr = document.createElement('tr');
+					oTbody.appendChild(oTr);
+					var oTd = document.createElement('td');
+					oTd.innerHTML = sName;
+					oTr.appendChild(oTd);
+					oTd = document.createElement('td');
+					oTd.innerHTML = YAHOO.ELSA.formParams.version[sName];
+					oTr.appendChild(oTd);
+				}
+				oPanel.panel.body.appendChild(oTable);
+			}
+			else {
+				var oDiv = document.createElement('div');
+				oDiv.innerHTML = YAHOO.ELSA.formParams.version;
+				oPanel.panel.body.appendChild(oDiv);
+			}
+		}
+		else {
+			var oDiv = document.createElement('div');
+			oDiv.innerHTML = 'Not set';
+			oPanel.panel.body.appendChild(oDiv);
+		}
+	});
+	oPanel.panel.render();
+	oPanel.panel.show();
+}
+
 YAHOO.ELSA.getPreferences = function(){
 	var oDataTable = 'initial', oInput;
 	
