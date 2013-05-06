@@ -824,13 +824,18 @@ There is currently no threshold for number of alerts sent, so you will get an em
 To integrate with a pcap server like OpenFPC or StreamDB, set these config params in elsa_web.conf:
 
 || streamdb_url || StreamDB base URL ||
+|| streamdb_urls || Hash of hashes with StreamDB nodes and networks they cover ||
 || pcap_url || OpenFPC base URL ||
 || block_url || Base URL for your custom blocking app ||
 
 This example config:
 {{{
 {
-  "streamdb_url": "http://streamdb",
+  #"streamdb_url": "http://streamdb",
+  "streamdb_urls": {
+    "192.168.1.1": { "start": "10.1.0.0", "end": "10.1.255.255" },
+    "192.168.1.2": { "start": "10.2.0.0", "end": "10.2.255.255" }
+  },
   "pcap_url": "http://myopenfpc",
   "block_url": "http://blackhole"
 }
