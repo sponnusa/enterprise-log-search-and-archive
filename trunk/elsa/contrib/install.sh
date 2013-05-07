@@ -471,9 +471,12 @@ mk_node_dirs(){
 	if [ -f /etc/apparmor.d/usr.sbin.mysqld ]; then
 		echo "Updating apparmor config for MySQL dir $DATA_DIR/elsa/mysql/";
 		mkdir -p /etc/apparmor.d/local
-		echo "$DATA_DIR/elsa/mysql/ r,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
-		echo "$DATA_DIR/elsa/mysql/** rwk,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
-		sh /etc/init.d/apparmor reload
+		grep "$DATA_DIR/elsa/mysql/" /etc/apparmor.d/local/usr.sbin.mysqld;
+		if [ $? -ne 0 ]; then
+			echo "$DATA_DIR/elsa/mysql/ r,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
+			echo "$DATA_DIR/elsa/mysql/** rwk,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
+			sh /etc/init.d/apparmor reload
+		fi
 	fi
 	
 	if [ ! -p $DATA_DIR/elsa/tmp/realtime ]; then
@@ -561,6 +564,15 @@ set_node_mysql(){
 
 update_node_mysql(){
 	allow_mysql_symbolic_links
+	
+	# Set SELinux settings for the auxilliary MySQL dir if necessary
+	if [ -f /usr/sbin/selinuxenabled ]; then
+		if [ -f /usr/bin/chcon ]; then
+			chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
+		else
+			echo "WARNING: chcon SELinux utility not found!"
+		fi
+	fi
 	
 	echo "Updating MySQL..."
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE buffers ADD COLUMN start INT UNSIGNED' > /dev/null 2>&1
@@ -1159,7 +1171,7 @@ if [ "$INSTALL" = "node" ]; then
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "get_elsa" "update_node_mysql" "update_syslogng" "validate_config" "restart_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "mk_node_dirs" "get_elsa" "update_node_mysql" "update_syslogng" "validate_config" "restart_elsa"; do
 			exec_func $FUNCTION
 		done
 	else
