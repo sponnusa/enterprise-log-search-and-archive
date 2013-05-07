@@ -426,7 +426,7 @@ build_syslogng(){
 			# Copy the syslog-ng.conf
 			echo "Creating elsa_syslog-ng.conf"
 			if [ \! -f /etc/elsa_local_patterndb.xml ]; then
-				echo "<patterndb version='3'"></patterndb>" > /etc/elsa_local_patterndb.xml
+				echo "<patterndb version='3'></patterndb>" > /etc/elsa_local_patterndb.xml
 			fi
 			cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "/usr/local/etc/elsa_syslog-ng.conf" &&
 			echo "@include \"elsa_syslog-ng.conf\"" >> /usr/local/etc/syslog-ng.conf &&
@@ -642,7 +642,7 @@ update_node_mysql(){
 update_syslogng(){
 	echo "Updating syslog-ng.conf..."
 	if [ \! -f /etc/elsa_local_patterndb.xml ]; then
-		echo "<patterndb version='3'"></patterndb>" > /etc/elsa_local_patterndb.xml
+		echo "<patterndb version='3'></patterndb>" > /etc/elsa_local_patterndb.xml
 	fi
 	# Copy the syslog-ng.conf
 	if [ -f $LOCAL_SYSLOG_CONF ]; then
