@@ -620,6 +620,16 @@
 					<pattern>@QSTRING:s0:[]@ [@ESTRING::]@ @ESTRING:s1: [Classification@:@QSTRING:s2: ]@ [Priority: @NUMBER:i0:@]: @QSTRING:s3:&lt;&gt;@ @QSTRING:i1:{}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
 				</patterns>
 			</rule>
+			<rule class='8' id='8'>
+				<!--via barnyard2 using config to include year with date extracted-->
+				<patterns>
+					<pattern>@NUMBER:pdb_extracted_month:@/@NUMBER:pdb_extracted_day:@/@NUMBER:pdb_extracted_shortyear:@-@NUMBER:pdb_extracted_hour:@:@NUMBER:pdb_extracted_minute:@:@NUMBER:pdb_extracted_second:@.@NUMBER::@@ESTRING::[**]@ @QSTRING:s0:[]@ @ESTRING:s1: [**] [@Classification:@ESTRING:s2:] @[Priority: @NUMBER:i0:@] {@ESTRING:i1:}@ @IPv4:i2:@:@NUMBER:i3:@ -&gt; @IPv4:i4:@:@NUMBER:i5:@</pattern>
+					<pattern>@NUMBER:pdb_extracted_month:@/@NUMBER:pdb_extracted_day:@/@NUMBER:pdb_extracted_shortyear:@-@NUMBER:pdb_extracted_hour:@:@NUMBER:pdb_extracted_minute:@:@NUMBER:pdb_extracted_second:@.@NUMBER::@@ESTRING::[**]@ @QSTRING:s0:[]@ @ESTRING:s1: [**] [@Classification:@ESTRING:s2:] @[Priority: @NUMBER:i0:@] {@ESTRING:i1:}@ @IPv4:i2:@ -&gt; @IPv4:i4:@</pattern>
+				</patterns>	
+				<values>
+					<value name="pdb_extracted_timestamp">20$pdb_extracted_shortyear-$pdb_extracted_month-$pdb_extracted_day $pdb_extracted_hour:$pdb_extracted_minute:$pdb_extracted_second</value>
+				</values>
+			</rule>
 			<rule provider="C Martinez" class='8' id='8'>
 				<!-- Patterns for forwarded messages from fast.log which contain [**]-->
 				<patterns>

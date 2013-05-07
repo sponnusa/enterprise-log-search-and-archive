@@ -1263,7 +1263,9 @@ sub load_records {
 	
 	my $load_start = time();
 	# CONCURRRENT allows the table to be open for reading whilst the LOAD DATA occurs so that queries won't stack up
-	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE "%s" INTO TABLE %s', $args->{file}, $full_table);
+	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE "%s" INTO TABLE %s ' .
+		'(id, @timevar, host_id, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5) ' .
+		'SET timestamp = IF(@timevar > 10000, @timevar, UNIX_TIMESTAMP(@timevar))', $args->{file}, $full_table);
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	my $records = $sth->rows();
