@@ -2584,11 +2584,11 @@ sub _get_ids {
 							"FROM %1\$s\n" .
 							"LEFT JOIN %2\$s.programs ON %1\$s.program_id=programs.id\n" .
 							"LEFT JOIN %2\$s.classes ON %1\$s.class_id=classes.id\n" .
-							'WHERE %1$s.id IN (' . $placeholders . ')',
+							'WHERE timestamp BETWEEN ? AND ? AND %1$s.id IN (' . $placeholders . ')',
 							$table, $nodes->{$node}->{db});
 						
 						push @table_queries, $table_query;
-						push @table_query_values, @{ $tables{$table} };
+						push @table_query_values, $q->start, $q->end, @{ $tables{$table} };
 					}
 					
 					my %import_info;
