@@ -677,7 +677,7 @@ sub info {
 
 sub _merge_node_info {
 	my ($self, $results) = @_;
-	$self->log->debug('merging: ' . Dumper($results));
+	#$self->log->debug('merging: ' . Dumper($results));
 	
 	# Merge these results
 	my $overall_final = merge values %$results;
