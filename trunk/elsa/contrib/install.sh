@@ -959,7 +959,11 @@ mk_web_dirs(){
 
 set_version(){
 	# set ELSA version
-	svn info http://enterprise-log-search-and-archive.googlecode.com/svn/ | grep "Last Changed" | sed -e "s/Last Changed //g" | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; my ($k,$v) = split(/:/, $_, 2); next unless $k and $v; $c->set("version/$k", $v); } $c->write;'
+	if [ "$VERSION" = "HEAD" ]; then
+		svn info http://enterprise-log-search-and-archive.googlecode.com/svn/ | grep "Last Changed" | sed -e "s/Last Changed //g" | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; my ($k,$v) = split(/:/, $_, 2); next unless $k and $v; $c->set("version/$k", $v); } $c->write;'
+	else 
+		echo "revision:$VERSION" | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; my ($k,$v) = split(/:/, $_, 2); next unless $k and $v; $c->set("version/$k", $v); } $c->write;'
+	fi
 	$BASE_DIR/sphinx/bin/searchd --help | head -1 | perl -e 'use Config::JSON; my $c = new Config::JSON("/etc/elsa_web.conf") or die($!); while(<>){ chomp; exit unless $_; $c->set("version/Sphinx", $_); } $c->write;'
 }
 
