@@ -673,9 +673,15 @@ update_node_mysql(){
 
 set_syslogng_conf(){
 	echo "Updating syslog-ng.conf..."
-	if [ \! -f /etc/elsa_local_patterndb.xml ]; then
-		echo "<patterndb version='3'></patterndb>" > /etc/elsa_local_patterndb.xml
+	mkdir -p /etc/elsa/patterns.d
+	cp $BASE_DIR/elsa/node/conf/patterndb.xml /etc/elsa_patterns.d/
+	if [ \! -f /etc/elsa/patterns.d/local_patterndb.xml ]; then
+		echo "<patterndb version='3'></patterndb>" > /etc/elsa/patterns.d/local_patterndb.xml
 	fi
+	
+	# Merge stock patterndb.xml with elsa_local_patterndb.xml
+	$BASE_DIR/syslog-ng/bin/pdbtool merge -p $BASE_DIR/elsa/node/conf/merged.xml -D /etc/elsa/patterns.d
+	
 	# Copy the syslog-ng.conf
 	if [ -f $LOCAL_SYSLOG_CONF ]; then
 		echo "Including syslog-ng.conf include file located at $LOCAL_SYSLOG_CONF"
