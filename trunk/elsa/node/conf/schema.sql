@@ -50,6 +50,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(36, "VPN", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(37, "NAT", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(38, "FTP", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(39, "CISCO_WARN", 0);
+INSERT INTO classes (id, class) VALUES(98, "ELSA_UNPARSED");
 INSERT INTO classes (id, class) VALUES(99, "ELSA_OPS");
 
 CREATE TABLE class_program_map (
