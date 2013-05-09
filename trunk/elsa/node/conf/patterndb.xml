@@ -95,12 +95,14 @@
 					<pattern>Deny inbound @ESTRING:i0: @src @ESTRING:s0::@@ESTRING:i1: @dst @ESTRING:s1::@@ESTRING:i3: @</pattern>
 					<pattern>Deny @ESTRING:i0: @@ESTRING::from @@ESTRING:i1:/@@ESTRING:i2: @to @ESTRING:i3:/@@ESTRING:i4: @@ESTRING::interface @@ANYSTRING:s0:@</pattern>
 					<pattern>Deny IP from @ESTRING:i1: @to @ESTRING:i3: @</pattern>
+					<pattern>@ESTRING:i0: @access discarded from @ESTRING:i1:/@@NUMBER:i2:@ to @ESTRING:s0::@@ESTRING:i3:/@</pattern>
 				</patterns>
 			</rule>
 			<rule provider="ELSA" class='3' id='3'>
 				<patterns>
 					<pattern>Teardown@QSTRING:i0: @connection @NUMBER::@ for@QSTRING:s0: :@@IPv4:i1:@/@NUMBER:i2:@ to@QSTRING:s1: :@@IPv4:i3:@/@NUMBER:i4:@ duration@QSTRING:s2: @bytes @NUMBER:i5:@</pattern>
 					<pattern>access-list @ESTRING:: @permitted @ESTRING:i0: @@ESTRING:s0:/@@ESTRING:i1:(@@NUMBER:i2:@) -&gt; @ESTRING:s1:/@@ESTRING:i3:(@@NUMBER:i4:@) hit-cnt @NUMBER:i5:@</pattern>
+					<pattern>@ESTRING:i0: @access permitted from @ESTRING:i1:/@@NUMBER:i2:@ to @ESTRING:s0::@@ESTRING:i3:/@</pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -171,6 +173,17 @@
 						<test_value name="s1">juan</test_value>
 					</example>
 				</examples>
+			</rule>
+			<rule provider="ELSA" class='38' id='38'>
+				<patterns>
+					<pattern>FTP connection from @ESTRING:s0::@@ESTRING:i0:/@@NUMBER:i1:@ to @ESTRING:s1::@@ESTRING:i2:/@@NUMBER:i3:@, user @ESTRING:s2: @@ESTRING:s3: @@ANYSTRING:s4:@</pattern>
+				</patterns>
+			</rule>
+			<rule provider="ELSA" class='39' id='39'>
+				<patterns>
+					<pattern>Cleared @ESTRING:i0: @urgent flag from @ESTRING:s0::@@ESTRING:i1:/@@NUMBER:i2:@ to @ESTRING:s1::@@ESTRING:i3:/@@NUMBER:i4:@</pattern>
+					<pattern>regular translation creation failed for @ESTRING:i0: @src @ESTRING:s0::@@ESTRING:i1: @dst @ESTRING:s1::@@ESTRING:i3: @(type @NUMBER:i2:@, code @NUMBER:i4:@</pattern>
+				</patterns>
 			</rule>
 		</rules>
 	</ruleset>
@@ -1881,6 +1894,21 @@
 						<test_value name="i3">192.168.1.72</test_value>
 					</example>
 				</examples>
+			</rule>
+		</rules>
+	</ruleset>
+	<!-- Bluecoat requires using a separate TCP destination in syslog-ng with the no-parse flag set and program_override("url")-->
+	<ruleset name='bluecoat'>
+		<pattern>url</pattern>
+		<rules>
+			<rule class='7' id='7'>
+				<patterns>
+					<pattern>@ESTRING:: @@ESTRING:: @@NUMBER:i5:@ @IPv4:i0:@ @NUMBER:i2:@ @ESTRING:: @@NUMBER::@ @NUMBER:i3:@ @ESTRING:s0: @@ESTRING:: @@ESTRING:s1: @@ESTRING:: @@ESTRING:s2_a: @@ESTRING:s2_b: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:s4: @@ESTRING:s5: @</pattern>
+					<pattern>20@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:i0: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:s1: @@ESTRING:: @@ESTRING:i1: @</pattern>
+				</patterns>
+				<values>
+					<value name="s2">$s2_a$s2_b</value>
+				</values>
 			</rule>
 		</rules>
 	</ruleset>
