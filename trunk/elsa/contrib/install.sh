@@ -456,7 +456,8 @@ build_syslogng(){
 	make && make install && 
 	ln -fs "$BASE_DIR/syslog-ng-$SYSLOG_VER" "$BASE_DIR/syslog-ng" &&
 	# Copy the syslog-ng.conf
-	cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf" &&
+	#cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf" &&
+	set_syslogng_conf
 	mkdir -p "$BASE_DIR/syslog-ng/var" &&
 	cp $BASE_DIR/elsa/contrib/syslog-ng $INIT_DIR &&
 	enable_service "syslog-ng"
@@ -669,7 +670,7 @@ update_node_mysql(){
 	return $?
 }
 
-update_syslogng(){
+set_syslogng_conf(){
 	echo "Updating syslog-ng.conf..."
 	if [ \! -f /etc/elsa_local_patterndb.xml ]; then
 		echo "<patterndb version='3'></patterndb>" > /etc/elsa_local_patterndb.xml
@@ -677,12 +678,22 @@ update_syslogng(){
 	# Copy the syslog-ng.conf
 	if [ -f $LOCAL_SYSLOG_CONF ]; then
 		echo "Including syslog-ng.conf include file located at $LOCAL_SYSLOG_CONF"
-		cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" | sed -e "s|###INCLUDE_PLACEHOLDER###|include $LOCAL_SYSLOG_CONF\;|" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+		# Set unparsed logging destination if we're not using local
+		if [ "$FILTER_UNPARSED" = "1" ]; then
+			cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" | sed -e "s|###FILTER_UNPARSED###||" | sed -e "s|###INCLUDE_PLACEHOLDER###|include $LOCAL_SYSLOG_CONF\;|" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+		else
+			cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" | sed -e "s|###INCLUDE_PLACEHOLDER###|include $LOCAL_SYSLOG_CONF\;|" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+		fi
 	elif [ "$USE_LOCAL_SYSLOG_CONF" = "1" ]; then
 		echo "Not overwriting local syslog-ng.conf, all changes must be manually applied."
 	else
-		cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+		if [ "$FILTER_UNPARSED" = "1" ]; then
+			cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" | sed -e "s|###FILTER_UNPARSED###||" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+		else
+			cat "$BASE_DIR/elsa/node/conf/syslog-ng.conf" | sed -e "s|\/usr\/local|$BASE_DIR|g" | sed -e "s|\/data|$DATA_DIR|g" > "$BASE_DIR/syslog-ng/etc/syslog-ng.conf"
+		fi
 	fi
+		
 	return $?
 }
 
@@ -1207,11 +1218,11 @@ validate_config(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "update_syslogng" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate" "validate_config" ; do
+		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "set_syslogng_conf" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate" "validate_config" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "mk_node_dirs" "get_elsa" "update_node_mysql" "update_syslogng" "validate_config" "restart_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "mk_node_dirs" "get_elsa" "update_node_mysql" "set_syslogng_conf" "validate_config" "restart_elsa"; do
 			exec_func $FUNCTION
 		done
 	else
