@@ -674,7 +674,7 @@ update_node_mysql(){
 set_syslogng_conf(){
 	echo "Updating syslog-ng.conf..."
 	mkdir -p /etc/elsa/patterns.d
-	cp $BASE_DIR/elsa/node/conf/patterndb.xml /etc/elsa_patterns.d/
+	cp $BASE_DIR/elsa/node/conf/patterndb.xml /etc/elsa/patterns.d/
 	if [ \! -f /etc/elsa/patterns.d/local_patterndb.xml ]; then
 		echo "<patterndb version='3'></patterndb>" > /etc/elsa/patterns.d/local_patterndb.xml
 	fi
