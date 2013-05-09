@@ -52,7 +52,7 @@ around BUILDARGS => sub {
 	}
 	my $tmpdir = $logdir . '/../tmp';
 	
-	my $log_format = 'File, RFC5424';
+	my $log_format = 'File';
 	if ($params{conf}->get('log_format')){
 		$log_format = $params{conf}->get('log_format');
 	}
