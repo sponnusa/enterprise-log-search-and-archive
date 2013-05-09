@@ -47,6 +47,9 @@ INSERT INTO classes (id, class, parent_id) VALUES(32, "CEF", 0);
 /*INSERT INTO classes (id, class, parent_id) VALUES(34, "NETFLOW", 0);*/
 /*INSERT INTO classes (id, class, parent_id) VALUES(35, "OSSEC_ALERTS", 0);*/
 INSERT INTO classes (id, class, parent_id) VALUES(36, "VPN", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(37, "NAT", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(38, "FTP", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(39, "CISCO_WARN", 0);
 INSERT INTO classes (id, class) VALUES(99, "ELSA_OPS");
 
 CREATE TABLE class_program_map (
@@ -84,6 +87,7 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("srcport", "int", "
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("i_int", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("dstip", "int", "IPv4", "IPv4");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("dstport", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("srcip_nat", "int", "IPv4", "IPv4");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("access_group", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("conn_duration", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("conn_bytes", "int", "NUMBER");
@@ -458,6 +462,34 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="priority"), 11);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="file"), 12);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="method"), 13);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="proto"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="o_int"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="srcip"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="srcport"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="i_int"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="dstip"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="dstport"), 9);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="srcip_nat"), 10);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="i_int"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="o_int"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="user"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="action"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FTP"), (SELECT id FROM fields WHERE field="filename"), 15);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="proto"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="srcip"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="srcport"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="dstip"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="dstport"), 9);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="i_int"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="o_int"), 12);
+
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
