@@ -84,7 +84,7 @@ my $Log = Log::Log4perl::get_logger('App')
   or die("Unable to init logger");
 # Don't log ops logs if this is the ops logger elsa.pl instance
 if ($Opts{f} eq '__OPS__'){
-	$Log->remove_appender('RFC5424');
+	$Log->remove_appender('RFC5424') if Log::Log4perl->appenders->{RFC5424};
 }
 
 my $Dbh = DBI->connect(($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'), 
