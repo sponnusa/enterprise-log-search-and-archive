@@ -42,7 +42,7 @@ sub config_logger {
 		$logfile = $config->get('logfile');
 	}
 	
-	my $log_format = 'File, RFC5424';
+	my $log_format = 'File';
 	if ($config->get('log_format')){
 		$log_format = $config->get('log_format');
 	}
