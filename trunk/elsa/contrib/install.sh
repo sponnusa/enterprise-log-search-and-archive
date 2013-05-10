@@ -16,7 +16,13 @@ TMP_DIR="/tmp"
 LOCAL_SYSLOG_CONF="/etc/elsa_syslog-ng.conf"
 # Set this in /etc/elsa_vars.sh to be "1" if you want to skip updating the syslog-ng.conf file entirely
 USE_LOCAL_SYSLOG_CONF="0"
+# Enable to leave custom Apache config in place
 USE_LOCAL_APACHE_CONF="0"
+# Override this in /etc/elsa_vars.sh to be able to edit this file and not have a version from svn overwrite it
+USE_LOCAL_INSTALL="0"
+
+# Do we allow unparsed logs?  Yes by default.
+FILTER_UNPARSED=0
 
 # Version to download
 VERSION=HEAD
@@ -638,6 +644,7 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="method"), 13)'
 	
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO classes (id, class, parent_id) VALUES(37, "NAT", 0)'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields (field, field_type, pattern_type, input_validation) VALUES ("srcip_nat", "int", "IPv4", "IPv4")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="proto"), 5)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="o_int"), 11)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="srcip"), 6)'
@@ -681,6 +688,12 @@ set_syslogng_conf(){
 	
 	# Merge stock patterndb.xml with elsa_local_patterndb.xml
 	$BASE_DIR/syslog-ng/bin/pdbtool merge -p $BASE_DIR/elsa/node/conf/merged.xml -D /etc/elsa/patterns.d
+	# Test
+	$BASE_DIR/syslog-ng/bin/pdbtool test $BASE_DIR/elsa/node/conf/merged.xml
+	if [ $? -eq 1 ]; then
+		echo "Error in merged patterndb"
+		return 1
+	fi
 	
 	# Copy the syslog-ng.conf
 	if [ -f $LOCAL_SYSLOG_CONF ]; then
