@@ -2072,6 +2072,10 @@ sub _sphinx_query {
 					}
 				}
 				push @sphinx_values, @{ $query->{values } }, $q->offset, $q->limit;
+				
+				if ($q->limit > 1000){
+					$search_query .= ',max_matches=' . $q->limit;
+				}
 				$self->log->debug('sphinx_query: ' . $search_query . ', values: ' . 
 					Dumper($query->{values}));
 				push @sphinx_queries, $search_query;
