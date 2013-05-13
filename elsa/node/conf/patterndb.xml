@@ -1906,11 +1906,58 @@
 			<rule class='7' id='7'>
 				<patterns>
 					<pattern>@ESTRING:: @@ESTRING:: @@NUMBER:i5:@ @IPv4:i0:@ @NUMBER:i2:@ @ESTRING:: @@NUMBER::@ @NUMBER:i3:@ @ESTRING:s0: @@ESTRING:: @@ESTRING:s1: @@ESTRING:: @@ESTRING:s2_a: @@ESTRING:s2_b: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:s4: @@ESTRING:s5: @</pattern>
-					<pattern>20@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:i0: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:s1: @@ESTRING:: @@ESTRING:i1: @</pattern>
+					<pattern>20@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:i0: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:: @@ESTRING:s1: @</pattern>
 				</patterns>
 				<values>
 					<value name="s2">$s2_a$s2_b</value>
 				</values>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset name="infoblox_dhcp" id='40'>
+		<pattern>dhcpd</pattern>
+		<rules>
+			<rule provider="ELSA" class='40' id='40'>
+				<!-- i0 = srcip, s0=MAC address, s1=domain, s2=hostname -->
+				<patterns>
+					<pattern>DHCPDISCOVER from @ESTRING:s0: @via @ESTRING:i0::@</pattern>
+					<pattern>bind update on @ESTRING:i0: @from @ESTRING:s1:(@@NUMBER::@)</pattern>
+					<pattern>Forward map from @ESTRING:s2: @to @ESTRING:i0: @</pattern>
+					<pattern>Abandoning IP address @ESTRING:i0::@</pattern>
+					<pattern>Reclaiming abandoned lease @IPvANY:i0:@</pattern>
+					<pattern>client @ESTRING:i0:#@@NUMBER::@: update forwarding '@ESTRING:s1:/@</pattern>
+					<pattern>DNS format error from @ESTRING:i1:#@@NUMBER:i2:@ resolving </pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="dhcpd">DHCPDISCOVER from aa:aa:aa:aa:aa:aa via 10.1.52.31: peer holds all free leases</test_message>
+						<test_value name="s0">aa:aa:aa:aa:aa:aa</test_value>
+						<test_value name="i0">10.1.52.31</test_value>
+					</example>
+					<example>
+						<test_message program="dhcpd">bind update on 1.1.1.1 from corp-test(1368109376) rejected: incoming update is less critical than outgoing update</test_message>
+						<test_value name="i0">1.1.1.1</test_value>
+						<test_value name="s1">corp-test</test_value>
+					</example>
+					<example>
+						<test_message program="dhcpd">Forward map from host.test.com to 1.1.1.1 FAILED: Has an address record but no DHCID, not mine.</test_message>
+						<test_value name="i0">1.1.1.1</test_value>
+						<test_value name="s2">host.test.com</test_value>
+					</example>
+					<example>
+						<test_message program="dhcpd">Abandoning IP address 1.1.1.1: pinged before offer</test_message>
+						<test_value name="i0">1.1.1.1</test_value>
+					</example>
+					<example>
+						<test_message program="dhcpd">Reclaiming abandoned lease 10.1.52.207.</test_message>
+						<test_value name="i0">1.1.1.1</test_value>
+					</example>
+					<example>
+						<test_message program="dhcpd">client 1.1.1.1#64919: update forwarding 'test.com/IN' denied</test_message>
+						<test_value name="i0">1.1.1.1</test_value>
+						<test_value name="s1">test.com</test_value>
+					</example>
+				</examples>
 			</rule>
 		</rules>
 	</ruleset>
