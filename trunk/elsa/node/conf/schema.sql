@@ -50,6 +50,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(36, "VPN", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(37, "NAT", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(38, "FTP", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(39, "CISCO_WARN", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(40, "DHCP", 0);
 INSERT INTO classes (id, class) VALUES(98, "ELSA_UNPARSED");
 INSERT INTO classes (id, class) VALUES(99, "ELSA_OPS");
 
@@ -178,6 +179,7 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("line_number", "int
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("pid", "int", "NUMBER");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("priority", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("file", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("mac_address", "string", "QSTRING");
 
 
 CREATE TABLE fields_classes_map (
@@ -491,6 +493,11 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="i_int"), 11);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="o_int"), 12);
 
+<!-- i0 = srcip, s0=MAC address, s1=domain, s2=hostname -->
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="DHCP"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="DHCP"), (SELECT id FROM fields WHERE field="mac_address"), 1);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="DHCP"), (SELECT id FROM fields WHERE field="domain"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="DHCP"), (SELECT id FROM fields WHERE field="hostname"), 13);
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
