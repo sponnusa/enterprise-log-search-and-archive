@@ -149,7 +149,7 @@ builder {
 	enable 'NoMultipleSlashes';
 	enable 'Static', path => qr{^/?inc/}, root => $static_root;
 	enable 'CrossOrigin', origins => '*', methods => '*', headers => '*';
-	enable 'Session', store => 'File';
+	enable match_if all( path('!', qr!^/API/!) ), 'Session', store => 'File';
 	unless ($api->conf->get('auth/method') eq 'none'){
 		enable match_if all( path('!', '/favicon.ico'), path('!', qr!^/inc/!), path('!', qr!^/transform!), path('!', qr!^/API/!) ), 'Auth::Basic', authenticator => $auth, realm => $api->conf->get('auth/realm');
 	}
