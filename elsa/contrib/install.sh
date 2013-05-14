@@ -367,6 +367,9 @@ build_node_perl(){
 	# OpenSSH wants user input to test
 	cpanm -n Net::OpenSSH
 	
+	# Log::Syslog::Fast often fails for no good reason and is optional
+	cpanm -n Log::Syslog::Fast
+	
 	return $RETVAL
 }
 
@@ -1246,11 +1249,11 @@ validate_config(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_node_perl" "mk_node_dirs" "get_elsa" "build_sphinx" "build_syslogng" "set_syslogng_conf" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate" "validate_config" ; do
+		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "get_cpanm" "build_node_perl" "mk_node_dirs" "build_sphinx" "build_syslogng" "set_syslogng_conf" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate" "validate_config" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "build_node_perl" "mk_node_dirs" "get_elsa" "update_node_mysql" "set_syslogng_conf" "validate_config" "restart_elsa"; do
+		for FUNCTION in $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "build_node_perl" "mk_node_dirs" "update_node_mysql" "set_syslogng_conf" "validate_config" "restart_elsa"; do
 			exec_func $FUNCTION
 		done
 	else
@@ -1258,11 +1261,11 @@ if [ "$INSTALL" = "node" ]; then
 	fi
 elif [ "$INSTALL" = "web" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_web_installed" $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_cpanm" "build_web_perl" "get_elsa" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate" "set_version" "validate_config" ; do
+		for FUNCTION in "check_web_installed" $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_elsa" "get_cpanm" "build_web_perl" "set_web_mysql" "mk_web_dirs" $DISTRO"_set_apache" "set_cron" "set_logrotate" "set_version" "validate_config" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
-		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "build_web_perl" "get_elsa" "update_web_mysql" "set_version" "validate_config" $DISTRO"_set_apache"; do
+		for FUNCTION in $DISTRO"_get_web_packages" "set_date" "check_svn_proxy" "get_elsa" "build_web_perl" "update_web_mysql" "set_version" "validate_config" $DISTRO"_set_apache"; do
 			exec_func $FUNCTION
 		done
 	else
