@@ -98,7 +98,7 @@ sub merge {
 		my $sort_fn = $q->orderby_dir eq 'DESC' ? $gt : $lt;
 		my @final = sort $sort_fn  @{ $self->results };
 		if (@final <= $q->limit){
-			$self->results->([ @final ]);   
+			$self->results([ @final ]);   
 		}
 		else {
 			$self->results([ @final[0..($q->limit - 1)] ]);
