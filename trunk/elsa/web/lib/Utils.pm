@@ -727,13 +727,25 @@ sub _peer_query {
 	my @peers;
 	foreach my $peer (keys %{ $self->conf->get('peers') }){
 		if (scalar keys %{ $q->nodes->{given} }){
-			next unless $q->nodes->{given}->{$peer};
+			if ($q->nodes->{given}->{$peer}){
+				# Normal case, fall through
+			}
+			elsif ($q->nodes->{given}->{ $q->peer_label }){
+				# Translate the peer label to localhost
+				push @peers, '127.0.0.1';
+				next;
+			}
+			else {
+				# Node not explicitly given, skipping
+				next;
+			}
 		}
 		elsif (scalar keys %{ $q->nodes->{excluded} }){
 			next if $q->nodes->{excluded}->{$peer};
 		}
 		push @peers, $peer;
 	}
+	
 	$self->log->trace('Executing global query on peers ' . join(', ', @peers));
 	
 	my $cv = AnyEvent->condvar;

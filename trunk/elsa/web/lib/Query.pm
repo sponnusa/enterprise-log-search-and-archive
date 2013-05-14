@@ -1039,7 +1039,7 @@ sub _parse_query_term {
 				next;
 			}
 			elsif ($term_hash->{field} eq 'node'){
-				if ($term_hash->{value} =~ /^[\w\.]+$/){
+				if ($term_hash->{value} =~ /^[\w\.\:]+$/){
 					if ($effective_operator eq '-'){
 						$self->nodes->{excluded}->{ $term_hash->{value} } = 1;
 					}
