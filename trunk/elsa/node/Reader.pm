@@ -3,7 +3,7 @@ use Moose;
 with 'Log';
 use Data::Dumper;
 use DBI;
-use Socket qw(inet_aton);
+use Socket qw(inet_pton AF_INET AF_INET6);
 use Log::Log4perl;
 use String::CRC32;
 
@@ -398,7 +398,7 @@ sub parse_line {
 	#$line[FIELD_PROGRAM] =~ s/[^a-zA-Z0-9\_\-]/\_/g;
 	
 	# Host gets the int version of itself
-	$line[FIELD_HOST] = $line[FIELD_HOST] ? unpack('N*', inet_aton($line[FIELD_HOST])) : 2130706433; #DNS lookup is performed if not an IP
+	$line[FIELD_HOST] = $line[FIELD_HOST] ? unpack('N*', inet_pton(AF_INET, $line[FIELD_HOST])) : 2130706433;
 	
 	# Perform a crc32 conversion of the program and store it in the cache for later recording
 	if ($self->cache->{ $line[FIELD_PROGRAM] }){
@@ -414,7 +414,7 @@ sub parse_line {
 	if ($line[FIELD_CLASS_ID] ne 1){ #skip default since there aren't any fields
 		# Convert any IP fields as necessary
 		foreach my $field_order (keys %{ $self->class_info->{field_conversions}->{ $line[FIELD_CLASS_ID] }->{'IPv4'} }){
-			$line[$field_order] = $line[$field_order] ? unpack('N', inet_aton($line[$field_order])) : 2130706433; #DNS lookup is performed if not an IP
+			$line[$field_order] = $line[$field_order] ? unpack('N', inet_pton(AF_INET, $line[$field_order])) : 2130706433;
 		}
 		
 		# Convert any proto fields as necessary
@@ -502,7 +502,7 @@ sub parse_hash {
 	$hash->{program} = lc($hash->{program});
 	
 	# Host gets the int version of itself
-	$hash->{host} = unpack('N*', inet_aton($hash->{host}));
+	$hash->{host} = unpack('N*', inet_pton(AF_INET, $hash->{host}));
 	
 	# Perform a crc32 conversion of the program and store it in the cache for later recording
 	if ($self->cache->{ $hash->{program} }){
@@ -523,7 +523,7 @@ sub parse_hash {
 			my $value = $self->class_info->{fields_by_order}->{ $hash->{class_id} }->{$i} ? $hash->{ $self->class_info->{fields_by_order}->{ $hash->{class_id} }->{$i}->{field} } : undef;
 			# Convert any IP fields as necessary
 			if ($self->class_info->{field_conversions}->{ $hash->{class_id} }->{IPv4}->{$i}){
-				$value = unpack('N', inet_aton($value));
+				$value = unpack('N', inet_pton(AF_INET, $value));
 			}
 			# Convert any proto fields as necessary
 			elsif ($self->class_info->{field_conversions}->{ $hash->{class_id} }->{PROTO}->{$i}){
