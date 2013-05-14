@@ -97,7 +97,12 @@ sub merge {
 		my $lt = sub { $b <=> $a };
 		my $sort_fn = $q->orderby_dir eq 'DESC' ? $gt : $lt;
 		my @final = sort $sort_fn  @{ $self->results };
-		$self->results([ @final[0..($q->limit - 1)] ]);
+		if (@final <= $q->limit){
+			$self->results->([ @final ]);   
+		}
+		else {
+			$self->results([ @final[0..($q->limit - 1)] ]);
+		}
 	}
 	
 	# Mark if approximate
