@@ -68,6 +68,9 @@ sub local_query {
 
 	my ($query, $sth);
 	
+	# This is local, make sure we're querying localhost (in case we referred to by peer_name)
+	$q->nodes->{given}->{'127.0.0.1'} = 1;
+	
 	# Check for batching
 	unless ($q->meta_params->{nobatch} or $q->system or $q->livetail){
 		my $is_batch = 0;
