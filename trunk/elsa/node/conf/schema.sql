@@ -493,7 +493,6 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="i_int"), 11);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="CISCO_WARN"), (SELECT id FROM fields WHERE field="o_int"), 12);
 
-<!-- i0 = srcip, s0=MAC address, s1=domain, s2=hostname -->
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="DHCP"), (SELECT id FROM fields WHERE field="srcip"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="DHCP"), (SELECT id FROM fields WHERE field="mac_address"), 1);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="DHCP"), (SELECT id FROM fields WHERE field="domain"), 12);
