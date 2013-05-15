@@ -3358,6 +3358,7 @@ sub _build_query {
 	elsif ($q->orderby){
 		my $field_infos = $self->get_field($q->orderby);
 		foreach my $class_id (keys %{$field_infos}){
+			next unless $q->classes->{distinct}->{$class_id} or $class_id == 0;
 			my $orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
 			push @queries, {
 				select => $select . ', ' . $orderby . ' AS _orderby',
@@ -3367,6 +3368,7 @@ sub _build_query {
 				orderby_dir => $q->orderby_dir,
 			};
 		}
+		die('Invalid orderby ' . $q->orderby . ' given for this query') unless scalar @queries;
 	}
 	else {
 		# We can get away with a single query

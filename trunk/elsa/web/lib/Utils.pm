@@ -753,13 +753,17 @@ sub _peer_query {
 	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded', 'User-Agent' => $self->user_agent_name };
 	my %batches;
 	foreach my $peer (@peers){
+		my $peer_label = $peer;
+		if (($peer eq '127.0.0.1' or $peer eq 'localhost') and $q->peer_label){
+			$peer_label = $q->peer_label;
+		}
 		$cv->begin;
 		my $peer_conf = $self->conf->get('peers/' . $peer);
 		my $url = $peer_conf->{url} . 'API/';
 		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'query';
 		my $request_body = 'permissions=' . uri_escape($self->json->encode($q->user->permissions))
 			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $q->meta_params }))
-			. '&peer_label=' . ((($peer eq '127.0.0.1' or $peer eq 'localhost') and $q->peer_label) ? $q->peer_label : $peer);
+			. '&peer_label=' . $peer_label;
 		$self->log->trace('Sending request to URL ' . $url . ' with body ' . $request_body);
 		my $start = time();
 		
@@ -773,6 +777,11 @@ sub _peer_query {
 			my ($body, $hdr) = @_;
 			eval {
 				my $raw_results = $self->json->decode($body);
+				if ($raw_results and ref($raw_results) and $raw_results->{error}){
+					$self->log->error('Peer ' . $peer_label . ' got error: ' . $raw_results->{error});
+					$q->add_warning('Peer ' . $peer_label . ' encountered an error.');
+					return;
+				}
 				#$self->log->debug('raw_results: ' . Dumper($raw_results));
 				#my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
 				my $is_groupby = $raw_results->{groupby} ? 1 : 0;
@@ -817,7 +826,7 @@ sub _peer_query {
 			};
 			if ($@){
 				$self->log->error($@ . 'url: ' . $url . "\nbody: " . $request_body);
-				$q->add_warning('Invalid results back from peer ' . $peer);
+				$q->add_warning('Invalid results back from peer ' . $peer_label);
 			}	
 			delete $q->peer_requests->{$peer};
 			$cv->end;
