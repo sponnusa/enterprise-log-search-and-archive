@@ -20,6 +20,8 @@ USE_LOCAL_SYSLOG_CONF="0"
 USE_LOCAL_APACHE_CONF="0"
 # Override this in /etc/elsa_vars.sh to be able to edit this file and not have a version from svn overwrite it
 USE_LOCAL_INSTALL="0"
+# Set this to 1 if you want to use custom MySQL packages
+USE_LOCAL_MYSQL_PACKAGES=0
 
 # Do we allow unparsed logs?  Yes by default.
 FILTER_UNPARSED=0
@@ -141,7 +143,12 @@ check_node_installed(){
 centos_get_node_packages(){
 	# Install required packages
 	yum -y update
-	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ mysql-server mysql-libs mysql-devel pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel perl-Module-Build perl-Module-Install
+	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
+		yum -yq install mysql-server mysql-libs mysql-devel
+	fi
+	
+	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel perl-Module-Build perl-Module-Install
+	
 	return $?
 }
 
@@ -152,18 +159,25 @@ suse_get_node_packages(){
 		echo "Using locally installed libnet"
 		LIBNET_PKG=""
 	fi
-	zypper -n update &&
-	zypper -qn install ntp perl curl make subversion gcc gcc-c++ mysql-community-server libmysqlclient-devel pkg-config pcre-devel libcap-devel $LIBNET_PKG libopenssl-devel glib2-devel pam-devel perl-Module-Build
+	zypper -n update
+	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
+		zypper -qn install mysql-community-server libmysqlclient-devel
+	fi
+	zypper -qn install ntp perl curl make subversion gcc gcc-c++ pkg-config pcre-devel libcap-devel $LIBNET_PKG libopenssl-devel glib2-devel pam-devel perl-Module-Build
 	return $?
 }
 
 ubuntu_get_node_packages(){
 	apt-get update
 	# Don't ask for mysql password
-	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections &&
+	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections
+	
+	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
+		apt-get -qy install mysql-server libmysqlclient-dev
+	fi
 	
 	# Install required packages
-	apt-get -qy install curl subversion gcc g++ mysql-server libmysqlclient-dev pkg-config libglib2.0-dev libpcre3-dev libcap-dev libnet1-dev libssl-dev make libmodule-build-perl &&
+	apt-get -qy install curl subversion gcc g++ pkg-config libglib2.0-dev libpcre3-dev libcap-dev libnet1-dev libssl-dev make libmodule-build-perl &&
 	
 	# Make debconf interactive again
 	echo "debconf debconf/frontend select readline" | debconf-set-selections
@@ -171,7 +185,10 @@ ubuntu_get_node_packages(){
 }
 
 freebsd_get_node_packages(){
-	pkg_add -Fr subversion wget curl mysql55-server perl syslog-ng p5-App-cpanminus &&
+	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
+		pkg_add -Fr mysql55-server
+	fi
+	pkg_add -Fr subversion wget curl  perl syslog-ng p5-App-cpanminus &&
 	enable_service "mysql" &&
 	service mysql-server start &&
 	disable_service "syslogd" &&
@@ -795,18 +812,25 @@ set_logrotate(){
 
 suse_get_web_packages(){
 	# Install required packages
-	zypper -n update &&
-	zypper -qn install curl subversion make gcc gcc-c++ mysql-community-server-client libmysqlclient-devel apache2-prefork apache2-mod_perl apache2-mod_perl-devel libexpat-devel perl-Module-Build krb5-devel
+	zypper -n update
+	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
+		zypper -qn install mysql-community-server-client libmysqlclient-devel 
+	fi
+	zypper -qn install curl subversion make gcc gcc-c++ apache2-prefork apache2-mod_perl apache2-mod_perl-devel libexpat-devel perl-Module-Build krb5-devel
 	return $?
 }
 
 ubuntu_get_web_packages(){
 	apt-get update
 	# Make debconf noninteractive
-	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections &&
+	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections
+	
+	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
+		zypper -qn install mysql-client libmysqlclient-dev
+	fi
 	
 	# Install required packages
-	apt-get -qy install curl subversion gcc g++ mysql-client libmysqlclient-dev apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libgeo-ip-perl libexpat1-dev libmodule-build-perl libauthen-pam-perl libkrb5-dev &&
+	apt-get -qy install curl subversion gcc g++ apache2-mpm-prefork libapache2-mod-perl2 libpam0g-dev make libgeoip-dev libgeo-ip-perl libexpat1-dev libmodule-build-perl libauthen-pam-perl libkrb5-dev &&
 	
 	# Make debconf interactive again
 	echo "debconf debconf/frontend select readline" | debconf-set-selections
@@ -814,14 +838,20 @@ ubuntu_get_web_packages(){
 }
 
 centos_get_web_packages(){
-	yum -y update &&
-	yum -yq install curl subversion make gcc gcc-c++ mysql mysql-libs mysql-server mysql-devel httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python krb5-devel perl-Module-Install perl-libwww-perl
+	yum -y update
+	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
+		yum -yq install mysql mysql-libs mysql-devel
+	fi
+	yum -yq install curl subversion make gcc gcc-c++ httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python krb5-devel perl-Module-Install perl-libwww-perl
 	return $?
 }
 
 freebsd_get_web_packages(){
 	cd /usr/ports/www/mod_perl2 && make install clean
-	pkg_add -vFr subversion curl mysql55-client perl p5-App-cpanminus expat p5-Module-Build ap22-mod_perl2
+	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
+		pkg_add -vFr mysql55-client
+	fi
+	pkg_add -vFr subversion curl perl p5-App-cpanminus expat p5-Module-Build ap22-mod_perl2
 	RET=$?
 	# pkg_add will return 6 when packages were already present
 	if [ "$RET" -ne 0 ] && [ "$RET" -ne 6 ]; then
