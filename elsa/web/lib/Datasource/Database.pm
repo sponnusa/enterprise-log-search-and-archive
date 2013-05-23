@@ -301,7 +301,8 @@ sub _query {
 				}
 				$results{$groupby} = [ @zero_filled ];
 			}
-			elsif (UnixDate($rows[0]->{_groupby}, '%s')){
+			elsif (UnixDate($rows[0]->{_groupby}, '%s') > UnixDate('2000-01-01 00:00:00', '%s') 
+				and UnixDate($rows[0]->{_groupby}, '%s') < UnixDate('2020-01-01 00:00:00', '%s')){
 				# Sort these in ascending label order
 				my $increment = 86400 * 30;
 				my $use_gmt = $increment >= 86400 ? 1 : 0;
