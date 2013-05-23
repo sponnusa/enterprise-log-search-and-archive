@@ -195,35 +195,37 @@ sub _query {
 		}
 	}
 	
-	foreach my $row (@{ $self->fields }){
-		if ($row->{alias}){
-			if ($row->{type} eq 'ip_int'){
-				push @select, 'INET_NTOA(' . $row->{name} . ')' . ' AS ' . $row->{alias};
+	if (!$q->has_groupby){
+		foreach my $row (@{ $self->fields }){
+			if ($row->{alias}){
+				if ($row->{type} eq 'ip_int'){
+					push @select, 'INET_NTOA(' . $row->{name} . ')' . ' AS ' . $row->{alias};
+				}
+				else {
+					push @select, $row->{name} . ' AS ' . $row->{alias};
+				}
+				if ($row->{alias} eq 'timestamp'){
+					if ($where and $where ne ' '){
+						$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+					}
+					else {
+						$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+					}
+					push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);
+				}
+				elsif ($row->{alias} eq 'timestamp_int'){
+					if ($where and $where ne ' '){
+						$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+					}
+					else {
+						$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+					}
+					push @$placeholders, $q->start, $q->end;
+				}
 			}
 			else {
-				push @select, $row->{name} . ' AS ' . $row->{alias};
+				push @select, $row->{name};
 			}
-			if ($row->{alias} eq 'timestamp'){
-				if ($where and $where ne ' '){
-					$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-				}
-				else {
-					$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-				}
-				push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);
-			}
-			elsif ($row->{alias} eq 'timestamp_int'){
-				if ($where and $where ne ' '){
-					$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-				}
-				else {
-					$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-				}
-				push @$placeholders, $q->start, $q->end;
-			}
-		}
-		else {
-			push @select, $row->{name};
 		}
 	}
 
