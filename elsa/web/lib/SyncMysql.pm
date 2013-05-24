@@ -170,12 +170,18 @@ sub sphinx {
 	if ($@){
 		$self->log->error('Got sphinx error ' . $@);
 		undef $dbh;
-		#sleep 1;
-		$attempts++;
-		$self->log->debug('attempts: ' . $attempts);
-		if ($attempts < $Retries){
-			my $w; $w = AnyEvent->timer(cb => sub { $self->sphinx($query, $attempts, @values, $cb); undef $w; }, after => $Retry_period);
-			return;
+		if ($@ =~ /max_query_time/ or $@ =~ /syntax/){
+			# Fatal
+			$self->log->warn('not retrying query due to type of error');
+		}
+		else {
+			#sleep 1;
+			$attempts++;
+			$self->log->debug('attempts: ' . $attempts);
+			if ($attempts < $Retries){
+				my $w; $w = AnyEvent->timer(cb => sub { $self->sphinx($query, $attempts, @values, $cb); undef $w; }, after => $Retry_period);
+				return;
+			}
 		}
 	}
 	
