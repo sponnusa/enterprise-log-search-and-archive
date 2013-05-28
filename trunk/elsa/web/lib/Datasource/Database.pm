@@ -242,6 +242,9 @@ sub _query {
 		$orderby = '1';
 	}
 	
+	# Sane default for where
+	$where = '1=1' unless $where;
+	
 	$query = sprintf($self->query_template, join(', ', @select), $where, $groupby, $orderby, $q->offset, $q->limit);
 	$self->log->debug('query: ' . $query);
 	$self->log->debug('placeholders: ' . Dumper($placeholders));
