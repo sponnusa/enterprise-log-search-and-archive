@@ -200,6 +200,9 @@ root hard nofile 200000
 
 Then logout, login, and restart searchd.
 
+==Making changes to syslog-ng.conf==
+install.sh will use /usr/local/elsa/node/conf/syslog-ng.conf as a template, using /etc/elsa_syslog-ng.conf (if it exists) as a reference for any persistent changes, and write the combination to /usr/local/syslog-ng/etc/syslog-ng.conf which is what is actually run.  So, put any local changes in /etc/elsa_syslog-ng.conf to make sure they survive an update.  Keep in mind that the file is included before the log {} statements, so you can redefine sources and destinations there, or put in additional log {} statements.
+
 ==Firewall Settings==
 ||Source||Destination||Port||
 ||Web Clients||Web Node||TCP 80/443||
