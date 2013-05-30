@@ -21,6 +21,20 @@ around BUILDARGS => sub {
 	return $class->$orig(%params);
 };
 
+no warnings;
+*Log::Log4perl::Layout::PatternLayout::Multiline::render = sub {
+	my($self, $message, $category, $priority, $caller_level) = @_;
+	
+	# Strip newlines and replace with a single space.
+	$message =~ s/[\n\r]+/\ /g;
+
+    $caller_level = 0 unless defined $caller_level;
+
+    my $result = $self->Log::Log4perl::Layout::PatternLayout::render($message, $category, $priority, $caller_level + 1);
+    return $result;
+};
+use warnings;
+
 sub config_logger {
 	my $config = shift;
 	
@@ -42,7 +56,7 @@ sub config_logger {
 		$logfile = $config->get('logfile');
 	}
 	
-	my $log_format = 'File';
+	my $log_format = 'File, RFC5424';
 	if ($config->get('log_format')){
 		$log_format = $config->get('log_format');
 	}
@@ -67,7 +81,7 @@ sub config_logger {
 		log4perl.appender.SyncerDat.appender   = Dat
 		log4perl.appender.RFC5424         = Log::Log4perl::Appender::Socket::UNIX
         log4perl.appender.RFC5424.Socket = $tmpdir/ops
-        log4perl.appender.RFC5424.layout = Log::Log4perl::Layout::PatternLayout
+        log4perl.appender.RFC5424.layout = Log::Log4perl::Layout::PatternLayout::Multiline
         log4perl.appender.RFC5424.layout.ConversionPattern = 1 %d{yyyy-MM-ddTHH:mm:ss.000}Z 127.0.0.1 elsa - 99 [elsa\@32473 priority="%p" method="%M" file="%F{2}" line_number="%L" pid="%P"] %m%n
 	};
 	
