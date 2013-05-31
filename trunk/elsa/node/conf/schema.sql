@@ -465,6 +465,7 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="priority"), 11);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="file"), 12);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="method"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ELSA_OPS"), (SELECT id FROM fields WHERE field="hostname"), 14);
 
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="proto"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="NAT"), (SELECT id FROM fields WHERE field="o_int"), 11);

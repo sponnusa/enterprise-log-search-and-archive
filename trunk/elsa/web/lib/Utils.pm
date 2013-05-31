@@ -15,6 +15,7 @@ use AnyEvent::HTTP;
 use URI::Escape qw(uri_escape);
 use Time::HiRes qw(time);
 use Digest::SHA qw(sha512_hex);
+use Sys::Hostname;
 
 use Results;
 
@@ -71,6 +72,8 @@ around BUILDARGS => sub {
 		$log_format = $params{conf}->get('log_format');
 	}
 	
+	my $hostname = hostname;
+	
 	my $log_conf = qq'
 		log4perl.category.App       = $log_level, $log_format
 		log4perl.appender.File			 = Log::Log4perl::Appender::File
@@ -92,7 +95,7 @@ around BUILDARGS => sub {
 		log4perl.appender.RFC5424         = Log::Log4perl::Appender::Socket::UNIX
         log4perl.appender.RFC5424.Socket = $tmpdir/ops
         log4perl.appender.RFC5424.layout = Log::Log4perl::Layout::PatternLayout::Multiline
-        log4perl.appender.RFC5424.layout.ConversionPattern = 1 %d{yyyy-MM-ddTHH:mm:ss.000}Z 127.0.0.1 elsa - 99 [elsa\@32473 priority="%p" method="%M" file="%F{2}" line_number="%L" pid="%P" client="%X{client_ip_address}" qid="%X{qid}"] %m%n
+        log4perl.appender.RFC5424.layout.ConversionPattern = 1 %d{yyyy-MM-ddTHH:mm:ss.000}Z 127.0.0.1 elsa - 99 [elsa\@32473 priority="%p" method="%M" file="%F{2}" line_number="%L" pid="%P" client="%X{client_ip_address}" qid="%X{qid}" hostname="$hostname"] %m%n
 	';
 	
 	if (not Log::Log4perl->initialized()){
