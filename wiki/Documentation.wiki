@@ -589,7 +589,7 @@ To enable archive output in OSSEC, add to ossec.conf file <global> section:
 }}}
 
 =Bro Integration=
-For forwarding flat-file logs from Bro using syslog-ng, use the below configuration, which assumes that ELSA is the localhost (127.0.0.1):
+For forwarding flat-file logs from Bro using syslog-ng, use the below configuration, which assumes that ELSA is the localhost (127.0.0.1).  Put the below configuration {{{/etc/elsa_syslog-ng.conf}}} which is the file that ELSA will include in the actually run syslog-ng configuration at /usr/local/syslog-ng/etc/syslog-ng.conf:
 {{{
 source s_bro_conn { file("/usr/local/bro/logs/current/conn.log" flags(no-parse) program_override("bro_conn")); };
 source s_bro_http { file("/usr/local/bro/logs/current/http.log" flags(no-parse) program_override("bro_http")); };
@@ -600,8 +600,33 @@ source s_bro_smtp_entities { file("/usr/local/bro/logs/current/smtp_entities.log
 source s_bro_ssl { file("/usr/local/bro/logs/current/ssl.log"
 flags(no-parse) program_override("bro_ssl")); };
 
-# If ELSA is not localhost, set the IP here and uncomment
-#destination d_elsa { tcp("remote.elsa.host.ip" port(514)); };
+filter f_bro_headers { message("^#") };
+rewrite r_bro_host { set("10.12.1.57", value("HOST")); };
+
+log { 
+  source(s_bro_conn);
+  source(s_bro_http);
+  source(s_bro_dns);
+  source(s_bro_notice);
+  source(s_bro_smtp);
+  source(s_bro_smtp_entities);
+  source(s_bro_ssl);
+  rewrite(r_bro_host);
+  rewrite(r_cisco_program);
+  rewrite(r_snare);
+  rewrite(r_pipes);
+  parser(p_db);
+  rewrite(r_extracted_host);
+  log { filter(f_bro_headers); flags(final); };
+  #  destination(d_elsa); 
+  log { destination(d_elsa); };
+};
+
+}}}
+
+If ELSA is not localhost, define an ELSA destination:
+{{{
+destination d_elsa { tcp("remote.elsa.host.ip" port(514)); };
 
 log { source(s_bro_conn); destination(d_elsa); };
 log { source(s_bro_http); destination(d_elsa); };
