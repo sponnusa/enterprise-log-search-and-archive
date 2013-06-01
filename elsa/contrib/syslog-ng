@@ -39,7 +39,9 @@ do_start() {
 do_stop() {
 	echo "Stopping $prog"
 	if [ -e $PID_FILE ] ; then
-		kill -15 `cat $PID_FILE`
+		if [ ! -z $(pgrep -f elsa.pl) ]; then
+			kill -15 $(pgrep -f elsa.pl)
+		fi
 		sleep 5
 		# Make sure elsa.pl died
 		kill -15 $(pgrep -f elsa.pl)
