@@ -827,7 +827,7 @@ ubuntu_get_web_packages(){
 	echo "debconf debconf/frontend select noninteractive" | debconf-set-selections
 	
 	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
-		zypper -qn install mysql-client libmysqlclient-dev
+		apt-get install mysql-client libmysqlclient-dev
 	fi
 	
 	# Install required packages
