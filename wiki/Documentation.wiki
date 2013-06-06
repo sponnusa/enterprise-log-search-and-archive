@@ -200,6 +200,15 @@ root hard nofile 200000
 
 Then logout, login, and restart searchd.
 
+===Changing num_indexes===
+If you change the {{{ num_indexes }}} setting in /etc/elsa_node.conf, you will need to regenerate the {{{ /usr/local/etc/sphinx.conf }}} file.  To do so, either delete or move the existing sphinx.conf file and then run: 
+{{{
+echo "" | perl /usr/local/elsa/node/elsa.pl -on
+pkill searchd
+/usr/local/sphinx/bin/searchd
+}}}
+This will regenerate the config file using the new {{{ num_indexes }}} value and restart searchd.
+
 ==Making changes to syslog-ng.conf==
 install.sh will use /usr/local/elsa/node/conf/syslog-ng.conf as a template, using /etc/elsa_syslog-ng.conf (if it exists) as a reference for any persistent changes, and write the combination to /usr/local/syslog-ng/etc/syslog-ng.conf which is what is actually run.  So, put any local changes in /etc/elsa_syslog-ng.conf to make sure they survive an update.  Keep in mind that the file is included before the log {} statements, so you can redefine sources and destinations there, or put in additional log {} statements.
 
