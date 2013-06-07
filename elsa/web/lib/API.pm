@@ -1768,7 +1768,7 @@ sub query {
 		if ($args->{q}){
 			if ($args->{qid}){
 				die('Polling not implemented'); # remove when livetail is put back in
-				$self->log->level($ERROR);
+				$self->log->level($ERROR) unless $self->conf->get('debug_all');
 				$q = new Query(conf => $self->conf, user => $args->{user}, q => $args->{q}, node_info => $self->node_info, qid => $args->{qid});
 			}
 			else {
@@ -2787,7 +2787,7 @@ sub _unlimited_sphinx_query {
 		
 		# Turn off verbose logging for the search
 		my $old_log_level = $self->log->level;
-		$self->log->level($ERROR);
+		$self->log->level($ERROR) unless $self->conf->get('debug_all');
 		
 		# Execute search
 		$self->_sphinx_query($batch_q);
@@ -2811,6 +2811,8 @@ sub _unlimited_sphinx_query {
 		}
 		else {
 			foreach my $record ($batch_q->results->all_results){
+				next unless $q->filter_stopwords($record);
+				
 				# Check for duplicates (this can happen because of the overlapping timestamp for start/end between batch runs)
 				if (exists $last_ids{ $record->{node} }->{ $record->{id} }){
 					next;
@@ -2974,13 +2976,20 @@ sub _build_sphinx_match_str {
 
 sub _build_archive_match_str {
 	my ($self, $q) = @_;
+	
+	# Move field terms over
+	foreach my $boolean (qw(and or not)){
+		foreach my $term (keys %{ $q->terms->{any_field_terms}->{$boolean} }){
+			$q->terms->{any_field_terms_sql}->{$boolean}->{$term} = delete $q->terms->{any_field_terms}->{$boolean};
+		}
+	}
 
 	# Create the SQL LIKE clause
 	
 	# No-field match str
 	my $match_str = '';
 	my (%and, %or, %not);
-	foreach my $term (keys %{ $q->terms->{any_field_terms}->{and} }){
+	foreach my $term (keys %{ $q->terms->{any_field_terms_sql}->{and} }){
 		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
 			$and{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
 		}
@@ -2990,7 +2999,7 @@ sub _build_archive_match_str {
 	}
 		
 	my @or = ();
-	foreach my $term (keys %{ $q->terms->{any_field_terms}->{or} }){
+	foreach my $term (keys %{ $q->terms->{any_field_terms_sql}->{or} }){
 		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
 			$or{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
 		}
@@ -3000,7 +3009,7 @@ sub _build_archive_match_str {
 	}
 	
 	my @not = ();
-	foreach my $term (keys %{ $q->terms->{any_field_terms}->{not} }){
+	foreach my $term (keys %{ $q->terms->{any_field_terms_sql}->{not} }){
 		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
 			$not{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
 		}
@@ -3298,7 +3307,7 @@ sub _build_query {
 	
 	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier, $permissions_qualifier AS permissions_qualifier";
 	my $where;
-	if ($q->archive){
+	if ($q->archive or not $q->query_term_count){
 		my $match_str = $self->_build_archive_match_str($q);
 		$match_str = '1=1' unless $match_str;
 		$where = $match_str . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier . ' AND ' . $permissions_qualifier;
@@ -4457,13 +4466,25 @@ sub _archive_query {
 		my @table_arr;
 		foreach my $table (@{ $node_info->{tables}->{tables} }){
 			if ($q->start and $q->end){
-				if (($table->{table_type} eq 'archive' or $table->{table_type} eq 'import') and
-					(($q->start >= $table->{start_int} and $q->start <= $table->{end_int})
-					or ($q->end >= $table->{start_int} and $q->end <= $table->{end_int})
-					or ($q->start <= $table->{start_int} and $q->end >= $table->{end_int})
-					or ($table->{start_int} <= $q->start and $table->{end_int} >= $q->end))
-				){
-					push @table_arr, $table->{table_name};
+				if ($q->archive){
+					if (($table->{table_type} eq 'archive' or $table->{table_type} eq 'import') and
+						(($q->start >= $table->{start_int} and $q->start <= $table->{end_int})
+						or ($q->end >= $table->{start_int} and $q->end <= $table->{end_int})
+						or ($q->start <= $table->{start_int} and $q->end >= $table->{end_int})
+						or ($table->{start_int} <= $q->start and $table->{end_int} >= $q->end))
+					){
+						push @table_arr, $table->{table_name};
+					}
+				}
+				else {
+					if (($table->{table_type} ne 'archive') and
+						(($q->start >= $table->{start_int} and $q->start <= $table->{end_int})
+						or ($q->end >= $table->{start_int} and $q->end <= $table->{end_int})
+						or ($q->start <= $table->{start_int} and $q->end >= $table->{end_int})
+						or ($table->{start_int} <= $q->start and $table->{end_int} >= $q->end))
+					){
+						push @table_arr, $table->{table_name};
+					}
 				}
 			}
 			else {
@@ -4515,17 +4536,32 @@ sub _archive_query {
 					$search_query .= 'WHERE ' . $query->{where} . "\nGROUP BY $query->{groupby}\n" . 'ORDER BY 1 DESC LIMIT ?,?';
 				}
 				else {
-					$search_query = "SELECT main.id,\n" .
-						"\"" . $node . "\" AS node,\n" .
-						#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
-						"timestamp,\n" .
-						($query->{orderby} ? $query->{orderby} : 'timestamp') . ' AS _orderby,' . "\n" .
-						"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
-						"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
-						"FROM $table main\n" .
-						"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
-						"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
-						'WHERE ' . $query->{where} . ' ORDER BY _orderby ' . $query->{orderby_dir} . "\n" . 'LIMIT ?,?';
+					if ($query->{orderby}){
+						$search_query = "SELECT main.id,\n" .
+							"\"" . $node . "\" AS node,\n" .
+							#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
+							"timestamp,\n" .
+							($query->{orderby} ? $query->{orderby} : 'main.timestamp') . ' AS _orderby,' . "\n" .
+							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+							"FROM $table main\n" .
+							"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
+							"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
+							'WHERE ' . $query->{where} . ' ORDER BY _orderby ' . $query->{orderby_dir} . "\n" . 'LIMIT ?,?';
+					}
+					else {
+						$search_query = "SELECT main.id,\n" .
+							"\"" . $node . "\" AS node,\n" .
+							#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
+							"timestamp,\n" .
+							($query->{orderby} ? $query->{orderby} : 'main.id') . ' AS _orderby,' . "\n" .
+							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+							"FROM $table main\n" .
+							"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
+							"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
+							'WHERE ' . $query->{where} . "\n" . 'LIMIT ?,?';
+					}
 				}
 				#$self->log->debug('archive_query: ' . $search_query . ', values: ' . 
 				#	Dumper($query->{values}, $args->{offset}, $args->{limit}));
@@ -4551,6 +4587,7 @@ sub _archive_query {
 		foreach my $node (keys %queries){
 			my $query_hash = shift @{ $queries{$node} };
 			next unless $query_hash;
+			last if $total_found >= $q->limit;
 			
 			# Check if the query was cancelled
 			return if $q->check_cancelled;
@@ -4575,6 +4612,7 @@ sub _archive_query {
 							next;
 						}
 						push @{ $ret->{$node}->{rows} }, @$rows;
+						$total_found++;
 						$cv->end; #end archive query
 					});
 			};
@@ -4583,10 +4621,12 @@ sub _archive_query {
 				$self->log->error('sphinx query error: ' . $@);
 				$cv->end;
 			}
-
+			last if $total_found >= $q->limit;
 		}
 		$cv->end; # bookend initial begin
 		$cv->recv; # block until all of the above completes
+		
+		last if $total_found >= $q->limit;
 		
 		# See how many we have left to do in case we're done
 		$queries_todo_count = 0;
