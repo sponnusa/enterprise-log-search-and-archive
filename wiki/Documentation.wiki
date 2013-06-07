@@ -12,7 +12,11 @@ Enterprise Log Search and Archive is a solution to achieve the following:
 
 ELSA accomplishes these goals by harnessing the highly-specialized strengths of other open-source projects:  Perl provides the glue to asynchronously tie the log receiver (Syslog-NG) together with storage (MySQL) and indexing (Sphinx Search) and serves this over a web interface provided either by Apache or any other web server, including a standalone pure-Perl server for a lighter footprint.
 
-==Why ELSA?==
+=Table of Contents=
+
+<wiki:toc max_depth="3" />
+
+=Why ELSA?=
 I wrote ELSA because commercial tools were both lacking and cost prohibitive.  The only tool that provided the features I needed was Splunk.  Unfortunately, it was cost prohibitive and was too slow to receive the log volume I wanted on the hardware I had available.  ELSA is inspired by Splunk but is focused on speed versus dashboards and presentation.
 
 In designing ELSA, I tried the following components but found them too slow.  Here they are ordered from fastest to slowest for indexing speeds (non-scientifically tested):
