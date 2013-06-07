@@ -37,7 +37,7 @@ sub local_query {
 		}
 		if ($args->{q}){
 			if ($args->{qid}){
-				$self->log->level($ERROR);
+				$self->log->level($ERROR) unless $self->conf->get('debug_all');
 				$q = new Query(conf => $self->conf, permissions => $args->{permissions}, q => $args->{q}, 
 					node_info => $self->node_info, qid => $args->{qid}, peer_label => $args->{peer_label});
 			}
@@ -108,7 +108,7 @@ sub local_query {
 				$counter++;
 				if ($counter >= $self->conf->get('max_concurrent_archive_queries')){
 					#TODO create a queuing mechanism for this
-					$self->_error('There are already ' . $self->conf->get('max_concurrent_archive_queries') . ' queries running');
+					$self->_error('There are already ' . $counter . ' queries running');
 					return;
 				}
 			}
@@ -224,7 +224,15 @@ sub local_query {
 	elsif ($q->archive){
 		$self->_archive_query($q);
 	}
+	elsif (not $q->query_term_count){
+		# Skip Sphinx, execute a raw SQL search
+		$self->log->trace('No query terms, executing against raw SQL');
+		$self->_archive_query($q);
+	}
 	elsif (($q->analytics or ($q->limit > $API::Max_limit)) and not $q->has_groupby){
+		$self->_unlimited_sphinx_query($q);
+	}
+	elsif ($q->has_stopword_terms){
 		$self->_unlimited_sphinx_query($q);
 	}
 	else {
@@ -447,7 +455,7 @@ sub upload {
 	my $local_md5 = $md5->hexdigest;
 	close($upload_fh);
 	unless ($local_md5 eq $args->{md5}){
-		my $msg = 'MD5 mismatch! Found: ' . $args->{md5} . ' expected: ' . $local_md5;
+		my $msg = 'MD5 mismatch! Calculated: ' . $local_md5 . ' client said it should be: ' . $args->{md5};
 		$self->log->error($msg);
 		unlink($file);
 		return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];

@@ -197,7 +197,7 @@ sub BUILD {
 		$sth->execute($self->qid, $self->user->uid);
 		my $row = $sth->fetchrow_hashref;
 		die('User is not authorized for this qid') unless $row;
-		#$self->log->level($ERROR);
+		$self->log->level($ERROR) unless $self->conf->get('debug_all');
 	}
 	else {
 		# Log the query
@@ -480,6 +480,7 @@ sub _parse_query {
 	}
 	foreach my $boolean (qw(and or not)){
 		$self->terms->{any_field_terms}->{$boolean} = [];
+		$self->terms->{any_field_terms_sql}->{$boolean} = {};
 	}
 		
 	if ($raw_query =~ /\S/){ # could be meta_attr-only
@@ -713,17 +714,19 @@ sub _parse_query {
 					for (my $i = 0; $i < (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }); $i++){
 						my $term = $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field}->[$i];
 						if ($stopwords->{$term}){
-							my $err = 'Removed term ' . $term . ' which is too common';
-							$self->add_warning($err);
-							$self->log->warn($err);
+							if ($boolean eq 'or'){
+								my $err = 'Removed term ' . $term . ' which is too common';
+								$self->add_warning($err);
+								$self->log->warn($err);
+							}
 							$num_removed_terms++;
 							# Drop the term
 							if (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} } == 1){
-								delete $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
+								$self->terms->{attr_terms}->{$boolean}->{'='}->{$class_id}->{$raw_field} = delete $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
 								last;
 							}
 							else {
-								splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
+								push @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$class_id}->{$raw_field} }, splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
 							}
 						}
 					}
@@ -731,18 +734,22 @@ sub _parse_query {
 			}
 			foreach my $term (keys %{ $self->terms->{any_field_terms}->{$boolean} }){ 
 				if ($stopwords->{$term}){
-					my $err = 'Removed term ' . $term . ' which is too common';
-					$self->add_warning($err);
-					$self->log->warn($err);
+					if ($boolean eq 'or'){
+						my $err = 'Removed term ' . $term . ' which is too common';
+						$self->add_warning($err);
+						$self->log->warn($err);
+					}
 					$num_removed_terms++;
+					
 					# Drop the term
-					delete $self->terms->{any_field_terms}->{$boolean}->{$term};
+					$self->terms->{any_field_terms_sql}->{$boolean}->{$term} = delete $self->terms->{any_field_terms}->{$boolean}->{$term};
 				}
 			}
 		}
 	}
 			
 	# Determine if there are any other search fields.  If there are, then use host as a filter.
+	$self->log->debug('attr_terms: ' . Dumper($self->terms->{attr_terms}));
 	$self->log->debug('field_terms: ' . Dumper($self->terms->{field_terms}));
 	$self->log->debug('any_field_terms: ' . Dumper($self->terms->{any_field_terms}));
 	my $host_is_filter = 0;
@@ -812,8 +819,15 @@ sub _parse_query {
 	# Save this query_term_count for later use
 	$self->query_term_count($query_term_count);
 	
+#	# we might have a class-only query
+#	foreach my $class (keys %{ $self->classes->{distinct} }){
+#		unless ($num_removed_terms){ # this query used to have terms, so it wasn't really class-only
+#			$query_term_count++;
+#		}
+#	}
+
 	# we might have a class-only query
-	foreach my $class (keys %{ $self->classes->{distinct} }){
+	foreach my $class (keys %{ $self->classes->{given} }){
 		unless ($num_removed_terms){ # this query used to have terms, so it wasn't really class-only
 			$query_term_count++;
 		}
@@ -821,25 +835,25 @@ sub _parse_query {
 	
 	$self->log->debug('query_term_count: ' . $query_term_count . ', num_added_terms: ' . $num_added_terms);
 	
-	unless ($query_term_count or $self->has_import_search_terms){
-		die 'All query terms were stripped based on permissions or they were too common';
+	unless (not exists $self->datasources->{sphinx} or $query_term_count or $self->has_import_search_terms or $num_removed_terms){
+		die 'All query terms were stripped based on permissions';
 	}
 	
 	$self->log->debug('META_PARAMS: ' . Dumper($self->meta_params));
 	
-	# Adjust query time params as necessary
-	if ($self->meta_params->{adjust_query_times}){
-		if ($self->start < $self->node_info->{indexes_min}){
-			$self->start = $self->node_info->{indexes_min};
-			$self->log->warn("Given start time too early, adjusting to " 
-				. epoch2iso($self->start));
-		}
-		elsif ($self->start > $self->node_info->{indexes_max}){
-			$self->start = $self->node_info->{indexes_max} - $self->conf->get('sphinx/index_interval');
-			$self->log->warn("Given start time too late, adjusting to " 
-				. epoch2iso($self->start));
-		}
-	}
+#	# Adjust query time params as necessary
+#	if ($self->meta_params->{adjust_query_times}){
+#		if ($self->start < $self->node_info->{indexes_min}){
+#			$self->start = $self->node_info->{indexes_min};
+#			$self->log->warn("Given start time too early, adjusting to " 
+#				. epoch2iso($self->start));
+#		}
+#		elsif ($self->start > $self->node_info->{indexes_max}){
+#			$self->start = $self->node_info->{indexes_max} - $self->conf->get('sphinx/index_interval');
+#			$self->log->warn("Given start time too late, adjusting to " 
+#				. epoch2iso($self->start));
+#		}
+#	}
 	
 	# Failsafe for times
 	if ($self->meta_params->{start} or $self->meta_params->{end}){
@@ -865,7 +879,7 @@ sub _parse_query {
 		$self->log->warn('Adjusted start_int ' . $self->start . ' to ' . $new_start_max . ' because it was after ' . $self->node_info->{$type . '_max'});
 		$self->start($new_start_max);
 	}
-	if ($self->end and $self->end <= time() and $self->end > $self->node_info->{indexes_max} and $self->end > $self->node_info->{archive_max}){
+	if ($self->end and $self->end < time() and $self->end > $self->node_info->{indexes_max} and $self->end > $self->node_info->{archive_max}){
 		my $type = 'indexes';
 		if ($self->node_info->{archive_max} > $self->node_info->{indexes_max}){
 			$type = 'archive';
@@ -892,6 +906,45 @@ sub _parse_query {
 	}
 	
 	return 1;
+}
+
+sub filter_stopwords {
+	my $self = shift;
+	my $record = shift;
+	
+	# Filter any records which have stopwords
+	if (scalar keys %{ $self->terms->{any_field_terms_sql}->{and} }){
+		my $to_find = scalar keys %{ $self->terms->{any_field_terms_sql}->{and} };
+		STOPWORD_LOOP: foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{and} }){
+			foreach my $field (keys %$record){
+				my $regex = _term_to_regex($record->{$field});
+				if ($record->{$field} =~ qr/$regex/){
+					$self->log->debug('Found stopword: ' . $stopword);
+					$to_find--;
+					last STOPWORD_LOOP;
+				}
+			}
+		}
+		return 0 if $to_find;
+	}
+	
+	if (scalar keys %{ $self->terms->{any_field_terms_sql}->{not} }){
+		foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{not} }){
+			foreach my $field (keys %$record){
+				my $regex = _term_to_regex($record->{$field});
+				if ($record->{$field} =~ qr/$regex/){
+					$self->log->debug('Found not stopword: ' . $stopword);
+					return 0;
+				}
+			}
+		}
+	}
+	return 1;
+}
+
+sub has_stopword_terms {
+	my $self = shift;
+	return (scalar keys %{ $self->terms->{any_field_terms_sql}->{and} }) + (scalar keys %{ $self->terms->{any_field_terms_sql}->{not} });
 }
 
 sub _parse_query_term {
