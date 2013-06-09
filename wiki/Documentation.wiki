@@ -209,9 +209,16 @@ If you change the {{{ num_indexes }}} setting in /etc/elsa_node.conf, you will n
 {{{
 echo "" | perl /usr/local/elsa/node/elsa.pl -on
 pkill searchd
-/usr/local/sphinx/bin/searchd
+/usr/local/sphinx/bin/searchd --config /usr/local/etc/sphinx.conf
 }}}
-This will regenerate the config file using the new {{{ num_indexes }}} value and restart searchd.
+
+This will regenerate the config file using the new {{{ num_indexes }}} value.  There is one last step that needs to be taken, and that is to instantiate the actual Sphinx files by running indexer on these previously non-existent files.  This step depends on what the new value of {{{ num_indexes }}} is.  In this example, we have changed {{{ num_indexes }}} from 200 to 400, so we need to instantiate indexes 201 through 400.  We do this thusly:
+
+{{{
+for COUNTER in `seq 201 400`; do /usr/local/sphinx/bin/indexer --config /usr/local/etc/sphinx.conf temp_$COUNTER perm_$COUNTER; done
+}}}
+
+Now, restart searchd and the new indexes should be available.
 
 ==Making changes to syslog-ng.conf==
 install.sh will use /usr/local/elsa/node/conf/syslog-ng.conf as a template, using /etc/elsa_syslog-ng.conf (if it exists) as a reference for any persistent changes, and write the combination to /usr/local/syslog-ng/etc/syslog-ng.conf which is what is actually run.  So, put any local changes in /etc/elsa_syslog-ng.conf to make sure they survive an update.  Keep in mind that the file is included before the log {} statements, so you can redefine sources and destinations there, or put in additional log {} statements.
