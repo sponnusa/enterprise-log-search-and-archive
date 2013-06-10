@@ -387,9 +387,9 @@ sub _query {
 			else {
 				# Already native via timestamp_int
 			}
-			my $ret = { timestamp => $timestamp, class => 'NONE', host => '0.0.0.0', 'program' => 'NA', datasource => $self->name };
+			my $ret = { timestamp => $timestamp, class => 'NONE', host => $q->peer_label, 'program' => 'NA', datasource => $self->name };
 			$ret->{_fields} = [
-				{ field => 'host', value => '0.0.0.0', class => 'any' },
+				{ field => 'host', value => $q->peer_label, class => 'any' },
 				{ field => 'program', value => 'NA', class => 'any' },
 				{ field => 'class', value => 'NONE', class => 'any' },
 			];
