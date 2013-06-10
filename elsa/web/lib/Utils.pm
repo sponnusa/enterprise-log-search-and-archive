@@ -36,6 +36,9 @@ no warnings;
 	
 	# Strip newlines and replace with a single space.
 	$message =~ s/[\n\r]+/\ /g;
+	
+	# Strip any undefs with square brackets
+	$message = s/\=\"\[undef\]\"/\=\"\"/g;
 
     $caller_level = 0 unless defined $caller_level;
 
