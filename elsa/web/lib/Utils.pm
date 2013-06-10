@@ -17,6 +17,7 @@ use Time::HiRes qw(time);
 use Digest::SHA qw(sha512_hex);
 use Sys::Hostname;
 
+use CustomLog;
 use Results;
 
 our $Db_timeout = 3;
@@ -29,23 +30,6 @@ has 'db' => (is => 'rw', isa => 'Object', required => 1);
 has 'json' => (is => 'ro', isa => 'JSON', required => 1);
 #has 'bulk_dir' => (is => 'rw', isa => 'Str', required => 1, default => $Bulk_dir);
 has 'db_timeout' => (is => 'rw', isa => 'Int', required => 1, default => $Db_timeout);
-
-no warnings;
-*Log::Log4perl::Layout::PatternLayout::Multiline::render = sub {
-	my($self, $message, $category, $priority, $caller_level) = @_;
-	
-	# Strip newlines and replace with a single space.
-	$message =~ s/[\n\r]+/\ /g;
-	
-	# Strip any undefs with square brackets
-	$message = s/\=\"\[undef\]\"/\=\"\"/g;
-
-    $caller_level = 0 unless defined $caller_level;
-
-    my $result = $self->Log::Log4perl::Layout::PatternLayout::render($message, $category, $priority, $caller_level + 1);
-    return $result;
-};
-use warnings;
 
 around BUILDARGS => sub {
 	my $orig = shift;
@@ -97,7 +81,8 @@ around BUILDARGS => sub {
 		log4perl.appender.SyncerDat.appender   = Dat
 		log4perl.appender.RFC5424         = Log::Log4perl::Appender::Socket::UNIX
         log4perl.appender.RFC5424.Socket = $tmpdir/ops
-        log4perl.appender.RFC5424.layout = Log::Log4perl::Layout::PatternLayout::Multiline
+        #log4perl.appender.RFC5424.layout = Log::Log4perl::Layout::PatternLayout::Multiline
+        log4perl.appender.RFC5424.layout = CustomLog
         log4perl.appender.RFC5424.layout.ConversionPattern = 1 %d{yyyy-MM-ddTHH:mm:ss.000}Z 127.0.0.1 elsa - 99 [elsa\@32473 priority="%p" method="%M" file="%F{2}" line_number="%L" pid="%P" client="%X{client_ip_address}" qid="%X{qid}" hostname="$hostname"] %m%n
 	';
 	
