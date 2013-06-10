@@ -30,7 +30,7 @@ no warnings;
 	$message =~ s/[\n\r]+/\ /g;
 	
 	# Strip any undefs with square brackets
-	$message = s/\=\"\[undef\]\"/\=\"\"/g;
+	$message =~ s/\=\"\[undef\]\"/\=\"\"/g;
 
     $caller_level = 0 unless defined $caller_level;
 

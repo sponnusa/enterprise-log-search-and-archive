@@ -6,6 +6,7 @@ use DBI;
 use Socket;
 use Log::Log4perl;
 use String::CRC32;
+use Sys::Hostname;
 
 use constant FIELD_TIMESTAMP => 0;
 use constant FIELD_HOST => 1;
@@ -180,6 +181,7 @@ has 'cache' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {}
 has 'to_add' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'offline_processing' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'processing_times' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { start => CORE::time(), end => 0 } });
+has 'local_hostname' => (is => 'rw', isa => 'Str', required => 1, default => sub { hostname });
 
 sub BUILDARGS {
 	my $class = shift;
@@ -291,6 +293,10 @@ sub get_class_info {
 		elsif ($field_hash->{field} eq 'country_code' and $field_hash->{pattern_type} eq 'QSTRING'){
 			$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE} ||= {};
 			$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE}->{ $field_hash->{field_order} } = $field_hash->{field};
+		}
+		elsif ($field_hash->{field} eq 'hostname' and $field_hash->{class_id} eq 99){ # Special case for setting the localhost for ELSA_OPS
+			$ret->{field_conversions}->{ $field_hash->{class_id} }->{LOCALHOST} ||= {};
+			$ret->{field_conversions}->{ $field_hash->{class_id} }->{LOCALHOST}->{ $field_hash->{field_order} } = $field_hash->{field};
 		}
 	}
 			
@@ -420,6 +426,11 @@ sub parse_line {
 		# Convert any proto fields as necessary
 		foreach my $field_order (keys %{ $self->class_info->{field_conversions}->{ $line[FIELD_CLASS_ID] }->{PROTO} }){
 			$line[$field_order] = exists $Proto_map->{ uc($line[$field_order]) } ? $Proto_map->{ uc($line[$field_order]) } : $line[$field_order];
+		}
+		
+		# Fill any localhost templates as necessary
+		foreach my $field_order (keys %{ $self->class_info->{field_conversions}->{ $line[FIELD_CLASS_ID] }->{LOCALHOST} }){
+			$line[$field_order] = $self->local_hostname;
 		}
 	}
 	
