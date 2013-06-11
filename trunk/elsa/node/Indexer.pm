@@ -2793,21 +2793,26 @@ sub _current_disk_space_available_for_dir {
 	$dir = $1;
 	my @lines = qx(df -B 1 $dir);
 	my ($default, $total, $used, $available, $percentage_used, $mounted_on);
-	foreach my $line (@lines){
-		print $line;
-		next if $line =~ /^Filesystem/;
-		chomp($line);
-		(undef, $total, $used, $available, $percentage_used, $mounted_on) = split(/\s+/, $line);
-		$percentage_used =~ s/\%$//;
-		return ($total, $available, $percentage_used);
-#		if ($line =~ /^$data_dir/o or $mounted_on =~ /^$data_dir/o){
-#			return ($total, $available, $percentage_used);
-#		}
-#		elsif ($line =~ /^\/$/ or $mounted_on =~ /^\/$/){
-#			$default = [ $total, $available, $percentage_used ];
-#		}
-	}
+	my $buf = join(' ', @lines[1..$#lines]);
+	(undef, $total, $used, $available, $percentage_used, $mounted_on) = split(/\s+/, $buf);
+	$percentage_used =~ s/\%$//;
+	return ($total, $available, $percentage_used);
 	
+#	foreach my $line (@lines){
+#		print $line;
+#		next if $line =~ /^Filesystem/;
+#		chomp($line);
+#		(undef, $total, $used, $available, $percentage_used, $mounted_on) = split(/\s+/, $line);
+#		$percentage_used =~ s/\%$//;
+#		return ($total, $available, $percentage_used);
+##		if ($line =~ /^$data_dir/o or $mounted_on =~ /^$data_dir/o){
+##			return ($total, $available, $percentage_used);
+##		}
+##		elsif ($line =~ /^\/$/ or $mounted_on =~ /^\/$/){
+##			$default = [ $total, $available, $percentage_used ];
+##		}
+#	}
+#	
 #	return @$default;
 }
 
