@@ -7,7 +7,7 @@ use DBI;
 use Socket qw(inet_aton);
 use Time::HiRes qw(sleep time);
 use Fcntl qw(:flock);
-use File::Temp;
+use File::Copy;
 use File::Find;
 use Sys::Info; 
 use Sys::Info::Constants qw( :device_cpu );
@@ -261,6 +261,28 @@ sub rotate_logs {
 	$query = 'DELETE FROM host_stats WHERE timestamp < DATE_SUB(NOW(), INTERVAL ? DAY)';
 	$sth = $self->db->prepare($query);
 	$sth->execute($retention_days);
+	
+	# Update stopwords, if necessary
+	if ($self->conf->get('sphinx/stopwords/top_n') and $self->conf->get('sphinx/stopwords/file')
+		and $self->conf->get('sphinx/stopwords/interval')){
+		if (-f $self->conf->get('sphinx/stopwords/file')){
+			# Get the age of the current stopwords file
+			my @stat = stat($self->conf->get('sphinx/stopwords/file'));
+			my $mtime = $stat[9];
+			my $age = (time() - $mtime);
+			if ($age > $self->conf->get('sphinx/stopwords/interval')){
+				$self->_set_stopwords();
+			}
+			else {
+				$self->log->trace('Not updating stopwords file since it is only ' . $age . ' seconds old');
+			}
+		}
+		else {
+			# First time, create stopwords file
+			$self->_set_stopwords();
+		}
+	}
+		
 }
 
 sub initial_validate_directory {
@@ -2459,7 +2481,7 @@ EOT
 ;
 
 	my $template = sprintf($template_base, $self->conf->get('logdir'), $self->conf->get('sphinx/index_path'), 
-		$self->conf->get('sphinx/stopwords_file'), $self->conf->get('database/db'), 
+		$self->conf->get('sphinx/stopwords/file'), $self->conf->get('database/db'), 
 		$self->conf->get('database/username'), $self->conf->get('database/password'), 
 		$self->conf->get('sphinx/pid_file'), 
 		$self->conf->get('sphinx/mysql_port') ? $self->conf->get('sphinx/mysql_port') : 9306,
@@ -2811,6 +2833,95 @@ sub _unlock_and_die {
 	
 	die($msg);
 }
+
+sub _set_stopwords {
+	my $self = shift;
+	
+	my ($query, $sth);
+	# Find the latest perm index
+	$query = 'SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) FROM v_indexes WHERE type="permanent" AND ISNULL(locked_by) ORDER BY start DESC LIMIT 1';
+	$sth = $self->db->prepare($query);
+	$sth->execute;
+	my $row = $sth->fetchrow_arrayref;
+	my $index_name;
+	if ($row){
+		$index_name = $row->[0];
+	}
+	else {
+		# No permanent indexes yet
+		$query = 'SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) FROM v_indexes WHERE type="temporary" AND ISNULL(locked_by) ORDER BY start DESC LIMIT 1';
+		$sth = $self->db->prepare($query);
+		$sth->execute;
+		$row = $sth->fetchrow_arrayref;
+		$index_name = $row->[0];
+	}
+	
+	unless ($index_name){
+		$self->log->error('Unable to find an index to use to build stopwords');
+		return {};
+	}
+		
+	$self->log->trace('Starting Sphinx stopword building for ' . $index_name);
+	
+	my $start_time = time();
+	my $stopwords_file = $self->conf->get('sphinx/stopwords/file');
+	my $top_n_stopwords = 100;
+	if ($self->conf->get('sphinx/stopwords/top_n')){
+		$top_n_stopwords = $self->conf->get('sphinx/stopwords/top_n');
+	}
+	my $cmd = sprintf("%s --config %s --buildfreqs --buildstops $stopwords_file $top_n_stopwords %s 2>&1", 
+		$self->conf->get('sphinx/indexer'), $self->conf->get('sphinx/config_file'), $index_name);
+	my @output = qx/$cmd/;
+	$self->log->debug('output: ' . join('', @output));
+	my $index_time = time() - $start_time;
+	
+	open(FH, $stopwords_file) or die($!);
+	my %stopwords;
+	while (<FH>){
+		my ($word, $count) = split(/\s+/, $_);
+		$stopwords{$word} = $count;
+	}
+	close(FH);
+	
+	if ($self->conf->get('sphinx/stopwords/whitelist')){
+		
+		foreach my $whitelisted_term (@{ $self->conf->get('sphinx/stopwords/whitelist') }){
+			delete $stopwords{$whitelisted_term};
+		}
+		
+		my $buf = '';
+		foreach my $stopword (sort { $stopwords{$b} <=> $stopwords{$a} } keys %stopwords){
+			$buf .= "$stopword $stopwords{$stopword}\n";
+		}
+		chop($buf);
+		
+		my $tmpfile = $self->conf->get('buffer_dir') . '/tmp_stopwords';
+		open(FH, "> $tmpfile") or die($!);
+		print FH $buf;
+		close(FH);
+		move($tmpfile, $self->conf->get('sphinx/stopwords/file'));
+		
+		$self->log->trace('Removed ' . (scalar @{ $self->conf->get('sphinx/stopwords/whitelist') }) . ' whitelisted terms from stopwords');
+	}
+	
+	$self->log->trace('new stopwords: ' . Dumper(\%stopwords));
+	unless (scalar keys %stopwords){
+		$self->log->error("Unable to get stopwords for $index_name, output: " . Dumper(\@output));
+		return {};
+	}
+	
+	# Set the elsa_web.conf stopwords
+	my $conf_dir = $self->conf->pathToFile;
+	$conf_dir =~ s/\/[^\/]+$//;
+	my $web_conf = new Config::JSON($conf_dir . '/elsa_web.conf');
+	$web_conf->set('stopwords', \%stopwords);
+	$web_conf->write();
+	$self->log->trace('Wrote new stopwords to elsa_web.conf');
+	
+	$self->log->info(sprintf("Got stopwords from %s in %.5f seconds", $index_name, $index_time));
+	return \%stopwords;
+}
+
 
 __PACKAGE__->meta->make_immutable;
 

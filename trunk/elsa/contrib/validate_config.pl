@@ -102,7 +102,12 @@ my $Required = {
 				index_path => 'dir',
 				index_interval => 'integer',
 				perm_index_size => 'integer',
-				stopwords_file => 'string', #optional
+				stopwords => {
+					file => 'string', #optional
+					top_n => 'integer',
+					interval => 'integer',
+					whitelist => 'array',
+				},
 				pid_file => 'string',
 			},
 			logdir => 'dir',
@@ -153,6 +158,12 @@ my $Additions = {
 			}
 		}
 		return 1;
+	},
+	'sphinx/stopwords' => sub {
+		my $fails = shift;
+		my $conf = shift;
+		say 'Creating dummy stopwords config entry';
+		$conf->set('sphinx/stopwords', { file => '/usr/local/etc/sphinx_stopwords.txt', top_n => 0, interval => 0, whitelist => [] });
 	},
 #	'mysql_dir' => sub {
 #		my $fails = shift;
