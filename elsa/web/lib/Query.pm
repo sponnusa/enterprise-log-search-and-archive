@@ -1275,7 +1275,6 @@ sub _parse_query_term {
 #								}
 							}
 							else {	
-								$self->log->debug("no ip match for $term_hash->{value}");
 								push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
 							}
 						}

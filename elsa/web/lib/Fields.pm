@@ -554,9 +554,20 @@ sub normalize_value {
 		return crc32($value);
 	}
 	else {
-		#apparently we don't know about any conversions
-		#$self->log->debug("No conversion for $value and class_id $class_id, field_order $field_order.");
-		return $orig_value; 
+		# Integer value
+		if (int($orig_value)){
+			return $orig_value;
+		}
+		else {
+			# Try to find an int and use that
+			$orig_value =~ s/\\?\s//g;
+			if (int($orig_value)){
+				return $orig_value;
+			}
+			else {
+				die('Invalid query term, not an integer: ' . $orig_value);
+			}
+		}
 	}
 }
 
