@@ -431,7 +431,7 @@ sub _validate_directory {
 		"t2.table_name AS recorded_table\n" .
 		"FROM INFORMATION_SCHEMA.TABLES t1\n" .
 		"LEFT JOIN tables t2 ON (CONCAT(t1.table_schema, \".\", t1.table_name)=t2.table_name)\n" .
-		"WHERE t1.table_schema=\"$Data_db_name\" HAVING ISNULL(recorded_table)";
+		"WHERE t1.table_schema=\"$Data_db_name\" AND t1.table_type=\"BASE TABLE\" AND t1.table_name LIKE \"syslogs\_%\" HAVING ISNULL(recorded_table)";
 	$sth = $self->db->prepare($query);
 	$sth->execute();
 	
