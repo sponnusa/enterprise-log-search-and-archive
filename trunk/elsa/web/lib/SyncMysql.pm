@@ -144,7 +144,7 @@ sub sphinx {
 				# Is this a meta block row?
 				if (exists $row->{Value} and exists $row->{Variable_name} and (scalar keys %$row) eq 2){
 					next unless $row->{Variable_name};
-					if ($row->{Value} =~ /^\d+(?:\.\d+)?$/){
+					if ($row->{Variable_name} !~ /^keyword/ and $row->{Value} =~ /^\d+(?:\.\d+)?$/){
 						$meta{ $row->{Variable_name} } += $row->{Value};
 					}
 					else {
