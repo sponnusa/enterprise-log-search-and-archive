@@ -2753,24 +2753,40 @@ sub record_host_stats {
 sub _current_disk_space_available {
 	my $self = shift;
 	my $data_dir = $self->conf->get('sphinx/index_path');
-	$data_dir =~ /^(\/[^\/]+)/;
-	$data_dir = $1;
-	my @lines = qx(df -B 1);
+	my @size = $self->_current_disk_space_available_for_dir($data_dir);
+	if ($self->conf->get('mysql_dir')){
+		$data_dir = $self->conf->get('mysql_dir');
+		my @data = $self->_current_disk_space_available_for_dir($data_dir);
+		$size[0] += $data[0];
+		$size[1] += $data[1];
+		$size[2] = ($size[2] < $data[2] ? $size[2] : $data[2]); # take the smaller of the two for percentage available
+	}
+	return @size;
+}
+
+sub _current_disk_space_available_for_dir {
+	my $self = shift;
+	my $dir = shift;
+	$dir =~ /^(\/[^\/]+)/;
+	$dir = $1;
+	my @lines = qx(df -B 1 $dir);
 	my ($default, $total, $used, $available, $percentage_used, $mounted_on);
 	foreach my $line (@lines){
+		print $line;
 		next if $line =~ /^Filesystem/;
 		chomp($line);
 		(undef, $total, $used, $available, $percentage_used, $mounted_on) = split(/\s+/, $line);
 		$percentage_used =~ s/\%$//;
-		if ($line =~ /^$data_dir/o or $mounted_on =~ /^$data_dir/o){
-			return ($total, $available, $percentage_used);
-		}
-		elsif ($line =~ /^\/$/ or $mounted_on =~ /^\/$/){
-			$default = [ $total, $available, $percentage_used ];
-		}
+		return ($total, $available, $percentage_used);
+#		if ($line =~ /^$data_dir/o or $mounted_on =~ /^$data_dir/o){
+#			return ($total, $available, $percentage_used);
+#		}
+#		elsif ($line =~ /^\/$/ or $mounted_on =~ /^\/$/){
+#			$default = [ $total, $available, $percentage_used ];
+#		}
 	}
 	
-	return @$default;
+#	return @$default;
 }
 
 sub _unlock_and_die {
