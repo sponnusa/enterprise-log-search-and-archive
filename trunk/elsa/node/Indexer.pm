@@ -582,10 +582,21 @@ sub _oversize_log_rotate {
 	
 	my ($query, $sth);
 	my $log_size_limit = $self->conf->get('log_size_limit');
-	if ($log_size_limit =~ /(\d+)\%$/){
-		my $limit_percent = $1;
-		my ($total, $available, $percentage) = $self->_current_disk_space_available();
-		$log_size_limit = $total * .01 * $limit_percent;
+	if ($log_size_limit =~ /(\d+)([%GMT])$/){
+		if( $2 eq '%' ) {
+			my $limit_percent = $1;
+			my ($total, $available, $percentage) = $self->_current_disk_space_available();
+			$log_size_limit = $total * .01 * $limit_percent;
+		} 
+		elsif( $2 eq 'T' ) {
+			$log_size_limit *= 2**40;
+		}
+		elsif( $2 eq 'G' ) {
+			$log_size_limit *= 2**30;
+		} 
+		elsif( $2 eq 'M' ) {
+			$log_size_limit *= 2**20;
+		}
 	}
 	my $archive_size_limit = $log_size_limit * $self->conf->get('archive/percentage') * .01;
 	
