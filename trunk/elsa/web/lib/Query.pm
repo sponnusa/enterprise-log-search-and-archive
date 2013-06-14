@@ -358,7 +358,7 @@ sub timezone_diff {
 		# Find our offset in minutes to match Javascript's offset designation
 		
 		# Account for time given in epoch format
-		if (int($time)){
+		if ($time =~ /^\d{10}$/){
 			$time = 'epoch ' . $time;
 		}
 		my $server_offset_then = int(UnixDate(ParseDate($time), '%z')) / 100 * -60;
