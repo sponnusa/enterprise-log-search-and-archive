@@ -174,6 +174,7 @@ sub BUILD {
 		my $prefs = $self->user->preferences->{tree}->{default_settings};
 		if ($prefs->{orderby_dir}){
 			$self->orderby_dir($prefs->{orderby_dir});
+			$self->orderby('timestamp');
 		}
 		if ($prefs->{timeout}){
 			$self->timeout($prefs->{timeout});
