@@ -1236,6 +1236,10 @@ sub _parse_query_term {
 					$term_hash->{op}
 				);
 				
+				if (not scalar keys %{ $values->{attrs} } and not scalar keys %{ $values->{fields} }){
+					die('Invalid field: ' . $term_hash->{field});
+				}
+				
 				# Set fields for searching
 				if ($term_hash->{op} !~ /[\<\>]/){ # ignore ranges
 					foreach my $class_id (keys %{ $values->{fields} }){
