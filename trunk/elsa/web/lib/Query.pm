@@ -356,6 +356,11 @@ sub timezone_diff {
 	# Apply client's timezone settings
 	if (defined $self->meta_params->{timezone_offset}){
 		# Find our offset in minutes to match Javascript's offset designation
+		
+		# Account for time given in epoch format
+		if (int($time)){
+			$time = 'epoch ' . $time;
+		}
 		my $server_offset_then = int(UnixDate(ParseDate($time), '%z')) / 100 * -60;
 		my $server_offset_now = int(UnixDate(ParseDate('now'), '%z')) / 100 * -60;
 		if ($self->meta_params->{timezone_offset} and $server_offset_then != $server_offset_now){
