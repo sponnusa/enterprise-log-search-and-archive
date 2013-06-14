@@ -51,6 +51,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(37, "NAT", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(38, "FTP", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(39, "CISCO_WARN", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(40, "DHCP", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(41, "BRO_FILE", 0);
 INSERT INTO classes (id, class) VALUES(98, "ELSA_UNPARSED");
 INSERT INTO classes (id, class) VALUES(99, "ELSA_OPS");
 
@@ -280,6 +281,14 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="dstport"), 8);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="notice_type"), 11);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="notice_msg"), 12);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="md5"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="site"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="uri"), 13);
 
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="srcip"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="srcport"), 6);
