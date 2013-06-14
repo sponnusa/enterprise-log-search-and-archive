@@ -842,7 +842,19 @@ sub _parse_query {
 	$self->log->debug('query_term_count: ' . $query_term_count . ', num_added_terms: ' . $num_added_terms);
 	
 	unless (not exists $self->datasources->{sphinx} or $query_term_count or $self->has_import_search_terms or $num_removed_terms){
-		die 'All query terms were stripped based on permissions';
+		# See if we're doing an attr-only search here
+		my $attrs = 0;
+		foreach my $boolean (qw(and or not)){
+			foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+				$attrs += scalar keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} };
+			}
+		}
+		if ($attrs){
+			$self->log->debug('attrs only');
+		}
+		else {
+			die 'All query terms were stripped based on permissions';
+		}
 	}
 	
 	$self->log->debug('META_PARAMS: ' . Dumper($self->meta_params));
