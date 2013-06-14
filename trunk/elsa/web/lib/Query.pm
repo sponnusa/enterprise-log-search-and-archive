@@ -886,7 +886,7 @@ sub _parse_query {
 	}
 	
 	# Check to see if the query is after the latest end, but not in the future (this happens if the indexing process is backed up)
-	if (not (exists $self->datasources->{sphinx} or exists $self->datasources->{archive}) and 
+	if ((exists $self->datasources->{sphinx} or exists $self->datasources->{archive}) and 
 		$self->start and $self->start <= time() and $self->start > $self->node_info->{indexes_max} and $self->start > $self->node_info->{archive_max}){
 		my $type = 'indexes';
 		if ($self->node_info->{archive_max} > $self->node_info->{indexes_max}){
@@ -898,7 +898,7 @@ sub _parse_query {
 		$self->log->warn('Adjusted start_int ' . $self->start . ' to ' . $new_start_max . ' because it was after ' . $self->node_info->{$type . '_max'});
 		$self->start($new_start_max);
 	}
-	if (not (exists $self->datasources->{sphinx} or exists $self->datasources->{archive}) and 
+	if ((exists $self->datasources->{sphinx} or exists $self->datasources->{archive}) and 
 		$self->end and $self->end < time() and $self->end > $self->node_info->{indexes_max} and $self->end > $self->node_info->{archive_max}){
 		my $type = 'indexes';
 		if ($self->node_info->{archive_max} > $self->node_info->{indexes_max}){
