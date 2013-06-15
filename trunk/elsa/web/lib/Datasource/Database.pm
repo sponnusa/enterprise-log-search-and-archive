@@ -195,7 +195,35 @@ sub _query {
 		}
 	}
 	
-	if (!$q->has_groupby){
+	if ($q->has_groupby){
+		if ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
+			foreach my $row (@{ $self->fields }){
+				if ($row->{alias}){
+					if ($row->{alias} eq 'timestamp'){
+						if ($where and $where ne ' '){
+							$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+						}
+						else {
+							$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+						}
+						push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);
+						last;
+					}
+					elsif ($row->{alias} eq 'timestamp_int'){
+						if ($where and $where ne ' '){
+							$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+						}
+						else {
+							$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+						}
+						push @$placeholders, $q->start, $q->end;
+						last;
+					}
+				}
+			}
+		}
+	}
+	else {
 		foreach my $row (@{ $self->fields }){
 			if ($row->{alias}){
 				if ($row->{type} eq 'ip_int'){
