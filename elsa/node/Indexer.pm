@@ -2885,7 +2885,7 @@ sub _set_stopwords {
 	if ($self->conf->get('sphinx/stopwords/top_n')){
 		$top_n_stopwords = $self->conf->get('sphinx/stopwords/top_n');
 	}
-	my $cmd = sprintf("%s --config %s --buildfreqs --buildstops $stopwords_file $top_n_stopwords %s 2>&1", 
+	my $cmd = sprintf("%s --config %s --buildstops $stopwords_file $top_n_stopwords %s 2>&1", 
 		$self->conf->get('sphinx/indexer'), $self->conf->get('sphinx/config_file'), $index_name);
 	my @output = qx/$cmd/;
 	$self->log->debug('output: ' . join('', @output));
