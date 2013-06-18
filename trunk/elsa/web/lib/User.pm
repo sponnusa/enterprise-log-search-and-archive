@@ -6,7 +6,7 @@ with 'MooseX::Traits';
 with Storage('format' => 'Storable');
 use DBI;
 use Data::Dumper;
-
+use Ouch qw(:traditional);
 
 our @Serializable = qw(username uid permissions email groups extra_attrs is_admin session_start_time preferences); 
 
@@ -85,7 +85,7 @@ sub BUILD {
 		$self->_init_kerberos();
 	}
 	else {
-		die('No auth_method');
+		throw(500, 'No auth_method', { config => 'auth method' });
 	}
 	
 	# Apply allowed_groups check
@@ -117,7 +117,7 @@ sub BUILD {
 	else {
 		# UID not found, so this is a new user and the corresponding user group,
 		$self->log->debug('Creating user ' . $self->username);
-		$self->_create_user() or die('Unable to create new user ' . $self->username);
+		$self->_create_user() or throw(500, 'Unable to create new user ' . $self->username, { create_user =>  0 });
 	}
 	
 	$self->permissions($self->_get_permissions())
@@ -134,8 +134,8 @@ sub _init_none {
 	
 	if ($self->username ne 'user'){
 		# Assume that we were given authentication via setting env var HTTP_USER (like via Apache built-in authentication) and use local database for settings
-		die('No db given') unless $self->db;
-		die('No admin groups listed in admin_groups') unless $self->conf->get('admin_groups');
+		throw(500, 'No db given', { config => 'db' }) unless $self->db;
+		throw(500, 'No admin groups listed in admin_groups', { config => 'admin_groups' }) unless $self->conf->get('admin_groups');
 		my ($query, $sth);
 		$query = 'SELECT groupname FROM groups t1 JOIN users_groups_map t2 ON (t1.gid=t2.gid) JOIN users t3 ON (t2.uid=t3.uid) WHERE t3.username=?';
 		$sth = $self->db->prepare($query);
@@ -199,7 +199,7 @@ sub _init_ldap {
 		searchattrs => [ $self->conf->get('ldap/searchattrs') ],
 	);
 	unless ($ldap) {
-		die('Unable to connect to LDAP server');
+		throw(502, 'Unable to connect to LDAP server', { ldap => $self->conf->get('ldap/host') });
 	}
 	$self->ldap($ldap);
 	
@@ -306,8 +306,8 @@ sub _init_local {
 sub _init_db {
 	my $self = shift;
 	
-	die('No db given') unless $self->db;
-	die('No admin groups listed in admin_groups') unless $self->conf->get('admin_groups');
+	throw(500, 'No db given', { config => 'db' }) unless $self->db;
+	throw(500, 'No admin groups listed in admin_groups', { config => 'admin_groups' }) unless $self->conf->get('admin_groups');
 	my ($query, $sth);
 	$query = 'SELECT groupname FROM groups t1 JOIN users_groups_map t2 ON (t1.gid=t2.gid) JOIN users t3 ON (t2.uid=t3.uid) WHERE t3.username=?';
 	$sth = $self->db->prepare($query);

@@ -6,6 +6,9 @@ use Plack::Request;
 use Encode;
 use Scalar::Util;
 use Digest::SHA qw(sha512_hex);
+use Ouch qw(:traditional);
+
+use Utils;
 
 sub call {
 	my ($self, $env) = @_;
@@ -53,7 +56,7 @@ sub call {
 		return $res->finalize();
 	}
 	my $ret;
-	eval {
+	try {
 		$self->api->freshen_db;
 		if ($req->upload and $req->uploads->{filename}){
 			$args->{upload} = $req->uploads->{filename};
@@ -63,11 +66,16 @@ sub call {
 			$ret = { error => $self->api->last_error };
 		}
 	};
-	if ($@){
-		my $e = $@;
-		$self->api->log->error($e);
-		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
+	if (my $e = catch_any){
+		$self->api->log->error($e->trace);
+		$res->status($e->code);
+		$res->body([encode_utf8($self->api->json->encode($e))]);
 	}
+#	if ($@){
+#		my $e = $@;
+#		$self->api->log->error($e);
+#		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
+#	}
 	elsif (ref($ret) and ref($ret) eq 'ARRAY'){
 		# API function returned Plack-compatible response
 		return $ret;
@@ -95,7 +103,7 @@ sub call {
 		}
 		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->api->has_warnings){
 			foreach my $warning ($self->api->all_warnings){
-				$ret->add_warning($warning);
+				push @{ $self->api->warnings }, $warning;
 			}
 		}
 		$res->body([encode_utf8($self->api->json->encode($ret))]);

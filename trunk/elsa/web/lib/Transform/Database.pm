@@ -7,6 +7,7 @@ use DBI;
 use JSON;
 use URL::Encode qw(url_encode);
 use Time::HiRes;
+use Ouch qw(:traditional);
 extends 'Transform';
 
 our $Name = 'Database';
@@ -42,7 +43,7 @@ sub BUILD {
 			}
 		}
 		#$self->log->debug('placeholders: ' . Dumper(\@placeholders));
-		$sth->execute(@placeholders) or die($sth->errstr);
+		$sth->execute(@placeholders) or throw(500, $sth->errstr, { mysql => $query });
 		my @rows;
 		while (my $row = $sth->fetchrow_hashref){
 			push @rows, $row;

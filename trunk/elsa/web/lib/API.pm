@@ -24,6 +24,7 @@ use Carp;
 use Log::Log4perl::Level;
 use Storable qw(freeze thaw);
 use AnyEvent::HTTP;
+use Ouch qw(:traditional);
 
 use User;
 use Query;
@@ -41,7 +42,7 @@ has 'ldap' => (is => 'rw', isa => 'Object', required => 0);
 has 'last_error' => (is => 'rw', isa => 'Str', required => 1, default => '');
 has 'cache' => (is => 'rw', isa => 'Object', required => 1, default => sub { return CHI->new( driver => 'RawMemory', global => 1) });
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
-	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear', 'all_warnings' => 'elements' });
+	handles => { 'has_warnings' => 'count', 'clear_warnings' => 'clear', 'all_warnings' => 'elements' });
 has 'system_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
 } });
 has 'web_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
@@ -164,7 +165,7 @@ sub BUILD {
 			
 			foreach my $datasource_plugin (keys %{ $self->conf->get('datasources/' . $datasource_class) }){
 				my $conf = $self->conf->get('datasources/' . $datasource_class . '/' . $datasource_plugin);
-				die('No conf found for ' . 'datasources/' . $datasource_class . '/' . $datasource_plugin) unless $conf;
+				throw(500, 'No conf found for ' . 'datasources/' . $datasource_class . '/' . $datasource_plugin, { config => $datasource_plugin }) unless $conf;
 				my $alias = delete $conf->{alias};
 				$alias ||= $datasource_plugin;
 				my $metaclass = Moose::Meta::Class->create( 'Datasource::' . $alias, 
@@ -192,6 +193,14 @@ sub BUILD {
 	}
 	
 	return $self;
+}
+
+sub add_warning {
+	my $self = shift;
+	my $code = shift;
+	my $errstr = shift;
+	
+	push @{ $self->warnings }, new Ouch($code, $errstr);
 }
 
 sub _get_ldap {
@@ -304,7 +313,7 @@ sub _get_foreign_saved_result {
 		$peer_conf = $self->conf->get('peers/' . $peer);
 	}
 	unless ($peer_conf){
-		die('No local $peer_conf for web services');
+		throw(500, 'No local $peer_conf for web services', { foreign_result => $peer });
 	}
 	my $url = $peer_conf->{url} . 'API/result?qid=' . int($args->{qid});
 	$self->log->trace('Sending request to URL ' . $url);
@@ -322,7 +331,7 @@ sub _get_foreign_saved_result {
 		};
 		if ($@){
 			$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
-			$self->add_warning('peer ' . $peer . ': ' . $@);
+			$self->add_warning(502, 'peer ' . $peer . ': ' . $@, { http => $peer });
 			undef $guard;
 		}
 		$cv->send;
@@ -344,7 +353,7 @@ sub _error {
 sub get_permissions {
 	my ($self, $args) = @_;
 	
-	die('Admin required') unless $args->{user}->is_admin;
+	throw(403, 'Admin required', { admin => 1 }) unless $args->{user}->is_admin;
 		
 	my $form_params = $self->get_form_params($args->{user});
 	
@@ -466,7 +475,7 @@ sub get_permissions {
 sub set_permissions {
 	my ($self, $args) = @_;
 	
-	die('Admin required') unless $args->{user}->is_admin;
+	throw(403, 'Admin required', { admin => 1 }) unless $args->{user}->is_admin;
 	
 	unless ($args->{action} and ($args->{action} eq 'add' or $args->{action} eq 'delete')){
 		$self->_error('No set permissions action given: ' . Dumper($args));
@@ -712,7 +721,7 @@ sub get_stats {
 						my $bucket = int(($ts - ($ts % $bucket_size)) / $bucket_size);
 						# Sanity check the bucket because too large an index array can cause an OoM error
 						if ($bucket > $intervals){
-							die('Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals);
+							throw(500, 'Bucket ' . $bucket . ' with bucket_size ' . $bucket_size . ' and ts ' . $row->{ts} . ' was greater than intervals ' . $intervals, { stats => 1 });
 						}
 						unless ($load_stats->{$item}->{data}->{x}->[$bucket]){
 							$load_stats->{$item}->{data}->{x}->[$bucket] = $row->{timestamp};
@@ -867,7 +876,7 @@ sub _get_sphinx_nodes {
 #			});
 		};
 		if ($@){
-			$self->add_warning($@);
+			$self->add_warning(502, $@, { mysql => $q->peer_label });
 			delete $nodes{$node};
 		}		
 	}
@@ -933,7 +942,7 @@ sub old_get_sphinx_nodes {
 			]);
 		};
 		if ($@){
-			$self->add_warning($@);
+			$self->add_warning(502, $@, { mysql => $q->peer_label });
 			delete $nodes{$node};
 		}		
 	}
@@ -950,7 +959,7 @@ sub get_form_params {
 		$self->node_info($node_info);
 	};
 	if ($@){
-		$self->add_warning($@);
+		$self->add_warning(500, $@, { method => 'info' });
 		$self->log->error($@);
 		return;
 	}
@@ -1115,7 +1124,7 @@ sub get_all_scheduled_queries {
 		$args = {};
 	}
 	
-	die('Admin required') unless $args->{user}->is_admin;
+	throw(403, 'Admin required', { admin => 1 }) unless $args->{user}->is_admin;
 	
 	my $offset = 0;
 	if ( $args->{startIndex} ){
@@ -1436,7 +1445,7 @@ sub _save_results {
 	$sth->execute($args->{qid});
 	my $row = $sth->fetchrow_hashref;
 	unless (not $args->{user} or ($row and $row->{uid} eq $args->{user}->uid)){
-		die('Insufficient permissions');
+		throw(403, 'Insufficient permissions', { user => 1 });
 	}
 	
 	$self->db->begin_work;
@@ -1583,7 +1592,7 @@ sub _get_saved_results {
 	  . 'LEFT JOIN foreign_queries t2 ON (t1.qid=t2.foreign_qid) '
 	  . 'JOIN query_log t3 ON (t1.qid=t3.qid OR t2.qid=t3.qid) '
 	  . 'WHERE uid=?'; #AND comments!=\'_alert\'';
-	$sth = $self->db->prepare($query) or die( $self->db->errstr );
+	$sth = $self->db->prepare($query) or throw(500, $self->db->errstr, { mysql => 1 } );
 	$sth->execute( $uid );
 	$row = $sth->fetchrow_hashref;
 	my $totalRecords = $row->{totalRecords} ? $row->{totalRecords} : 0;
@@ -1603,7 +1612,7 @@ sub _get_saved_results {
 	push @placeholders, $offset, $limit;
 	$query .= 'ORDER BY qid DESC LIMIT ?,?';
 	$self->log->debug(Dumper(\@placeholders));
-	$sth = $self->db->prepare($query) or die( $self->db->errstr );
+	$sth = $self->db->prepare($query) or throw(500, $self->db->errstr, { mysql => 1 } );
 	
 	$sth->execute( @placeholders );
 
@@ -1657,7 +1666,7 @@ sub get_previous_queries {
 	    'SELECT COUNT(*) AS totalRecords ' . "\n"
 	  . 'FROM query_log ' . "\n"
 	  . 'WHERE uid=?';
-	$sth = $self->db->prepare($query) or die( $self->db->errstr );
+	$sth = $self->db->prepare($query) or throw(500, $self->db->errstr, { mysql => 1 } );
 	$sth->execute( $uid );
 	$row = $sth->fetchrow_hashref;
 	my $totalRecords = $row->{totalRecords} ? $row->{totalRecords} : 0;
@@ -1675,7 +1684,7 @@ sub get_previous_queries {
 		  	'ORDER BY qid DESC) OverallTop ' . "\n" .
 		  	'ORDER BY qid ASC) TopOfTop ' . "\n" .
 		  	'ORDER BY qid DESC';
-		$sth = $self->db->prepare($query) or die( $self->db->errstr );
+		$sth = $self->db->prepare($query) or throw(500, $self->db->errstr, { mysql => 1 } );
 		$sth->execute($limit, ($offset + $limit), $uid);
 	}
 	else {
@@ -1684,7 +1693,7 @@ sub get_previous_queries {
 		  . 'FROM query_log ' . "\n"
 		  . 'WHERE uid=? AND system=0' . "\n"
 		  . 'ORDER BY qid ' . $dir . ' LIMIT ?,?';
-		$sth = $self->db->prepare($query) or die( $self->db->errstr );
+		$sth = $self->db->prepare($query) or throw(500, $self->db->errstr, { mysql => 1 } );
 		$sth->execute( $uid, $offset, $limit );
 	}
 
@@ -1745,7 +1754,7 @@ sub query {
 	}
 	else {
 		unless ($args and ref($args) eq 'HASH'){
-			die('Invalid query args');
+			throw(400, 'Not given query args', { query => 1 });
 		}
 		# Get our node info
 		if (not $self->node_info->{updated_at} 
@@ -1759,7 +1768,7 @@ sub query {
 			};
 			if ($@){
 				$self->log->error($@);
-				die($@);
+				throw(502, $@, { http => 1 });
 			}
 		}
 		else {
@@ -1767,7 +1776,7 @@ sub query {
 		}
 		if ($args->{q}){
 			if ($args->{qid}){
-				die('Polling not implemented'); # remove when livetail is put back in
+				throw(501, 'Polling not implemented', { livetail => 1 }); # remove when livetail is put back in
 				$self->log->level($ERROR) unless $self->conf->get('debug_all');
 				$q = new Query(conf => $self->conf, user => $args->{user}, q => $args->{q}, node_info => $self->node_info, qid => $args->{qid});
 			}
@@ -1786,14 +1795,14 @@ sub query {
 		else {
 			delete $args->{user};
 			$self->log->error('Bad args: ' . Dumper($args));
-			die('Invalid query args, no q or query_string');
+			throw(400, 'Invalid query args, no q or query_string', { query_string => 1 });
 		}
 	}
 	
 	Log::Log4perl::MDC->put('qid', $q->qid);
 	
 	foreach my $warning (@{ $q->warnings }){
-		$self->add_warning($warning);
+		push @{ $self->warnings }, $warning;
 	}
 	
 	$q = $self->_peer_query($q, 'self');
@@ -1981,14 +1990,14 @@ sub _sphinx_query {
 	foreach my $node (keys %{ $nodes }){
 		if (exists $nodes->{$node}->{error}){
 			my $err_str = 'not using node ' . $node . ' because ' . $nodes->{$node}->{error};
-			$self->add_warning($err_str);
+			$self->add_warning(502, $err_str, { sphinx => $q->peer_label });
 			$self->log->warn($err_str);
 			delete $nodes->{$node};
 		}
 	}
 	
 	unless (scalar keys %$nodes){
-		die('No nodes available');
+		throw(502, 'No nodes available', { mysql => 1 });
 	}
 	
 	# Get indexes from all nodes in parallel
@@ -2093,7 +2102,7 @@ sub _sphinx_query {
 				if (not $rv){
 					my $e = 'node ' . $node . ' got error ' .  Dumper($result);
 					$self->log->error($e);
-					$self->add_warning($e);
+					$self->add_warning(500, $e, { sphinx => $q->peer_label });
 					$cv->end;
 					return;
 				}
@@ -2107,18 +2116,18 @@ sub _sphinx_query {
 					if ($result->{meta}->{warning} =~ /fullscan requires extern docinfo/
 						or $result->{meta}->{warning} =~ /index \w+: .{1023}/ ){ #warnings can be cut off
 						unless ($self->has_warnings){
-							$self->add_warning('Incomplete results: Query did not contain any search keywords, just filters. See documentation on temporary indexes for details.');
+							$self->add_warning(400, 'Incomplete results: Query did not contain any search keywords, just filters. See documentation on temporary indexes for details.', { sphinx => $q->peer_label });
 						}
 					}
 					elsif ($result->{meta}->{warning} =~ /query time exceeded max_query_time/){
 						$q->results->is_approximate(1);
 						$self->log->warn('Results approximated due to ' . $result->{meta}->{warning});
 						if (not $result->{meta}->{total_found}){
-							$self->add_warning('Search timed out before any results were found, re-run with timeout:0');
+							$self->add_warning(504, 'Search timed out before any results were found, re-run with timeout:0', { sphinx => $q->peer_label });
 						}
 					}
 					else {
-						$self->add_warning($result->{meta}->{warning});
+						$self->add_warning(500, $result->{meta}->{warning}, { sphinx => $q->peer_label });
 					}
 				}
 				
@@ -2187,7 +2196,7 @@ sub _sphinx_query {
 								if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 									my $errstr = 'node ' . $node . ' got error ' . $rows;
 									$self->log->error($errstr);
-									$self->add_warning($errstr);
+									$self->add_warning(502, $errstr, { mysql => $q->peer_label });
 									$cv->end;
 									return;
 								}
@@ -2223,7 +2232,7 @@ sub _sphinx_query {
 							if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 								my $errstr = 'node ' . $node . ' got error ' . $rows;
 								$self->log->error($errstr);
-								$self->add_warning($errstr);
+								$self->add_warning(502, $errstr, { sphinx => $q->peer_label });
 								$cv->end;
 								return;
 							}
@@ -2260,7 +2269,7 @@ sub _sphinx_query {
 					$cv->end; #end sphinx query
 				}
 				elsif (@$rows) {
-					$self->add_warning('No MySQL tables found for search hits.');
+					$self->add_warning(503, 'Data not yet indexed, try again shortly.', { mysql => $q->peer_label });
 					$self->log->error('No tables found for result. tables: ' . Dumper($self->node_info->{nodes}->{$node}->{tables}));
 					$cv->end; #end sphinx query
 				}
@@ -2526,14 +2535,14 @@ sub _get_ids {
 	foreach my $node (keys %{ $nodes }){
 		if (exists $nodes->{$node}->{error}){
 			my $err_str = 'not using node ' . $node . ' because ' . $nodes->{$node}->{error};
-			$self->add_warning($err_str);
+			$self->add_warning(502, $err_str, { mysql => $q->peer_label });
 			$self->log->warn($err_str);
 			delete $nodes->{$node};
 		}
 	}
 	
 	unless (scalar keys %$nodes){
-		die('No nodes available');
+		throw(502, 'No nodes available', { mysql => 1 });
 	}
 	
 	# Get indexes from all nodes in parallel
@@ -2612,7 +2621,7 @@ sub _get_ids {
 								if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 									my $errstr = 'node ' . $node . ' got error ' . $rows;
 									$self->log->error($errstr);
-									$self->add_warning($errstr);
+									$self->add_warning(502, $errstr, { mysql => $q->peer_label });
 									$cv->end;
 									return;
 								}
@@ -2652,7 +2661,7 @@ sub _get_ids {
 							if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 								my $errstr = 'node ' . $node . ' got error ' . $rows;
 								$self->log->error($errstr);
-								$self->add_warning($errstr);
+								$self->add_warning(502, $errstr, { mysql => $q->peer_label });
 								$cv->end;
 								return;
 							}
@@ -2689,7 +2698,7 @@ sub _get_ids {
 					$cv->end; #end sphinx query
 				}
 				else {
-					$self->add_warning('No MySQL tables found for search hits.');
+					$self->add_warning(500, 'Data not yet indexed, try again shortly.', { mysql => $q->peer_label });
 					$self->log->error('No tables found for result. tables: ' . Dumper($self->node_info->{nodes}->{$node}->{tables}));
 					$cv->end; #end sphinx query
 				}
@@ -2871,8 +2880,8 @@ sub get_bulk_file {
 		}
 		
 		my $file = Results::get_bulk_file($args->{name});
-		die('File ' . $file . ' not found') unless -f $file;
-		open($args->{bulk_file_handle}, $file) or die($!);
+		throw(404, 'File ' . $file . ' not found', { bulk_file => $file }) unless -f $file;
+		open($args->{bulk_file_handle}, $file) or throw(404, $!, { bulk_file => $file });
 		
 		return { 
 			ret => $args->{bulk_file_handle}, 
@@ -3240,7 +3249,7 @@ sub _build_query {
 							$max = 2**32;
 						}
 						if ($max < $min){
-							die('max was less than min');
+							throw(400, 'Range max was less than min', { term => $attr });
 						}
 						if ($class_id){
 							push @clause, '(class_id=? AND ' . $attr . $min_op . '? AND ' . $attr . $max_op . '?)';
@@ -3377,7 +3386,7 @@ sub _build_query {
 				orderby_dir => $q->orderby_dir,
 			};
 		}
-		die('Invalid orderby ' . $q->orderby . ' given for this query') unless scalar @queries;
+		throw(400, 'Invalid orderby ' . $q->orderby . ' given for this query', { directive => $q->orderby }) unless scalar @queries;
 	}
 	else {
 		# We can get away with a single query
@@ -3575,7 +3584,7 @@ sub transform {
 			unless ($transform_args->{groupby}){
 				my $warning = 'cannot subsearch without a report or groupby field';
 				$self->log->error($warning);
-				$self->add_warning($warning);
+				$self->add_warning(400, $warning, { directive => 'groupby' });
 				next;
 			}
 			
@@ -3651,7 +3660,7 @@ sub transform {
 			$self->log->debug('values: ' . Dumper(\@values));
 			unless (scalar @values){
 				$self->log->error('no values from transform_args: ' . Dumper($transform_args));
-				$self->add_warning('Transform ' . $transform_args->{transforms}->[$transform_counter - 1] . ' eliminated all values');
+				$self->add_warning(204, 'Transform ' . $transform_args->{transforms}->[$transform_counter - 1] . ' eliminated all values', { transform => $transform_args->{transforms}->[$transform_counter - 1] });
 				last;
 			}
 			
@@ -3775,7 +3784,7 @@ sub transform {
 					if ($@){
 						$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
 							. Dumper($transform_args->{results}) . ' and args ' . Dumper(\@given_transform_args) . ': ' . $@);
-						$self->add_warning($@);
+						$self->add_warning(500, $@, { transform => $q->peer_label });
 					}
 					last;
 				}
@@ -4113,7 +4122,7 @@ sub run_schedule {
 	my ($self, $args) = @_;
 	
 	unless ($args->{user} and $args->{user}->username eq 'system'){
-		die('Only system can run the schedule');
+		throw(403, 'Only system can run the schedule', { system => 1 });
 	}
 	
 	my ($query, $sth);
@@ -4307,7 +4316,7 @@ sub send_email {
 	my ($self, $args) = @_;
 	
 	unless ($args->{user} eq 'system'){
-		die('Insufficient permissions');
+		throw(403, 'Insufficient permissions', { admin => 1 });
 	}
 	
 	# Send the email
@@ -4369,7 +4378,7 @@ sub run_archive_queries {
 	my ($self, $args) = @_;
 	
 	unless ($args->{user} and $args->{user}->username eq 'system'){
-		die('Only system can run the schedule');
+		throw(403, 'Only system can run the schedule', { system => 1 });
 	}
 	
 	$self->node_info($self->_get_node_info());
@@ -4607,7 +4616,7 @@ sub _archive_query {
 						if (not $rv){
 							my $e = 'node ' . $node . ' got error ' . $rows;
 							$self->log->error($e);
-							$self->add_warning($e);
+							$self->add_warning(502, $e, { mysql => $q->peer_label });
 							$cv->end;
 							next;
 						}
@@ -4828,12 +4837,12 @@ sub _external_query {
 					delete $compiled_args{conf};
 					delete $compiled_args{log};
 					$self->log->error('Error creating plugin ' . $plugin . ' with args ' . Dumper(\%compiled_args) . ': ' . $@);
-					$self->add_warning($@);
+					$self->add_warning(500, $@, { transform => $q->peer_label });
 				}
 				next DATASOURCES_LOOP;
 			}
 		}
-		die('datasource ' . $datasource . ' not found');
+		throw(404, 'datasource ' . $datasource . ' not found', { datasource => $datasource });
 	}
 	return $q;
 }
@@ -5188,13 +5197,13 @@ sub cancel_livetail {
 		$query = 'UPDATE query_log SET num_results=-4 WHERE qid=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{qid});
-		die('Invalid qid') unless $sth->rows;
+		throw(404, 'Invalid qid', { qid => $args->{qid} }) unless $sth->rows;
 	}
 	else {
 		$query = 'UPDATE query_log SET num_results=-4 WHERE qid=? AND uid=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{qid}, $args->{user}->uid);
-		die('Invalid qid/uid') unless $sth->rows;
+		throw(404, 'Invalid qid/uid', { qid => $args->{qid} }) unless $sth->rows;
 	}
 	
 	# Get our node info
@@ -5224,7 +5233,7 @@ sub cancel_livetail {
 sub cancel_all_livetails {
 	my ($self, $args) = @_;
 	
-	die('Insufficient permission') unless $args->{user}->is_admin;
+	throw(403, 'Insufficient permission', { admin => 1 }) unless $args->{user}->is_admin;
 	
 	my ($query, $sth);
 	$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND num_results=-3';
@@ -5242,7 +5251,7 @@ sub cancel_all_livetails {
 sub expire_livetails {
 	my ($self, $args) = @_;
 	
-	die('Insufficient permission') unless $args->{user}->is_admin;
+	throw(403, 'Insufficient permission', { admin => 1 }) unless $args->{user}->is_admin;
 	
 	my ($query, $sth);
 	$query = 'SELECT qid, uid FROM query_log WHERE archive=1 AND num_results=-3 AND milliseconds > (? * 1000)';
@@ -5260,7 +5269,7 @@ sub expire_livetails {
 sub get_livetails {
 	my ($self, $args) = @_;
 	
-	die('Insufficient permission') unless $args->{user}->is_admin;
+	throw(403, 'Insufficient permission', { admin => 1 }) unless $args->{user}->is_admin;
 	
 	my ($query, $sth);
 	$query = 'SELECT * FROM query_log WHERE archive=1 AND num_results=-3';
@@ -5280,7 +5289,7 @@ sub get_livetails {
 sub preference {
 	my ($self, $args) = @_;
 	
-	die('No user') unless $args->{user};
+	throw(400, 'No user', { user => 1 }) unless $args->{user};
 	
 	my ($query, $sth);
 	
@@ -5302,7 +5311,7 @@ sub preference {
 		$sth->execute($args->{user}->uid, $args->{id});
 	}
 	elsif ($args->{action} eq 'update'){
-		die('Need col/val') unless $args->{col} and defined $args->{val};
+		throw(400, 'Need col/val', { col => $args->{col} }) unless $args->{col} and defined $args->{val};
 		if ($args->{col} eq 'name'){
 			$query = 'UPDATE preferences SET name=? WHERE id=? AND uid=?';
 		}
@@ -5313,7 +5322,7 @@ sub preference {
 		$sth->execute($args->{val}, $args->{id}, $args->{user}->uid);
 	}
 	else {
-		die('Invalid action');
+		throw(404, 'Invalid action', { action => $args->{action} });
 	}
 	
 	return { ok => $sth->rows };

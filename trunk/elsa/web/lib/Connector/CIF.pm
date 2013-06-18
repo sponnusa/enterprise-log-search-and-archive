@@ -87,7 +87,7 @@ sub BUILD {
 			$invalid++;
 		}
 	}
-	$self->api->add_warning('Found ' . $invalid . ' values') if $invalid;
+	$self->api->add_warning(500, 'Found ' . $invalid . ' values', { connector => 'CIF' }) if $invalid;
 	return 1 unless scalar @to_insert;
 	
 	my $send = $self->api->json->encode([@to_insert]);

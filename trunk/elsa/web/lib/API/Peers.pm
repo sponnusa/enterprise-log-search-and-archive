@@ -12,8 +12,10 @@ use IO::File;
 use Time::HiRes qw(time);
 use Hash::Merge::Simple qw(merge);
 use File::Path;
+use Ouch qw(:traditional);
 
 use lib qw(../);
+use Utils;
 
 use Import;
 
@@ -27,7 +29,7 @@ sub local_query {
 	}
 	else {
 		unless ($args and ref($args) eq 'HASH'){
-			die('Invalid query args');
+			throw(400, 'Invalid query args', { query_string => 1 });
 		}
 		# Get our node info
 		if (not $self->node_info->{updated_at} 
@@ -56,12 +58,12 @@ sub local_query {
 		else {
 			delete $args->{user};
 			$self->log->error('Bad args: ' . Dumper($args));
-			die('Invalid query args, no q or query_string');
+			throw(400, 'Invalid query args, no q or query_string', { query_string => 1 });
 		}
 	}
 	
 	foreach my $warning (@{ $q->warnings }){
-		$self->add_warning($warning);
+		push @{ $self->warnings }, $warning;
 	}
 	
 	Log::Log4perl::MDC->put('qid', $q->qid);
@@ -226,7 +228,8 @@ sub local_query {
 	}
 	elsif (not $q->query_term_count){
 		# Skip Sphinx, execute a raw SQL search
-		$self->log->trace('No query terms, executing against raw SQL');
+		$self->log->info('No query terms, executing against raw SQL');
+		$q->add_warning(200, 'No query terms, query did not use an index', { indexed => 0 }); 
 		$self->_archive_query($q);
 	}
 	elsif (($q->analytics or ($q->limit > $API::Max_limit)) and not $q->has_groupby){
@@ -266,7 +269,7 @@ sub query {
 	}
 	else {
 		unless ($args and ref($args) eq 'HASH'){
-			die('Invalid query args');
+			throw(400, 'Invalid query args', { query_string => 1 });
 		}
 		# Get our node info
 		if (not $self->node_info->{updated_at} 
@@ -288,14 +291,14 @@ sub query {
 		else {
 			delete $args->{user};
 			$self->log->error('Bad args: ' . Dumper($args));
-			die('Invalid query args, no q or query_string');
+			throw(400, 'Invalid query args, no q or query_string', { query_string => 1 });
 		}
 	}
 	
 	Log::Log4perl::MDC->put('qid', $q->qid);
 	
 	foreach my $warning (@{ $q->warnings }){
-		$self->add_warning($warning);
+		push @{ $self->warnings }, $warning;
 	}
 	
 	$q = $self->_peer_query($q);
@@ -350,7 +353,7 @@ sub stats {
 		};
 		$results{$peer} = http_get $url, headers => $headers, sub {
 			my ($body, $hdr) = @_;
-			eval {
+			try {
 				my $raw_results = $self->json->decode($body);
 				$stats{$peer}->{total_request_time} = (time() - $start);
 				$results{$peer} = { %$raw_results }; #undef's the guard
@@ -364,9 +367,9 @@ sub stats {
 					}
 				}
 			};
-			if ($@){
-				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
-				$self->add_warning('peer ' . $peer . ': ' . $@);
+			if (my $e = catch_any){
+				$self->log->error($e->message . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
+				$self->add_warning(502, 'peer ' . $peer . ': ' . $e->message, { http => $peer });
 				delete $results{$peer};
 			}
 			$cv->end;
@@ -396,7 +399,7 @@ sub upload {
 	}
 	
 	# See if this is a Zip file
-	open(FH, $args->{upload}->path) or die('Unable to read file ' . $args->{upload}->path . ': ' . $!);
+	open(FH, $args->{upload}->path) or throw(500, 'Unable to read file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
 	my $buf;
 	read(FH, $buf, 2);
 	my $is_zipped = 0;
@@ -409,12 +412,12 @@ sub upload {
 	my $file;
 	
 	if ($is_zipped){
-		my $ae = Archive::Extract->new( archive => $args->{upload}->path ) or die('Error extracting file ' . $args->{upload}->path . ': ' . $!);
+		my $ae = Archive::Extract->new( archive => $args->{upload}->path ) or throw(500, 'Error extracting file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
 		my $id = $args->{client_ip_address} . '_' . $args->{md5};
 		# make a working dir for these files
 		my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
-		mkdir($working_dir) or die("Unable to create working_dir $working_dir");
-		$ae->extract( to => $working_dir ) or die($ae->error);
+		mkdir($working_dir) or throw(500, "Unable to create working_dir $working_dir", { working_dir => $working_dir });
+		$ae->extract( to => $working_dir ) or throw(500, $ae->error, { working_dir => $working_dir });
 		my $files = $ae->files;
 		if (scalar @$files > 2){
 			$self->log->warn('Received more than 2 files in zip file, there should be at most one file and an optional programs file in a single zip file.');
@@ -442,7 +445,7 @@ sub upload {
 		$file =~ /\/([^\/]+)$/;
 		my $shortname = $1;
 		my $destfile = $self->conf->get('buffer_dir') . '/' . $shortname;
-		move($file, $destfile) or die($!);
+		move($file, $destfile) or throw(500, $!, { file => $file });
 		$self->log->debug('moved file ' . $file . ' to ' . $destfile);
 		$file = $destfile;
 	}
@@ -543,7 +546,7 @@ sub result {
 		};
 		$results{$peer} = http_get $url, headers => $headers, sub {
 			my ($body, $hdr) = @_;
-			eval {
+			try {
 				my $raw_results = $self->json->decode($body);
 				if ($raw_results and not $raw_results->{error}){
 					my $num_results = $raw_results->{totalRecords} ? $raw_results->{totalRecords} : $raw_results->{recordsReturned};
@@ -569,9 +572,9 @@ sub result {
 				$stats{$peer}->{total_request_time} = (time() - $start);
 				$results{$peer} = { %$raw_results }; #undef's the guard
 			};
-			if ($@){
-				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
-				$self->add_warning('peer ' . $peer . ': ' . $@);
+			if (my $e = catch_any){
+				$self->log->error($e->message . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
+				$self->add_warning(502, 'peer ' . $peer . ': ' . $e->message, { peer => $peer });
 				delete $results{$peer};
 			}
 			$cv->end;

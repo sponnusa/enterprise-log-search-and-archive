@@ -6,6 +6,7 @@ use Sys::Hostname::FQDN;
 use Net::DNS;
 use String::CRC32;
 use Socket qw(inet_aton inet_ntoa);
+use Ouch qw(:traditional);
 
 our $Field_order_to_attr = {
 	0 => 'timestamp',
@@ -442,7 +443,7 @@ sub resolve {
 			$values{fields}->{$class_id}->{ $Field_order_to_field->{ $field_order } } = $raw_value;
 		}
 		elsif ($field_infos->{$class_id}->{field_type} eq 'string'){
-			die('Invalid operator for string field');
+			throw(400, 'Invalid operator for string field', { operator => $operator });
 		}
 		elsif ($Field_order_to_attr->{ $field_order }){
 			$values{attrs}->{$class_id}->{ $Field_order_to_attr->{ $field_order } } =
@@ -507,15 +508,15 @@ sub normalize_value {
 					}
 				}
 				else {
-					die 'Unable to resolve host ' . $host_to_resolve . ': ' . $res->errorstring;
+					throw(500, 'Unable to resolve host ' . $host_to_resolve . ': ' . $res->errorstring, { external_dns => $host_to_resolve });
 				}
 			}
 			else {
-				die 'Unable to resolve host ' . $host_to_resolve . ': ' . $res->errorstring;
+				throw(500, 'Unable to resolve host ' . $host_to_resolve . ': ' . $res->errorstring, { external_dns => $host_to_resolve });
 			}
 		}
 		else {
-			die 'Invalid host given: ' . Dumper($value);
+			throw(400, 'Invalid host given: ' . Dumper($value), { host => $value });
 		}
 		if (wantarray){
 			return @ret;
@@ -565,7 +566,7 @@ sub normalize_value {
 				return $orig_value;
 			}
 			else {
-				die('Invalid query term, not an integer: ' . $orig_value);
+				throw(400, 'Invalid query term, not an integer: ' . $orig_value, { term => $orig_value });
 			}
 		}
 	}
