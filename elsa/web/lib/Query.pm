@@ -12,6 +12,7 @@ use Storable qw(dclone);
 use Socket;
 use Log::Log4perl::Level;
 use Date::Manip;
+use Ouch qw(:traditional);
 
 # Object for dealing with user queries
 
@@ -57,7 +58,7 @@ has 'nodes' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 
 has 'hash' => (is => 'rw', isa => 'Str', required => 1, default => '');
 has 'highlights' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
-	handles => { 'has_warnings' => 'count', 'add_warning' => 'push', 'clear_warnings' => 'clear', 'all_warnings' => 'elements' });
+	handles => { 'has_warnings' => 'count', 'clear_warnings' => 'clear', 'all_warnings' => 'elements' });
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'timezone_difference' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { start => 0, end => 0 } });
 has 'peer_requests' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
@@ -91,7 +92,7 @@ sub BUILDARGS {
 		$sth = $params{db}->prepare($query);
 		$sth->execute($params{qid});
 		my $row = $sth->fetchrow_hashref;
-		die('Invalid qid ' . $params{qid}) unless $row;
+		throw(404, 'Invalid qid ' . $params{qid}, { qid => $params{qid} }) unless $row;
 		$params{q} = $row->{query};
 		$params{user} = User->new(username => $row->{username}, conf => $params{conf});
 	}
@@ -197,7 +198,7 @@ sub BUILD {
 		$sth = $self->db->prepare($query);
 		$sth->execute($self->qid, $self->user->uid);
 		my $row = $sth->fetchrow_hashref;
-		die('User is not authorized for this qid') unless $row;
+		throw(403, 'User is not authorized for this qid', $self->TO_JSON) unless $row;
 		$self->log->level($ERROR) unless $self->conf->get('debug_all');
 	}
 	else {
@@ -239,6 +240,15 @@ sub BUILD {
 	$self->stats->{get_node_info} = $self->node_info->{took};
 		
 	return $self;	
+}
+
+sub add_warning {
+	my $self = shift;
+	my $code = shift;
+	my $errstr = shift;
+	my $data = shift;
+	
+	push @{ $self->warnings }, new Ouch($code, $errstr, $data);
 }
 
 sub _term_to_regex {
@@ -331,7 +341,7 @@ sub _parse_query_string {
 	my $effective_operator = shift;
 	
 	my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
-	my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or die($qp->err);
+	my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or throw(400, $qp->err, $self->TO_JSON);
 	$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
 	
 	my $parsed_query = dclone($orig_parsed_query); #dclone so recursion doesn't mess up original
@@ -501,7 +511,7 @@ sub _parse_query {
 		$self->_parse_query_string($raw_query);
 	}
 	else {
-		die('No query terms given');
+		throw(400,'No query terms given', $self->TO_JSON);
 	}
 	
 	# One-off for dealing with hosts as fields
@@ -518,7 +528,7 @@ sub _parse_query {
 						$self->highlights->{ _term_to_regex( inet_ntoa(pack('N*', $host_int)) ) } = 1;
 					}
 					else {
-						die "Insufficient permissions to query host_int $host_int";
+						throw(403, "Insufficient permissions to query host_int $host_int", $self->TO_JSON);
 					}
 				}
 			}
@@ -561,7 +571,7 @@ sub _parse_query {
 						my $forbidden = delete $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id};
 						$self->log->warn('Forbidding attr_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
 						unless (scalar keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
-							die('All terms for field ' . $field_name . ' were dropped due to insufficient permissions.');
+							throw(403, 'All terms for field ' . $field_name . ' were dropped due to insufficient permissions.', $self->TO_JSON);
 						}
 					}
 				}
@@ -575,7 +585,7 @@ sub _parse_query {
 				$self->log->warn('Forbidding field_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
 				foreach my $attr (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} } ){
 					unless (scalar keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$attr} }){
-						die('All terms for field ' . $attr . ' were dropped due to insufficient permissions.');
+						throw(403, 'All terms for field ' . $attr . ' were dropped due to insufficient permissions.', $self->TO_JSON);
 					}
 				}
 			}
@@ -655,7 +665,7 @@ sub _parse_query {
 			# Add filters for the whitelisted items
 			# If there are no exceptions to the whitelist, no query will succeed
 			if (not scalar keys %{ $self->user->permissions->{$attr} }){
-				die 'Insufficient privileges for querying any ' . $attr; 
+				throw(403, 'Insufficient privileges for querying any ' . $attr, $self->TO_JSON); 
 			}
 			
 			# Remove items not explicitly whitelisted
@@ -667,7 +677,7 @@ sub _parse_query {
 						and $self->terms->{attr_terms}->{$boolean}->{$op}->{0}->{$attr};
 					foreach my $id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{0}->{$attr} }){
 						unless($self->user->is_permitted($attr, $id)){
-							die "Insufficient permissions to query $id from $attr";
+							throw(403, "Insufficient permissions to query $id from $attr", $self->TO_JSON);
 						}
 					}
 				}
@@ -722,7 +732,7 @@ sub _parse_query {
 						if ($stopwords->{$term}){
 							if ($boolean eq 'or'){
 								my $err = 'Removed term ' . $term . ' which is too common';
-								$self->add_warning($err);
+								$self->add_warning(400, $err, { term => $term });
 								$self->log->warn($err);
 							}
 							$num_removed_terms++;
@@ -742,7 +752,7 @@ sub _parse_query {
 				if ($stopwords->{$term}){
 					if ($boolean eq 'or'){
 						my $err = 'Removed term ' . $term . ' which is too common';
-						$self->add_warning($err);
+						$self->add_warning(400, $err, { term => $term });
 						$self->log->warn($err);
 					}
 					$num_removed_terms++;
@@ -853,7 +863,7 @@ sub _parse_query {
 			$self->log->debug('attrs only');
 		}
 		else {
-			die 'All query terms were stripped based on permissions';
+			throw(403, 'All query terms were stripped based on permissions', $self->TO_JSON);
 		}
 	}
 	
@@ -913,7 +923,7 @@ sub _parse_query {
 	
 	# Final sanity check
 	unless (defined $self->start and $self->end and $self->start <= $self->end){
-		die('Invalid start or end: ' . (scalar localtime($self->start)) . ' ' . (scalar localtime($self->end)));
+		throw(416, 'Invalid start or end: ' . (scalar localtime($self->start)) . ' ' . (scalar localtime($self->end)), $self->TO_JSON);
 	}
 	
 	$self->log->debug('going with times start: ' . (scalar localtime($self->start)) .  ' (' . $self->start . ') and end: ' .
@@ -1059,7 +1069,7 @@ sub _parse_query_term {
 					next;
 				}
 				else {
-					die("Unknown class $term_hash->{value}");
+					throw(400, "Unknown class $term_hash->{value}", $self->TO_JSON);
 				}
 				
 				if ($effective_operator eq '-'){
@@ -1194,8 +1204,8 @@ sub _parse_query_term {
 				#$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])\-([^a-zA-Z0-9\.\_\-\@]*)/$1\\\\\-$2/g;
 				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
 				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
-					die('Integer search terms must be 15 or fewer digits, received ' 
-						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.');
+					throw(400, 'Integer search terms must be 15 or fewer digits, received ' 
+						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.', $self->TO_JSON);
 				}
 				if($term_hash->{quote}){
 					$term_hash->{value} = $self->normalize_quoted_value($term_hash->{value});
@@ -1203,7 +1213,7 @@ sub _parse_query_term {
 				
 				if ($term_hash->{value} =~ /^"?\s+"?$/){
 					my $err = 'Term ' . $orig_value . ' was comprised of only non-indexed chars and removed';
-					$self->add_warning($err);
+					$self->add_warning(400, $err, { term => $term_hash->{value} });
 					$self->log->warn($err);
 					next;
 				}
@@ -1244,7 +1254,7 @@ sub _parse_query_term {
 				}
 				
 				if ($term_hash->{field} =~ /^import\_(\w+)/){
-					die('Invalid import field ' . $term_hash->{field}) unless grep { $_ eq $term_hash->{field} } @$Fields::Import_fields;
+					throw(400, 'Invalid import field ' . $term_hash->{field}, $self->TO_JSON) unless grep { $_ eq $term_hash->{field} } @$Fields::Import_fields;
 					push @{ $self->import_search_terms }, { field => $1, value => $term_hash->{value}, 
 						op => $term_hash->{op}, boolean => $effective_operator };
 					next;
@@ -1257,7 +1267,7 @@ sub _parse_query_term {
 				);
 				
 				if (not scalar keys %{ $values->{attrs} } and not scalar keys %{ $values->{fields} }){
-					die('Invalid field: ' . $term_hash->{field});
+					throw(400, 'Invalid field: ' . $term_hash->{field}, $self->TO_JSON);
 				}
 				
 				# Set fields for searching
@@ -1332,7 +1342,7 @@ sub _parse_query_term {
 				}
 			}
 			else {
-				die "no field or value given: " . Dumper($term_hash);
+				throw(400, "no field or value given to match field $term_hash->{field}", $self->TO_JSON);
 			}
 		}
 	}
@@ -1424,7 +1434,7 @@ sub _resolve_macro {
 	}
 	else {
 		$self->log->debug('macros available: ' . Dumper($self->user->preferences->{tree}));
-		die('Invalid macro (saved search): ' . $macro);
+		throw(400, 'Invalid macro (saved search): ' . $macro, $self->TO_JSON);
 	}
 	
 }

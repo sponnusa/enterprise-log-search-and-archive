@@ -36,6 +36,7 @@ YAHOO.ELSA.DefaultSettings = {
 	'grid_display': 'Use grid display by default',
 	'resuse_tab': 'Reuse the same tab for all queries instead of opening new ones'
 };
+YAHOO.ELSA.catastrophicErrorMessage = 'Query failed, low-level ELSA problem such as config, communication, OS error.';
 
 YAHOO.ELSA.initLogger = function(){
 	/* Setup logging */
@@ -2211,7 +2212,7 @@ YAHOO.ELSA.Results.Saved = function(p_iQid, p_oDataTable, p_bDeleteOnly){
 				{ 
 					success: this.receiveResponse,
 					failure:function(oResponse){
-						YAHOO.ELSA.Error('Query failed!'); return false;
+						YAHOO.ELSA.Error(YAHOO.ELSA.catastrophicErrorMessage); return false;
 					},
 					argument: [this]
 				}
@@ -2536,11 +2537,32 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		// If there were any warnings, display them
 		if (this.results.warnings && this.results.warnings.length > 0){
 			var elWarnings = document.createElement('b');
-			elWarnings.innerHTML = 'Warnings: ' + this.results.warnings.join(', ');
-			headerContainerDiv.appendChild(elWarnings);
-			var oElWarningsDiv = new YAHOO.util.Element(elWarnings);
-			oElWarningsDiv.addClass('warning');
-			headerContainerDiv.appendChild(document.createElement('br'));
+			var aWarningMessages = {};
+			var aInfoMessages = {};
+			for (var i in this.results.warnings){
+				if (this.results.warnings[i].code >= 500){
+					aWarningMessages[this.results.warnings[i].message]++;
+				}
+				else {
+					aInfoMessages[this.results.warnings[i].message]++;
+				}
+			}
+			if (keys(aWarningMessages).length){
+				elWarnings.innerHTML = 'Errors: ' + keys(aWarningMessages).join(', ');
+				headerContainerDiv.appendChild(elWarnings);
+				var oElWarningsDiv = new YAHOO.util.Element(elWarnings);
+				oElWarningsDiv.addClass('warning');
+				headerContainerDiv.appendChild(document.createElement('br'));
+			}
+			
+			if (keys(aInfoMessages)){
+				var elInfos = document.createElement('b');
+				elInfos.innerHTML = 'Warnings: ' + keys(aInfoMessages).join(', ');
+				headerContainerDiv.appendChild(elInfos);
+				var oElInfosDiv = new YAHOO.util.Element(elInfos);
+				//oElInfosDiv.addClass('warning');
+				headerContainerDiv.appendChild(document.createElement('br'));
+			}
 		}
 		
 		// create a summary of fields contained within the data as a quick link for navigation
@@ -2672,7 +2694,7 @@ YAHOO.ELSA.Results.Tabbed.Saved = function(p_oTabView, p_iQid){
 			{ 
 				success: this.receiveResponse,
 				failure:function(oResponse){
-					YAHOO.ELSA.Error('Query failed!'); tab.set('content', 'Error!'); return false;
+					YAHOO.ELSA.Error(YAHOO.ELSA.catastrophicErrorMessage); tab.set('content', 'Error!'); return false;
 				},
 				argument: [this]
 			}
@@ -2694,6 +2716,7 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 	
 	/* Actually do the query */
 	//logger.log('query obj:', p_oQuery);
+	var oReturn;
 	logger.log('sending query:' + this.sentQuery);//.toString());
 	var request = YAHOO.util.Connect.asyncRequest('GET', 
 			this.query.query_url + '?q=' + encodeURIComponent(this.sentQuery),//.toString()),
@@ -2702,7 +2725,7 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 					var oRequest = oResponse.argument[0];
 					logger.log('oRequest', oRequest);
 					if (oResponse.responseText){
-						var oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+						oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
 						if (typeof oReturn === 'object' && oReturn['error']){
 							YAHOO.ELSA.Error(oReturn['error']);
 							oRequest.closeTab(this);
@@ -2724,7 +2747,29 @@ YAHOO.ELSA.Results.Tabbed.Live = function(p_oTabView, p_oQuery){
 				}, 
 				failure:function(oResponse){
 					var oRequest = oResponse.argument[0];
-					YAHOO.ELSA.Error('Query failed!'); 
+					if (oResponse.responseText){
+						try {
+							oReturn = YAHOO.lang.JSON.parse(oResponse.responseText);
+						}
+						catch (e){
+							logger.log('Erorr parsing ' + oResponse.responseText);
+						}
+						if (typeof oReturn === 'object' && oReturn['message']){
+							if (oReturn.code < 500){
+								YAHOO.ELSA.Error('Query syntax error: ' + oReturn['message']);
+							}
+							else {
+								YAHOO.ELSA.Error('System error: ' + oReturn['message']);
+							}
+						}
+						else {
+							logger.log(oReturn);
+							YAHOO.ELSA.Error(YAHOO.ELSA.catastrophicErrorMessage);
+						}
+					}
+					else {
+						YAHOO.ELSA.Error(YAHOO.ELSA.catastrophicErrorMessage); 
+					} 
 					oRequest.closeTab(this); 
 					return false;
 				},

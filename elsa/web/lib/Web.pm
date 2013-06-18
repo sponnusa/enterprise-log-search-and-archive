@@ -8,9 +8,11 @@ use JSON -convert_blessed_universally;
 use URI::Escape qw(uri_unescape);
 use Encode;
 use MIME::Base64;
+use Ouch qw(:traditional);
+
+use Utils;
 use YUI;
 use Query;
-
 use API;
 
 has 'mode' => (is => 'rw', isa => 'Str', required => 1, default => sub { return 'index' });
@@ -406,19 +408,20 @@ sub transform {
 	$self->title('ELSA Transform');
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
-		eval {
+		try {
 			$self->api->log->trace('args: ' . Dumper($args));
 			$args->{transforms} = $self->api->json->decode(uri_unescape($args->{transforms}));
 			$self->api->log->trace('transforms: ' . Dumper($args->{transforms}));
 			foreach my $transform (@{ $args->{transforms} }){
-				die('subsearch not allowed') if $transform eq 'subsearch';
+				throw(400, 'subsearch not allowed', { transform => 'subsearch' }) if $transform eq 'subsearch';
 			}
 			$args->{results} = $self->api->json->decode(uri_unescape(delete $args->{data}));
 			$self->api->log->debug( "Decoded $args as : " . Dumper($args) );
 		};
-		if ($@){
-			$self->api->log->error("invalid args, error: $@, args: " . Dumper($args));
-			return { error => 'Unable to build results object from args' };
+		if (my $e = catch_any){
+			$self->api->log->error("invalid args, error: $e, args: " . Dumper($args));
+			#return { error => 'Unable to build results object from args' };
+			$e->throw;
 		}
 		
 		my $res = new Results(results => (ref($args->{results}) eq 'ARRAY' ? $args->{results} : $args->{results}->{results}));

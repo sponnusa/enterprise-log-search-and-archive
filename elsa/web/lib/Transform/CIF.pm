@@ -7,6 +7,7 @@ use Socket qw(inet_aton);
 use AnyEvent::HTTP;
 use URL::Encode qw(url_encode);
 use JSON;
+use Ouch qw(:traditional);
 extends 'Transform';
 with 'Utils';
 
@@ -50,7 +51,7 @@ sub BUILD {
 		$self->_query_cif_rest_sphinx($keys);
 	}
 	else {
-		die('No CIF server_ip, base_url, or dsn configured');
+		throw('No CIF server_ip, base_url, or dsn configured');
 	}
 	
 	return 1;
@@ -83,12 +84,12 @@ sub _query_cif_rest_sphinx {
 	my $self = shift;
 	my $keys = shift;
 	
-	my $cif = DBI->connect($self->conf->get('transforms/cif/dsn', '', ''), 
+	my $cif = DBI->connect($self->conf->get('transforms/cif/dsn'), '', '', 
 		{ 
 			RaiseError => 1,
 			mysql_multi_statements => 1,
 			mysql_bind_type_guessing => 1, 
-		}) or die($DBI::errstr);
+		}) or throw(502, $DBI::errstr, { mysql => $self->conf->get('transforms/cif/dsn') });
 	my ($query, $sth);
 	$query = 'SELECT * FROM url, domain WHERE MATCH(?)';
 	$sth = $cif->prepare($query);
@@ -196,7 +197,7 @@ sub _query {
 			$self->conf->get('transforms/cif/apikey'), $query);
 	}
 	else {
-		die('server_ip nor base_url configured');
+		throw(500, 'server_ip nor base_url configured', { config => 'server_ip or base_url' });
 	}
 	
 	my $info = $self->cache->get($url, expire_if => sub {

@@ -3,6 +3,20 @@ use Moose;
 extends 'API';
 use Data::Dumper;
 use URI::Encode qw(uri_decode);
+use Ouch qw(:traditional);
+
+use Utils;
+
+sub _handle_errors {
+	my $self = shift;
+	my $msg_prefix = shift;
+	if (my $e = catch_any){
+		my $errstr = $msg_prefix . ': ' . $e->message;
+		$self->log->error($errstr);
+		$self->db->rollback;
+		die($e);
+	}
+}
 
 sub get_dashboards {
 	my ($self, $args) = @_;
@@ -30,7 +44,7 @@ sub add_dashboard {
 	my ($query, $sth);
 	my $dashboard_id;
 	
-	eval {
+	try {
 		$args = $self->_import_dashboard($args) if $args->{data};
 		
 		if ($args->{groups}){
@@ -38,7 +52,7 @@ sub add_dashboard {
 		}
 		defined $args->{auth_required} or $args->{auth_required} = 1; 
 				
-		die('Invalid alias, must be alphanumeric, hyphen, or underscore') unless $args->{alias} =~ /^[a-zA-Z0-9\_\-]+$/;
+		throw(404, 'Invalid alias, must be alphanumeric, hyphen, or underscore', { alias => $args->{alias} }) unless $args->{alias} =~ /^[a-zA-Z0-9\_\-]+$/;
 		$self->db->begin_work;
 		$query = 'INSERT INTO dashboards (uid, title, alias, auth_required) VALUES(?,?,?,?)';
 		$sth = $self->db->prepare($query);
@@ -66,12 +80,7 @@ sub add_dashboard {
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error creating dashboard: ' . $@;
-		$self->log->error($errstr);
-		$self->db->rollback;
-		die($errstr);
-	}
+	$self->_handle_errors('Error creating dashboard');
 	
 	return { dashboard_id => $dashboard_id };
 }
@@ -96,7 +105,7 @@ sub del_dashboard {
 	my ($query, $sth);
 	
 	my $ok;
-	eval {
+	try {
 		$self->db->begin_work;
 		
 		$self->log->info('Deleting dashboard ' . $args->{id});
@@ -106,7 +115,7 @@ sub del_dashboard {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{user}->uid, $args->{id});
 		my $row = $sth->fetchrow_hashref;
-		die('Dashboard does not belong to this user') unless $row;
+		throw(403, 'Dashboard does not belong to this user', { user => 1 }) unless $row;
 		
 		$query = 'DELETE FROM dashboards WHERE id=?';
 		$sth = $self->db->prepare($query);
@@ -115,12 +124,7 @@ sub del_dashboard {
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error deleting dashboard: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error deleting dashboard');
 	return { ok => $ok };
 }
 
@@ -130,7 +134,7 @@ sub update_dashboard {
 	$self->log->debug('args', Dumper($args));
 	my ($query, $sth);
 	my $query_id;
-	eval {
+	try {
 		$self->db->begin_work;
 		
 		# Verify this dashboard belongs to this user
@@ -138,7 +142,7 @@ sub update_dashboard {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{user}->uid, $args->{id});
 		my $row = $sth->fetchrow_hashref;
-		die('Dashboard does not belong to this user') unless $row;
+		throw(403, 'Dashboard does not belong to this user', { user => 1 }) unless $row;
 		
 		my $valid_cols = {
 			title => 1,
@@ -147,14 +151,14 @@ sub update_dashboard {
 			groupname => 1,
 		};
 		
-		die('Invalid col') unless $valid_cols->{ $args->{col} };
+		throw(404, 'Invalid col', { col => $args->{col} }) unless $valid_cols->{ $args->{col} };
 		
 		if ($args->{col} eq 'groupname'){
 			$query = 'SELECT gid FROM groups WHERE groupname=?';
 			$sth = $self->db->prepare($query);
 			$sth->execute($args->{val});
 			my $row = $sth->fetchrow_hashref;
-			die('Invalid groupname ' . $args->{val}) unless $row;
+			throw(404, 'Invalid groupname ' . $args->{val}, { groupname => $args->{val} }) unless $row;
 			$query = 'DELETE FROM dashboard_auth WHERE dashboard_id=?';
 			$sth = $self->db->prepare($query);
 			$sth->execute($args->{id});
@@ -172,12 +176,7 @@ sub update_dashboard {
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error updating dashboard: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error updating dashboard');
 	
 	return { ok => $sth->rows };
 }
@@ -191,7 +190,7 @@ sub export_dashboard {
 	delete $copy->{user};
 	$self->log->debug('args: ' . Dumper($copy));
 	my $ret;
-	eval {
+	try {
 		$self->db->begin_work;
 		
 		$self->log->info('Exporting dashboard ' . $args->{id});
@@ -201,7 +200,7 @@ sub export_dashboard {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{user}->uid, $args->{id});
 		my $row = $sth->fetchrow_hashref;
-		die('Dashboard does not belong to this user') unless $row;
+		throw(403, 'Dashboard does not belong to this user', { user => 1 }) unless $row;
 		
 		$query = 'SELECT title, alias, auth_required FROM dashboards WHERE id=?';
 		$sth = $self->db->prepare($query);
@@ -228,12 +227,7 @@ sub export_dashboard {
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error exporting dashboard: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error exporting dashboard');
 	return $ret;
 }
 
@@ -246,7 +240,7 @@ sub add {
 	my $ret = { %$args };
 	delete $ret->{user};
 	
-	eval {
+	try {
 		$self->db->begin_work unless $no_xa;
 		
 		# Verify this dashboard belongs to this user
@@ -254,7 +248,7 @@ sub add {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{user}->uid, $args->{dashboard_id});
 		my $row = $sth->fetchrow_hashref;
-		die('Dashboard does not belong to this user: ' . $args->{user}->uid . ' ' . $args->{dashboard_id}) unless $row;
+		throw(403, 'Dashboard does not belong to this user: ' . $args->{user}->uid . ' ' . $args->{dashboard_id}, { user => 1 }) unless $row;
 		
 		my $options = $self->json->encode({ title => $args->{chart_title} });
 		if ($args->{options}){
@@ -303,10 +297,10 @@ sub add {
 		
 		# Sanity check
 		if ($args->{x} > 2){
-			die('Cannot have more than 3 charts on one line: ' . $args->{x});
+			throw(400, 'Cannot have more than 3 charts on one line: ' . $args->{x}, { x => $args->{x} });
 		}
 		if ($args->{y} > 100){
-			die('Cannot have more than 100 chart lines');
+			throw(400, 'Cannot have more than 100 chart lines', { y => $args->{y} });
 		}
 		
 		$query = 'INSERT INTO dashboards_charts_map (dashboard_id, chart_id, x, y) VALUES (?,?,?,?)';
@@ -315,12 +309,7 @@ sub add {
 		
 		$self->db->commit unless $no_xa;
 	};
-	if ($@){
-		my $errstr = 'Error creating chart: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback unless $no_xa;
-	}
+	$self->_handle_errors('Error creating chart');
 	
 	return $ret;
 }
@@ -330,7 +319,7 @@ sub del {
 	
 	my ($query, $sth);
 	my $rows;
-	eval {
+	try {
 		$self->db->begin_work;
 		
 		# Verify this chart belongs to this user
@@ -338,7 +327,7 @@ sub del {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{user}->uid, $args->{chart_id});
 		my $row = $sth->fetchrow_hashref;
-		die('Chart does not belong to this user') unless $row;
+		throw(403, 'Chart does not belong to this user', { user => 1 }) unless $row;
 		
 		if ($args->{dashboard_id}){
 			# Verify this dashboard belongs to this user
@@ -346,7 +335,7 @@ sub del {
 			$sth = $self->db->prepare($query);
 			$sth->execute($args->{user}->uid, $args->{dashboard_id});
 			my $row = $sth->fetchrow_hashref;
-			die('Dashboard does not belong to this user') unless $row;
+			throw(403, 'Dashboard does not belong to this user', { user => 1 }) unless $row;
 			
 			# Find current coordinates
 			$query = 'SELECT x, y FROM dashboards_charts_map WHERE dashboard_id=? AND chart_id=?';
@@ -420,12 +409,7 @@ sub del {
 		}
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error deleting chart: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error deleting chart');
 	
 	return { ok => $rows };
 }
@@ -436,7 +420,7 @@ sub move {
 	#$self->log->trace('move args: ' . Dumper($args));
 	my ($query, $sth);
 	my $rows;
-	eval {
+	try {
 		$self->db->begin_work;
 		# Find current coordinates
 		$query = 'SELECT chart_id, x, y FROM dashboards_charts_map WHERE dashboard_id=?';
@@ -451,7 +435,7 @@ sub move {
 		}
 		
 		my $target = $by_id->{ $args->{chart_id} };
-		die('chart not found') unless $target;
+		throw(404, 'chart not found', { chart => $args->{chart_id} }) unless $target;
 		$self->log->debug('target ' . Dumper($target));
 		$self->log->debug('coordinates ' . Dumper($coordinates));
 		
@@ -469,7 +453,7 @@ sub move {
 				$rows = $sth->rows;
 			}
 			else {
-				die('Cannot move up');
+				throw(400, 'Cannot move up', { y => $target->{y} });
 			}
 		}
 		elsif ($args->{direction} eq 'down'){
@@ -504,7 +488,7 @@ sub move {
 				}
 			}
 			else {
-				die('Cannot move down');
+				throw(400, 'Cannot move down', { y => $target->{y} });
 			}
 		}
 		elsif ($args->{direction} eq 'right'){
@@ -521,7 +505,7 @@ sub move {
 				$sth->execute($args->{dashboard_id}, $target->{chart_id});
 			}
 			else {
-				die('Cannot move right');
+				throw(400, 'Cannot move right', { x => $target->{x} });
 			}
 		}
 		elsif ($args->{direction} eq 'left'){
@@ -539,18 +523,13 @@ sub move {
 
 			}
 			else {
-				die('Cannot move left');
+				throw(400, 'Cannot move left', { x => $target->{x} });
 			}
 		}
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error moving chart: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error moving chart');
 	return $self->_get_rows($args);
 }
 
@@ -628,7 +607,7 @@ sub _get_rows {
 	
 	# Double-check auth so public API can't abuse this
 	unless ($self->_is_permitted($args)){
-		die('Unauthorized');
+		throw(403, 'Unauthorized', { user => 1 });
 	}
 	
 	my @rows;
@@ -700,7 +679,7 @@ sub add_query {
 	
 	my ($query, $sth);
 	my $query_id;
-	eval {
+	try {
 		$self->db->begin_work;
 		
 #		unless ($args->{query} =~ /groupby[\:\=]/i){
@@ -709,7 +688,7 @@ sub add_query {
 		
 		$self->log->debug('$args->{chart_id} ' . Dumper($args->{chart_id}));
 		if ($args->{chart_id} eq '__NEW__'){
-			die('No dashboard_id defined') unless defined $args->{dashboard_id};
+			throw(400, 'No dashboard_id defined', { dashboard_id => 1 }) unless defined $args->{dashboard_id};
 			$self->db->rollback();
 			$args->{queries} = [ { label => $args->{label}, query => $args->{query} } ];
 			$args->{chart_type} = 'ColumnChart';
@@ -721,7 +700,7 @@ sub add_query {
 			$sth = $self->db->prepare($query);
 			$sth->execute($args->{user}->uid, $args->{chart_id});
 			my $row = $sth->fetchrow_hashref;
-			die('Chart does not exist or belong to this user') unless $row;
+			throw(404, 'Chart does not exist or belong to this user', { chart_id => $args->{chart_id} }) unless $row;
 		}
 		
 		
@@ -738,12 +717,7 @@ sub add_query {
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error creating query: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error creating query');
 	
 	return { query_id => $query_id, label => $args->{label}, query => $args->{query} };
 }
@@ -753,7 +727,7 @@ sub del_query {
 	
 	my ($query, $sth);
 	my $ok;
-	eval {
+	try {
 		$self->db->begin_work;
 		
 		# Verify this chart belongs to this user
@@ -761,7 +735,7 @@ sub del_query {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{user}->uid, $args->{query_id});
 		my $row = $sth->fetchrow_hashref;
-		die('Chart does not belong to this user') unless $row;
+		throw(403, 'Chart does not belong to this user', { user => 1 }) unless $row;
 		
 		$query = 'DELETE FROM chart_queries WHERE id=?';
 		$sth = $self->db->prepare($query);
@@ -770,12 +744,7 @@ sub del_query {
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error deleting query: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error deleting query');
 	
 	return { ok => $ok };
 }
@@ -785,7 +754,7 @@ sub update_query {
 	
 	my ($query, $sth);
 	my $query_id;
-	eval {
+	try {
 		$self->db->begin_work;
 		
 		# Verify this chart belongs to this user
@@ -793,9 +762,9 @@ sub update_query {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{user}->uid, $args->{chart_id});
 		my $row = $sth->fetchrow_hashref;
-		die('Chart does not belong to this user') unless $row;
+		throw(403, 'Chart does not belong to this user', { user => 1 }) unless $row;
 		
-		die('Invalid col') unless $args->{col} eq 'label' or $args->{col} eq 'query';
+		throw(400, 'Invalid col', { col => $args->{col} }) unless $args->{col} eq 'label' or $args->{col} eq 'query';
 		
 #		if ($args->{col} eq 'query' and $args->{val} !~ /query_meta_params/){
 #			$self->log->trace('Converting raw query text to query object');
@@ -809,12 +778,7 @@ sub update_query {
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error creating query: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error creating query');
 	
 	return { ok => $sth->rows };
 }
@@ -825,7 +789,7 @@ sub update {
 	$self->log->debug('args', Dumper($args));
 	my ($query, $sth);
 	my $query_id;
-	eval {
+	try {
 		$self->db->begin_work;
 		
 		# Verify this chart belongs to this user
@@ -833,7 +797,7 @@ sub update {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{user}->uid, $args->{chart_id});
 		my $row = $sth->fetchrow_hashref;
-		die('Chart does not belong to this user') unless $row;
+		throw(403, 'Chart does not belong to this user', { user => 1 }) unless $row;
 		
 		my $to_update = $self->json->decode($args->{to_update});
 		my $valid_cols = {
@@ -841,7 +805,7 @@ sub update {
 			options => 1,
 		};
 		foreach my $col (keys %$to_update){
-			die('Invalid col ' . $col) unless $valid_cols->{$col};
+			throw(400, 'Invalid col ' . $col, { col => $col }) unless $valid_cols->{$col};
 		
 			$query = 'UPDATE charts SET ' . $col . '=? WHERE id=?'; # $col sanitized above
 			$sth = $self->db->prepare($query);
@@ -856,12 +820,7 @@ sub update {
 		
 		$self->db->commit;
 	};
-	if ($@){
-		my $errstr = 'Error creating query: ' . $@;
-		$self->log->error($errstr);
-		die($errstr);
-		$self->db->rollback;
-	}
+	$self->_handle_errors('Error creating query');
 	
 	return { ok => $sth->rows };
 }

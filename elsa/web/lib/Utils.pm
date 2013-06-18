@@ -16,6 +16,10 @@ use URI::Escape qw(uri_escape);
 use Time::HiRes qw(time);
 use Digest::SHA qw(sha512_hex);
 use Sys::Hostname;
+use Ouch qw(:traditional);
+use Exporter qw(import);
+
+our @EXPORT = qw(catch_any);
 
 use CustomLog;
 use Results;
@@ -23,6 +27,8 @@ use Results;
 our $Db_timeout = 3;
 our $Bulk_dir = '/tmp';
 our $Auth_timestamp_grace_period = 86400;
+
+
 
 has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
 has 'conf' => (is => 'rw', isa => 'Object', required => 1);
@@ -203,7 +209,7 @@ sub _get_node_info {
 	
 	foreach my $node (keys %$nodes){
 		if (exists $nodes->{$node}->{error}){
-			$self->add_warning('node ' . $node . ' had error ' . $nodes->{$node}->{error});
+			$self->add_warning(502, 'node ' . $node . ' had error ' . $nodes->{$node}->{error}, { mysql => $node });
 			delete $ret->{nodes}->{$node};
 			next;
 		}
@@ -577,7 +583,7 @@ sub _get_nodes {
 			
 		};
 		if ($@){
-			$self->add_warning($@);
+			$self->add_warning(502, $@, { mysql => $node });
 			delete $nodes{$node};
 		}		
 	}
@@ -588,45 +594,45 @@ sub _get_nodes {
 	return \%nodes;
 }
 
-sub old_get_nodes {
-	my $self = shift;
-	my $user = shift;
-	my %nodes;
-	my $node_conf = $self->conf->get('nodes');
-	
-	my $mysql_port = 3306;
-	my $db_name = 'syslog';
-	foreach my $node (keys %$node_conf){
-		next unless $user->is_permitted('node_id', unpack('N*', inet_aton($node)));
-		if ($node_conf->{$node}->{port}){
-			$mysql_port = $node_conf->{$node}->{port};
-		}
-		
-		if ($node_conf->{$node}->{db}){
-			$db_name = $node_conf->{$node}->{db};
-		}
-		eval {
-			$nodes{$node} = { db => $db_name };
-			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
-				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
-				$node_conf->{$node}->{username}, 
-				$node_conf->{$node}->{password}, 
-				{
-					mysql_connect_timeout => $self->db_timeout,
-					PrintError => 0,
-					mysql_multi_statements => 1,
-				}
-			]);
-		};
-		if ($@){
-			$self->log->error($@);
-			$self->add_warning($@);
-			delete $nodes{$node};
-		}
-	}
-		
-	return \%nodes;
-}
+#sub old_get_nodes {
+#	my $self = shift;
+#	my $user = shift;
+#	my %nodes;
+#	my $node_conf = $self->conf->get('nodes');
+#	
+#	my $mysql_port = 3306;
+#	my $db_name = 'syslog';
+#	foreach my $node (keys %$node_conf){
+#		next unless $user->is_permitted('node_id', unpack('N*', inet_aton($node)));
+#		if ($node_conf->{$node}->{port}){
+#			$mysql_port = $node_conf->{$node}->{port};
+#		}
+#		
+#		if ($node_conf->{$node}->{db}){
+#			$db_name = $node_conf->{$node}->{db};
+#		}
+#		eval {
+#			$nodes{$node} = { db => $db_name };
+#			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
+#				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
+#				$node_conf->{$node}->{username}, 
+#				$node_conf->{$node}->{password}, 
+#				{
+#					mysql_connect_timeout => $self->db_timeout,
+#					PrintError => 0,
+#					mysql_multi_statements => 1,
+#				}
+#			]);
+#		};
+#		if ($@){
+#			$self->log->error($@);
+#			$self->add_warning($@);
+#			delete $nodes{$node};
+#		}
+#	}
+#		
+#	return \%nodes;
+#}
 
 sub info {
 	my $self = shift;
@@ -664,7 +670,7 @@ sub info {
 			};
 			if ($@){
 				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
-				$self->add_warning('peer ' . $peer . ': ' . $@);
+				$self->add_warning(502, 'peer ' . $peer . ': ' . $@, { http => $peer });
 				delete $results{$peer};
 			}
 			$cv->end;
@@ -784,7 +790,7 @@ sub _peer_query {
 				my $raw_results = $self->json->decode($body);
 				if ($raw_results and ref($raw_results) and $raw_results->{error}){
 					$self->log->error('Peer ' . $peer_label . ' got error: ' . $raw_results->{error});
-					$q->add_warning('Peer ' . $peer_label . ' encountered an error.');
+					$q->add_warning(502, 'Peer ' . $peer_label . ' encountered an error.', { http => $peer });
 					return;
 				}
 				#$self->log->debug('raw_results: ' . Dumper($raw_results));
@@ -813,7 +819,7 @@ sub _peer_query {
 				}
 				if ($raw_results->{warnings} and ref($raw_results->{warnings}) eq 'ARRAY'){
 					foreach my $warning (@{ $raw_results->{warnings} }){ 
-						$q->add_warning($warning);
+						push @{ $q->warnings }, $warning;
 					}
 				}
 				#$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
@@ -831,7 +837,7 @@ sub _peer_query {
 			};
 			if ($@){
 				$self->log->error($@ . 'url: ' . $url . "\nbody: " . $request_body);
-				$q->add_warning('Invalid results back from peer ' . $peer_label);
+				$q->add_warning(502, 'Invalid results back from peer ' . $peer_label, { http => $peer });
 			}	
 			delete $q->peer_requests->{$peer};
 			$cv->end;
@@ -895,6 +901,13 @@ sub _check_auth_header {
 	else {
 		$self->log->error('Invalid apikey: '  . $username . ':' . $timestamp . ':' . $apikey);
 		return 0;
+	}
+}
+
+# Helper function to convert $@ into an Ouch exception if it isn't one already
+sub catch_any {
+	if ($@){
+		return ref($@) ? $@ : new Ouch(500, $@);
 	}
 }
 

@@ -5,7 +5,11 @@ use CHI;
 use AnyEvent::HTTP;
 use Socket;
 use JSON;
+use Ouch qw(:traditional);
 extends 'Transform';
+
+use Utils;
+
 our $Name = 'Whois';
 our $Timeout = 3; # We're going to need to fail quickly
 # Whois transform plugin
@@ -328,7 +332,7 @@ sub _lookup_org {
 	http_request GET => $org_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		$self->log->trace('got body: ' . Dumper($body) . 'hdr: ' . Dumper($hdr));
-		eval {
+		try {
 			my $whois = decode_json($body);
 			$self->log->trace('decoded whois: ' . Dumper($whois));
 			foreach my $key (qw(org customer)){
@@ -344,7 +348,7 @@ sub _lookup_org {
 					$ret->{city} = $whois->{$key}->{city}->{'$'};
 				}
 			}
-			die('Invalid data for ' . $org_url . ', only got ' . Dumper($ret)) unless $ret->{country};
+			throw(500, 'Invalid data for ' . $org_url . ', only got ' . Dumper($ret), { external_http => $org_url }) unless $ret->{country};
 			$self->log->trace( 'set cache for ' . $org_url . ' with key ' . $key);
 			$self->cache_stats->{misses}++;
 			my $data = { 
@@ -356,8 +360,8 @@ sub _lookup_org {
 			$self->log->trace('org cache data: ' . Dumper($data));
 			$self->cache->set($key, $data);
 		};
-		if ($@){
-			$self->log->error($@);
+		if (my $e = catch_any){
+			$self->log->error($e->trace);
 		}
 		$self->cv->end;
 		return;

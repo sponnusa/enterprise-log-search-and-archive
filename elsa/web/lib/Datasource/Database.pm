@@ -10,6 +10,7 @@ use Time::HiRes qw(time);
 use Search::QueryParser::SQL;
 use Date::Manip;
 use Socket;
+use Ouch qw(:traditional);
 extends 'Datasource';
 with 'Fields';
 
@@ -169,7 +170,7 @@ sub _query {
 		}
 		elsif ($q->groupby->[0] eq 'node'){
 			#TODO Need to break this query into subqueries if grouped by node
-			die('not supported');
+			throw(501, 'not supported', { directive => 'groupby' });
 		}
 		else {
 			foreach my $field (@{ $self->fields }){
@@ -191,7 +192,7 @@ sub _query {
 			}
 		}	
 		unless ($groupby){
-			die('Invalid groupby ' . $groupby);
+			throw(400, 'Invalid groupby ' . $groupby, { directive => 'groupby' });
 		}
 	}
 	

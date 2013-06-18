@@ -1,6 +1,7 @@
 package Transform::Parse;
 use Moose;
 use Data::Dumper;
+use Ouch qw(:traditional);
 extends 'Transform';
 our $Name = 'Parse';
 has 'name' => (is => 'ro', isa => 'Str', required => 1, default => $Name);
@@ -23,7 +24,7 @@ sub BUILD {
 		$self->user->preferences->{tree}->{patterns}->{$pattern_name}){
 		$patterns = $self->user->preferences->{tree}->{patterns}->{$pattern_name};
 	}
-	die('Unable to find pattern ' . $pattern_name) unless $patterns;
+	throw(404, 'Unable to find pattern ' . $pattern_name, { pattern => $pattern_name }) unless $patterns;
 	 
 	$self->log->debug('patterns: ' . "\n" . Dumper($patterns));
 	
