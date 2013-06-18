@@ -781,16 +781,18 @@ sub _check_consolidate {
 		
 		# Find out how many temp indexes we've got
 		foreach my $table_type (qw(index import)){
-			$query = "SELECT first_id, last_id, last_id-first_id AS table_rows, table_id,\n" .
+			$query = "SELECT (SELECT COUNT(*) FROM v_directory WHERE table_id=t1.table_id) AS num_indexes, " .
+				"first_id, last_id, last_id-first_id AS table_rows, table_id,\n" .
 				"IF(last_id-first_id > ?, \"big\", \"small\") AS size, \n" .
 				"UNIX_TIMESTAMP(index_start) AS start, UNIX_TIMESTAMP(index_end) AS end\n" .
-				"FROM v_directory WHERE table_type=? AND ISNULL(locked_by) AND NOT ISNULL(first_id) ORDER BY first_id ASC";
+				"FROM v_directory t1 WHERE table_type=? AND ISNULL(locked_by) AND NOT ISNULL(first_id) ORDER BY first_id ASC";
 			$sth = $self->db->prepare($query);
 			$sth->execute($self->conf->get('sphinx/perm_index_size'), $table_type);
 			
 			my @to_consolidate;
 			my %consolidate;
 			while(my $row = $sth->fetchrow_hashref){
+				next if $row->{num_indexes} <= 1; # already consolidated since there's only one index for this table
 				if ($row->{size} eq 'small'){
 					$consolidate{type} ||= $table_type;
 					$consolidate{first_id} ||= $row->{first_id};
