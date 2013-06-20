@@ -87,17 +87,7 @@ if ($Opts{f} eq '__OPS__'){
 	$Log->remove_appender('RFC5424') if Log::Log4perl->appenders->{RFC5424};
 }
 
-my $Dbh = DBI->connect(($Conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'), 
-	$Conf->{database}->{username}, 
-	$Conf->{database}->{password}, 
-	{
-		InactiveDestroy => 1, 
-		PrintError => 0,
-		mysql_auto_reconnect => 1, 
-		HandleError => \&_sql_error_handler,
-		mysql_local_infile => 1,
-	}) 
-	or die 'connection failed ' . $! . ' ' . $DBI::errstr;
+my $Dbh = _db_connect($Conf) or die 'connection failed ' . $! . ' ' . $DBI::errstr;
 
 my $num_children = $Conf->{num_log_readers} or die("undefined config for num_log_readers");
 my $continue     = 1;
@@ -308,9 +298,10 @@ sub _process_batch {
 		return $args->{batch_counter};
 	}
 	
-	_forward($args, $reader, $is_ops);
-	
-	return $args->{batch_counter} if $is_ops;
+	if ($is_ops){
+		_forward($args, $reader, $is_ops);
+		return $args->{batch_counter};
+	}
 	
 	if (scalar keys %{ $reader->to_add }){
 		my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
@@ -327,6 +318,10 @@ sub _process_batch {
 		$Log->trace('inserted filename ' . $args->{file} . ' with batch_counter ' . $args->{batch_counter} 
 			. ' and start ' . (scalar localtime($args->{start})) . ' and end ' . (scalar localtime($args->{end})));
 	}
+	
+	$Dbh->disconnect;
+	
+	_forward($args, $reader, $is_ops);
 	
 	return $args->{batch_counter};
 }
@@ -405,8 +400,6 @@ sub _import {
 			next;
 		}
 		
-		_forward($import_args, $reader);
-		
 		if (scalar keys %{ $reader->to_add }){
 			my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 			$indexer->add_programs($reader->to_add);
@@ -422,6 +415,12 @@ sub _import {
 			$Log->trace('inserted filename ' . $import_args->{file} . ' with import_id ' . $import_id . ' and batch_counter ' . $import_args->{batch_counter} 
 				. ' and start ' . (scalar localtime($import_args->{start})) . ' and end ' . (scalar localtime($import_args->{end})));
 		}
+	}
+	
+	$Dbh->disconnect;
+	
+	foreach my $import_id (keys %imports){
+		_forward($imports{$import_id}->{args}, $reader);
 	}
 }
 
@@ -444,6 +443,8 @@ sub _forward {
 		else {
 			# Child
 			$Log->trace('Child started');
+			# Get a new dbh handle independent of the parent's
+			$Dbh = _db_connect($Conf) or die 'connection failed ' . $! . ' ' . $DBI::errstr;
 			eval {
 				my $md5_start = time();
 				
@@ -596,6 +597,8 @@ sub _forward {
 						my $sth2 = $Dbh->prepare($query);
 						$sth2->execute($row->{hash});
 						$sth2->finish;
+						# Delete our forward zip file
+						unlink($file_args->{file});
 					}
 					else {
 						$Log->error('Failed once again to forward file ' . $file_args->{file});
@@ -920,3 +923,17 @@ sub _get_livetail {
 
 	return \@livetail_arr;
 }
+
+sub _db_connect {
+	my $conf = shift;
+	return DBI->connect(($conf->{database}->{dsn} or 'dbi:mysql:database=syslog;'), 
+		$conf->{database}->{username}, 
+		$conf->{database}->{password}, 
+		{
+			InactiveDestroy => 1, 
+			PrintError => 0,
+			mysql_auto_reconnect => 1, 
+			HandleError => \&_sql_error_handler,
+			mysql_local_infile => 1,
+		});
+};
