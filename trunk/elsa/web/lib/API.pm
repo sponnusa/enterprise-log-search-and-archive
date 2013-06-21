@@ -2975,7 +2975,8 @@ sub _build_sphinx_match_str {
 	}
 	
 	if (@class_match_strs){
-		$match_str .= ' (' . join('|', @class_match_strs) . ')';
+		#$match_str .= ' (' . join('|', @class_match_strs) . ')';
+		$match_str .= ' (' . join(') (', @class_match_strs) . ')';
 	}	
 	
 	$self->log->trace('match str: ' . $match_str);		
