@@ -1043,8 +1043,8 @@ sub load_buffers {
 		$was_import = $row->{import_id} ? 1 : 0;
 		
 		# Send to archive
-		if (not $was_import and $self->conf->get('archive/percentage')){
-			$self->archive_records({ file => $row->{filename} })
+		if ((not $was_import or $self->conf->get('archive/imports')) and $self->conf->get('archive/percentage')){
+			$self->archive_records({ file => $row->{filename} });
 		}
 	}
 	
