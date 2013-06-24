@@ -490,6 +490,9 @@ sub upload {
 		$sth->execute($file, $args->{start}, $args->{end});
 		$ret->{buffers_id} = $self->db->{mysql_insertid};
 		
+		$args->{batch_time} ||= 60;
+		$args->{total_errors} ||= 0;
+		
 		# Record the upload
 		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
 		$sth = $self->db->prepare($query);
