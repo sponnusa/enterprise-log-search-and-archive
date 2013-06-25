@@ -186,7 +186,7 @@ sub sphinx {
 	}
 	
 	unless ($dbh){
-		my $errstr = 'Unable to make query after ' . $Retries . ' attempts, last error: ' . $@;
+		my $errstr = $attempts > 1 ? 'Unable to make query after ' . $attempts . ' attempts, last error: ' . $@ : $@;
 		$self->log->error($errstr);
 		#$cb->(undef, $@, 0);
 		$cb->(1, { rows => [], meta => { warning => $errstr } }, 1);
