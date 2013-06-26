@@ -199,8 +199,9 @@ sub add_warning {
 	my $self = shift;
 	my $code = shift;
 	my $errstr = shift;
+	my $data = shift;
 	
-	push @{ $self->warnings }, new Ouch($code, $errstr);
+	push @{ $self->warnings }, new Ouch($code, $errstr, $data);
 }
 
 sub _get_ldap {
@@ -2124,6 +2125,33 @@ sub _sphinx_query {
 						$self->log->warn('Results approximated due to ' . $result->{meta}->{warning});
 						if (not $result->{meta}->{total_found}){
 							$self->add_warning(504, 'Search timed out before any results were found, re-run with timeout:0', { sphinx => $q->peer_label });
+						}
+					}
+					elsif ($result->{meta}->{warning} =~ /fetchrow_hashref failed: /){
+						$self->log->debug('warning: ' . $result->{meta}->{warning});
+						# Check to see if this was a class-only search, which could mean a backwards-compatibility issue
+						my $non_indexed_fields = 0;
+						foreach my $boolean (qw(and or)){
+							foreach my $term (keys %{ $q->terms->{any_field_terms}->{$boolean} }){
+								if ($term =~ /\(\@class (\d+)\)/){
+									$self->add_warning(501, 'Not all indexes have indexed class as a field, re-run search with archive:1', { term => $self->node_info->{classes_by_id}->{$1} });
+									$non_indexed_fields = 1;
+								}
+								elsif ($term =~ /\(\@program (\d+)\)/){
+									$self->add_warning(501, 'Not all indexes have indexed program as a field, re-run search with archive:1', { term => $q->program_translations->{$1} });
+									$non_indexed_fields = 1;
+								}
+							}
+						}
+						if (not $non_indexed_fields and scalar @$rows){
+							$q->results->is_approximate(1);
+							$self->log->warn('Results approximated due to ' . $result->{meta}->{warning});
+							if (not $result->{meta}->{total_found}){
+								$self->add_warning(504, 'Search timed out before any results were found, re-run with timeout:0', { sphinx => $q->peer_label });
+							}
+						}
+						elsif (not $non_indexed_fields){
+							$self->add_warning(500, 'Internal search engine error', { sphinx => $q->peer_label });
 						}
 					}
 					else {
@@ -4611,20 +4639,20 @@ sub _archive_query {
 				$self->log->debug(' with values ' . join(',', @{ $query_hash->{values} }));
 				$cv->begin;
 				$nodes->{$node}->{dbh}->query($query_hash->{query}, @{ $query_hash->{values} }, sub { 
-						$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
-						my ($dbh, $rows, $rv) = @_;
-						$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
-						if (not $rv){
-							my $e = 'node ' . $node . ' got error ' . $rows;
-							$self->log->error($e);
-							$self->add_warning(502, $e, { mysql => $q->peer_label });
-							$cv->end;
-							next;
-						}
-						push @{ $ret->{$node}->{rows} }, @$rows;
-						$total_found++;
-						$cv->end; #end archive query
-					});
+					$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
+					my ($dbh, $rows, $rv) = @_;
+					$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
+					if (not $rv){
+						my $e = 'node ' . $node . ' got error ' . $rows;
+						$self->log->error($e);
+						$self->add_warning(502, $e, { mysql => $q->peer_label });
+						$cv->end;
+						next;
+					}
+					push @{ $ret->{$node}->{rows} }, @$rows;
+					$total_found += @$rows;
+					$cv->end; #end archive query
+				});
 			};
 			if ($@){
 				$ret->{$node}->{error} = 'sphinx query error: ' . $@;
@@ -4637,6 +4665,14 @@ sub _archive_query {
 		$cv->recv; # block until all of the above completes
 		
 		last if $total_found >= $q->limit;
+		
+		if ($q->timeout and (Time::HiRes::time() - $q->start_time) > ($q->timeout/1000)){
+			my $e = 'Hit query timeout on peer ' . $q->peer_label;
+			$self->log->error($e);
+			$self->add_warning(502, $e, { timeout => $q->peer_label });
+			$cv->end;
+			last QUERY_LOOP;
+		}
 		
 		# See how many we have left to do in case we're done
 		$queries_todo_count = 0;

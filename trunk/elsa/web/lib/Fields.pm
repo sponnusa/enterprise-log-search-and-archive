@@ -44,6 +44,8 @@ our $Field_order_to_meta_attr = {
 
 our $Field_order_to_field = {
 	1 => 'host',
+	2 => 'program',
+	3 => 'class',
 	4 => 'msg',
 	5 => 'i0',
 	6 => 'i1',
@@ -524,6 +526,9 @@ sub normalize_value {
 		else {
 			return $ret[0];
 		}
+	}
+	elsif ($field_order == $Field_to_order->{class}){
+		return $self->node_info->{classes}->{ uc($value) };
 	}
 	elsif ($self->node_info->{field_conversions}->{ $class_id }->{'IPv4'}
 		and $self->node_info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
