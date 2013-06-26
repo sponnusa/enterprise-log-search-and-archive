@@ -930,31 +930,31 @@ sub _parse_query {
 		}
 	}
 	
-	# Check to see if the query is after the latest end, but not in the future (this happens if the indexing process is backed up)
-	if ((exists $self->datasources->{sphinx} or exists $self->datasources->{archive}) and 
-		$self->start and $self->start <= time() and $self->start > $self->node_info->{indexes_max} and $self->start > $self->node_info->{archive_max}){
-		my $type = 'indexes';
-		if ($self->node_info->{archive_max} > $self->node_info->{indexes_max}){
-			$type = 'archive';
-		}
-		$self->log->debug('indexes_start_max: ' . $self->node_info->{'indexes_start_max'});
-		$self->log->debug('archive_start_max: ' . $self->node_info->{'archive_start_max'});
-		my $new_start_max = $self->node_info->{$type . '_start_max'};
-		$self->log->warn('Adjusted start_int ' . $self->start . ' to ' . $new_start_max . ' because it was after ' . $self->node_info->{$type . '_max'});
-		$self->start($new_start_max);
-	}
-	if ((exists $self->datasources->{sphinx} or exists $self->datasources->{archive}) and 
-		$self->end and $self->end < time() and $self->end > $self->node_info->{indexes_max} and $self->end > $self->node_info->{archive_max}){
-		my $type = 'indexes';
-		if ($self->node_info->{archive_max} > $self->node_info->{indexes_max}){
-			$type = 'archive';
-		}
-		my $new_max = $self->node_info->{$type . '_max'};
-		if ($new_max){
-			$self->log->warn('Adjusted end_int ' . $self->end . ' to ' . $new_max);
-			$self->end($new_max);
-		}
-	}
+#	# Check to see if the query is after the latest end, but not in the future (this happens if the indexing process is backed up)
+#	if ((exists $self->datasources->{sphinx} or exists $self->datasources->{archive}) and 
+#		$self->start and $self->start <= time() and $self->start > $self->node_info->{indexes_max} and $self->start > $self->node_info->{archive_max}){
+#		my $type = 'indexes';
+#		if ($self->node_info->{archive_max} > $self->node_info->{indexes_max}){
+#			$type = 'archive';
+#		}
+#		$self->log->debug('indexes_start_max: ' . $self->node_info->{'indexes_start_max'});
+#		$self->log->debug('archive_start_max: ' . $self->node_info->{'archive_start_max'});
+#		my $new_start_max = $self->node_info->{$type . '_start_max'};
+#		$self->log->warn('Adjusted start_int ' . $self->start . ' to ' . $new_start_max . ' because it was after ' . $self->node_info->{$type . '_max'});
+#		$self->start($new_start_max);
+#	}
+#	if ((exists $self->datasources->{sphinx} or exists $self->datasources->{archive}) and 
+#		$self->end and $self->end < time() and $self->end > $self->node_info->{indexes_max} and $self->end > $self->node_info->{archive_max}){
+#		my $type = 'indexes';
+#		if ($self->node_info->{archive_max} > $self->node_info->{indexes_max}){
+#			$type = 'archive';
+#		}
+#		my $new_max = $self->node_info->{$type . '_max'};
+#		if ($new_max){
+#			$self->log->warn('Adjusted end_int ' . $self->end . ' to ' . $new_max);
+#			$self->end($new_max);
+#		}
+#	}
 	
 	# Final sanity check
 	unless (defined $self->start and $self->end and $self->start <= $self->end){
