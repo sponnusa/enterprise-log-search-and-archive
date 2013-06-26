@@ -13,6 +13,7 @@ use Socket;
 use Log::Log4perl::Level;
 use Date::Manip;
 use Ouch qw(:traditional);
+use String::CRC32;
 
 # Object for dealing with user queries
 
@@ -68,6 +69,7 @@ has 'id_ranges' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', requir
 	handles => { 'has_id_ranges' => 'count', 'all_id_ranges' => 'elements' });
 has 'query_term_count' => (is => 'rw', isa => 'Num', required => 1, default => 0);
 has 'max_query_time' => (is => 'rw', isa => 'Int', required => 1, default => 0);
+has 'program_translations' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 
 # Optional
 has 'query_string' => (is => 'rw', isa => 'Str');
@@ -198,7 +200,7 @@ sub BUILD {
 		$sth = $self->db->prepare($query);
 		$sth->execute($self->qid, $self->user->uid);
 		my $row = $sth->fetchrow_hashref;
-		throw(403, 'User is not authorized for this qid', $self->TO_JSON) unless $row;
+		throw(403, 'User is not authorized for this qid', { user => $self->user->username }) unless $row;
 		$self->log->level($ERROR) unless $self->conf->get('debug_all');
 	}
 	else {
@@ -341,7 +343,7 @@ sub _parse_query_string {
 	my $effective_operator = shift;
 	
 	my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
-	my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or throw(400, $qp->err, $self->TO_JSON);
+	my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or throw(400, $qp->err, { query_string => $raw_query });
 	$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
 	
 	my $parsed_query = dclone($orig_parsed_query); #dclone so recursion doesn't mess up original
@@ -511,7 +513,7 @@ sub _parse_query {
 		$self->_parse_query_string($raw_query);
 	}
 	else {
-		throw(400,'No query terms given', $self->TO_JSON);
+		throw(400,'No query terms given', { query_string => '' });
 	}
 	
 	# One-off for dealing with hosts as fields
@@ -528,7 +530,40 @@ sub _parse_query {
 						$self->highlights->{ _term_to_regex( inet_ntoa(pack('N*', $host_int)) ) } = 1;
 					}
 					else {
-						throw(403, "Insufficient permissions to query host_int $host_int", $self->TO_JSON);
+						my $host = inet_ntoa(pack('N*', $host_int));
+						throw(403, "Insufficient permissions to query host $host", { host => $host });
+					}
+				}
+			}
+			elsif ($self->terms->{attr_terms}->{$boolean}->{$op}->{class} 
+				and $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}
+				and $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}->{class_id}
+				and $Fields::Field_order_to_field->{ $Fields::Field_to_order->{class} }){
+				foreach my $class_id (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}->{class_id} }){
+					if ($self->user->is_permitted('class_id', $class_id)){
+						next if $self->archive; # archive queries don't need this
+						$self->log->trace('adding class_id ' . $class_id);
+						push @{ $self->terms->{any_field_terms}->{$boolean} }, '(@class ' . $class_id . ')';
+						$self->highlights->{ _term_to_regex( $self->node_info->{classes_by_id}->{$class_id} ) } = 1;
+					}
+					else {
+						throw(403, "Insufficient permissions to query class_id $class_id", { class => $self->node_info->{classes_by_id}->{$class_id} });
+					}
+				}
+			}
+			elsif ($self->terms->{attr_terms}->{$boolean}->{$op}->{program} 
+				and $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}
+				and $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}->{program_id}
+				and $Fields::Field_order_to_field->{ $Fields::Field_to_order->{program} }){
+				foreach my $program_id (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}->{program_id} }){
+					if ($self->user->is_permitted('program_id', $program_id)){
+						next if $self->archive; # archive queries don't need this
+						$self->log->trace('adding program_id ' . $program_id);
+						push @{ $self->terms->{any_field_terms}->{$boolean} }, '(@program ' . $program_id . ')';
+						$self->highlights->{ _term_to_regex( $self->program_translations->{$program_id} ) } = 1;
+					}
+					else {
+						throw(403, "Insufficient permissions to query program_id $program_id", { program => $self->program_translations->{$program_id} });
 					}
 				}
 			}
@@ -571,7 +606,7 @@ sub _parse_query {
 						my $forbidden = delete $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id};
 						$self->log->warn('Forbidding attr_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
 						unless (scalar keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
-							throw(403, 'All terms for field ' . $field_name . ' were dropped due to insufficient permissions.', $self->TO_JSON);
+							throw(403, 'All terms for field ' . $field_name . ' were dropped due to insufficient permissions.', { term => $field_name });
 						}
 					}
 				}
@@ -585,7 +620,7 @@ sub _parse_query {
 				$self->log->warn('Forbidding field_term from class_id ' . $class_id . ' with ' . Dumper($forbidden));
 				foreach my $attr (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} } ){
 					unless (scalar keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$attr} }){
-						throw(403, 'All terms for field ' . $attr . ' were dropped due to insufficient permissions.', $self->TO_JSON);
+						throw(403, 'All terms for field ' . $attr . ' were dropped due to insufficient permissions.', { term => $attr });
 					}
 				}
 			}
@@ -665,7 +700,7 @@ sub _parse_query {
 			# Add filters for the whitelisted items
 			# If there are no exceptions to the whitelist, no query will succeed
 			if (not scalar keys %{ $self->user->permissions->{$attr} }){
-				throw(403, 'Insufficient privileges for querying any ' . $attr, $self->TO_JSON); 
+				throw(403, 'Insufficient privileges for querying any ' . $attr, { term => $attr }); 
 			}
 			
 			# Remove items not explicitly whitelisted
@@ -677,7 +712,7 @@ sub _parse_query {
 						and $self->terms->{attr_terms}->{$boolean}->{$op}->{0}->{$attr};
 					foreach my $id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{0}->{$attr} }){
 						unless($self->user->is_permitted($attr, $id)){
-							throw(403, "Insufficient permissions to query $id from $attr", $self->TO_JSON);
+							throw(403, "Insufficient permissions to query $id from $attr", { term => $attr });
 						}
 					}
 				}
@@ -863,7 +898,7 @@ sub _parse_query {
 			$self->log->debug('attrs only');
 		}
 		else {
-			throw(403, 'All query terms were stripped based on permissions', $self->TO_JSON);
+			throw(403, 'All query terms were stripped based on permissions', { permissions => 1 });
 		}
 	}
 	
@@ -923,7 +958,7 @@ sub _parse_query {
 	
 	# Final sanity check
 	unless (defined $self->start and $self->end and $self->start <= $self->end){
-		throw(416, 'Invalid start or end: ' . (scalar localtime($self->start)) . ' ' . (scalar localtime($self->end)), $self->TO_JSON);
+		throw(416, 'Invalid start or end: ' . (scalar localtime($self->start)) . ' ' . (scalar localtime($self->end)), { start => $self->start, end => $self-> end });
 	}
 	
 	$self->log->debug('going with times start: ' . (scalar localtime($self->start)) .  ' (' . $self->start . ') and end: ' .
@@ -1069,7 +1104,7 @@ sub _parse_query_term {
 					next;
 				}
 				else {
-					throw(400, "Unknown class $term_hash->{value}", $self->TO_JSON);
+					throw(400, "Unknown class $term_hash->{value}", { term => $term_hash->{value} });
 				}
 				
 				if ($effective_operator eq '-'){
@@ -1080,7 +1115,7 @@ sub _parse_query_term {
 					$self->classes->{given}->{ $class } = 1;
 				}
 				$self->log->debug("Set operator $effective_operator for given class " . $term_hash->{value});		
-				next;
+				#next;
 			}
 			elsif ($term_hash->{field} eq 'groupby'){
 				my $value = lc($term_hash->{value});
@@ -1205,7 +1240,7 @@ sub _parse_query_term {
 				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
 				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
 					throw(400, 'Integer search terms must be 15 or fewer digits, received ' 
-						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.', $self->TO_JSON);
+						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.', { term => $term_hash->{value} });
 				}
 				if($term_hash->{quote}){
 					$term_hash->{value} = $self->normalize_quoted_value($term_hash->{value});
@@ -1254,7 +1289,7 @@ sub _parse_query_term {
 				}
 				
 				if ($term_hash->{field} =~ /^import\_(\w+)/){
-					throw(400, 'Invalid import field ' . $term_hash->{field}, $self->TO_JSON) unless grep { $_ eq $term_hash->{field} } @$Fields::Import_fields;
+					throw(400, 'Invalid import field ' . $term_hash->{field}, { term => $term_hash->{field} }) unless grep { $_ eq $term_hash->{field} } @$Fields::Import_fields;
 					push @{ $self->import_search_terms }, { field => $1, value => $term_hash->{value}, 
 						op => $term_hash->{op}, boolean => $effective_operator };
 					next;
@@ -1267,7 +1302,12 @@ sub _parse_query_term {
 				);
 				
 				if (not scalar keys %{ $values->{attrs} } and not scalar keys %{ $values->{fields} }){
-					throw(400, 'Invalid field: ' . $term_hash->{field}, $self->TO_JSON);
+					throw(400, 'Invalid field: ' . $term_hash->{field}, { term => $term_hash->{field} });
+				}
+				
+				# Mark down any program translations
+				if (lc($term_hash->{field}) eq 'program'){
+					$self->program_translations->{ crc32( lc($term_hash->{value}) ) } = lc($term_hash->{value});
 				}
 				
 				# Set fields for searching
@@ -1290,6 +1330,7 @@ sub _parse_query_term {
 							join('', unpack('c*', pack('A*', uc($term_hash->{value}))));
 					}
 					elsif ($term_hash->{op} !~ /[\<\>]/ and not exists $self->terms->{field_terms}->{$boolean}->{$class_id}){
+					#elsif ($term_hash->{op} !~ /[\<\>]/){
 						if ($class_id){ #skip class 0
 							if ($term_hash->{field} =~ /proto/){
 								# proto is special because it is represented as both an integer and string, so search for both
@@ -1342,7 +1383,7 @@ sub _parse_query_term {
 				}
 			}
 			else {
-				throw(400, "no field or value given to match field $term_hash->{field}", $self->TO_JSON);
+				throw(400, "no field or value given to match field $term_hash->{field}", { term => $term_hash->{field} });
 			}
 		}
 	}
@@ -1434,7 +1475,7 @@ sub _resolve_macro {
 	}
 	else {
 		$self->log->debug('macros available: ' . Dumper($self->user->preferences->{tree}));
-		throw(400, 'Invalid macro (saved search): ' . $macro, $self->TO_JSON);
+		throw(400, 'Invalid macro (saved search): ' . $macro, { term => $macro });
 	}
 	
 }
