@@ -62,9 +62,9 @@ sub local_query {
 		}
 	}
 	
-	foreach my $warning (@{ $q->warnings }){
-		push @{ $self->warnings }, $warning;
-	}
+#	foreach my $warning (@{ $q->warnings }){
+#		push @{ $self->warnings }, $warning;
+#	}
 	
 	Log::Log4perl::MDC->put('qid', $q->qid);
 
@@ -240,6 +240,10 @@ sub local_query {
 	}
 	else {
 		$self->_sphinx_query($q);
+	}
+	
+	foreach my $warning ($self->all_warnings){
+		push @{ $q->warnings }, $warning;
 	}
 	
 	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
