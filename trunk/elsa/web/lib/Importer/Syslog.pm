@@ -56,7 +56,7 @@ sub process {
 		if ($. <= $lines_to_skip){
 			next;
 		}
-		$_ =~ /^((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\ \d{2}\:\d{2}\:\d{2})\ ([\w\.]+)\ ([^\:]+): ([^\n]+)/;
+		$_ =~ /^((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\ \d{2}\:\d{2}\:\d{2})\ (\S+)\ ([^\:]+): ([^\n]+)/;
 		my $dt = $parser->parse_datetime("$1 $year") or next;
 		my ($host, $program, $msg) = ($2, $3, $4);
 		my $date = $dt->strftime('%Y-%m-%dT%H:%M:%S.000Z');
