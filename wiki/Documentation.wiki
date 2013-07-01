@@ -121,11 +121,11 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
     "BRO_SSL": 1
   },
 }}}
-* APIKeys: The "apikeys" hash holds all known username/apikey combinations, such as:
+ * APIKeys: The "apikeys" hash holds all known username/apikey combinations, such as:
 {{{
 "apikeys": { "elsa": "abc" }
 }}}
-* Peers: Configuration for how this ELSA node will talk to other ELSA nodes.  Note that a configuration for itself (127.0.0.1) is required for any query to complete.  An example configuration is:
+ * Peers: Configuration for how this ELSA node will talk to other ELSA nodes.  Note that a configuration for itself (127.0.0.1) is required for any query to complete.  An example configuration is:
 {{{
 "peers": {
   "127.0.0.1": {
@@ -134,6 +134,10 @@ Most settings in the elsa_web.conf and elsa_node.conf files should be fine with 
     "apikey": "abc"
   }
 }
+}}}
+ * Default OR: By default, all search terms are required to be found in the event to constitute a match (AND).  If you wish, you can set the config value "default_or" to a true value to change the default behavior to making the search match if any of the given values are true:
+{{{
+"default_or": 1
 }}}
 
 ==elsa_node.conf:==
@@ -903,6 +907,7 @@ You can set per-user preferences by navigating to the "Preferences" dialog under
 ||default_settings||use_utc||1||Display all dates in UTC (GMT)||
 ||default_settings||orderby_dir||DESC||Default to reverse sort (descending)||
 ||default_settings||timeout||<natural number>||Override the system default for query timeout||
+||default_settings||default_or||1||Override the system default for making events match if any of the query terms match instead of if all query terms match||
 
 =Keyboard Shortcuts=
 ||Key||Action||
