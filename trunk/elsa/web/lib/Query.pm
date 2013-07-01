@@ -18,7 +18,7 @@ use String::CRC32;
 # Object for dealing with user queries
 
 our $Default_limit = 100;
-our $Implicit_plus = 0;
+our $Implicit_plus = 1;
 
 # Required
 has 'user' => (is => 'rw', isa => 'User', required => 1);
@@ -228,14 +228,19 @@ sub BUILD {
 		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
 			foreach my $field_name (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
 				foreach my $term (@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field_name} }){
-					my $regex = _term_to_regex($term);
-					$self->highlights->{$regex} = 1;
+					my $text = $field_name =~ /^s/ ? $term : $self->normalize_value($class_id, $term, $Fields::Field_to_order->{$field_name});
+					my @regex = _term_to_regex($text);
+					foreach (@regex){
+						$self->highlights->{$_} = 1 if defined $_;
+					}
 				}
 			}
 		}
 		foreach my $term (sort keys %{ $self->terms->{any_field_terms}->{$boolean} }){
-			my $regex = _term_to_regex($term);
-			$self->highlights->{$regex} = 1;
+			my @regex = _term_to_regex($term);
+			foreach (@regex){
+				$self->highlights->{$_} = 1 if defined $_;
+			}
 		}
 	}
 	
@@ -256,12 +261,23 @@ sub add_warning {
 sub _term_to_regex {
 	my $term = shift;
 	my $regex = $term;
+	if (my @m = $regex =~ /^\(+ (\@\w+)\ ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		if ($m[0] eq '@class'){
+			return; # we dont' want to highlight class integers
+		}
+		else {
+			return @m;
+		}
+	}
+	elsif (@m = $regex =~ /^\( ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		return @m;
+	}
 	$regex =~ s/^\s{2,}/\ /;
 	$regex =~ s/\s{2,}$/\ /;
 	$regex =~ s/\s/\./g;
 	$regex =~ s/\\{2,}/\\/g;
 	$regex =~ s/[^a-zA-Z0-9\.\_\-\@]//g;
-	return $regex;
+	return ($regex);
 }
 
 sub TO_JSON {
@@ -497,7 +513,7 @@ sub _parse_query {
 		}
 	}
 	foreach my $boolean (qw(and or not)){
-		$self->terms->{any_field_terms}->{$boolean} = [];
+		$self->terms->{any_field_terms}->{$boolean} = {};
 		$self->terms->{any_field_terms_sql}->{$boolean} = {};
 	}
 		
@@ -516,54 +532,132 @@ sub _parse_query {
 		throw(400,'No query terms given', { query_string => '' });
 	}
 	
-	# One-off for dealing with hosts as fields
-	foreach my $boolean (qw(and or not)){
-		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
-			if ($self->terms->{attr_terms}->{$boolean}->{$op}->{host} 
-				and $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}
-				and $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}->{host_id}){
-				foreach my $host_int (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}->{host_id} }){
-					if ($self->user->is_permitted('host_id', $host_int)){
-						next if $self->archive; # archive queries don't need this
-						$self->log->trace('adding host_int ' . $host_int);
-						push @{ $self->terms->{any_field_terms}->{$boolean} }, '(@host ' . $host_int . ')';
-						$self->highlights->{ _term_to_regex( inet_ntoa(pack('N*', $host_int)) ) } = 1;
-					}
-					else {
-						my $host = inet_ntoa(pack('N*', $host_int));
-						throw(403, "Insufficient permissions to query host $host", { host => $host });
-					}
-				}
-			}
-			elsif ($self->terms->{attr_terms}->{$boolean}->{$op}->{class} 
-				and $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}
-				and $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}->{class_id}
-				and $Fields::Field_order_to_field->{ $Fields::Field_to_order->{class} }){
-				foreach my $class_id (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}->{class_id} }){
-					if ($self->user->is_permitted('class_id', $class_id)){
-						next if $self->archive; # archive queries don't need this
-						$self->log->trace('adding class_id ' . $class_id);
-						push @{ $self->terms->{any_field_terms}->{$boolean} }, '(@class ' . $class_id . ')';
-						$self->highlights->{ _term_to_regex( $self->node_info->{classes_by_id}->{$class_id} ) } = 1;
-					}
-					else {
-						throw(403, "Insufficient permissions to query class_id $class_id", { class => $self->node_info->{classes_by_id}->{$class_id} });
+	# Decide if any attrs need to be search terms
+	if (not $self->_count_terms()){
+		# Favor non-meta attrs as keywords, choose the longest term
+		my %candidates;
+		# If we have AND terms, just use those
+		if (scalar keys %{ $self->terms->{attr_terms}->{and} }){
+			my $boolean = 'and';
+			foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+				foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
+					next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
+					foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+						foreach my $attr (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
+							foreach my $raw_value (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
+								next if $self->is_stopword($raw_value);
+								my $col = $attr;
+								$col =~ s/^attr\_//;
+								my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
+								$candidates{$resolved_value} = { boolean => $boolean, class_id => $class_id, real_field => $attr };
+							}
+						}
 					}
 				}
 			}
-			elsif ($self->terms->{attr_terms}->{$boolean}->{$op}->{program} 
-				and $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}
-				and $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}->{program_id}
-				and $Fields::Field_order_to_field->{ $Fields::Field_to_order->{program} }){
-				foreach my $program_id (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}->{program_id} }){
-					if ($self->user->is_permitted('program_id', $program_id)){
-						next if $self->archive; # archive queries don't need this
-						$self->log->trace('adding program_id ' . $program_id);
-						push @{ $self->terms->{any_field_terms}->{$boolean} }, '(@program ' . $program_id . ')';
-						$self->highlights->{ _term_to_regex( $self->program_translations->{$program_id} ) } = 1;
+		}
+		elsif (scalar keys %{ $self->terms->{attr_terms}->{or} }){
+			my $boolean = 'or';
+			foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+				foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
+					next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
+					foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+						foreach my $attr (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
+							foreach my $raw_value (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
+								next if $self->is_stopword($raw_value);
+								my $col = $attr;
+								$col =~ s/^attr\_//;
+								my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
+								$candidates{$resolved_value} = { boolean => $boolean, class_id => $class_id, real_field => $col };
+							}
+						}
+					}
+				}
+			}
+		}
+		else {
+			$self->log->debug('terms: ' . Dumper($self->terms));
+			throw(400, 'No positive value in query.', { query_string => $self->terms });
+		}
+		
+		if (scalar keys %candidates){
+			if (scalar keys %{ $self->terms->{attr_terms}->{and} }){
+				# Determine longest
+				my $longest = (sort { length($b) <=> length($a) } keys %candidates)[0];
+				my $info = $candidates{$longest};
+				$longest = $self->_term_to_sphinx_term($info->{class_id}, $info->{real_field}, $longest);
+				# Add as term
+				if ($info->{real_field} !~ /^i/){
+					push @{ $self->terms->{field_terms}->{and}->{ $info->{class_id} }->{ $info->{real_field} } }, $longest;
+				}
+				else {
+					$self->terms->{any_field_terms}->{and}->{$longest} = 1;
+				}
+			}
+			else {
+				# Include all OR's
+				foreach my $term (keys %candidates){
+					my $info = $candidates{$term};
+					$term = $self->_term_to_sphinx_term($info->{class_id}, $info->{real_field}, $term);
+					if ($info->{real_field} !~ /^i/){
+						push @{ $self->terms->{field_terms}->{or}->{ $info->{class_id} }->{ $info->{real_field} } }, $term;
 					}
 					else {
-						throw(403, "Insufficient permissions to query program_id $program_id", { program => $self->program_translations->{$program_id} });
+						$self->terms->{any_field_terms}->{or}->{$term} = 1;
+					}
+				}
+			}
+		}
+		else {
+			foreach my $boolean (qw(and or not)){
+				foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+					if ($self->terms->{attr_terms}->{$boolean}->{$op}->{host} 
+						and $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}
+						and $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}->{host_id}){
+						foreach my $host_int (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}->{host_id} }){
+							if ($self->user->is_permitted('host_id', $host_int)){
+								next if $self->archive; # archive queries don't need this
+								$self->log->trace('adding host_int ' . $host_int);
+								$self->terms->{any_field_terms}->{$boolean}->{'(@host ' . $host_int . ')'} = 1;
+								$self->highlights->{ _term_to_regex( inet_ntoa(pack('N*', $host_int)) ) } = 1;
+							}
+							else {
+								my $host = inet_ntoa(pack('N*', $host_int));
+								throw(403, "Insufficient permissions to query host $host", { host => $host });
+							}
+						}
+					}
+					elsif ($self->terms->{attr_terms}->{$boolean}->{$op}->{class} 
+						and $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}
+						and $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}->{class_id}
+						and $Fields::Field_order_to_field->{ $Fields::Field_to_order->{class} }){
+						foreach my $class_id (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}->{class_id} }){
+							if ($self->user->is_permitted('class_id', $class_id)){
+								next if $self->archive; # archive queries don't need this
+								$self->log->trace('adding class_id ' . $class_id);
+								$self->terms->{any_field_terms}->{$boolean}->{'(@class ' . $class_id . ')'} =1;
+								$self->highlights->{ _term_to_regex( $self->node_info->{classes_by_id}->{$class_id} ) } = 1;
+							}
+							else {
+								throw(403, "Insufficient permissions to query class_id $class_id", { class => $self->node_info->{classes_by_id}->{$class_id} });
+							}
+						}
+					}
+					elsif ($self->terms->{attr_terms}->{$boolean}->{$op}->{program} 
+						and $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}
+						and $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}->{program_id}
+						and $Fields::Field_order_to_field->{ $Fields::Field_to_order->{program} }){
+						foreach my $program_id (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}->{program_id} }){
+							if ($self->user->is_permitted('program_id', $program_id)){
+								next if $self->archive; # archive queries don't need this
+								$self->log->trace('adding program_id ' . $program_id);
+								$self->terms->{any_field_terms}->{$boolean}->{'(@program ' . $program_id . ')'} = 1;
+								$self->highlights->{ _term_to_regex( $self->program_translations->{$program_id} ) } = 1;
+							}
+							else {
+								throw(403, "Insufficient permissions to query program_id $program_id", { program => $self->program_translations->{$program_id} });
+							}
+						}
 					}
 				}
 			}
@@ -720,40 +814,40 @@ sub _parse_query {
 		}
 	}
 	
-	# Optimization: for the any-term fields, only search on the first term and use the rest as filters if the fields are int fields
-	foreach my $boolean (qw(and not)){
-		unless (scalar @{ $self->terms->{any_field_terms}->{$boolean} }){
-			$self->terms->{any_field_terms}->{$boolean} = {};
-			next;
-		}
-		my %deletion_candidates;
-		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
-			foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
-				foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
-					foreach my $attr (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
-						foreach my $raw_value (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
-							my $col = $attr;
-							$col =~ s/^attr\_//;
-							my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
-							$deletion_candidates{$resolved_value} = 1;
-						}
-					}
-				}
-			}
-		}
-	
-		my @keep = shift @{ $self->terms->{any_field_terms}->{$boolean} };
-		foreach my $term (@{ $self->terms->{any_field_terms}->{$boolean} }){
-			if ($deletion_candidates{$term}){
-				$self->log->trace('Optimizing out any-field term search for term ' . $term);
-			}
-			else {
-				push @keep, $term;
-			}
-		}
-		$self->terms->{any_field_terms}->{$boolean} = { map { $_ => 1 } @keep };
-	}
-	$self->terms->{any_field_terms}->{or} = { map { $_ => 1 } @{ $self->terms->{any_field_terms}->{or} } };
+#	# Optimization: for the any-term fields, only search on the first term and use the rest as filters if the fields are int fields
+#	foreach my $boolean (qw(and not)){
+#		unless (scalar @{ $self->terms->{any_field_terms}->{$boolean} }){
+#			$self->terms->{any_field_terms}->{$boolean} = {};
+#			next;
+#		}
+#		my %deletion_candidates;
+#		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+#			foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
+#				foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+#					foreach my $attr (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
+#						foreach my $raw_value (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
+#							my $col = $attr;
+#							$col =~ s/^attr\_//;
+#							my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
+#							$deletion_candidates{$resolved_value} = 1;
+#						}
+#					}
+#				}
+#			}
+#		}
+#	
+#		my @keep = shift @{ $self->terms->{any_field_terms}->{$boolean} };
+#		foreach my $term (@{ $self->terms->{any_field_terms}->{$boolean} }){
+#			if ($deletion_candidates{$term}){
+#				$self->log->trace('Optimizing out any-field term search for term ' . $term);
+#			}
+#			else {
+#				push @keep, $term;
+#			}
+#		}
+#		$self->terms->{any_field_terms}->{$boolean} = { map { $_ => 1 } @keep };
+#	}
+#	$self->terms->{any_field_terms}->{or} = { map { $_ => 1 } @{ $self->terms->{any_field_terms}->{or} } };
 	
 	# Check all field terms to see if they are a stopword and warn if necessary
 	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
@@ -798,6 +892,22 @@ sub _parse_query {
 			}
 		}
 	}
+	
+#	foreach my $boolean (qw(and or not)){
+#		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
+#			foreach my $raw_field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
+#				next unless $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
+#				for (my $i = 0; $i < (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }); $i++){
+#					my $term = $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field}->[$i];
+#					my $resolved_term = $self->resolve_value($class_id, $term, $raw_field);
+#					if ($term ne $resolved_term){
+#						$term = '(' . $term . '|' . $resolved_term . ')';
+#					}
+#					$self->terms->{any_field_terms}->{$boolean}->{$term} = 1;
+#				}
+#			}
+#		}
+#	}
 			
 	# Determine if there are any other search fields.  If there are, then use host as a filter.
 	$self->log->debug('attr_terms: ' . Dumper($self->terms->{attr_terms}));
@@ -854,18 +964,7 @@ sub _parse_query {
 	$self->log->trace("classes: " . Dumper($self->classes));
 	
 	# Verify that we're still going to actually have query terms after the filtering has taken place	
-	my $query_term_count = 0;
-		
-	foreach my $boolean (qw(or and)){
-		$query_term_count += scalar keys %{ $self->terms->{any_field_terms}->{$boolean} }; 
-	}
-	foreach my $boolean (qw(or and)){
-		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
-			foreach my $field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
-				$query_term_count += scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field} };
-			}
-		}
-	}
+	my $query_term_count = $self->_count_terms();
 	
 	# Save this query_term_count for later use
 	$self->query_term_count($query_term_count);
@@ -971,6 +1070,36 @@ sub _parse_query {
 	}
 	
 	return 1;
+}
+
+sub _count_terms {
+	my $self = shift;
+	my $query_term_count = 0;
+		
+	foreach my $boolean (qw(or and)){
+		$query_term_count += scalar keys %{ $self->terms->{any_field_terms}->{$boolean} }; 
+	}
+	foreach my $boolean (qw(or and)){
+		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
+			foreach my $field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
+				$query_term_count += scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field} };
+			}
+		}
+	}
+	return $query_term_count;
+}
+
+sub is_stopword {
+	my $self = shift;
+	my $keyword = shift;
+	
+	my $stopwords = $self->conf->get('stopwords');
+	
+	# Check all field terms to see if they are a stopword and warn if necessary
+	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH' and exists $stopwords->{$keyword}){
+		return 1;
+	}
+	return 0;
 }
 
 sub filter_stopwords {
@@ -1323,37 +1452,32 @@ sub _parse_query_term {
 				
 				# Set attributes for searching
 				foreach my $class_id (keys %{ $values->{attrs} }){
-					# If not a range search, not already a field term, and not a class 0 attr, add text to any field search
-					if ($term_hash->{op} !~ /[\<\>]/ and not exists $self->terms->{field_terms}->{$boolean}->{$class_id}
-						and $term_hash->{field} =~ /country_code/i){ # one-off for weird way country_code works
-						push @{ $self->terms->{any_field_terms}->{$boolean} },
-							join('', unpack('c*', pack('A*', uc($term_hash->{value}))));
-					}
-					elsif ($term_hash->{op} !~ /[\<\>]/ and not exists $self->terms->{field_terms}->{$boolean}->{$class_id}){
-					#elsif ($term_hash->{op} !~ /[\<\>]/){
-						if ($class_id){ #skip class 0
-							if ($term_hash->{field} =~ /proto/){
-								# proto is special because it is represented as both an integer and string, so search for both
-								my @compound_terms = ($term_hash->{value}); # compound an OR for just these potential values
-								foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
-									$self->log->trace('Adding on integer representation of protocol: ' . $values->{attrs}->{$class_id}->{$real_field});
-									push @compound_terms, $values->{attrs}->{$class_id}->{$real_field};
-								}
-								push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . join('|', @compound_terms) . ')';
-							}
-							elsif ($term_hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
-								# Handle an IPv4 value
-								push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . $term_hash->{value} . '|' . unpack('N*', inet_aton($term_hash->{value})) . ')';
-#								if ($boolean ne 'not'){
-#									push @{ $self->terms->{any_field_terms}->{or} }, $term_hash->{value};
-#									push @{ $self->terms->{any_field_terms}->{or} }, unpack('N*', inet_aton($term_hash->{value}));
+#					# If not a range search, not already a field term, and not a class 0 attr, add text to any field search
+#					if ($term_hash->{op} !~ /[\<\>]/ and not exists $self->terms->{field_terms}->{$boolean}->{$class_id}
+#						and $term_hash->{field} =~ /country_code/i){ # one-off for weird way country_code works
+#						push @{ $self->terms->{any_field_terms}->{$boolean} },
+#							join('', unpack('c*', pack('A*', uc($term_hash->{value}))));
+#					}
+#					elsif ($term_hash->{op} !~ /[\<\>]/ and not exists $self->terms->{field_terms}->{$boolean}->{$class_id}){
+#						if ($class_id){ #skip class 0
+#							if ($term_hash->{field} =~ /proto/){
+#								# proto is special because it is represented as both an integer and string, so search for both
+#								my @compound_terms = ($term_hash->{value}); # compound an OR for just these potential values
+#								foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+#									$self->log->trace('Adding on integer representation of protocol: ' . $values->{attrs}->{$class_id}->{$real_field});
+#									push @compound_terms, $values->{attrs}->{$class_id}->{$real_field};
 #								}
-							}
-							else {	
-								push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
-							}
-						}
-					}
+#								push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . join('|', @compound_terms) . ')';
+#							}
+#							elsif ($term_hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
+#								# Handle an IPv4 value
+#								push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . $term_hash->{value} . '|' . unpack('N*', inet_aton($term_hash->{value})) . ')';
+#							}
+#							else {	
+#								push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
+#							}
+#						}
+#					}
 					my $field_info = $self->get_field($term_hash->{field})->{$class_id};
 					unless ($field_info->{field_type}){
 						$self->log->warn('No field_info for ' . $term_hash->{field} . ': ' . Dumper($field_info));
@@ -1372,14 +1496,14 @@ sub _parse_query_term {
 			elsif (defined $term_hash->{value}){
 				# If the term is an IP, let's also search for its integer representation
 				if ($term_hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
-					push @{ $self->terms->{any_field_terms}->{$boolean} }, '(' . $term_hash->{value} . '|' . unpack('N*', inet_aton($term_hash->{value})) . ')';
+					$self->terms->{any_field_terms}->{$boolean}->{'(' . $term_hash->{value} . '|' . unpack('N*', inet_aton($term_hash->{value})) . ')'} = 1;
 					if ($boolean ne 'not'){
-						push @{ $self->terms->{any_field_terms}->{or} }, $term_hash->{value};
-						push @{ $self->terms->{any_field_terms}->{or} }, unpack('N*', inet_aton($term_hash->{value}));
+						$self->terms->{any_field_terms}->{or}->{ $term_hash->{value} } = 1;
+						$self->terms->{any_field_terms}->{or}->{ unpack('N*', inet_aton($term_hash->{value})) } = 1;
 					}
 				}
 				else {
-					push @{ $self->terms->{any_field_terms}->{$boolean} }, $term_hash->{value};
+					$self->terms->{any_field_terms}->{$boolean}->{ $term_hash->{value} } = 1;
 				}
 			}
 			else {
@@ -1478,6 +1602,19 @@ sub _resolve_macro {
 		throw(400, 'Invalid macro (saved search): ' . $macro, { term => $macro });
 	}
 	
+}
+
+sub _term_to_sphinx_term {
+	my $self = shift;
+	my $class_id = shift;
+	my $col = shift;
+	my $value = shift;
+	
+	my $resolved_value = $self->normalize_value($class_id, $value, $Fields::Field_to_order->{$col});
+	if ($value ne $resolved_value){
+		return '(' . $value . '|' . $resolved_value . ')';
+	}
+	return $value;
 }
 
 1;
