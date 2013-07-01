@@ -1972,6 +1972,28 @@ sub check_local {
 	}
 }
 
+sub _verify_fields_exist {
+	my $self = shift;
+	my $q = shift;
+	my $index = shift;
+	
+	foreach my $boolean (qw(and or not)){
+		foreach my $class_id (keys %{ $q->terms->{field_terms}->{$boolean} }){
+			RAW_FIELD_LOOP: foreach my $raw_field (keys %{ $q->terms->{field_terms}->{$boolean}->{$class_id} }){
+				foreach my $field_available (@{ $index->{schema}->{fields} }){
+					if ($raw_field eq $field_available){
+						next RAW_FIELD_LOOP;
+					}
+				}
+				# This field wasn't found
+				return $raw_field;
+			}
+		}
+	}
+	# All were found
+	return undef;
+}
+
 sub _sphinx_query {
 	my ($self, $q) = @_;
 	
@@ -2027,8 +2049,15 @@ sub _sphinx_query {
 					or ($q->start <= $index->{start_int} and $q->end >= $index->{end_int})
 					or ($index->{start_int} <= $q->start and $index->{end_int} >= $q->end)
 				){
-					push @index_arr, $index->{name};
-					$total_rows_searched += $index->{records};
+					# Verify that any specific fields we are searching are present in the schema
+					my $nonexistent = $self->_verify_fields_exist($q, $index);
+					if ($nonexistent){
+						$self->add_warning(501, 'Non-existent field ' . $nonexistent . ' for index ' . $index->{name});
+					}
+					else {
+						push @index_arr, $index->{name};
+						$total_rows_searched += $index->{records};
+					}
 				}
 			}
 			# If we are searching more than distributed_threshold rows, then we will query all data in parallel.
