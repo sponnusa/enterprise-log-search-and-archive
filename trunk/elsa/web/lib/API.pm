@@ -2036,12 +2036,13 @@ sub _sphinx_query {
 		my @index_arr;
 		
 		my $total_rows_searched = 0;
+		my %heterogeneous_schemas;
 		my $distributed_threshold = 1_000_000_000;
 		if ($self->conf->get('distributed_threshold')){
 			$distributed_threshold = $self->conf->get('distributed_threshold');
 		}
 		
-		if ($q->start and $q->end){
+#		if ($q->start and $q->end){
 			foreach my $index (@{ $node_info->{indexes}->{indexes} }){
 				if (
 					($q->start >= $index->{start_int} and $q->start <= $index->{end_int})
@@ -2052,7 +2053,10 @@ sub _sphinx_query {
 					# Verify that any specific fields we are searching are present in the schema
 					my $nonexistent = $self->_verify_fields_exist($q, $index);
 					if ($nonexistent){
-						$self->add_warning(501, 'Non-existent field ' . $nonexistent . ' for index ' . $index->{name});
+						#$self->add_warning(501, 'Non-existent field ' . $nonexistent . ' for index ' . $index->{name});
+						$self->log->warn('Non-existent field ' . $nonexistent . ' for index ' . $index->{name});
+						$heterogeneous_schemas{$nonexistent} ||= [];
+						push @{ $heterogeneous_schemas{$nonexistent} }, $index->{name};
 					}
 					else {
 						push @index_arr, $index->{name};
@@ -2061,19 +2065,26 @@ sub _sphinx_query {
 				}
 			}
 			# If we are searching more than distributed_threshold rows, then we will query all data in parallel.
-			if ($total_rows_searched > $distributed_threshold){
+			if (not scalar keys %heterogeneous_schemas and $total_rows_searched > $distributed_threshold){
 				$self->log->trace('using distributed_local index because total_rows_searched: ' . $total_rows_searched .
 					' and distributed_threshold: ' . $distributed_threshold);
 				@index_arr = ('distributed_local');
 			}
-		}
-		else {
-			# We will use the built-in distributed query to search all indexes which takes advantage of threading
-			push @index_arr, 'distributed_local';
-		}
+#		}
+#		else {
+#			# We will use the built-in distributed query to search all indexes which takes advantage of threading
+#			push @index_arr, 'distributed_local';
+#		}
 			
 		my $indexes = join(', ', @index_arr);
 		unless ($indexes){
+			if (scalar keys %heterogeneous_schemas){
+				my $count = 0;
+				foreach my $field (keys %heterogeneous_schemas){
+					$count += scalar @{ $heterogeneous_schemas{$field} };
+				}
+				$self->add_warning(501, $q->peer_label . ' had ' . $count . ' indexes had a non-existent fields: ' . join(', ', keys %heterogeneous_schemas));
+			}
 			$self->log->debug('no indexes for node ' . $node);
 			next;
 		}
