@@ -257,9 +257,9 @@ Query syntax is loosely based on Google search syntax.  Terms are searched as wh
 ===Boolean Operators===
 
 || Operator || Meaning ||
-|| +keyword || Query MUST include the keyword ||
+|| keyword || Query MUST include the keyword ||
 || -keyword || Query MUST NOT include the keyword ||
-|| keyword || Query MAY include the keyword ||
+|| OR keyword || Query MAY include the keyword ||
 
 ===Range Operators===
 Range operators can only be used to filter search results, not provide the results to be filtered.  That is, you must include a keyword in addition to the range operator.  You can provide a single range operator; they do not need to be in pairs.
@@ -317,17 +317,22 @@ site:www.google.com
 }}}
 Here is an example query for finding Symantec Anti-Virus alerts on Windows logs on ten hosts that does not contain the keyword “TrackingCookie”
 {{{
-+eventid:51 host>10.0.0.10 host<10.0.0.20 -TrackingCookie
+eventid:51 host>10.0.0.10 host<10.0.0.20 -TrackingCookie
 }}}
 One could also look for account lockouts that do not come from certain hosts:
 {{{
-+class:windows +locked -host>10.0.0.10 -host<10.0.0.20
+class:windows locked -host>10.0.0.10 -host<10.0.0.20
 }}}
 To see what hosts have had lockout events, one could run:
 {{{
-+class:windows +”locked out”
+class:windows ”locked out”
 }}}
 and choose the ANY.host field from the “Report On” menu.
+Here's an example showing hits from website example.com or website bad.com:
+{{{
+site:example.com OR site.bad.com
+}}}
+
 
 ==Ordering==
 You can change the column used to order your query as well as the direction using the {{{orderby}}} and {{{orderby_dir}}} keywords.  For instance, to order a query by host in reverse order, use: {{{orderby:host orderby_dir:desc}}}.  The default is {{{orderby:timestamp orderby_dir:ASC}}}.
