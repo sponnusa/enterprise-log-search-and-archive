@@ -583,6 +583,9 @@ sub _parse_query {
 				}
 			}
 		}
+		elsif (not exists $self->datasources->{sphinx} or $self->has_import_search_terms){
+			# ok without positive value
+		}
 		else {
 			$self->log->debug('terms: ' . Dumper($self->terms));
 			throw(400, 'No positive value in query.', { query_string => $self->terms });
