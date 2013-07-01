@@ -627,6 +627,7 @@ sub _parse_query {
 								next if $self->archive; # archive queries don't need this
 								$self->log->trace('adding host_int ' . $host_int);
 								$self->terms->{any_field_terms}->{$boolean}->{'(@host ' . $host_int . ')'} = 1;
+								push @{ $self->terms->{field_terms}->{$boolean}->{0}->{host} }, $host_int; # just for checking available fields later
 								$self->highlights->{ _term_to_regex( inet_ntoa(pack('N*', $host_int)) ) } = 1;
 							}
 							else {
@@ -644,6 +645,7 @@ sub _parse_query {
 								next if $self->archive; # archive queries don't need this
 								$self->log->trace('adding class_id ' . $class_id);
 								$self->terms->{any_field_terms}->{$boolean}->{'(@class ' . $class_id . ')'} =1;
+								push @{ $self->terms->{field_terms}->{$boolean}->{0}->{class} }, $class_id; # just for checking available fields later
 								$self->highlights->{ _term_to_regex( $self->node_info->{classes_by_id}->{$class_id} ) } = 1;
 							}
 							else {
@@ -660,6 +662,7 @@ sub _parse_query {
 								next if $self->archive; # archive queries don't need this
 								$self->log->trace('adding program_id ' . $program_id);
 								$self->terms->{any_field_terms}->{$boolean}->{'(@program ' . $program_id . ')'} = 1;
+								push @{ $self->terms->{field_terms}->{$boolean}->{0}->{program} }, $program_id; # just for checking available fields later
 								$self->highlights->{ _term_to_regex( $self->program_translations->{$program_id} ) } = 1;
 							}
 							else {
@@ -887,11 +890,11 @@ sub _parse_query {
 			}
 			foreach my $term (keys %{ $self->terms->{any_field_terms}->{$boolean} }){ 
 				if ($stopwords->{$term}){
-					if ($boolean eq 'or'){
+#					if ($boolean eq 'or'){
 						my $err = 'Removed term ' . $term . ' which is too common';
 						$self->add_warning(400, $err, { term => $term });
 						$self->log->warn($err);
-					}
+#					}
 					$num_removed_terms++;
 					
 					# Drop the term

@@ -14,6 +14,7 @@ use Sys::Info::Constants qw( :device_cpu );
 use Sys::MemInfo qw( freemem totalmem freeswap totalswap );
 use Config::JSON;
 use Module::Pluggable sub_name => 'postprocessor_plugins', require => 1, search_path => [ qw( PostProcessor ) ];
+use JSON;
 
 use constant CRITICAL_LOW_MEMORY_LIMIT => 100 * 1024 * 1024;
 our $Missing_table_error_limit = 4;
@@ -545,10 +546,18 @@ sub _validate_directory {
 		$existing{ $self->_get_index_name($row->{type}, $row->{id}) } = 1;
 	}
 	
+	$query = 'UPDATE indexes SET index_schema=? WHERE type=? AND id=?';
+	$sth = $self->db->prepare($query);
 	for (my $i = 1 ; $i <= $self->conf->get('num_indexes'); $i++){
 		foreach my $type (qw(temporary permanent)){
 			my $index_name = $self->_get_index_name($type, $i);
-			unless ($existing{ $index_name }){
+			if ($existing{ $index_name }){
+				# Update index schemas
+				my $index_name = $self->_get_index_name($type, $i);
+				my $schema = $self->_get_index_schema($index_name) or next;
+				$sth->execute(encode_json($schema), $type, $i);
+			}
+			else {
 				$self->log->debug('Wiping via index ' . $index_name);
 				$self->_sphinx_index( $index_name );
 			}
@@ -2196,6 +2205,26 @@ sub _sphinx_index {
 	$self->log->info(sprintf("Indexed %s with %d rows in %.5f seconds (%.5f rows/sec)", 
 		$index_name, $collected, $index_time, $collected / (time() - $start_time), #Nah, this will never be zero, right?
 	));
+	
+	# Update schema
+	my ($type, $id) = split(/\_/, $index_name);
+	if ($type eq 'perm'){
+		$type = 'permanent';
+	}
+	elsif ($type eq 'real'){
+		$type = 'realtime';
+	}
+	else {
+		$type = 'temporary';
+	}
+	my $schema = $self->_get_index_schema($index_name);
+	if ($schema){
+		my ($query, $sth);
+		$query = 'UPDATE indexes SET index_schema=? WHERE type=? AND id=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute(encode_json($schema), $type, $id);
+	}
+			
 	return {
 		docs => $collected,
 		bytes => $bytes,
@@ -2940,6 +2969,70 @@ sub _set_stopwords {
 	return \%stopwords;
 }
 
+sub _get_index_schema {
+	my $self = shift;
+	my $index_name = shift;
+	
+	my $index_tool = $self->conf->get('sphinx/indexer');
+	$index_tool =~ s/indexer/indextool/;
+	my $cmd = sprintf("%s --config %s --dumpheader %s 2>&1", $index_tool, $self->conf->get('sphinx/config_file'), $index_name);
+	$self->log->trace("Getting index schema with command: $cmd");
+	my @lines = qx($cmd);
+	my $schema = { 
+		version => '', 
+		prefix_len => 0, 
+		infix_len => 0, 
+		docinfo => '', 
+		fields => [], 
+		attrs => [], 
+		count => 0, 
+		bytes => 0, 
+		chars => '', 
+		stopwords => {},
+	};
+	
+	my %raw;
+	foreach my $line (@lines){
+		chomp($line);
+		$line =~ s/^\s+//;
+		next unless $line;
+		my ($key, $value) = split(/\: /, $line, 2);
+		$raw{$key} = $value;
+	}
+	
+	unless ($raw{fields}){
+		$self->log->error('Unable to get index schema for index ' . $index_name . ', got output: ' . join("\n", @lines));
+		return undef;
+	}
+	
+	$schema->{version} = $raw{version};
+	$schema->{prefix_len} = $raw{'min-prefix-len'};
+	$schema->{infix_len} = $raw{'min-infix-len'};
+	$schema->{docinfo} = $raw{docinfo};
+	
+	for (my $i = 0; $i < $raw{fields}; $i++){
+		push @{ $schema->{fields} }, $raw{'field ' . $i};
+	}
+	for (my $i = 0; $i < $raw{attrs}; $i++){
+		$raw{'attr ' . $i} =~ /^([^\,]+)/;
+		push @{ $schema->{attrs} }, $1;
+	}
+	
+	$schema->{count} = $raw{'total-documents'};
+	$schema->{bytes} = $raw{'total-bytes'};
+	$schema->{chars} = $raw{'tokenizer-case-folding'};
+	
+	if ($raw{'dictionary-stopwords'}){
+		open(FH, $raw{'dictionary-stopwords'}) or die('Unable to open stopwords file ' . $raw{'dictionary-stopwords'});
+		while (<FH>){
+			chomp;
+			$schema->{stopwords}->{$_} = 1;
+		}
+		close(FH);
+	}
+	
+	return $schema;
+}
 
 __PACKAGE__->meta->make_immutable;
 

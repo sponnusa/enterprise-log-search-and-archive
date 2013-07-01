@@ -542,6 +542,7 @@ CREATE TABLE indexes (
 	table_id SMALLINT UNSIGNED NOT NULL,
 	type ENUM("temporary", "permanent", "unavailable", "realtime") NOT NULL DEFAULT "temporary",
 	locked_by INT UNSIGNED,
+	index_schema TEXT,
 	PRIMARY KEY (id, type),
 	UNIQUE KEY (first_id, last_id),
 	KEY(start),

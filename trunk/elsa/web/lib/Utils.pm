@@ -231,9 +231,9 @@ sub _get_node_info {
 				if ($rv and $rows){
 					#$self->log->trace('node returned rv: ' . $rv);
 					$ret->{nodes}->{$node}->{indexes} = {
-						min => $rows->[0]->{start_int},
-						max => $rows->[0]->{end_int},
-						start_max => $rows->[0]->{start_max},
+						min => $rows->[0]->{start_int} < $overall_start ? $rows->[0]->{start_int} : 0,
+						max => $rows->[0]->{end_int} < $overall_start ? $rows->[0]->{end_int} : $overall_start,
+						start_max => $rows->[0]->{start_max} < $overall_start ? $rows->[0]->{start_max} : 0,
 						records => $rows->[0]->{records},
 					};
 				}
@@ -246,9 +246,9 @@ sub _get_node_info {
 		}
 		else {		
 			# Get indexes
-			$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start, 
-			UNIX_TIMESTAMP(start) AS start_int, end, UNIX_TIMESTAMP(end) AS end_int, type, records 
-			FROM %s.v_indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime" ORDER BY start', 
+			$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start AS start_int, FROM_UNIXTIME(start) AS start,
+			end AS end_int, UNIX_TIMESTAMP(end) AS end_int, type, last_id-first_id AS records, index_schema
+			FROM %s.indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime" ORDER BY start', 
 				$nodes->{$node}->{db});
 			$cv->begin;
 			$self->log->trace($query);
@@ -257,11 +257,14 @@ sub _get_node_info {
 				
 				if ($rv and $rows){
 					#$self->log->trace('node returned rv: ' . $rv);
+					foreach my $row (@$rows){
+						$row->{index_schema} = decode_json($row->{index_schema}) if $row->{index_schema};
+					}
 					$ret->{nodes}->{$node}->{indexes} = {
 						indexes => $rows,
-						min => $rows->[0]->{start_int},
-						max => $rows->[$#$rows]->{end_int},
-						start_max => $rows->[$#$rows]->{start_int},
+						min => $rows->[0]->{start_int} < $overall_start ? $rows->[0]->{start_int} : 0,
+						max => $rows->[$#$rows]->{end_int} < $overall_start ? $rows->[0]->{end_int} : $overall_start,
+						start_max => $rows->[$#$rows]->{start_int} < $overall_start ? $rows->[0]->{start_int} : 0,
 					};
 				}
 				else {
@@ -415,15 +418,18 @@ sub _get_node_info {
 				}
 			}
 		}
-		if ($min == 2**32 and $max == 0){
-			$self->log->trace('No min/max found for type ' . $type);
+		if ($min == 2**32){
+			$self->log->trace('No min/max found for type min');
+			$min = 0;
 		}
-		else {
-			$ret->{$type . '_min'} = $min;
-			$ret->{$type . '_max'} = $max;
-			$ret->{$type . '_start_max'} = $start_max;
-			$self->log->trace('Found min ' . $min . ', max ' . $max . ' for type ' . $type);
+		if ($max == 0){
+			$self->log->trace('No min/max found for type max');
+			$max = $overall_start;
 		}
+		$ret->{$type . '_min'} = $min;
+		$ret->{$type . '_max'} = $max;
+		$ret->{$type . '_start_max'} = $start_max;
+		$self->log->trace('Found min ' . $min . ', max ' . $max . ' for type ' . $type);
 	}
 	
 	# Resolve class names into class_id's for excluded classes
