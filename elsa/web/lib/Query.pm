@@ -18,7 +18,6 @@ use String::CRC32;
 # Object for dealing with user queries
 
 our $Default_limit = 100;
-our $Implicit_plus = 1;
 
 # Required
 has 'user' => (is => 'rw', isa => 'User', required => 1);
@@ -70,6 +69,7 @@ has 'id_ranges' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', requir
 has 'query_term_count' => (is => 'rw', isa => 'Num', required => 1, default => 0);
 has 'max_query_time' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'program_translations' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
+has 'implicit_plus' => (is => 'rw', isa => 'Bool', required => 1, default => 1);
 
 # Optional
 has 'query_string' => (is => 'rw', isa => 'Str');
@@ -171,6 +171,11 @@ sub BUILD {
 		$self->livetail(1);
 	}
 	
+	# Override defaults for whether query terms are OR by default instead of AND by default
+	if ($self->conf->get('default_or')){
+		$self->implicit_plus(0);
+	}
+	
 	# Set a defaults if available in preferences
 	if ($self->user->preferences and $self->user->preferences->{tree}->{default_settings} and
 		$self->user->preferences->{tree}){
@@ -181,6 +186,9 @@ sub BUILD {
 		}
 		if ($prefs->{timeout}){
 			$self->timeout($prefs->{timeout});
+		}
+		if ($prefs->{default_or}){
+			$self->implicit_plus(0);
 		}
 	}
 		
@@ -359,7 +367,7 @@ sub _parse_query_string {
 	my $effective_operator = shift;
 	
 	my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
-	my $orig_parsed_query = $qp->parse($raw_query, $Implicit_plus) or throw(400, $qp->err, { query_string => $raw_query });
+	my $orig_parsed_query = $qp->parse($raw_query, $self->implicit_plus) or throw(400, $qp->err, { query_string => $raw_query });
 	$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
 	
 	my $parsed_query = dclone($orig_parsed_query); #dclone so recursion doesn't mess up original
