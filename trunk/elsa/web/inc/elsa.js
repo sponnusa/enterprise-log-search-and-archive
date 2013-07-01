@@ -768,7 +768,12 @@ YAHOO.ELSA.addTermAndSubmit = function(p_sField, p_oData){
 	logger.log('type of ' + typeof this);
 	var tmp = YAHOO.ELSA.currentQuery.queryBoolean;
 	try {
-		YAHOO.ELSA.currentQuery.queryBoolean = '+';
+		if (YAHOO.ELSA.getPreference('default_or', 'default_settings')){
+			YAHOO.ELSA.currentQuery.queryBoolean = '+';
+		}
+		else {
+			YAHOO.ELSA.currentQuery.queryBoolean = '';
+		}
 		YAHOO.ELSA.currentQuery.addTerm(p_sField, '"' + sData + '"', '=');
 		YAHOO.ELSA.currentQuery.delMeta('groupby');
 		YAHOO.ELSA.currentQuery.submit();
