@@ -258,7 +258,7 @@ sub _get_node_info {
 				if ($rv and $rows){
 					#$self->log->trace('node returned rv: ' . $rv);
 					foreach my $row (@$rows){
-						$row->{index_schema} = decode_json($row->{index_schema}) if $row->{index_schema};
+						$row->{schema} = decode_json(delete $row->{index_schema}) if $row->{index_schema};
 					}
 					$ret->{nodes}->{$node}->{indexes} = {
 						indexes => $rows,
