@@ -236,8 +236,7 @@ sub BUILD {
 		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
 			foreach my $field_name (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
 				foreach my $term (@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field_name} }){
-					my $text = $field_name =~ /^s/ ? $term : $self->normalize_value($class_id, $term, $Fields::Field_to_order->{$field_name});
-					my @regex = _term_to_regex($text);
+					my @regex = _term_to_regex($term);
 					foreach (@regex){
 						$self->highlights->{$_} = 1 if defined $_;
 					}
@@ -274,7 +273,7 @@ sub _term_to_regex {
 			return; # we dont' want to highlight class integers
 		}
 		else {
-			return @m;
+			return @m[1..$#m]; # don't return the field name
 		}
 	}
 	elsif (@m = $regex =~ /^\( ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
