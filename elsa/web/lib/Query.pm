@@ -596,10 +596,12 @@ sub _parse_query {
 				# Determine longest
 				my $longest = (sort { length($b) <=> length($a) } keys %candidates)[0];
 				my $info = $candidates{$longest};
-				$longest = $self->_term_to_sphinx_term($info->{class_id}, $info->{real_field}, $longest);
+				my $field = $info->{real_field};
+				$field =~ s/^attr\_//;
+				$longest = $self->_term_to_sphinx_term($info->{class_id}, $field, $longest);
 				# Add as term
-				if ($info->{real_field} !~ /^i/){
-					push @{ $self->terms->{field_terms}->{and}->{ $info->{class_id} }->{ $info->{real_field} } }, $longest;
+				if ($field !~ /^i/){
+					push @{ $self->terms->{field_terms}->{and}->{ $info->{class_id} }->{$field} }, $longest;
 				}
 				else {
 					$self->terms->{any_field_terms}->{and}->{$longest} = 1;
@@ -609,9 +611,11 @@ sub _parse_query {
 				# Include all OR's
 				foreach my $term (keys %candidates){
 					my $info = $candidates{$term};
-					$term = $self->_term_to_sphinx_term($info->{class_id}, $info->{real_field}, $term);
-					if ($info->{real_field} !~ /^i/){
-						push @{ $self->terms->{field_terms}->{or}->{ $info->{class_id} }->{ $info->{real_field} } }, $term;
+					my $field = $info->{real_field};
+					$field =~ s/^attr\_//;
+					$term = $self->_term_to_sphinx_term($info->{class_id}, $field, $term);
+					if ($field !~ /^i/){
+						push @{ $self->terms->{field_terms}->{or}->{ $info->{class_id} }->{$field} }, $term;
 					}
 					else {
 						$self->terms->{any_field_terms}->{or}->{$term} = 1;
