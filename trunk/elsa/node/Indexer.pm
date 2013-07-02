@@ -2924,9 +2924,9 @@ sub _set_stopwords {
 	
 	open(FH, $stopwords_file) or die($!);
 	my %stopwords;
-	while (<FH>){
-		my ($word, $count) = split(/\s+/, $_);
-		$stopwords{$word} = $count;
+	while (my $word = <FH>){
+		chomp($word);
+		$stopwords{$word} = 1;
 	}
 	close(FH);
 	
