@@ -60,7 +60,7 @@ sub add_result {
 	}
 	else {
 		$self->_add_result($record);
-		if ($self->records_returned >= $Unbatched_results_limit){
+		if ($self->records_returned >= ($Unbatched_results_limit + 1)){
 			$self->bulk_file($self->_create_bulk_file(time()));
 			$self->_bulk_write($self->results);
 			$self->results([]);
