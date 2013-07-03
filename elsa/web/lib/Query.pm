@@ -243,7 +243,7 @@ sub BUILD {
 				}
 			}
 		}
-		foreach my $term (sort keys %{ $self->terms->{any_field_terms}->{$boolean} }){
+		foreach my $term (sort keys %{ $self->terms->{any_field_terms}->{$boolean} }, sort keys %{ $self->terms->{any_field_terms_sql}->{$boolean} }){
 			my @regex = _term_to_regex($term);
 			foreach (@regex){
 				$self->highlights->{$_} = 1 if defined $_;
@@ -896,11 +896,11 @@ sub _parse_query {
 			}
 			foreach my $term (keys %{ $self->terms->{any_field_terms}->{$boolean} }){ 
 				if ($stopwords->{$term}){
-#					if ($boolean eq 'or'){
+					if ($boolean eq 'or'){
 						my $err = 'Removed term ' . $term . ' which is too common';
 						$self->add_warning(400, $err, { term => $term });
 						$self->log->warn($err);
-#					}
+					}
 					$num_removed_terms++;
 					
 					# Drop the term
@@ -1127,10 +1127,17 @@ sub filter_stopwords {
 	if (scalar keys %{ $self->terms->{any_field_terms_sql}->{and} }){
 		my $to_find = scalar keys %{ $self->terms->{any_field_terms_sql}->{and} };
 		STOPWORD_LOOP: foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{and} }){
-			foreach my $field (keys %$record){
-				my $regex = _term_to_regex($record->{$field});
+			my $regex = '[^A-Za-z0-9\-\.\@\_]?' . _term_to_regex($stopword) . '[^A-Za-z0-9\-\.\@\_]?';
+			foreach my $field (qw(msg program node host class)){
 				if ($record->{$field} =~ qr/$regex/){
-					$self->log->debug('Found stopword: ' . $stopword);
+					$self->log->debug('Found stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);
+					$to_find--;
+					last STOPWORD_LOOP;
+				}
+			}
+			foreach my $field_hash (@{ $record->{_fields} }){
+				if ($field_hash->{value} =~ qr/$regex/){
+					$self->log->debug('Found stopword: ' . $stopword . ' for term ' . $field_hash->{value});
 					$to_find--;
 					last STOPWORD_LOOP;
 				}
@@ -1141,10 +1148,16 @@ sub filter_stopwords {
 	
 	if (scalar keys %{ $self->terms->{any_field_terms_sql}->{not} }){
 		foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{not} }){
-			foreach my $field (keys %$record){
-				my $regex = _term_to_regex($record->{$field});
+			my $regex = '[^A-Za-z0-9\-\.\@\_]?' . _term_to_regex($stopword) . '[^A-Za-z0-9\-\.\@\_]?';
+			foreach my $field (qw(msg program node host class)){
 				if ($record->{$field} =~ qr/$regex/){
-					$self->log->debug('Found not stopword: ' . $stopword);
+					$self->log->debug('Found not stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);
+					return 0;
+				}
+			}
+			foreach my $field_hash (@{ $record->{_fields} }){
+				if ($field_hash->{value} =~ qr/$regex/){
+					$self->log->debug('Found not stopword: ' . $stopword . ' for term ' . $field_hash->{value});
 					return 0;
 				}
 			}
