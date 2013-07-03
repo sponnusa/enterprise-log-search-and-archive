@@ -236,6 +236,8 @@ sub local_query {
 		$self->_unlimited_sphinx_query($q);
 	}
 	elsif ($q->has_stopword_terms){
+		my @terms = (keys %{ $q->terms->{any_field_terms_sql}->{and} }, keys %{ $q->terms->{any_field_terms_sql}->{not} });
+		$q->add_warning(200, 'Some query terms (' . join(', ', @terms) . ') were too common and required post-search filtering', { indexed => 0 });
 		$self->_unlimited_sphinx_query($q);
 	}
 	else {
