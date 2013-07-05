@@ -3,6 +3,7 @@ use Moose;
 with 'MooseX::Traits';
 with 'Utils';
 with 'Fields';
+with 'StatsWriter';
 use Data::Dumper;
 use Date::Manip;
 use AnyEvent;
@@ -17,6 +18,7 @@ use Module::Pluggable sub_name => 'info_plugins', require => 1, search_path => [
 use Module::Pluggable sub_name => 'transform_plugins', require => 1, search_path => [ qw(Transform) ];
 use Module::Pluggable sub_name => 'connector_plugins', require => 1, search_path => [ qw(Connector) ];
 use Module::Pluggable sub_name => 'datasource_plugins', require => 1, search_path => [ qw(Datasource) ];
+use Module::Pluggable sub_name => 'stats_plugins', require => 1, search_path => [ qw(Stats) ];
 use URI::Escape qw(uri_unescape uri_escape);
 use Mail::Internet;
 use Email::LocalDelivery;
@@ -25,6 +27,7 @@ use Log::Log4perl::Level;
 use Storable qw(freeze thaw);
 use AnyEvent::HTTP;
 use Ouch qw(:traditional);
+use B qw(svref_2object);
 
 use User;
 use Query;
@@ -77,6 +80,22 @@ has 'node_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', r
 	}
 } });
 has 'user_agent_name' => (is => 'ro', isa => 'Str', required => 1, default => 'ELSA API');
+
+# Create a stats timer for these methods
+around [qw(_sphinx_query _archive_query _external_query _unlimited_sphinx_query)] => sub {
+	my $coderef = shift;
+	my $self = shift;
+	# Find out the original method name by asking the compiler what this coderef was
+	my $method_name = svref_2object($coderef)->GV->NAME;
+	
+	my $start = [ Time::HiRes::time() ];
+	my $ret = $self->$coderef(@_);
+	foreach my $plugin (@{ $self->stat_objects }){
+		my $ret = $plugin->timing(__PACKAGE__ . '::' . $method_name, Time::HiRes::tv_interval($start) * 1000);
+	}
+	
+	return $ret;
+};
 
 sub BUILD {
 	my $self = shift;
