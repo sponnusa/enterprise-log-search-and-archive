@@ -3592,7 +3592,7 @@ sub transform {
 		$transform_args->{groupby} = $q->groupby;
 		foreach my $groupby ($q->results->all_groupbys){
 			foreach my $datum (@{ $q->results->groupby($groupby) }){
-				push @{ $transform_args->{results} }, { $groupby => $datum->{'_groupby'}, count => $datum->{'_count'} };
+				push @{ $transform_args->{results} }, { _groupby => $datum->{'_groupby'}, _count => $datum->{'_count'} };
 			}
 		}
 		$self->log->trace('new results: ' . Dumper($transform_args->{results}));
@@ -3705,11 +3705,11 @@ sub transform {
 								my $value = $datum->{$key};
 								next if ref($value);
 								if ($field){
-									next if $key eq 'count' and $field ne 'count';
+									next if $key eq '_count' and $field ne '_count';
 									push @values, $field . ':' . $value;
 								}
 								else {
-									next if $key eq 'count';
+									next if $key eq '_count';
 									push @values, $value;
 								}
 							}
@@ -3733,11 +3733,11 @@ sub transform {
 							my $value = $datum->{$key};
 							next if ref($value);
 							if ($field){
-								next if $key eq 'count' and $field ne 'count';
+								next if $key eq '_count' and $field ne '_count';
 								push @values, $field . ':' . $value;
 							}
 							else {
-								next if $key eq 'count';
+								next if $key eq '_count';
 								push @values, $value;
 							}
 						}
@@ -3763,10 +3763,10 @@ sub transform {
 				
 				my $sub_query_string;
 				if ($negate){
-					$sub_query_string = $given_transform_args[0] . ' -(' . join(' ', @subvalues) . ')';
+					$sub_query_string = $given_transform_args[0] . ' -(' . join(' OR ', @subvalues) . ')';
 				}
 				else {
-					$sub_query_string = $given_transform_args[0] . ' +(' . join(' ', @subvalues) . ')';
+					$sub_query_string = $given_transform_args[0] . ' (' . join(' OR ', @subvalues) . ')';
 				}
 				my $subq = new Query(
 					conf => $self->conf, 
@@ -3815,7 +3815,7 @@ sub transform {
 					$transform_args->{groupby} = $subq->groupby;
 					foreach my $groupby ($subq->results->all_groupbys){
 						foreach my $datum (@{ $subq->results->groupby($groupby) }){
-							push @{ $transform_args->{results} }, { $groupby => $datum->{'_groupby'} };
+							push @{ $transform_args->{results} }, { _groupby => $datum->{'_groupby'}, _count => $datum->{_count} };
 						}
 					}
 				}
@@ -3904,7 +3904,7 @@ sub transform {
 		
 		foreach my $groupby (@$groupbys){
 			my @groupby_results;
-			if (ref($results) eq 'HASH'){
+			if (ref($results) eq 'HASH' and $results->{$groupby} and ref($results->{$groupby})){
 				for (my $i = 0; $i < scalar @{ $results->{$groupby} }; $i++){
 					my $row = $results->{$groupby}->[$i];
 					#$self->log->debug('row: ' . Dumper($row));
@@ -3923,7 +3923,7 @@ sub transform {
 											$add_on_str .= ' ' . $data_attr . '=' .  $row->{transforms}->{$transform}->{$field}->{$data_attr};
 										}
 									}
-									push @groupby_results, { '_count' => $row->{count}, '_groupby' => ($row->{$groupby} . ' ' . $add_on_str) };
+									push @groupby_results, { '_count' => $row->{_count}, '_groupby' => ($row->{$groupby} . ' ' . $add_on_str) };
 								}
 								# If it's an array, we want to concatenate all fields together.
 								elsif (ref($row->{transforms}->{$transform}->{$field}) eq 'ARRAY'){
@@ -3933,7 +3933,7 @@ sub transform {
 								}
 							}
 							if ($arr_add_on_str ne ''){
-								push @groupby_results, { '_count' => $row->{count}, '_groupby' => ($row->{$groupby} . ' ' . $arr_add_on_str) };
+								push @groupby_results, { '_count' => $row->{_count}, '_groupby' => ($row->{$groupby} . ' ' . $arr_add_on_str) };
 							}
 						}
 					}
@@ -3943,7 +3943,7 @@ sub transform {
 				}
 			}
 			else {
-				$self->log->error('results for groupby must be HASH');
+				$self->log->error('results for groupby must be HASH of ARRAYs');
 				next;
 			}
 			#$self->log->debug('args results ' . Dumper($args->{results}));
