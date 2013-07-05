@@ -1239,11 +1239,13 @@ sub _parse_query_term {
 			elsif ($term_hash->{field} eq 'limit'){
 				# special case for limit
 				$self->limit(sprintf("%d", $term_hash->{value}));
+				throw(400, 'Invalid limit', { term => 'limit' }) unless $self->limit > -1;
 				next;
 			}
 			elsif ($term_hash->{field} eq 'offset'){
 				# special case for offset
 				$self->offset(sprintf("%d", $term_hash->{value}));
+				throw(400, 'Invalid offset', { term => 'offset' }) unless $self->offset > -1;
 				next;
 			}
 			elsif ($term_hash->{field} eq 'class'){
@@ -1328,6 +1330,7 @@ sub _parse_query_term {
 			}
 			elsif ($term_hash->{field} eq 'cutoff'){
 				$self->limit($self->cutoff(sprintf("%d", $term_hash->{value})));
+				throw(400, 'Invalid cutoff', { term => 'cutoff' }) unless $self->cutoff > -1;
 				$self->log->trace("Set cutoff " . $self->cutoff);
 				next;
 			}
@@ -1375,8 +1378,9 @@ sub _parse_query_term {
 				$term_hash->{value} =~ s/\//\\\//g;
 			}
 			elsif ($term_hash->{field} eq 'timeout'){
-				# special case for limit
+				# special case for timeout
 				$self->timeout(int($term_hash->{value}) * 1000);
+				throw(400, 'Invalid timeout', { term => 'timeout' }) unless $self->timeout > -1;
 				$self->max_query_time($self->timeout * .9);
 				next;
 			}
