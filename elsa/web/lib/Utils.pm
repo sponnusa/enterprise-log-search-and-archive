@@ -141,7 +141,7 @@ sub _dbh_error_handler {
 #		$sth->rollback; # in case there was an active transaction
 #	}
 	
-	confess($errstr);
+	throw(500, 'Internal error', { mysql => $query });
 }
 
 sub freshen_db {
