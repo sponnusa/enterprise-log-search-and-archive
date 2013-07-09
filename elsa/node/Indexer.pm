@@ -2938,7 +2938,7 @@ sub _set_stopwords {
 		
 		my $buf = '';
 		foreach my $stopword (sort { $stopwords{$b} <=> $stopwords{$a} } keys %stopwords){
-			$buf .= "$stopword $stopwords{$stopword}\n";
+			$buf .= "$stopword\n";
 		}
 		chop($buf);
 		
