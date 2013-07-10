@@ -3068,10 +3068,9 @@ sub _build_sphinx_match_str {
 	}
 	
 	#if (@class_match_strs){
-	my %join_ops = ( and => ' ', or => '|', not => '|' );
 	foreach my $boolean (keys %class_match_strs){
 		if (scalar @{ $class_match_strs{$boolean} }){
-			$match_str .= ' (' . join($join_ops{$boolean}, @{ $class_match_strs{$boolean} }) . ')';
+			$match_str .= ' (' . join('|', @{ $class_match_strs{$boolean} }) . ')';
 		}
 #		#$match_str .= ' (' . join('|', @class_match_strs) . ')';
 #		$match_str .= ' (' . join(') (', @class_match_strs) . ')';
