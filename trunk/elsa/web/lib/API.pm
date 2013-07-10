@@ -2930,14 +2930,14 @@ sub _unlimited_sphinx_query {
 		
 		$q->start($latest_time);
 		
-		# Safety in case there are more than $Max_limit results in one second
-		if (scalar @batch_results == 0){ # all were duplicates
-			$q->offset($q->offset + $Max_limit);
-			next;
-		}
-		else {
-			$q->offset(0);
-		}			
+#		# Safety in case there are more than $Max_limit results in one second
+#		if (scalar @batch_results == 0){ # all were duplicates
+#			$q->offset($q->offset + $Max_limit);
+#			next;
+#		}
+#		else {
+#			$q->offset(0);
+#		}			
 		
 		$q->results->add_results(\@batch_results);
 		$self->log->debug('received: ' . $total .' of ' . $initial_total . ' with overall limit ' . $overall_limit);
