@@ -443,6 +443,7 @@ sub resolve {
 		if ($field_infos->{$class_id}->{field_type} eq 'string' and
 			($operator eq '=' or $operator eq '-' or $operator eq '')){
 			$values{fields}->{$class_id}->{ $Field_order_to_field->{ $field_order } } = $raw_value;
+			$values{attrs}->{$class_id}->{ $Field_order_to_attr->{ $field_order } } = crc32($raw_value);
 		}
 		elsif ($field_infos->{$class_id}->{field_type} eq 'string'){
 			throw(400, 'Invalid operator for string field', { operator => $operator });
@@ -561,7 +562,7 @@ sub normalize_value {
 	}
 	else {
 		# Integer value
-		if (int($orig_value)){
+		if ($orig_value == 0 or int($orig_value)){
 			return $orig_value;
 		}
 		else {
