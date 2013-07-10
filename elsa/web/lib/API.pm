@@ -4867,9 +4867,17 @@ sub _archive_query {
 				push @tmp, $row;
 			}
 		}
-		foreach my $row (sort { $a->{timestamp} <=> $b->{timestamp} } @tmp){
-			$q->results->add_result($row);
-			last if scalar $q->results->total_records >= $limit;
+		if ($q->orderby_dir eq 'DESC'){
+			foreach my $row (sort { $b->{_orderby} <=> $a->{_orderby} } @tmp){
+				$q->results->add_result($row);
+				last if scalar $q->results->total_records >= $limit;
+			}
+		}
+		else {
+			foreach my $row (sort { $a->{_orderby} <=> $b->{_orderby} } @tmp){
+				$q->results->add_result($row);
+				last if scalar $q->results->total_records >= $limit;
+			}
 		}
 	}
 	

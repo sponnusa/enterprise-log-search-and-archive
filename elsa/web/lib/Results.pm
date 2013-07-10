@@ -93,8 +93,8 @@ sub merge {
 	
 	# Trim to the given query limit, if query object is provided
 	if ($q and $q->limit){
-		my $gt = sub { $a <=> $b };
-		my $lt = sub { $b <=> $a };
+		my $gt = sub { $a->{_orderby} <=> $b->{_orderby} };
+		my $lt = sub { $b->{_orderby} <=> $a->{_orderby} };
 		my $sort_fn = $q->orderby_dir eq 'DESC' ? $gt : $lt;
 		my @final = sort $sort_fn  @{ $self->results };
 		if (@final <= $q->limit){
