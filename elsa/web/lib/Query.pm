@@ -904,7 +904,15 @@ sub _parse_query {
 					$num_removed_terms++;
 					
 					# Drop the term
-					$self->terms->{any_field_terms_sql}->{$boolean}->{$term} = delete $self->terms->{any_field_terms}->{$boolean}->{$term};
+					my $sphinx_term = $term;
+					delete $self->terms->{any_field_terms}->{$boolean}->{$term};
+					# Make sphinx term SQL term
+					if ($sphinx_term =~ /^\(\@(class|host|program) (\d+)\)$/){
+						$self->terms->{attr_terms}->{$boolean}->{'='}->{0}->{ $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{$1} } } = $2;
+					}
+					else {
+						$self->terms->{any_field_terms_sql}->{$boolean}->{$term} = $sphinx_term;
+					}
 				}
 			}
 		}
@@ -1113,7 +1121,7 @@ sub is_stopword {
 	my $stopwords = $self->conf->get('stopwords');
 	
 	# Check all field terms to see if they are a stopword and warn if necessary
-	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH' and exists $stopwords->{$keyword}){
+	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH' and exists $stopwords->{ lc($keyword) }){
 		return 1;
 	}
 	return 0;
@@ -1517,7 +1525,7 @@ sub _parse_query_term {
 						$self->log->warn('No field_info for ' . $term_hash->{field} . ': ' . Dumper($field_info));
 						next;
 					}
-					next if $field_info->{field_type} eq 'string'; # skip string attributes
+					#next if $field_info->{field_type} eq 'string'; # skip string attributes
 					$self->terms->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} } ||= {};
 					foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 						$self->terms->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
@@ -1649,6 +1657,25 @@ sub _term_to_sphinx_term {
 		return '(' . $value . '|' . $resolved_value . ')';
 	}
 	return $value;
+}
+
+sub convert_to_archive {
+	my $self = shift;
+	$self->query_term_count(0);
+	foreach my $boolean (qw(and or not)){
+		foreach my $term (keys %{ $self->terms->{any_field_terms}->{$boolean} }){ 
+			# Drop the term
+			delete $self->terms->{any_field_terms}->{$boolean}->{$term};
+			my $sphinx_term = $term;
+			# Make sphinx term SQL term
+			if ($sphinx_term =~ /^\(\@(class|host|program) (\d+)\)$/){
+				$self->terms->{attr_terms}->{$boolean}->{'='}->{0}->{ $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{$1} } } = $2;
+			}
+			else {
+				$self->terms->{any_field_terms_sql}->{$boolean}->{$term} = $sphinx_term;
+			}
+		}
+	}
 }
 
 1;

@@ -2105,6 +2105,8 @@ sub _sphinx_query {
 				$self->add_warning(501, $q->peer_label . ' had ' . $count . ' indexes had a non-existent fields: ' . join(', ', keys %heterogeneous_schemas));
 			}
 			$self->log->debug('no indexes for node ' . $node);
+			
+			$self->_archive_query($q);
 			next;
 		}
 		
@@ -3014,7 +3016,8 @@ sub _build_sphinx_match_str {
 		$match_str .= ' !(' . join('|', sort keys %not) . ')';
 	}
 	
-	my @class_match_strs;
+	#my @class_match_strs;
+	my %class_match_strs = ( and => [], or => [], not => [] );
 	
 	# Merge distinct and partially_permitted
 	my %classes;
@@ -3050,20 +3053,28 @@ sub _build_sphinx_match_str {
 		}
 		
 		if (scalar keys %and){
-			$class_match_str .= ' (' . join(' ', sort keys %and) . ')';
+			#$class_match_str .= ' (' . join(' ', sort keys %and) . ')';
+			push @{ $class_match_strs{and} }, '(' . join(' ', sort keys %and) . ')';
 		}
 		if (scalar keys %or){
-			$class_match_str .= ' (' . join('|', sort keys %or) . ')';
+			#$class_match_str .= ' (' . join('|', sort keys %or) . ')';
+			push @{ $class_match_strs{or} }, '(' . join('|', sort keys %or) . ')';
 		}
 		if (scalar keys %not){
-			$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
+			#$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
+			push @{ $class_match_strs{not} }, '!(' . join('|', sort keys %not) . ')';
 		}
-		push @class_match_strs, $class_match_str if $class_match_str;
+		#push @class_match_strs, $class_match_str if $class_match_str;
 	}
 	
-	if (@class_match_strs){
-		#$match_str .= ' (' . join('|', @class_match_strs) . ')';
-		$match_str .= ' (' . join(') (', @class_match_strs) . ')';
+	#if (@class_match_strs){
+	my %join_ops = ( and => ' ', or => '|', not => '|' );
+	foreach my $boolean (keys %class_match_strs){
+		if (scalar @{ $class_match_strs{$boolean} }){
+			$match_str .= ' (' . join($join_ops{$boolean}, @{ $class_match_strs{$boolean} }) . ')';
+		}
+#		#$match_str .= ' (' . join('|', @class_match_strs) . ')';
+#		$match_str .= ' (' . join(') (', @class_match_strs) . ')';
 	}	
 	
 	$self->log->trace('match str: ' . $match_str);		
@@ -4543,6 +4554,9 @@ sub run_archive_queries {
 
 sub _archive_query {
 	my ($self, $q) = @_;
+	
+	# Convert terms if they haven't been already
+	$q->convert_to_archive();
 	#$self->log->trace('running archive query with args: ' . Dumper($args));
 	
 	my $overall_start = time();
@@ -4727,6 +4741,7 @@ sub _archive_query {
 		
 		if ($q->timeout and (Time::HiRes::time() - $q->start_time) > ($q->timeout/1000)){
 			my $e = 'Hit query timeout on peer ' . $q->peer_label;
+			$q->results->is_approximate(1);
 			$self->log->error($e);
 			$self->add_warning(502, $e, { timeout => $q->peer_label });
 			$cv->end;
