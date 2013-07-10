@@ -2912,6 +2912,10 @@ sub _set_stopwords {
 	
 	my $start_time = time();
 	my $stopwords_file = $self->conf->get('sphinx/stopwords/file');
+	
+	# Touch the file to prevent any other process from thinking it needs to calculate these while we work
+	utime $start_time, $start_time, $stopwords_file;
+	
 	my $top_n_stopwords = 100;
 	if ($self->conf->get('sphinx/stopwords/top_n')){
 		$top_n_stopwords = $self->conf->get('sphinx/stopwords/top_n');
