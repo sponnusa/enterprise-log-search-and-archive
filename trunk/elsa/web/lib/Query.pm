@@ -1525,7 +1525,7 @@ sub _parse_query_term {
 						$self->log->warn('No field_info for ' . $term_hash->{field} . ': ' . Dumper($field_info));
 						next;
 					}
-					#next if $field_info->{field_type} eq 'string'; # skip string attributes
+					next if $field_info->{field_type} eq 'string'; # skip string attributes because our value may be only matching part of the field
 					$self->terms->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} } ||= {};
 					foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
 						$self->terms->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
