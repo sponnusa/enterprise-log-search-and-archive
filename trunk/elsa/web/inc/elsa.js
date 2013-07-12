@@ -912,20 +912,22 @@ YAHOO.ELSA.Results = function(){
 			var msg = cloneVar(oRecord.getData().msg);
 			var re;
 			
-			if (typeof(oSelf.results.highlights) != 'undefined'){
-				//apply highlights
-				for (var sHighlight in oSelf.results.highlights){
-					sHighlight = sHighlight.replace(/^["']*/, '');
-					sHighlight = sHighlight.replace(/["']*$/, '');
-					//logger.log('sHighlight '  + sHighlight);
-					re = new RegExp('(' + sHighlight + ')', 'ig');
-					var aMatches = msg.match(re);
-					if (aMatches != null){
-						var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
-						msg = msg.replace(re, sReplacement);
-					}
-				}
-			}
+			msg = oSelf.highlightText(msg, '<span class=\'highlight\'>%s</span>');
+//			if (typeof(oSelf.results.highlights) != 'undefined'){
+//				//apply highlights
+//				for (var sHighlight in oSelf.results.highlights){
+//					sHighlight = sHighlight.replace(/^["']*/, '');
+//					sHighlight = sHighlight.replace(/["']*$/, '');
+//					//logger.log('sHighlight '  + sHighlight);
+//					re = new RegExp(sHighlight, 'i');
+//					var aMatches = msg.match(re);
+//					if (aMatches != null){
+//						var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[1]) + '</span>';
+//						re = new RegExp(aMatches[1], 'i');
+//						msg = msg.replace(re, sReplacement);
+//					}
+//				}
+//			}
 			msgDiv.innerHTML = msg;
 			p_elCell.appendChild(msgDiv);
 			
@@ -935,17 +937,24 @@ YAHOO.ELSA.Results = function(){
 			for (var i in oTempWorkingSet){
 				var fieldHash = oTempWorkingSet[i];
 				var aMatches = null;
-				if (fieldHash.value != null){
-					aMatches = fieldHash.value.toString().match(re);
-				}
-				if (aMatches != null){
-					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
-					fieldHash.value_with_markup = fieldHash.value.replace(re, sReplacement);
-				}
-				else if (fieldHash.value != ''){
-					fieldHash.value_with_markup = escapeHTML(fieldHash.value);
-				}
-				//logger.log('fieldHash', fieldHash);
+				fieldHash.value_with_markup = oSelf.highlightText(fieldHash.value, '<span class=\'highlight\'>%s</span>');
+//				if (typeof(oSelf.results.highlights) != 'undefined'){
+//					for (var sHighlight in oSelf.results.highlights){
+//					    re = new RegExp(sHighlight, 'i');
+//						if (fieldHash.value != null){
+//							aMatches = fieldHash.value.toString().match(re);
+//						}
+//						if (aMatches != null){
+//							var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[1]) + '</span>';
+//							re = new RegExp(aMatches[1], 'i');
+//							fieldHash.value_with_markup = fieldHash.value.replace(re, sReplacement);
+//						}
+//						else if (fieldHash.value != ''){
+//							fieldHash.value_with_markup = escapeHTML(fieldHash.value);
+//						}
+//						//logger.log('fieldHash', fieldHash);
+//					}
+//				}
 				
 				// create chart link
 				var oGraphA = document.createElement('a');
@@ -963,25 +972,25 @@ YAHOO.ELSA.Results = function(){
 				a.setAttribute('href', '#');//Will jump to the top of page. Could be annoying
 				a.setAttribute('class', 'value');
 				
-				if (typeof(oSelf.results.highlights) != 'undefined'){
-					for (var sHighlight in oSelf.results.highlights){
-						sHighlight = sHighlight.replace(/^["']*/, '');
-						sHighlight = sHighlight.replace(/["']*$/, '');
-						var re = new RegExp('(' + sHighlight + ')', 'ig');
-						//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
-						if (fieldHash['value_with_markup']){
-							var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
-							var aMatches = msg.match(re);
-							if (aMatches != null){
-								var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
-								fieldHash['value_with_markup'] = fieldHash['value_with_markup'].replace(re, sReplacement);
-							}
-						}
-						else {
-							fieldHash['value_with_markup'] = '';
-						}
-					}
-				}
+//				if (typeof(oSelf.results.highlights) != 'undefined'){
+//					for (var sHighlight in oSelf.results.highlights){
+//						sHighlight = sHighlight.replace(/^["']*/, '');
+//						sHighlight = sHighlight.replace(/["']*$/, '');
+//						//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
+//						if (fieldHash['value_with_markup']){
+//							var re = new RegExp(RegExp.escape(sHighlight), 'i');
+//							var aMatches = msg.match(re);
+//							if (aMatches != null){
+//								var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[1]) + '</span>';
+//								re = new RegExp(aMatches[1], 'i');
+//								fieldHash['value_with_markup'] = fieldHash['value_with_markup'].replace(re, sReplacement);
+//							}
+//						}
+//						else {
+//							fieldHash['value_with_markup'] = '';
+//						}
+//					}
+//				}
 				
 				a.innerHTML = fieldHash['value_with_markup'];
 				
@@ -1001,16 +1010,18 @@ YAHOO.ELSA.Results = function(){
 		}
 	}
 	
-	this.highlightText = function(p_sText){
-		if (this.results.highlights){
+	this.highlightText = function(p_sText, p_sReplacementTemplate){
+		if (typeof(oSelf.results.highlights) != 'undefined'){
 			for (var sHighlight in this.results.highlights){
 				sHighlight = sHighlight.replace(/^["']*/, '');
 				sHighlight = sHighlight.replace(/["']*$/, '');
 				//logger.log('sHighlight '  + sHighlight);
-				re = new RegExp('(' + sHighlight + ')', 'ig');
+				re = new RegExp(sHighlight, 'i');
 				var aMatches = p_sText.match(re);
 				if (aMatches != null){
-					var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[0]) + '</span>';
+					var sReplacement = sprintf(p_sReplacementTemplate, escapeHTML(aMatches[1]));
+					//var sReplacement = '<span class=\'highlight\'>' + escapeHTML(aMatches[1]) + '</span>';
+					re = new RegExp(aMatches[1], 'i');
 					p_sText = p_sText.replace(re, sReplacement);
 				}
 			}
@@ -1046,7 +1057,7 @@ YAHOO.ELSA.Results = function(){
 			
 			a.setAttribute('href', '#');//Will jump to the top of page. Could be annoying
 			a.setAttribute('class', 'value');
-			a.innerHTML = oSelf.highlightText(escapeHTML(p_oData));
+			a.innerHTML = oSelf.highlightText(escapeHTML(p_oData), '<span class=\'highlight\'>%s</span>');
 			
 			oDiv.appendChild(a);
 			
@@ -1066,7 +1077,7 @@ YAHOO.ELSA.Results = function(){
 	}
 	
 	this.formatAddHighlights = function(p_elCell, oRecord, oColumn, p_oData){
-		p_elCell.innerHTML = oSelf.highlightText(escapeHTML(p_oData));
+		p_elCell.innerHTML = oSelf.highlightText(escapeHTML(p_oData), '<span class=\'highlight\'>%s</span>');
 	}
 	
 	this.formatDate = function(p_elCell, oRecord, oColumn, p_oData)
@@ -1762,19 +1773,21 @@ YAHOO.ELSA.Results.LiveTail = function(p_oQuery){
 				var msgDiv = document.createElement('div');
 				msgDiv.setAttribute('class', 'msg');
 				
-				if (typeof(oSelf.results.highlights) != 'undefined'){
-					//apply highlights
-					for (var sHighlight in oSelf.results.highlights){
-						sHighlight = sHighlight.replace(/^["']*/, '');
-						sHighlight = sHighlight.replace(/["']*$/, '');
-						re = new RegExp('(' + sHighlight + ')', 'ig');
-						var aMatches = msg.match(re);
-						if (aMatches != null){
-							var sReplacement = '<span style="background-color:yellow">' + escapeHTML(aMatches[0]) + '</span>';
-							msg = msg.replace(re, sReplacement);
-						}
-					}
-				}
+				msg = oSelf.highlightText(msg, '<span style="background-color:yellow">%s</span>');
+//				if (typeof(oSelf.results.highlights) != 'undefined'){
+//					//apply highlights
+//					for (var sHighlight in oSelf.results.highlights){
+//						sHighlight = sHighlight.replace(/^["']*/, '');
+//						sHighlight = sHighlight.replace(/["']*$/, '');
+//						re = new RegExp(sHighlight, 'i');
+//						var aMatches = msg.match(re);
+//						if (aMatches != null){
+//							var sReplacement = '<span style="background-color:yellow">' + escapeHTML(aMatches[1]) + '</span>';
+//							re = new RegExp(aMatches[1], 'i');
+//							msg = msg.replace(re, sReplacement);
+//						}
+//					}
+//				}
 				msgDiv.innerHTML = msg;
 				p_elCell.appendChild(msgDiv);
 			}
@@ -1788,33 +1801,35 @@ YAHOO.ELSA.Results.LiveTail = function(p_oQuery){
 					fieldHash.value_with_markup = escapeHTML(fieldHash.value);
 					
 					var oHighlightDiv = document.createElement('span');
-									
-					if (typeof(oSelf.results.highlights) != 'undefined'){
-						for (var sHighlight in oSelf.results.highlights){
-							sHighlight = sHighlight.replace(/^["']*/, '');
-							sHighlight = sHighlight.replace(/["']*$/, '');
-							var re = new RegExp('(' + sHighlight + ')', 'ig');
-							//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
-							if (fieldHash['value_with_markup']){
-								var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
-								var aMatches = msg.match(re);
-								if (aMatches != null){
-									var sReplacement = '<span style="background-color:yellow">' + escapeHTML(aMatches[0]) + '</span>';
-									fieldHash['value_with_markup'] = fieldHash['field'] + '=' + fieldHash['value_with_markup'].replace(re, sReplacement);
-									logger.log('matched and showing: ' + fieldHash['value_with_markup']);
-								}
-							}
-							else {
-								fieldHash['value_with_markup'] = fieldHash['field'] + '=';
-							}
-						}
-						oHighlightDiv.innerHTML = fieldHash['value_with_markup'];
-					}
-					else {
-						logger.log('no highlights, using ' + fieldHash.value_with_markup);
-						oHighlightDiv.innerHTML = fieldHash['field'] + '=' + fieldHash.value_with_markup;
-						logger.log('oHighlightDiv.innerHTML: ' + oHighlightDiv.innerHTML);
-					}
+					
+					fieldHash['value_with_markup'] = oSelf.highlightText(fieldHash['value_with_markup'], '<span style="background-color:yellow">%s</span>');
+					oHighlightDiv.innerHTML = fieldHash['field'] + '=' + fieldHash.value_with_markup;
+//					if (typeof(oSelf.results.highlights) != 'undefined'){
+//						for (var sHighlight in oSelf.results.highlights){
+//							sHighlight = sHighlight.replace(/^["']*/, '');
+//							sHighlight = sHighlight.replace(/["']*$/, '');
+//							var re = new RegExp('(' + sHighlight + ')', 'ig');
+//							//logger.log('str: ' + fieldHash['value_with_markup'] + ', re:' + re.toString());
+//							if (fieldHash['value_with_markup']){
+//								var re = new RegExp('(' + RegExp.escape(sHighlight) + ')', 'ig');
+//								var aMatches = msg.match(re);
+//								if (aMatches != null){
+//									var sReplacement = '<span style="background-color:yellow">' + escapeHTML(aMatches[0]) + '</span>';
+//									fieldHash['value_with_markup'] = fieldHash['field'] + '=' + fieldHash['value_with_markup'].replace(re, sReplacement);
+//									logger.log('matched and showing: ' + fieldHash['value_with_markup']);
+//								}
+//							}
+//							else {
+//								fieldHash['value_with_markup'] = fieldHash['field'] + '=';
+//							}
+//						}
+//						oHighlightDiv.innerHTML = fieldHash['value_with_markup'];
+//					}
+//					else {
+//						logger.log('no highlights, using ' + fieldHash.value_with_markup);
+//						oHighlightDiv.innerHTML = fieldHash['field'] + '=' + fieldHash.value_with_markup;
+//						logger.log('oHighlightDiv.innerHTML: ' + oHighlightDiv.innerHTML);
+//					}
 					oDiv.appendChild(oHighlightDiv);
 									
 					oDiv.appendChild(document.createTextNode(' '));

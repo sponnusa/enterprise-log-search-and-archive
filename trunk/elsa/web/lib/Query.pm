@@ -18,6 +18,7 @@ use String::CRC32;
 # Object for dealing with user queries
 
 our $Default_limit = 100;
+our $Tokenizer_regex = '[^A-Za-z0-9\\-\\.\\@\\_]';
 
 # Required
 has 'user' => (is => 'rw', isa => 'User', required => 1);
@@ -233,10 +234,24 @@ sub BUILD {
 	
 	# Find highlights to inform the web client
 	foreach my $boolean (qw(and or)){
+		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+			foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
+				foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+					foreach my $attr (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
+						foreach my $term (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
+							my @regex = _term_to_regex($term, $field_name);
+							foreach (@regex){
+								$self->highlights->{$_} = 1 if defined $_;
+							}
+						}
+					}
+				}
+			}
+		}
 		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
 			foreach my $field_name (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
 				foreach my $term (@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field_name} }){
-					my @regex = _term_to_regex($term);
+					my @regex = _term_to_regex($term, $field_name);
 					foreach (@regex){
 						$self->highlights->{$_} = 1 if defined $_;
 					}
@@ -267,16 +282,25 @@ sub add_warning {
 
 sub _term_to_regex {
 	my $term = shift;
+	my $field_name = shift;
 	my $regex = $term;
+	return if $field_name and $field_name eq 'class'; # we dont' want to highlight class integers
 	if (my @m = $regex =~ /^\(+ (\@\w+)\ ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
 		if ($m[0] eq '@class'){
 			return; # we dont' want to highlight class integers
 		}
 		else {
-			return @m[1..$#m]; # don't return the field name
+			my @ret = @m[1..$#m];# don't return the field name
+			foreach (@ret){
+				$_ = '(?:^|' . $Tokenizer_regex . ')(' . $_ . ')(?:' . $Tokenizer_regex . '|$)';
+			}
+			return  @ret;
 		}
 	}
 	elsif (@m = $regex =~ /^\( ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		foreach (@m){
+			$_ = '(?:^|' . $Tokenizer_regex . ')(' . $_ . ')(?:' . $Tokenizer_regex . '|$)';
+		}
 		return @m;
 	}
 	$regex =~ s/^\s{2,}/\ /;
@@ -284,6 +308,7 @@ sub _term_to_regex {
 	$regex =~ s/\s/\./g;
 	$regex =~ s/\\{2,}/\\/g;
 	$regex =~ s/[^a-zA-Z0-9\.\_\-\@]//g;
+	$regex = '(?:^|' . $Tokenizer_regex . ')(' . $regex . ')(?:' . $Tokenizer_regex . '|$)';
 	return ($regex);
 }
 
@@ -876,30 +901,36 @@ sub _parse_query {
 					for (my $i = 0; $i < (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }); $i++){
 						my $term = $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field}->[$i];
 						if ($stopwords->{$term}){
+							my $err = 'Removed term ' . $term . ' which is too common';
 							if ($boolean eq 'or'){
-								my $err = 'Removed term ' . $term . ' which is too common';
 								$self->add_warning(400, $err, { term => $term });
 								$self->log->warn($err);
 							}
+							else {
+								$self->log->trace($err);
+							}
 							$num_removed_terms++;
 							# Drop the term
-							if (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} } == 1){
-								$self->terms->{attr_terms}->{$boolean}->{'='}->{$class_id}->{$raw_field} = delete $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
-								last;
-							}
-							else {
+#							if (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} } == 1){
+#								$self->terms->{attr_terms}->{$boolean}->{'='}->{$class_id}->{$raw_field} = delete $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
+#								last;
+#							}
+#							else {
 								push @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$class_id}->{$raw_field} }, splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
-							}
+#							}
 						}
 					}
 				}
 			}
 			foreach my $term (keys %{ $self->terms->{any_field_terms}->{$boolean} }){ 
 				if ($stopwords->{$term}){
+					my $err = 'Removed term ' . $term . ' which is too common';
 					if ($boolean eq 'or'){
-						my $err = 'Removed term ' . $term . ' which is too common';
 						$self->add_warning(400, $err, { term => $term });
 						$self->log->warn($err);
+					}
+					else {
+						$self->log->trace($err);
 					}
 					$num_removed_terms++;
 					
@@ -1135,7 +1166,7 @@ sub filter_stopwords {
 	if (scalar keys %{ $self->terms->{any_field_terms_sql}->{and} }){
 		my $to_find = scalar keys %{ $self->terms->{any_field_terms_sql}->{and} };
 		STOPWORD_LOOP: foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{and} }){
-			my $regex = '[^A-Za-z0-9\-\.\@\_]?' . _term_to_regex($stopword) . '[^A-Za-z0-9\-\.\@\_]?';
+			my $regex = _term_to_regex($stopword);
 			foreach my $field (qw(msg program node host class)){
 				if ($record->{$field} =~ qr/$regex/){
 					$self->log->debug('Found stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);
@@ -1156,7 +1187,7 @@ sub filter_stopwords {
 	
 	if (scalar keys %{ $self->terms->{any_field_terms_sql}->{not} }){
 		foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{not} }){
-			my $regex = '[^A-Za-z0-9\-\.\@\_]?' . _term_to_regex($stopword) . '[^A-Za-z0-9\-\.\@\_]?';
+			my $regex = _term_to_regex($stopword);
 			foreach my $field (qw(msg program node host class)){
 				if ($record->{$field} =~ qr/$regex/){
 					$self->log->debug('Found not stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);
