@@ -1559,8 +1559,12 @@ sub _parse_query_term {
 					next if $field_info->{field_type} eq 'string'; # skip string attributes because our value may be only matching part of the field
 					$self->terms->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} } ||= {};
 					foreach my $real_field (keys %{ $values->{attrs}->{$class_id} }){
+						my $intvalue = $values->{attrs}->{$class_id}->{$real_field};
+						unless ($intvalue =~ /^\d+$/){
+							throw(400, 'Found a non-integer for an integer field', { term => $intvalue });
+						}
 						$self->terms->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} }->{$class_id}->{$real_field} ||= [];
-						push @{ $self->terms->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $values->{attrs}->{$class_id}->{$real_field};
+						push @{ $self->terms->{attr_terms}->{$boolean}->{ $term_hash->{op} }->{ $term_hash->{field} }->{$class_id}->{$real_field} }, $intvalue;
 					}
 				}
 			}				
