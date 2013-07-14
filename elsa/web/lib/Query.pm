@@ -391,6 +391,10 @@ sub _parse_query_string {
 	my $effective_operator = shift;
 	
 	my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
+	# Special case for a lone zero
+	if ($raw_query eq '0'){
+		$raw_query = '"0"';
+	}
 	my $orig_parsed_query = $qp->parse($raw_query, $self->implicit_plus) or throw(400, $qp->err, { query_string => $raw_query });
 	$self->log->debug("orig_parsed_query: " . Dumper($orig_parsed_query));
 	
