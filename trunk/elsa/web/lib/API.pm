@@ -4652,11 +4652,11 @@ sub _archive_query {
 							#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
 							"timestamp,\n" .
 							($query->{orderby} ? $query->{orderby} : 'main.timestamp') . ' AS _orderby,' . "\n" .
-							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+							"INET_NTOA(host_id) AS host, program_id, class_id, msg,\n" .
 							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 							"FROM $table main\n" .
-							"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
-							"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
+							#"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
+							#"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
 							'WHERE ' . $query->{where} . ' ORDER BY _orderby ' . $query->{orderby_dir} . "\n" . 'LIMIT ?,?';
 					}
 					else {
@@ -4665,11 +4665,11 @@ sub _archive_query {
 							#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%Y/%m/%d %H:%i:%s\") AS timestamp,\n" .
 							"timestamp,\n" .
 							($query->{orderby} ? $query->{orderby} : 'main.id') . ' AS _orderby,' . "\n" .
-							"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+							"INET_NTOA(host_id) AS host, program_id, class_id, msg,\n" .
 							"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 							"FROM $table main\n" .
-							"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
-							"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
+							#"LEFT JOIN " . $node_info->{db} . ".programs ON main.program_id=programs.id\n" .
+							#"LEFT JOIN " . $node_info->{db} . ".classes ON main.class_id=classes.id\n" .
 							'WHERE ' . $query->{where} . "\n" . 'LIMIT ?,?';
 					}
 				}
@@ -4844,9 +4844,15 @@ sub _archive_query {
 	}
 	else {
 		my @tmp; # we need to sort chronologically
+		my %program_ids_to_resolve;
 		NODE_LOOP: foreach my $node (keys %$ret){
 			#$total_records += scalar @{ $ret->{$node}->{rows} };
 			foreach my $row (@{ $ret->{$node}->{rows} }){
+				# Mark the program ID to resolve all at once
+				$program_ids_to_resolve{$node} ||= {};
+				$program_ids_to_resolve{$node}->{ $row->{program_id} }++;
+				# Resolve the class ID
+				$row->{class} = $self->node_info->{classes_by_id}->{ $row->{class_id} };
 				$row->{datasource} = 'Archive';
 				$row->{_fields} = [
 						{ field => 'host', value => $row->{host}, class => 'any' },
@@ -4867,6 +4873,27 @@ sub _archive_query {
 				push @tmp, $row;
 			}
 		}
+		# Get the program ID's
+		my %programs;
+		foreach my $node (keys %$ret){
+			$programs{$node} ||= {};
+			$query = 'SELECT program, id FROM ' . $self->conf->get('nodes/' . $node . '/db') . '.programs WHERE id IN (';
+			$query .= join(',', map { '?' } keys %program_ids_to_resolve) . ')';
+			$sth = $self->db->prepare($query);
+			$sth->execute(keys %program_ids_to_resolve);
+			
+			while (my $row = $sth->fetchrow_hashref){
+				$programs{$node}->{ $row->{id} } = $row->{program};
+			}
+		}
+		
+		# Now loop through again and resolve the program ID's
+		foreach my $node (keys %$ret){
+			foreach my $row (@{ $ret->{$node}->{rows} }){
+				$row->{program} = $programs{$node}->{ $row->{program_id} };
+			}
+		}
+		
 		if ($q->orderby_dir eq 'DESC'){
 			foreach my $row (sort { $b->{_orderby} <=> $a->{_orderby} } @tmp){
 				$q->results->add_result($row);
