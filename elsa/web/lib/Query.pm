@@ -574,38 +574,34 @@ sub _parse_query {
 		my %candidates;
 		# If we have AND terms, just use those
 		if (scalar keys %{ $self->terms->{attr_terms}->{and} }){
-			my $boolean = 'and';
-			foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
-				foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
-					next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
-					foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
-						foreach my $attr (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
-							foreach my $raw_value (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
-								next if $self->is_stopword($raw_value);
-								my $col = $attr;
-								$col =~ s/^attr\_//;
-								my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
-								$candidates{$resolved_value} = { boolean => $boolean, class_id => $class_id, real_field => $attr };
-							}
+			my $terms = $self->terms->{attr_terms}->{and}->{'='};
+			foreach my $field_name (keys %$terms){
+				next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
+				foreach my $class_id (keys %{ $terms->{$field_name} }){
+					foreach my $attr (keys %{ $terms->{$field_name}->{$class_id} }){
+						foreach my $raw_value (@{ $terms->{$field_name}->{$class_id}->{$attr} }){
+							next if $self->is_stopword($raw_value);
+							my $col = $attr;
+							$col =~ s/^attr\_//;
+							my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
+							$candidates{$resolved_value} = { boolean => 'and', class_id => $class_id, real_field => $attr };
 						}
 					}
 				}
 			}
 		}
 		elsif (scalar keys %{ $self->terms->{attr_terms}->{or} }){
-			my $boolean = 'or';
-			foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
-				foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
-					next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
-					foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
-						foreach my $attr (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
-							foreach my $raw_value (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
-								next if $self->is_stopword($raw_value);
-								my $col = $attr;
-								$col =~ s/^attr\_//;
-								my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
-								$candidates{$resolved_value} = { boolean => $boolean, class_id => $class_id, real_field => $col };
-							}
+			my $terms = $self->terms->{attr_terms}->{or}->{'='};
+			foreach my $field_name (keys %$terms){
+				next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
+				foreach my $class_id (keys %{ $terms->{$field_name} }){
+					foreach my $attr (keys %{ $terms->{$field_name}->{$class_id} }){
+						foreach my $raw_value (@{ $terms->{$field_name}->{$class_id}->{$attr} }){
+							next if $self->is_stopword($raw_value);
+							my $col = $attr;
+							$col =~ s/^attr\_//;
+							my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
+							$candidates{$resolved_value} = { boolean => 'or', class_id => $class_id, real_field => $col };
 						}
 					}
 				}
