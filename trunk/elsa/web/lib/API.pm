@@ -4874,23 +4874,25 @@ sub _archive_query {
 			}
 		}
 		# Get the program ID's
-		my %programs;
-		foreach my $node (keys %$ret){
-			$programs{$node} ||= {};
-			$query = 'SELECT program, id FROM ' . $self->conf->get('nodes/' . $node . '/db') . '.programs WHERE id IN (';
-			$query .= join(',', map { '?' } keys %program_ids_to_resolve) . ')';
-			$sth = $self->db->prepare($query);
-			$sth->execute(keys %program_ids_to_resolve);
-			
-			while (my $row = $sth->fetchrow_hashref){
-				$programs{$node}->{ $row->{id} } = $row->{program};
+		if (keys %program_ids_to_resolve){
+			my %programs;
+			foreach my $node (keys %$ret){
+				$programs{$node} ||= {};
+				$query = 'SELECT program, id FROM ' . $self->conf->get('nodes/' . $node . '/db') . '.programs WHERE id IN (';
+				$query .= join(',', map { '?' } keys %program_ids_to_resolve) . ')';
+				$sth = $self->db->prepare($query);
+				$sth->execute(keys %program_ids_to_resolve);
+				
+				while (my $row = $sth->fetchrow_hashref){
+					$programs{$node}->{ $row->{id} } = $row->{program};
+				}
 			}
-		}
-		
-		# Now loop through again and resolve the program ID's
-		foreach my $node (keys %$ret){
-			foreach my $row (@{ $ret->{$node}->{rows} }){
-				$row->{program} = $programs{$node}->{ $row->{program_id} };
+			
+			# Now loop through again and resolve the program ID's
+			foreach my $node (keys %$ret){
+				foreach my $row (@{ $ret->{$node}->{rows} }){
+					$row->{program} = $programs{$node}->{ $row->{program_id} };
+				}
 			}
 		}
 		
