@@ -910,13 +910,15 @@ sub _parse_query {
 								$self->log->trace($err);
 							}
 							$num_removed_terms++;
+							
 							# Drop the term
 #							if (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} } == 1){
 #								$self->terms->{attr_terms}->{$boolean}->{'='}->{$class_id}->{$raw_field} = delete $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
 #								last;
 #							}
 #							else {
-								push @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$class_id}->{$raw_field} }, splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
+								my $field_name = lc($self->node_info->{fields_by_order}->{$class_id}->{ $Fields::Field_to_order->{$raw_field} }->{text});
+								push @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$field_name}->{$class_id}->{$raw_field} }, splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
 #							}
 						}
 					}
