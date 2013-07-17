@@ -301,6 +301,14 @@ sub query {
 		}
 	}
 	
+	if ($args->{explain}){
+		return {
+			terms => $q->terms,
+			build => $self->_build_query($q),
+			highlights => $q->highlights,
+		};
+	}		
+	
 	Log::Log4perl::MDC->put('qid', $q->qid);
 	
 	foreach my $warning (@{ $q->warnings }){
