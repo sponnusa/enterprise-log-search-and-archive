@@ -823,6 +823,12 @@ sub _peer_query {
 					$q->batch(1);
 					$batches{$peer} = $raw_results->{qid};
 				}
+				
+				# Mark approximate if our peer results were
+				if ($results_obj->is_approximate and not $q->results->is_approximate){
+					$q->results->is_approximate(1);
+				}
+				
 				if ($raw_results->{warnings} and ref($raw_results->{warnings}) eq 'ARRAY'){
 					foreach my $warning (@{ $raw_results->{warnings} }){ 
 						push @{ $q->warnings }, $warning;

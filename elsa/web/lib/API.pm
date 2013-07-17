@@ -2500,7 +2500,7 @@ sub _sphinx_query {
 			}
 			$records_returned += scalar keys %agg;
 		}
-		if ($q->results->records_returned){
+		if ($q->results->records_returned or $q->results->is_approximate){
 			$q->results->add_results(\%results);
 		}
 		else {
@@ -2570,7 +2570,7 @@ sub _sphinx_query {
 		$q->results->total_records($total_records);
 	}
 	
-	$self->log->debug('completed query in ' . (time() - $overall_start) . ' with ' . $q->results->records_returned . ' rows');
+	$self->log->debug('completed query in ' . (time() - $overall_start) . ' with ' . $q->results->records_returned . ' rows with approximate: ' . $q->results->is_approximate);
 	
 	my $total_docs = 0;
 	foreach my $node (keys %$ret){
@@ -4718,7 +4718,7 @@ sub _archive_query {
 				$nodes->{$node}->{dbh}->query($query_hash->{query}, @{ $query_hash->{values} }, sub { 
 					$self->log->debug('Archive query for node ' . $node . ' finished in ' . (time() - $start));
 					my ($dbh, $rows, $rv) = @_;
-					$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
+					#$self->log->trace('node ' . $node . ' got archive result: ' . Dumper($rows));
 					if (not $rv){
 						my $e = 'node ' . $node . ' got error ' . $rows;
 						$self->log->error($e);

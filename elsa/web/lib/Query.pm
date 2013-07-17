@@ -656,8 +656,9 @@ sub _parse_query {
 						foreach my $host_int (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}->{host_id} }){
 							if ($self->user->is_permitted('host_id', $host_int)){
 								next if $self->archive; # archive queries don't need this
+								next if $self->is_stopword($host_int);
 								$self->log->trace('adding host_int ' . $host_int);
-								$self->terms->{any_field_terms}->{$boolean}->{'(@host ' . $host_int . ')'} = 1;
+								#$self->terms->{any_field_terms}->{$boolean}->{'(@host ' . $host_int . ')'} = 1;
 								push @{ $self->terms->{field_terms}->{$boolean}->{0}->{host} }, $host_int; # just for checking available fields later
 								$self->highlights->{ _term_to_regex( inet_ntoa(pack('N*', $host_int)) ) } = 1;
 							}
@@ -674,8 +675,9 @@ sub _parse_query {
 						foreach my $class_id (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{class}->{0}->{class_id} }){
 							if ($self->user->is_permitted('class_id', $class_id)){
 								next if $self->archive; # archive queries don't need this
+								next if $self->is_stopword($class_id);
 								$self->log->trace('adding class_id ' . $class_id);
-								$self->terms->{any_field_terms}->{$boolean}->{'(@class ' . $class_id . ')'} =1;
+								#$self->terms->{any_field_terms}->{$boolean}->{'(@class ' . $class_id . ')'} =1;
 								push @{ $self->terms->{field_terms}->{$boolean}->{0}->{class} }, $class_id; # just for checking available fields later
 								$self->highlights->{ _term_to_regex( $self->node_info->{classes_by_id}->{$class_id} ) } = 1;
 							}
@@ -691,8 +693,9 @@ sub _parse_query {
 						foreach my $program_id (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{program}->{0}->{program_id} }){
 							if ($self->user->is_permitted('program_id', $program_id)){
 								next if $self->archive; # archive queries don't need this
+								next if $self->is_stopword($program_id);
 								$self->log->trace('adding program_id ' . $program_id);
-								$self->terms->{any_field_terms}->{$boolean}->{'(@program ' . $program_id . ')'} = 1;
+								#$self->terms->{any_field_terms}->{$boolean}->{'(@program ' . $program_id . ')'} = 1;
 								push @{ $self->terms->{field_terms}->{$boolean}->{0}->{program} }, $program_id; # just for checking available fields later
 								$self->highlights->{ _term_to_regex( $self->program_translations->{$program_id} ) } = 1;
 							}
@@ -895,37 +898,34 @@ sub _parse_query {
 	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
 		$self->log->debug('checking terms against ' . (scalar keys %$stopwords) . ' stopwords');
 		foreach my $boolean (qw(and or not)){
-			foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
-				foreach my $raw_field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
-					next unless $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
-					for (my $i = 0; $i < (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }); $i++){
-						my $term = $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field}->[$i];
-						if ($stopwords->{$term}){
-							my $err = 'Removed term ' . $term . ' which is too common';
-							if ($boolean eq 'or'){
-								$self->add_warning(400, $err, { term => $term });
-								$self->log->warn($err);
-							}
-							else {
-								$self->log->trace($err);
-							}
-							$num_removed_terms++;
-							
-							# Drop the term
-#							if (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} } == 1){
-#								$self->terms->{attr_terms}->{$boolean}->{'='}->{$class_id}->{$raw_field} = delete $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
-#								last;
+#			foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
+#				foreach my $raw_field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
+#					next unless $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
+#					for (my $i = 0; $i < (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }); $i++){
+#						my $term = $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field}->[$i];
+#						if ($stopwords->{$term}){
+#							my $err = 'Removed term ' . $term . ' which is too common';
+#							if ($boolean eq 'or'){
+#								$self->add_warning(400, $err, { term => $term });
+#								$self->log->warn($err);
 #							}
 #							else {
-								my $field_name = lc($self->node_info->{fields_by_order}->{$class_id}->{ $Fields::Field_to_order->{$raw_field} }->{text});
-								push @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$field_name}->{$class_id}->{$raw_field} }, splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
+#								$self->log->trace($err);
 #							}
-						}
-					}
-				}
-			}
+#							$num_removed_terms++;
+#							
+#							my $field_name = lc($self->node_info->{fields_by_order}->{$class_id}->{ $Fields::Field_to_order->{$raw_field} }->{text});
+#							my $attr_name = $Fields::Field_order_to_attr->{ $Fields::Field_to_order->{$raw_field} };
+#							my $value = splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
+#							unless (grep { $_ eq $value } @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$field_name}->{$class_id}->{$attr_name} }){
+#								push @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$field_name}->{$class_id}->{$attr_name} }, $value;
+#							}
+#						}
+#					}
+#				}
+#			}
 			foreach my $term (keys %{ $self->terms->{any_field_terms}->{$boolean} }){ 
-				if ($stopwords->{$term}){
+				if ($self->is_stopword($term)){
 					my $err = 'Removed term ' . $term . ' which is too common';
 					if ($boolean eq 'or'){
 						$self->add_warning(400, $err, { term => $term });
@@ -940,12 +940,12 @@ sub _parse_query {
 					my $sphinx_term = $term;
 					delete $self->terms->{any_field_terms}->{$boolean}->{$term};
 					# Make sphinx term SQL term
-					if ($sphinx_term =~ /^\(\@(class|host|program) (\d+)\)$/){
-						$self->terms->{attr_terms}->{$boolean}->{'='}->{0}->{ $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{$1} } } = $2;
-					}
-					else {
+#					if ($sphinx_term =~ /^\(\@(class|host|program) (\d+)\)$/){
+#						$self->terms->{attr_terms}->{$boolean}->{'='}->{0}->{ $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{$1} } } = $2;
+#					}
+#					else {
 						$self->terms->{any_field_terms_sql}->{$boolean}->{$term} = $sphinx_term;
-					}
+#					}
 				}
 			}
 		}
