@@ -898,32 +898,45 @@ sub _parse_query {
 	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
 		$self->log->debug('checking terms against ' . (scalar keys %$stopwords) . ' stopwords');
 		foreach my $boolean (qw(and or not)){
-#			foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
-#				foreach my $raw_field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
-#					next unless $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
-#					for (my $i = 0; $i < (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }); $i++){
-#						my $term = $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field}->[$i];
-#						if ($stopwords->{$term}){
-#							my $err = 'Removed term ' . $term . ' which is too common';
-#							if ($boolean eq 'or'){
-#								$self->add_warning(400, $err, { term => $term });
-#								$self->log->warn($err);
-#							}
-#							else {
-#								$self->log->trace($err);
-#							}
-#							$num_removed_terms++;
-#							
-#							my $field_name = lc($self->node_info->{fields_by_order}->{$class_id}->{ $Fields::Field_to_order->{$raw_field} }->{text});
-#							my $attr_name = $Fields::Field_order_to_attr->{ $Fields::Field_to_order->{$raw_field} };
-#							my $value = splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
-#							unless (grep { $_ eq $value } @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$field_name}->{$class_id}->{$attr_name} }){
-#								push @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$field_name}->{$class_id}->{$attr_name} }, $value;
-#							}
-#						}
-#					}
-#				}
-#			}
+			foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
+				foreach my $raw_field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
+					next unless $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field};
+					for (my $i = 0; $i < (scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }); $i++){
+						my $term = $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field}->[$i];
+						if ($self->is_stopword($term)){
+							my $err = 'Removed term ' . $term . ' which is too common';
+							if ($boolean eq 'or'){
+								$self->add_warning(400, $err, { term => $term });
+								$self->log->warn($err);
+							}
+							else {
+								$self->log->trace($err);
+							}
+							$num_removed_terms++;
+							
+							my $field_info = $self->node_info->{fields_by_order}->{$class_id}->{ $Fields::Field_to_order->{$raw_field} };
+							my $field_name = lc($field_info->{text});
+							my $field_type = $field_info->{field_type};
+							my $attr_name = $Fields::Field_order_to_attr->{ $Fields::Field_to_order->{$raw_field} };
+							splice(@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $i, 1);
+							if ($field_type ne 'string'){
+								unless (grep { $_ eq $term } @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$field_name}->{$class_id}->{$attr_name} }){
+									push @{ $self->terms->{attr_terms}->{$boolean}->{'='}->{$field_name}->{$class_id}->{$attr_name} }, $term;
+								}
+							}
+							else {
+								# Temporarily store these terms in field_terms_sql so it's clear they don't count as a query term 
+								#  for calculating whether to use Sphinx or not
+								$self->terms->{field_terms_sql} ||= {};
+								$self->terms->{field_terms_sql}->{$boolean} ||= {};
+								$self->terms->{field_terms_sql}->{$boolean}->{$class_id} ||= {};
+								$self->terms->{field_terms_sql}->{$boolean}->{$class_id}->{$raw_field} ||= [];
+								push @{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id}->{$raw_field} }, $term;
+							}
+						}
+					}
+				}
+			}
 			foreach my $term (keys %{ $self->terms->{any_field_terms}->{$boolean} }){ 
 				if ($self->is_stopword($term)){
 					my $err = 'Removed term ' . $term . ' which is too common';
@@ -1026,6 +1039,18 @@ sub _parse_query {
 	
 	# Save this query_term_count for later use
 	$self->query_term_count($query_term_count);
+	
+	# Put the field_terms_sql back to field_terms now that we've done the count
+	foreach my $boolean (keys %{ $self->terms->{field_terms_sql} }){
+		foreach my $class_id (keys %{ $self->terms->{field_terms_sql}->{$boolean} }){
+			foreach my $raw_field (keys %{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id} }){
+				foreach my $term (@{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id}->{$raw_field} }){
+					push @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $term;
+				}
+			}
+		}
+	}
+	delete $self->terms->{field_terms_sql};
 	
 #	# we might have a class-only query
 #	foreach my $class (keys %{ $self->classes->{distinct} }){
