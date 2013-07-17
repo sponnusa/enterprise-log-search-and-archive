@@ -2500,7 +2500,12 @@ sub _sphinx_query {
 			}
 			$records_returned += scalar keys %agg;
 		}
-		$q->results(Results::Groupby->new(conf => $self->conf, results => \%results, total_records => $total_records));
+		if ($q->results->records_returned){
+			$q->results->add_results(\%results);
+		}
+		else {
+			$q->results(Results::Groupby->new(conf => $self->conf, results => \%results, total_records => $total_records));
+		}
 	}
 	else {
 		my @tmp;

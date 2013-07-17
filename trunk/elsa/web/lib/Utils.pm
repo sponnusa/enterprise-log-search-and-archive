@@ -247,7 +247,7 @@ sub _get_node_info {
 		else {		
 			# Get indexes
 			$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start AS start_int, FROM_UNIXTIME(start) AS start,
-			end AS end_int, UNIX_TIMESTAMP(end) AS end_int, type, last_id-first_id AS records, index_schema
+			end AS end_int, FROM_UNIXTIME(end) AS end, type, last_id-first_id AS records, index_schema
 			FROM %s.indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime" ORDER BY start', 
 				$nodes->{$node}->{db});
 			$cv->begin;
