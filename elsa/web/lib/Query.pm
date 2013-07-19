@@ -552,6 +552,7 @@ sub _parse_query {
 		$self->terms->{any_field_terms}->{$boolean} = {};
 		$self->terms->{any_field_terms_sql}->{$boolean} = {};
 	}
+	$self->terms->{distinct_fields} = {};
 		
 	if ($raw_query =~ /\S/){ # could be meta_attr-only
 #		my $qp = new Search::QueryParser(rxTerm => qr/[^\s()]+/, rxField => qr/[\w,\.]+/);
@@ -814,12 +815,43 @@ sub _parse_query {
 	}
 	$self->log->trace('distinct_classes after adjustments: ' . Dumper($self->classes->{distinct}));
 	
+	# Reduce the distinct classes if there are fields/attrs given in the AND clause
+	foreach my $field_name (keys %{ $self->terms->{distinct_fields} }){
+		my $field_infos = $self->get_field($field_name);
+		foreach my $class_id (keys %{ $self->classes->{distinct} }){
+			unless ($field_infos->{$class_id}){
+				$self->log->trace('Class ' . $class_id . ' does not have field ' . $field_name);
+				delete $self->classes->{distinct}->{$class_id};
+			}
+		}
+	}	
+	
 	if (scalar keys %{ $self->classes->{excluded} }){
 		foreach my $class_id (keys %{ $self->classes->{excluded} }){
 			$self->log->trace("Excluding class_id $class_id");
 			delete $self->classes->{distinct}->{$class_id};
 		}
 	}
+	
+	# Remove any terms or attrs that aren't in distinct classes now
+	foreach my $boolean (qw(and or not)){
+		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
+			unless ($self->classes->{distinct}){
+				delete $self->terms->{field_terms}->{$boolean}->{$class_id};
+			}
+		}
+	}
+	foreach my $boolean (qw(and or not range_and range_not range_or)){
+		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+			foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
+				foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+					unless ($self->classes->{distinct}){
+						delete $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id};
+					}
+				}
+			}
+		}
+	}	
 	
 	$self->log->debug('attr_terms: ' . Dumper($self->terms->{attr_terms}));
 	
@@ -1273,6 +1305,7 @@ sub _parse_query_term {
 			
 			# Make field lowercase
 			$term_hash->{field} = lc($term_hash->{field});
+			$self->terms->{distinct_fields}->{ $term_hash->{field} } = 1 if defined $term_hash->{field} and $term_hash->{field} ne '';
 			
 			# Escape any digit-dash-word combos (except for host or program)
 			#$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');

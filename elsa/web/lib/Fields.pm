@@ -448,6 +448,11 @@ sub resolve {
 		elsif ($field_infos->{$class_id}->{field_type} eq 'string'){
 			throw(400, 'Invalid operator for string field', { operator => $operator });
 		}
+		# Edge case for int fields stuffed into string attributes due to lack of space in the int attributes
+		elsif ($field_infos->{$class_id}->{field_type} eq 'int' and $Field_order_to_attr->{ $field_order } =~ /^attr_s/){
+			$values{fields}->{$class_id}->{ $Field_order_to_field->{ $field_order } } = $raw_value;
+			$values{attrs}->{$class_id}->{ $Field_order_to_attr->{ $field_order } } = crc32($raw_value);
+		}
 		elsif ($Field_order_to_attr->{ $field_order }){
 			$values{attrs}->{$class_id}->{ $Field_order_to_attr->{ $field_order } } =
 				$self->normalize_value($class_id, $raw_value, $field_order);			
