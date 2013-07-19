@@ -3545,6 +3545,7 @@ sub _build_query {
 		
 		if (scalar keys %distinct_str_fields > 1){
 			foreach my $abstract_field (sort keys %distinct_str_fields){
+				my $abstract_field_select = $select;
 				$where = 'MATCH(\'' . $self->_build_sphinx_match_str($q, $abstract_field) .'\')';
 				$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0 AND permissions_qualifier=1';
 				my $orderby;
@@ -3555,14 +3556,16 @@ sub _build_query {
 					else {
 						$orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{ (keys %{ $distinct_str_fields{$abstract_field} })[0] }->{field_order} };
 					}
-					$select .= ', ' . $orderby . ' AS _orderby';
+					$abstract_field_select .= ', ' . $orderby . ' AS _orderby';
 				}
 				
-				$select = '(' . join(' OR ', map { 'class_id=?' } sort keys %{ $distinct_str_fields{$abstract_field} }) . ') AND ' . $select;
+				$abstract_field_select = '(' . join(' OR ', map { 'class_id=?' } sort keys %{ $distinct_str_fields{$abstract_field} }) . ') AND ' . $abstract_field_select;
+				# Need to set these once here for some reason
+				my @new_values = sort keys %{ $distinct_str_fields{$abstract_field} };
 				push @queries, {
-					select => $select,
+					select => $abstract_field_select,
 					where => $where,
-					values => [ @values, sort keys %{ $distinct_str_fields{$abstract_field} } ],
+					values => [ @new_values, @values ],
 					orderby => $q->orderby ? $orderby : 'timestamp',
 					orderby_dir => $q->orderby_dir,
 				};
