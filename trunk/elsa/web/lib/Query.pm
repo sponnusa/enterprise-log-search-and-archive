@@ -819,7 +819,7 @@ sub _parse_query {
 	foreach my $field_name (keys %{ $self->terms->{distinct_fields} }){
 		my $field_infos = $self->get_field($field_name);
 		foreach my $class_id (keys %{ $self->classes->{distinct} }){
-			unless ($field_infos->{$class_id}){
+			unless ($field_infos->{$class_id} or $field_infos->{0}){
 				$self->log->trace('Class ' . $class_id . ' does not have field ' . $field_name);
 				delete $self->classes->{distinct}->{$class_id};
 			}
