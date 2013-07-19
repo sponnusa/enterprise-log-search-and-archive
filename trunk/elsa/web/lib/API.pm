@@ -3437,8 +3437,9 @@ sub _build_query {
 	my @values = (@{ $clauses{classes}->{vals} }, @{ $clauses{and}->{vals} }, @{ $clauses{or}->{vals} }, @{ $clauses{not}->{vals} }, @{ $clauses{permissions}->{vals} });
 	
 	# Check for time given
+	my $timestamp_clause;
 	if ($q->start and $q->end){
-		$where .= ' AND timestamp BETWEEN ? AND ?';
+		$where .= $timestamp_clause = ' AND timestamp BETWEEN ? AND ?';
 		push @values, $q->start, $q->end;
 	}
 	
@@ -3502,13 +3503,16 @@ sub _build_query {
 				$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0 AND permissions_qualifier=1';
 				my $orderby;
 				if ($q->orderby){
-					if ($Fields::Field_to_order->{ $q->orderby }){
+					if (defined $Fields::Field_to_order->{ $q->orderby }){
 						$orderby = $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{ $q->orderby } };
 					}
 					else {
 						$orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
 					}
 					$class_select .= ', ' . $orderby . ' AS _orderby';
+				}
+				if ($q->start and $q->end){
+					$where .= $timestamp_clause;
 				}
 				
 				push @queries, {
@@ -3525,7 +3529,13 @@ sub _build_query {
 			my $field_infos = $self->get_field($q->orderby);
 			foreach my $class_id (keys %{$field_infos}){
 				next unless $q->classes->{distinct}->{$class_id} or $class_id == 0;
-				my $orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
+				my $orderby;
+				if (defined $Fields::Field_to_order->{ $q->orderby }){
+					$orderby = $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{ $q->orderby } };
+				}
+				else {
+					$orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
+				}
 				push @queries, {
 					select => $select . ', ' . $orderby . ' AS _orderby',
 					where => $where . ($class_id ? ' AND class_id=?' : ''),
