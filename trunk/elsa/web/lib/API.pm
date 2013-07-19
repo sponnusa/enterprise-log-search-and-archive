@@ -2990,153 +2990,102 @@ sub get_bulk_file {
 }
 
 sub _build_sphinx_match_str {
-	my ($self, $q, $abstract_field) = @_;
+	my ($self, $q, $given_class_id) = @_;
 
 	# Create the Sphinx Extended2 matching mode query string to be placed in MATCH()
 	my $match_str = '';
 	my (%and, %or, %not);
-	if (defined $abstract_field){
-		my %class_match_strs = ( and => {}, or => {}, not => {} );
-		(%and, %or, %not) = ();
-		# Merge distinct and partially_permitted
-		my %classes;
-		foreach my $class_id (keys %{ $q->classes->{distinct} }){
-			$classes{$class_id} = 1;
-		}
-		foreach my $class_id (keys %{ $q->classes->{partially_permitted} }){
-			$classes{$class_id} = 1;
-		}
-		
-		# Check for just class as the only field_term
-		if (scalar keys %{ $q->terms->{field_terms}->{and} } == 1 and scalar keys %{ $q->terms->{field_terms}->{and}->{0} }){
-			$classes{0} = 1;
-		}
-		
-		#foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
-		foreach my $class_id (sort keys %classes){
-			my $class_match_str = '';
-			# First, the ANDs
-			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$abstract_field} }){
-				$and{'(@' . $abstract_field . ' ' . $value . ')'} = 1;
-			}
-					
-			# Then, the NOTs
-			foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$abstract_field} }){
-				$not{'(@' . $abstract_field . ' ' . $value . ')'} = 1;
-			}
-			
-			# Then, the ORs
-			foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$abstract_field} }){
-				$or{'(@' . $abstract_field . ' ' . $value . ')'} = 1;
-			}
-			
-			if (scalar keys %and){
-				$class_match_strs{and}->{'(' . join(' ', sort keys %and) . ')'} = 1;
-			}
-			if (scalar keys %or){
-				$class_match_strs{or}->{'(' . join('|', sort keys %or) . ')'} = 1;
-			}
-			if (scalar keys %not){
-				$class_match_strs{not}->{'!(' . join('|', sort keys %not) . ')'} = 1;
-			}
-		}
-		foreach my $boolean (keys %class_match_strs){
-			if (scalar keys %{ $class_match_strs{$boolean} }){
-				$match_str .= ' (' . join('|', sort keys %{ $class_match_strs{$boolean} }) . ')';
-			}
-		}
+
+	# No-field match str
+	foreach my $term (keys %{ $q->terms->{any_field_terms}->{and} }){
+		$and{$term} = 1;
 	}
-	else {
+		
+	my @or = ();
+	foreach my $term (keys %{ $q->terms->{any_field_terms}->{or} }){
+		$or{$term} = 1;
+	}
 	
-		# No-field match str
-		foreach my $term (keys %{ $q->terms->{any_field_terms}->{and} }){
-			$and{$term} = 1;
+	my @not = ();
+	foreach my $term (keys %{ $q->terms->{any_field_terms}->{not} }){
+		$not{$term} = 1;
+	}
+	
+	if (scalar keys %and){
+		$match_str .= ' (' . join(' ', sort keys %and) . ')';
+	}
+	if (scalar keys %or){
+		$match_str .= ' (' . join('|', sort keys %or) . ')';
+	}
+	if (scalar keys %not){
+		$match_str .= ' !(' . join('|', sort keys %not) . ')';
+	}
+
+	#my @class_match_strs;
+	my %class_match_strs = ( and => [], or => [], not => [] );
+	
+	# Merge distinct and partially_permitted
+	my %classes;
+	foreach my $class_id (keys %{ $q->classes->{distinct} }){
+		$classes{$class_id} = 1;
+	}
+	foreach my $class_id (keys %{ $q->classes->{partially_permitted} }){
+		$classes{$class_id} = 1;
+	}
+	
+	# Check for just class as the only field_term
+	if (scalar keys %{ $q->terms->{field_terms}->{and} } == 1 and scalar keys %{ $q->terms->{field_terms}->{and}->{0} }){
+		$classes{0} = 1;
+	}
+	
+	#foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
+	foreach my $class_id (sort keys %classes){
+		next if defined $given_class_id and $class_id != $given_class_id;
+		(%and, %or, %not) = ();
+		my $class_match_str = '';
+		# First, the ANDs
+		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
+			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
+				$and{'(@' . $field . ' ' . $value . ')'} = 1;
+			}
 		}
-			
-		my @or = ();
-		foreach my $term (keys %{ $q->terms->{any_field_terms}->{or} }){
-			$or{$term} = 1;
+				
+		# Then, the NOTs
+		foreach my $field (sort keys %{ $q->terms->{field_terms}->{not}->{$class_id} }){
+			foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$field} }){
+				$not{'(@' . $field . ' ' . $value . ')'} = 1;
+			}
 		}
 		
-		my @not = ();
-		foreach my $term (keys %{ $q->terms->{any_field_terms}->{not} }){
-			$not{$term} = 1;
+		# Then, the ORs
+		foreach my $field (sort keys %{ $q->terms->{field_terms}->{or}->{$class_id} }){
+			foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$field} }){
+				$or{'(@' . $field . ' ' . $value . ')'} = 1;
+			}
 		}
 		
 		if (scalar keys %and){
-			$match_str .= ' (' . join(' ', sort keys %and) . ')';
+			#$class_match_str .= ' (' . join(' ', sort keys %and) . ')';
+			push @{ $class_match_strs{and} }, '(' . join(' ', sort keys %and) . ')';
 		}
 		if (scalar keys %or){
-			$match_str .= ' (' . join('|', sort keys %or) . ')';
+			#$class_match_str .= ' (' . join('|', sort keys %or) . ')';
+			push @{ $class_match_strs{or} }, '(' . join('|', sort keys %or) . ')';
 		}
 		if (scalar keys %not){
-			$match_str .= ' !(' . join('|', sort keys %not) . ')';
+			#$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
+			push @{ $class_match_strs{not} }, '!(' . join('|', sort keys %not) . ')';
 		}
+		#push @class_match_strs, $class_match_str if $class_match_str;
+	}
 	
-		#my @class_match_strs;
-		my %class_match_strs = ( and => [], or => [], not => [] );
-		
-		# Merge distinct and partially_permitted
-		my %classes;
-		foreach my $class_id (keys %{ $q->classes->{distinct} }){
-			$classes{$class_id} = 1;
+	#if (@class_match_strs){
+	foreach my $boolean (keys %class_match_strs){
+		if (scalar @{ $class_match_strs{$boolean} }){
+			$match_str .= ' (' . join('|', @{ $class_match_strs{$boolean} }) . ')';
 		}
-		foreach my $class_id (keys %{ $q->classes->{partially_permitted} }){
-			$classes{$class_id} = 1;
-		}
-		
-		# Check for just class as the only field_term
-		if (scalar keys %{ $q->terms->{field_terms}->{and} } == 1 and scalar keys %{ $q->terms->{field_terms}->{and}->{0} }){
-			$classes{0} = 1;
-		}
-		
-		#foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
-		foreach my $class_id (sort keys %classes){
-			(%and, %or, %not) = ();
-			my $class_match_str = '';
-			# First, the ANDs
-			foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
-				foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
-					$and{'(@' . $field . ' ' . $value . ')'} = 1;
-				}
-			}
-					
-			# Then, the NOTs
-			foreach my $field (sort keys %{ $q->terms->{field_terms}->{not}->{$class_id} }){
-				foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$field} }){
-					$not{'(@' . $field . ' ' . $value . ')'} = 1;
-				}
-			}
-			
-			# Then, the ORs
-			foreach my $field (sort keys %{ $q->terms->{field_terms}->{or}->{$class_id} }){
-				foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$field} }){
-					$or{'(@' . $field . ' ' . $value . ')'} = 1;
-				}
-			}
-			
-			if (scalar keys %and){
-				#$class_match_str .= ' (' . join(' ', sort keys %and) . ')';
-				push @{ $class_match_strs{and} }, '(' . join(' ', sort keys %and) . ')';
-			}
-			if (scalar keys %or){
-				#$class_match_str .= ' (' . join('|', sort keys %or) . ')';
-				push @{ $class_match_strs{or} }, '(' . join('|', sort keys %or) . ')';
-			}
-			if (scalar keys %not){
-				#$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
-				push @{ $class_match_strs{not} }, '!(' . join('|', sort keys %not) . ')';
-			}
-			#push @class_match_strs, $class_match_str if $class_match_str;
-		}
-		
-		#if (@class_match_strs){
-		foreach my $boolean (keys %class_match_strs){
-			if (scalar @{ $class_match_strs{$boolean} }){
-				$match_str .= ' (' . join('|', @{ $class_match_strs{$boolean} }) . ')';
-			}
-		}	
 	}	
+
 	$self->log->trace('match str: ' . $match_str);		
 	
 	return $match_str;
@@ -3537,16 +3486,19 @@ sub _build_query {
 		# Check if we have multiple classes for any string field matches
 		my %distinct_str_fields;
 		foreach my $class_id (keys %{ $q->terms->{field_terms}->{and} }){
-			foreach my $abstract_field (keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
-				$distinct_str_fields{$abstract_field} ||= {};
-				$distinct_str_fields{$abstract_field}->{$class_id} = 1;
-			}
+			my $needed_fields_string = join(',', sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} });
+			$distinct_str_fields{$needed_fields_string} ||= {};
+			$distinct_str_fields{$needed_fields_string}->{$class_id} = 1;
+#			foreach my $abstract_field (keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
+#				$distinct_str_fields{$abstract_field} ||= {};
+#				$distinct_str_fields{$abstract_field}->{$class_id} = 1;
+#			}
 		}
 		
 		if (scalar keys %distinct_str_fields > 1){
-			foreach my $abstract_field (sort keys %distinct_str_fields){
-				my $abstract_field_select = $select;
-				$where = 'MATCH(\'' . $self->_build_sphinx_match_str($q, $abstract_field) .'\')';
+			foreach my $class_id (@{ $clauses{classes}->{vals} }){
+				my $class_select = $select;
+				$where = 'MATCH(\'' . $self->_build_sphinx_match_str($q, $class_id) .'\')';
 				$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0 AND permissions_qualifier=1';
 				my $orderby;
 				if ($q->orderby){
@@ -3554,18 +3506,15 @@ sub _build_query {
 						$orderby = $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{ $q->orderby } };
 					}
 					else {
-						$orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{ (keys %{ $distinct_str_fields{$abstract_field} })[0] }->{field_order} };
+						$orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{$class_id}->{field_order} };
 					}
-					$abstract_field_select .= ', ' . $orderby . ' AS _orderby';
+					$class_select .= ', ' . $orderby . ' AS _orderby';
 				}
 				
-				$abstract_field_select = '(' . join(' OR ', map { 'class_id=?' } sort keys %{ $distinct_str_fields{$abstract_field} }) . ') AND ' . $abstract_field_select;
-				# Need to set these once here for some reason
-				my @new_values = sort keys %{ $distinct_str_fields{$abstract_field} };
 				push @queries, {
-					select => $abstract_field_select,
-					where => $where,
-					values => [ @new_values, @values ],
+					select => $class_select,
+					where => $where . ($class_id ? ' AND class_id=?' : ''),
+					values => [ @values, $class_id ],
 					orderby => $q->orderby ? $orderby : 'timestamp',
 					orderby_dir => $q->orderby_dir,
 				};
