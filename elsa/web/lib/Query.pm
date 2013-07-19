@@ -1305,7 +1305,6 @@ sub _parse_query_term {
 			
 			# Make field lowercase
 			$term_hash->{field} = lc($term_hash->{field});
-			$self->terms->{distinct_fields}->{ $term_hash->{field} } = 1 if defined $term_hash->{field} and $term_hash->{field} ne '';
 			
 			# Escape any digit-dash-word combos (except for host or program)
 			#$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
@@ -1566,6 +1565,8 @@ sub _parse_query_term {
 				if (not scalar keys %{ $values->{attrs} } and not scalar keys %{ $values->{fields} }){
 					throw(400, 'Invalid field: ' . $term_hash->{field}, { term => $term_hash->{field} });
 				}
+				
+				$self->terms->{distinct_fields}->{ $term_hash->{field} } = 1;
 				
 				# Mark down any program translations
 				if (lc($term_hash->{field}) eq 'program'){
