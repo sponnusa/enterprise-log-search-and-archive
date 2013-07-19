@@ -3555,10 +3555,13 @@ sub _build_query {
 					else {
 						$orderby = $Fields::Field_order_to_attr->{ $self->get_field($q->orderby)->{ (keys %{ $distinct_str_fields{$abstract_field} })[0] }->{field_order} };
 					}
+					$select .= ', ' . $orderby . ' AS _orderby';
 				}
+				
+				$select = '(' . join(' OR ', map { 'class_id=?' } sort keys %{ $distinct_str_fields{$abstract_field} }) . ') AND ' . $select;
 				push @queries, {
-					select => $orderby ? $select . ', ' . $orderby . ' AS _orderby' : $select,
-					where => $where . ' AND (' . join(' OR ', map { 'class_id=?' } sort keys %{ $distinct_str_fields{$abstract_field} }) . ')',
+					select => $select,
+					where => $where,
 					values => [ @values, sort keys %{ $distinct_str_fields{$abstract_field} } ],
 					orderby => $q->orderby ? $orderby : 'timestamp',
 					orderby_dir => $q->orderby_dir,
