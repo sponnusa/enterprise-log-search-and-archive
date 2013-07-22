@@ -3513,7 +3513,7 @@ sub _unlimited_sphinx_query {
 		
 		# Turn off verbose logging for the search
 		my $old_log_level = $self->log->level;
-		#$self->log->level($ERROR) unless $self->conf->get('debug_all');
+		$self->log->level($ERROR) unless $self->conf->get('debug_all');
 		
 		# Execute search
 		$self->_sphinx_query($batch_q);
