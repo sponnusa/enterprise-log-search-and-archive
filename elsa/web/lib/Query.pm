@@ -1102,7 +1102,7 @@ sub _parse_query {
 	}
 	
 	# Verify that we're still going to actually have query terms after the filtering has taken place	
-	my $query_term_count = $self->_count_terms();
+	my $query_term_count = $self->index_term_count();
 	
 	# Save this query_term_count for later use
 	$self->query_term_count($query_term_count);
@@ -1229,6 +1229,23 @@ sub _count_terms {
 	foreach my $boolean (qw(or and)){
 		$query_term_count += scalar keys %{ $self->terms->{any_field_terms}->{$boolean} };
 		$query_term_count += scalar keys %{ $self->terms->{any_field_terms_sql}->{$boolean} };
+	}
+	foreach my $boolean (qw(or and)){
+		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
+			foreach my $field (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
+				$query_term_count += scalar @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field} };
+			}
+		}
+	}
+	return $query_term_count;
+}
+
+sub index_term_count {
+	my $self = shift;
+	my $query_term_count = 0;
+		
+	foreach my $boolean (qw(or and)){
+		$query_term_count += scalar keys %{ $self->terms->{any_field_terms}->{$boolean} };
 	}
 	foreach my $boolean (qw(or and)){
 		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){

@@ -3537,6 +3537,9 @@ sub _unlimited_sphinx_query {
 		}
 		else {
 			foreach my $record ($batch_q->results->all_results){
+				if ($record->{timestamp} > $latest_time){
+					$latest_time = $record->{timestamp};
+				}
 				next unless $q->filter_stopwords($record);
 				
 				# Check for duplicates (this can happen because of the overlapping timestamp for start/end between batch runs)
@@ -3546,10 +3549,6 @@ sub _unlimited_sphinx_query {
 				$last_ids{ $record->{node} }->{ $record->{id} } = 1;
 				
 				push @batch_results, $record;
-				
-				if ($record->{timestamp} > $latest_time){
-					$latest_time = $record->{timestamp};
-				}
 				
 				$total++;
 				last if $total >= $overall_limit;
@@ -3572,6 +3571,14 @@ sub _unlimited_sphinx_query {
 		$q->results->add_results(\@batch_results);
 		$self->log->debug('received: ' . $total .' of ' . $initial_total . ' with overall limit ' . $overall_limit);
 		last if $total >= $initial_total;
+		last if $batch_q->results->records_returned < $Max_limit;
+		if ($q->timeout and (Time::HiRes::time() - $overall_start) > ($q->timeout/1000)){
+			my $e = 'Hit query timeout on peer ' . $q->peer_label;
+			$q->results->is_approximate(2);
+			$self->log->error($e);
+			$self->add_warning(502, $e, { timeout => $q->peer_label });
+			last;
+		}
 	}
 	
 	$q->results->close;
