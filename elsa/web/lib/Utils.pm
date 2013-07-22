@@ -826,7 +826,7 @@ sub _peer_query {
 				
 				# Mark approximate if our peer results were
 				if ($results_obj->is_approximate and not $q->results->is_approximate){
-					$q->results->is_approximate(1);
+					$q->results->is_approximate($results_obj->is_approximate);
 				}
 				
 				if ($raw_results->{warnings} and ref($raw_results->{warnings}) eq 'ARRAY'){

@@ -311,9 +311,9 @@ sub query {
 	
 	Log::Log4perl::MDC->put('qid', $q->qid);
 	
-	foreach my $warning (@{ $q->warnings }){
-		push @{ $self->warnings }, $warning;
-	}
+#	foreach my $warning (@{ $q->warnings }){
+#		push @{ $self->warnings }, $warning;
+#	}
 	
 	$q = $self->_peer_query($q);
 	
@@ -321,6 +321,9 @@ sub query {
 	if ($q->has_connectors){
 		$self->send_to($q);
 	}
+	
+	$q->dedupe_warnings();
+	$self->log->debug('deduped warnings: ' . Dumper($q->warnings));
 	
 	return $q;
 }

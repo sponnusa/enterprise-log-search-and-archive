@@ -716,8 +716,9 @@ update_node_mysql(){
 	
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields (field, field_type, pattern_type) VALUES ("class", "int", "number")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields (field, field_type, pattern_type) VALUES ("program", "int", "number")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'UPDATE fields_classes_map SET field_order=2 WHERE field_id=(SELECT id FROM fields WHERE field="program") AND class_id=(SELECT id FROM classes WHERE class="ANY")'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ANY"), (SELECT id FROM fields WHERE field="program"), 2)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ANY"), (SELECT id FROM fields WHERE field="class"), 3)'
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ANY"), (SELECT id FROM fields WHERE field="program"), 4)'
 	
 	return $?
 }

@@ -91,12 +91,14 @@ sub merge {
 		$self->add_result($_, 1);
 	}
 	
+	# Sort
+	my $asc = sub { $a->{_orderby} <=> $b->{_orderby} };
+	my $desc = sub { $b->{_orderby} <=> $a->{_orderby} };
+	my $sort_fn = $q->orderby_dir eq 'DESC' ? $desc : $asc;
+	my @final = sort $sort_fn  @{ $self->results };
+	
 	# Trim to the given query limit, if query object is provided
 	if ($q and $q->limit){
-		my $gt = sub { $a->{_orderby} <=> $b->{_orderby} };
-		my $lt = sub { $b->{_orderby} <=> $a->{_orderby} };
-		my $sort_fn = $q->orderby_dir eq 'DESC' ? $gt : $lt;
-		my @final = sort $sort_fn  @{ $self->results };
 		if (@final <= $q->limit){
 			$self->results([ @final ]);   
 		}
@@ -104,10 +106,13 @@ sub merge {
 			$self->results([ @final[0..($q->limit - 1)] ]);
 		}
 	}
+	else {
+		$self->results([ @final ]);
+	}
 	
 	# Mark if approximate
-	if ($results_obj->is_approximate){
-		$self->is_approximate(1);
+	if ($results_obj->is_approximate > $self->is_approximate){
+		$self->is_approximate($results_obj->is_approximate);
 	}
 }
 
@@ -286,10 +291,11 @@ sub merge {
 		}
 		$results{$groupby} = [ @tmp ];
 	}
+	$self->results({ %results });
 	
 	# Mark if approximate
-	if ($results_obj->is_approximate){
-		$self->is_approximate(1);
+	if ($results_obj->is_approximate > $self->is_approximate){
+		$self->is_approximate($results_obj->is_approximate);
 	}
 }
 

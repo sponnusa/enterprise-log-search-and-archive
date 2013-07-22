@@ -687,7 +687,7 @@ sub normalize_quoted_value {
 	my $value = shift;
 	
 	# Quoted integers don't work for some reason
-	if ($value =~ /^\d+$/){
+	if ($value =~ /^[a-zA-Z0-9]+$/){
 		return $value;
 	}
 	else {

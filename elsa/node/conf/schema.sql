@@ -193,6 +193,8 @@ CREATE TABLE fields_classes_map (
 	FOREIGN KEY (class_id) REFERENCES classes (id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES (0, (SELECT id FROM fields WHERE field="host"), 1);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES (0, (SELECT id FROM fields WHERE field="program"), 2);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES (0, (SELECT id FROM fields WHERE field="class"), 3);
 
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FIREWALL_ACCESS_DENY"), (SELECT id FROM fields WHERE field="proto"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FIREWALL_ACCESS_DENY"), (SELECT id FROM fields WHERE field="o_int"), 11);
