@@ -323,7 +323,6 @@ sub query {
 	}
 	
 	$q->dedupe_warnings();
-	$self->log->debug('deduped warnings: ' . Dumper($q->warnings));
 	
 	return $q;
 }
