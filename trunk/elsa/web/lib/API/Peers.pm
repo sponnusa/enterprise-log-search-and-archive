@@ -213,7 +213,7 @@ sub local_query {
 		$q->stats->{import_range_search} = $taken;
 	}
 	
-	if ($q->has_import_search_terms and not $q->query_term_count){
+	if ($q->has_import_search_terms and not $q->index_term_count){
 		# Request id's based solely on the import
 		$self->_get_ids($q);
 	}
@@ -226,7 +226,7 @@ sub local_query {
 	elsif ($q->archive){
 		$self->_archive_query($q);
 	}
-	elsif (not $q->query_term_count){
+	elsif (not $q->index_term_count){
 		# Skip Sphinx, execute a raw SQL search
 		$self->log->info('No query terms, executing against raw SQL');
 		$q->add_warning(200, 'No query terms, query did not use an index', { indexed => 0 }); 
