@@ -88,8 +88,9 @@ sub call {
 			}
 		}
 		elsif (ref($ret->{ret}) and blessed($ret->{ret}) and $ret->{ret}->can('add_warning')){
-			$ret->warnings($self->api->warnings);
+			$ret->{ret}->warnings($self->api->warnings);
 		}
+		
 		$res->body($ret->{ret});
 		if ($ret->{filename}){
 			$res->header('Content-disposition', 'attachment; filename=' . $ret->{filename});
@@ -101,9 +102,9 @@ sub call {
 				$ret->{warnings} = $self->api->warnings;
 			}
 		}
-		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->api->has_warnings){
+		elsif (ref($ret) and blessed($ret) and $ret->can('warnings') and $self->api->has_warnings){
 			foreach my $warning ($self->api->all_warnings){
-				push @{ $self->api->warnings }, $warning;
+				push @{ $ret->warnings }, $warning;
 			}
 		}
 		$res->body([encode_utf8($self->api->json->encode($ret))]);

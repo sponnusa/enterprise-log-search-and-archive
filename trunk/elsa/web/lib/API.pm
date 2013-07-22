@@ -2061,6 +2061,629 @@ sub _sphinx_query {
 			$distributed_threshold = $self->conf->get('distributed_threshold');
 		}
 		
+
+		foreach my $index (@{ $node_info->{indexes}->{indexes} }){
+			if (
+				($q->start >= $index->{start_int} and $q->start <= $index->{end_int})
+				or ($q->end >= $index->{start_int} and $q->end <= $index->{end_int})
+				or ($q->start <= $index->{start_int} and $q->end >= $index->{end_int})
+				or ($index->{start_int} <= $q->start and $index->{end_int} >= $q->end)
+			){
+				# Verify that any specific fields we are searching are present in the schema
+				my $nonexistent = $self->_verify_fields_exist($q, $index);
+				if ($nonexistent){
+					#$self->add_warning(501, 'Non-existent field ' . $nonexistent . ' for index ' . $index->{name});
+					$self->log->warn('Non-existent field ' . $nonexistent . ' for index ' . $index->{name});
+					$heterogeneous_schemas{$nonexistent} ||= [];
+					push @{ $heterogeneous_schemas{$nonexistent} }, $index->{name};
+				}
+				else {
+					push @index_arr, $index->{name};
+					$total_rows_searched += $index->{records};
+				}
+			}
+		}
+		# If we are searching more than distributed_threshold rows, then we will query all data in parallel.
+		if (not scalar keys %heterogeneous_schemas and $total_rows_searched > $distributed_threshold){
+			$self->log->trace('using distributed_local index because total_rows_searched: ' . $total_rows_searched .
+				' and distributed_threshold: ' . $distributed_threshold);
+			@index_arr = ('distributed_local');
+		}
+			
+		my $indexes = join(', ', @index_arr);
+		unless ($indexes){
+			if (scalar keys %heterogeneous_schemas){
+				my $count = 0;
+				foreach my $field (keys %heterogeneous_schemas){
+					$count += scalar @{ $heterogeneous_schemas{$field} };
+				}
+				$self->add_warning(501, $q->peer_label . ' had ' . $count . ' indexes had a non-existent fields: ' . join(', ', keys %heterogeneous_schemas));
+			}
+			$self->log->debug('no indexes for node ' . $node);
+			
+			$self->_archive_query($q);
+			next;
+		}
+		
+		eval {
+			my @sphinx_queries;
+			my @sphinx_values;
+			my %uniq_match_strs;
+			my $start = time();
+			foreach my $query (@{ $queries }){
+				my $search_query = 'SELECT *, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where};
+				if (exists $query->{groupby}){
+					$search_query = 'SELECT *, COUNT(*) AS _count, ' . $query->{groupby} . ' AS _groupby, ' . $query->{select} . ' FROM ' . $indexes . ' WHERE ' . $query->{where} .
+						' GROUP BY ' . $query->{groupby};
+				}
+				if ($q->orderby){
+					$search_query .= ' ORDER BY _orderby ' . $q->orderby_dir;
+				}
+				elsif (exists $query->{groupby}){
+					$search_query .= ' ORDER BY _count DESC';
+				}
+				$search_query .= ' LIMIT ?,? OPTION ranker=none';
+				if ($q->cutoff){
+					$search_query .= ',cutoff=' . $q->cutoff;
+				}
+				if ($q->max_query_time){
+					# max_query_time is set per-index, so divide
+					my $num_indexes = scalar @index_arr;
+					if ($num_indexes == 1){ # distributed_local
+						$num_indexes = scalar @{ $node_info->{indexes}->{indexes} };
+					}
+					if ($num_indexes){
+						my $max_query_time = int($q->max_query_time / $num_indexes);
+						$self->log->debug('q->max_query_time: ' . $q->max_query_time . ', num_indexes: ' . $num_indexes . ', max_query_time: ' . $max_query_time);
+						$search_query .= ',max_query_time=' . $max_query_time;
+					}
+				}
+				push @sphinx_values, @{ $query->{values } }, $q->offset, $q->limit;
+				
+				if ($q->limit > 1000){
+					$search_query .= ',max_matches=' . $q->limit;
+				}
+				$self->log->debug('sphinx_query: ' . $search_query . ', values: ' . 
+					Dumper($query->{values}));
+				push @sphinx_queries, $search_query;
+				$uniq_match_strs{ $query->{match_str} } ||= [];
+				push @{ $uniq_match_strs{ $query->{match_str} } }, { query => $search_query, values => [ @{ $query->{values } }, $q->offset, $q->limit ] };
+			}
+			
+			# See if we can run these in a batch (if all have the same match string)
+			
+			
+			#$self->log->trace('sphinx query: ' . join(';', @sphinx_queries));
+			#$self->log->trace('values: ' . join(',', @sphinx_values));
+			$cv->begin;
+			# There is a bug with Sphinx 2.1.1-beta (perhaps fixed in recent versions) with wrong results in batched queries due to common subtree optimization.
+			# For now, we will just run the queries separately.
+			foreach my $match_str (sort keys %uniq_match_strs){
+				@sphinx_queries = map { $_->{query} } @{ $uniq_match_strs{$match_str} };
+				@sphinx_values = map { @{ $_->{values} } } @{ $uniq_match_strs{$match_str} };
+				$self->log->trace('sphinx query: ' . join(';', @sphinx_queries));
+				$self->log->trace('values: ' . join(',', @sphinx_values));
+				$nodes->{$node}->{sphinx}->sphinx(join(';SHOW META;', @sphinx_queries) . ';SHOW META', 0, @sphinx_values, sub {
+			#for (my $i = 0; $i < @sphinx_queries; $i++){
+			#$nodes->{$node}->{sphinx}->sphinx($sphinx_queries[$i] . ';SHOW META', 0, @{ $individual_values[$i] }, sub {
+			##$nodes->{$node}->{sphinx}->sphinx(join(';SHOW META;', @sphinx_queries) . ';SHOW META', 0, @sphinx_values, sub {
+					my $sphinx_query_time = (time() - $start);
+					$self->log->debug('Sphinx query for node ' . $node . ' finished in ' . $sphinx_query_time);
+					$stats{sphinx_query} += $sphinx_query_time;
+					$start = time();
+					my ($dbh, $result, $rv) = @_;
+					if (not $rv){
+						my $e = 'node ' . $node . ' got error ' .  Dumper($result);
+						$self->log->error($e);
+						$self->add_warning(500, $e, { sphinx => $q->peer_label });
+						$cv->end;
+						return;
+					}
+					my $rows = $result->{rows};
+					$ret->{$node}->{sphinx_rows} ||= [];
+					push @{ $ret->{$node}->{sphinx_rows} }, @$rows;
+					$self->log->trace('node ' . $node . ' got sphinx result: ' . Dumper($result));
+					if ($ret->{$node}->{meta}){
+						foreach my $key (keys %{ $result->{meta} }){
+							$ret->{$node}->{meta}->{$key} += $result->{meta}->{$key};
+						}
+					}
+					else {
+						$ret->{$node}->{meta} = $result->{meta};
+					}
+					
+					#$self->log->trace('$ret->{$node}->{meta}: ' . Dumper($ret->{$node}->{meta}));
+					if ($result->{meta}->{warning}){
+						if ($result->{meta}->{warning} =~ /fullscan requires extern docinfo/
+							or $result->{meta}->{warning} =~ /index \w+: .{1023}/ ){ #warnings can be cut off
+							unless ($self->has_warnings){
+								$self->add_warning(400, 'Incomplete results: Query did not contain any search keywords, just filters. See documentation on temporary indexes for details.', { sphinx => $q->peer_label });
+							}
+						}
+						elsif ($result->{meta}->{warning} =~ /query time exceeded max_query_time/){
+							$q->results->is_approximate(1);
+							$self->log->warn('Results approximated due to ' . $result->{meta}->{warning});
+							if (not $result->{meta}->{total_found}){
+								$self->add_warning(504, 'Search timed out before any results were found, re-run with timeout:0', { sphinx => $q->peer_label });
+							}
+						}
+						elsif ($result->{meta}->{warning} =~ /fetchrow_hashref failed: /){
+							$self->log->debug('warning: ' . $result->{meta}->{warning});
+							# Check to see if this was a class-only search, which could mean a backwards-compatibility issue
+							my $non_indexed_fields = 0;
+							foreach my $boolean (qw(and or)){
+								foreach my $term (keys %{ $q->terms->{any_field_terms}->{$boolean} }){
+									if ($term =~ /\(\@class (\d+)\)/){
+										$self->add_warning(501, 'Not all indexes have indexed class as a field, re-run search with archive:1', { term => $self->node_info->{classes_by_id}->{$1} });
+										$non_indexed_fields = 1;
+									}
+									elsif ($term =~ /\(\@program (\d+)\)/){
+										$self->add_warning(501, 'Not all indexes have indexed program as a field, re-run search with archive:1', { term => $q->program_translations->{$1} });
+										$non_indexed_fields = 1;
+									}
+								}
+							}
+							if (not $non_indexed_fields and scalar @$rows){
+								$q->results->is_approximate(1);
+								$self->log->warn('Results approximated due to ' . $result->{meta}->{warning});
+								if (not $result->{meta}->{total_found}){
+									$self->add_warning(504, 'Search timed out before any results were found, re-run with timeout:0', { sphinx => $q->peer_label });
+								}
+							}
+							elsif (not $non_indexed_fields){
+								$self->add_warning(500, 'Internal search engine error', { sphinx => $q->peer_label });
+							}
+						}
+						else {
+							$self->add_warning(500, $result->{meta}->{warning}, { sphinx => $q->peer_label });
+						}
+					}
+					
+					# Find what tables we need to query to resolve rows
+					my %tables;
+					my %orderby_map; #orderby_map preserves the _orderby field between Sphinx results and MySQL results
+					ROW_LOOP: foreach my $row (@$rows){
+						if ($q->orderby){
+							$orderby_map{ $row->{id} } = $row->{_orderby};
+						}
+						foreach my $table_hash (@{ $self->node_info->{nodes}->{$node}->{tables}->{tables} }){
+							next unless $table_hash->{table_type} eq 'index' or $table_hash->{table_type} eq 'import';
+							if ($table_hash->{min_id} <= $row->{id} and $row->{id} <= $table_hash->{max_id}){
+								$tables{ $table_hash->{table_name} } ||= [];
+								push @{ $tables{ $table_hash->{table_name} } }, $row->{id};
+								next ROW_LOOP;
+							}
+						}
+					}
+					$self->log->debug('%orderby_map  ' . Dumper(\%orderby_map));
+					
+					if (scalar keys %tables){				
+						# Go get the actual rows from the dbh
+						my @table_queries;
+						my @table_query_values;
+						my @import_queries;
+						my @import_query_values;
+						foreach my $table (sort keys %tables){
+							my $placeholders = join(',', map { '?' } @{ $tables{$table} });
+							
+							if ($table =~ /import/){
+								push @import_query_values, @{ $tables{$table} };
+							}
+	
+							my $table_query = sprintf("SELECT %1\$s.id,\n" .
+								#"DATE_FORMAT(FROM_UNIXTIME(timestamp), \"%%Y/%%m/%%d %%H:%%i:%%s\") AS timestamp,\n" .
+								"timestamp,\n" .
+								#"imports.name AS import_name, imports.description AS import_description, imports.datatype AS import_type, imports.imported AS import_date,\n" .
+								"INET_NTOA(host_id) AS host, program, class_id, class, msg,\n" .
+								"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+								"FROM %1\$s\n" .
+								"LEFT JOIN %2\$s.programs ON %1\$s.program_id=programs.id\n" .
+								"LEFT JOIN %2\$s.classes ON %1\$s.class_id=classes.id\n" .
+								#"LEFT JOIN %2\$s.imports ON %1\$s.host_id=imports.id\n" .
+								'WHERE %1$s.id IN (' . $placeholders . ')',
+								$table, $nodes->{$node}->{db});
+							
+							push @table_queries, $table_query;
+							push @table_query_values, @{ $tables{$table} };
+						}
+						
+						my %import_info;
+						if (@import_query_values){
+							my $import_info_query = 'SELECT id AS import_id, name AS import_name, description AS import_description, ' .
+								'datatype AS import_type, imported AS import_date, first_id, last_id FROM ' . $nodes->{$node}->{db} 
+								. '.imports WHERE ';
+							my @import_info_query_clauses;
+							foreach (@import_query_values){
+								push @import_info_query_clauses, '? BETWEEN first_id AND last_id';
+							}
+							$import_info_query .= join(' OR ', @import_info_query_clauses);
+							$cv->begin;
+							$nodes->{$node}->{dbh}->query($import_info_query, @import_query_values,
+								sub { 
+									my ($dbh, $rows, $rv) = @_;
+									if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
+										my $errstr = 'node ' . $node . ' got error ' . $rows;
+										$self->log->error($errstr);
+										$self->add_warning(502, $errstr, { mysql => $q->peer_label });
+										$cv->end;
+										return;
+									}
+									elsif (not scalar @$rows){
+										$self->log->error('Did not get import info rows though we had import tables: ' 
+											. Dumper(\%tables)); 
+									}
+									#$self->log->trace('node '. $node . ' got import info db rows: ' . (scalar @$rows));
+									
+									# Map each id to the right import info
+									foreach my $table (sort keys %tables){
+										foreach my $id (@{ $tables{$table} }){
+											foreach my $row (@$rows){
+												if ($row->{first_id} <= $id and $id <= $row->{last_id}){
+													$import_info{$id} = $row;
+													last;
+												}
+											}
+										}
+									}
+									$cv->end;
+							});
+							#$self->log->debug('import_info: ' . Dumper(\%import_info));
+						}
+						
+						my $table_query = join(';', @table_queries);
+						$self->log->trace('table query for node ' . $node . ': ' . $table_query 
+							. ', placeholders: ' . join(',', @table_query_values));
+						$cv->begin;
+						$nodes->{$node}->{dbh}->multi_query($table_query, @table_query_values,
+							sub { 
+								my ($dbh, $rows, $rv) = @_;
+								if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
+									my $errstr = 'node ' . $node . ' got error ' . $rows;
+									$self->log->error($errstr);
+									$self->add_warning(502, $errstr, { sphinx => $q->peer_label });
+									$cv->end;
+									return;
+								}
+								elsif (not scalar @$rows){
+									$self->log->error('Did not get rows though we had Sphinx results! tables: ' 
+										. Dumper(\%tables)); 
+								}
+								$self->log->trace('node '. $node . ' got db rows: ' . (scalar @$rows));
+								
+								$self->log->debug('in fork, %orderby_map  ' . Dumper(\%orderby_map));
+								foreach my $row (@$rows){
+									$ret->{$node}->{results} ||= {};
+									$row->{node} = $q->peer_label ? $q->peer_label : $node;
+									$row->{node_id} = unpack('N*', inet_aton($node));
+									if ($q->orderby){
+										$row->{_orderby} = $orderby_map{ $row->{id} };
+									}
+									else {
+										$row->{_orderby} = $row->{timestamp};
+									}
+									# Copy import info into the row
+									if (exists $import_info{ $row->{id} }){
+										foreach my $import_col (@{ $Fields::Import_fields }){
+											if ($import_info{ $row->{id} }->{$import_col}){
+												$row->{$import_col} = $import_info{ $row->{id} }->{$import_col};
+											}
+										}
+									}
+									$ret->{$node}->{results}->{ $row->{id} } = $row;
+								}
+								$stats{mysql_query} += (time() - $start);
+								$cv->end;
+						});
+						$cv->end; #end sphinx query
+					}
+					elsif (@$rows) {
+						$self->add_warning(503, 'Data not yet indexed, try again shortly.', { mysql => $q->peer_label });
+						$self->log->error('No tables found for result. tables: ' . Dumper($self->node_info->{nodes}->{$node}->{tables}));
+						$cv->end; #end sphinx query
+					}
+					else {
+						# No results
+						$cv->end; #end sphinx query
+					}
+				}); #End async Sphinx and MySQL queries for this match_str
+			};
+			if ($@){
+				$ret->{$node}->{error} = 'sphinx query error: ' . $@;
+				$self->log->error('sphinx query error: ' . $@);
+				$cv->end;
+			}
+		}# End per-match_str loop
+	}# End per-node loop
+	$cv->end; # bookend initial begin
+	$cv->recv; # block until all of the above completes
+	
+	my ($total_records, $records_returned) = (0,0);
+	#$self->log->debug('conversions: ' . Dumper($self->node_info->{field_conversions}));
+	
+	if ($q->has_groupby){
+#		# Swap the host for the import_groupby if necessary
+#		if ($q->import_groupby){
+#			my @groupbys = $q->all_groupbys;
+#			for (my $i = 0; $i < @groupbys; $i++){
+#				if ($groupbys[$i] eq 'host'){
+#					$q->groupby->[$i] = $q->import_groupby;
+#				}
+#			}
+#		}
+		my %results;
+		foreach my $groupby ($q->all_groupbys){
+			my %agg;
+			foreach my $node (sort keys %$ret){
+				# One-off for grouping by node
+				if ($groupby eq 'node'){
+					my $node_label = $q->peer_label ? $q->peer_label : $node;
+					$agg{$node_label} = int($ret->{$node}->{meta}->{total_found});
+					next;
+				}
+				foreach my $sphinx_row (@{ $ret->{$node}->{sphinx_rows} }){
+					# Be backwards compatible with older sphinxes
+					if (exists $sphinx_row->{'@groupby'}){
+						$sphinx_row->{_groupby} = delete $sphinx_row->{'@groupby'};
+						$sphinx_row->{_count} = delete $sphinx_row->{'@count'};
+					}
+					# Resolve the _groupby col with the mysql col
+					unless (exists $ret->{$node}->{results}->{ $sphinx_row->{id} }){
+						$self->log->warn('mysql row for sphinx id ' . $sphinx_row->{id} . ' did not exist');
+						next;
+					}
+					my $key;
+					if (exists $Fields::Time_values->{ $groupby }){
+						# We will resolve later
+						$key = $sphinx_row->{'_groupby'};
+					}
+					elsif ($groupby eq 'program'){
+						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{program};
+					}
+					elsif ($groupby eq 'class'){
+						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{class};
+					}
+					elsif (exists $Fields::Field_to_order->{ $groupby }){
+						# Resolve normally
+						$key = $self->resolve_value($sphinx_row->{class_id}, 
+							$sphinx_row->{'_groupby'}, $groupby);
+					}
+#					elsif ($q->import_groupby){
+#						# Resolve with the mysql row
+#						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{ $q->import_groupby };
+#					}
+					else {
+						# Resolve with the mysql row
+						my $field_order = $self->get_field($groupby)->{ $sphinx_row->{class_id} }->{field_order};
+						#$self->log->trace('resolving with row ' . Dumper($ret->{$node}->{results}->{ $sphinx_row->{id} }));
+						$key = $ret->{$node}->{results}->{ $sphinx_row->{id} }->{ $Fields::Field_order_to_field->{$field_order} };
+						$key = $self->resolve_value($sphinx_row->{class_id}, $key, $Fields::Field_order_to_field->{$field_order});
+						$self->log->trace('field_order: ' . $field_order . ' key ' . $key);
+					}
+					$agg{ $key } += $sphinx_row->{'_count'};	
+				}
+			}
+			if (exists $Fields::Time_values->{ $groupby }){
+				# Sort these in ascending label order
+				my @tmp;
+				my $increment = $Fields::Time_values->{ $groupby };
+				my $use_gmt = $increment >= 86400 ? 1 : 0;
+				#my $gmt_offset = timegm(localtime)-timelocal(localtime); 
+				foreach my $key (sort { $a <=> $b } keys %agg){
+					$total_records += $agg{$key};
+					#my $unixtime = timelocal(gmtime(($key * $increment) - $increment)); # convert from GMT 
+					my $unixtime = $key * $increment;
+					#my $unixtime = ($key * $increment) - $increment; # MySQL rounds up during cast to int, we want rounded down
+					#if ($increment > $gmt_offset){
+					#	$unixtime -= $gmt_offset; # remove GMT offset
+					#}
+					
+					my $client_localtime = $unixtime - $q->timezone_diff($unixtime);					
+					$self->log->trace('key: ' . $key . ', tv: ' . $increment . 
+						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($client_localtime)));
+					push @tmp, { 
+						intval => $unixtime, 
+						'_groupby' => epoch2iso($client_localtime, $use_gmt), #$self->resolve_value(0, $key, $groupby), 
+						'_count' => $agg{$key}
+					};
+				}
+				
+				# Fill in zeroes for missing data so the graph looks right
+				my @zero_filled;
+				
+				$self->log->trace('using increment ' . $increment . ' for time value ' . $groupby);
+				OUTER: for (my $i = 0; $i < @tmp; $i++){
+					push @zero_filled, $tmp[$i];
+					if (exists $tmp[$i+1]){
+						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
+							#$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
+							push @zero_filled, { 
+								'_groupby' => epoch2iso($j, $use_gmt),
+								intval => $j,
+								'_count' => 0
+							};
+							last OUTER if scalar @zero_filled >= $q->limit;
+						}
+					}
+				}
+				$results{$groupby} = [ @zero_filled ];
+			}
+			else { 
+				# Sort these in descending value order
+				my @tmp;
+				foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
+					$total_records += $agg{$key};
+					push @tmp, { intval => $agg{$key}, '_groupby' => $key, '_count' => $agg{$key} };
+					last if scalar @tmp >= $q->limit;
+				}
+				$results{$groupby} = [ @tmp ];
+				$self->log->debug('@tmp: ' . Dumper(\@tmp));
+			}
+			$records_returned += scalar keys %agg;
+		}
+		if ($q->results->records_returned or $q->results->is_approximate){
+			$q->results->add_results(\%results);
+		}
+		else {
+			$q->results(Results::Groupby->new(conf => $self->conf, results => \%results, total_records => $total_records));
+		}
+	}
+	else {
+		my @tmp;
+		foreach my $node (keys %$ret){
+			$total_records += $ret->{$node}->{meta}->{total_found};
+			foreach my $id (sort { $a <=> $b } keys %{ $ret->{$node}->{results} }){
+				my $row = $ret->{$node}->{results}->{$id};
+				$row->{datasource} = 'Sphinx';
+				$row->{_fields} = [
+						{ field => 'host', value => $row->{host}, class => 'any' },
+						{ field => 'program', value => $row->{program}, class => 'any' },
+						{ field => 'class', value => $row->{class}, class => 'any' },
+					];
+				my $is_import = 0;
+				foreach my $import_col (@{ $Fields::Import_fields }){
+					if (exists $row->{$import_col}){
+						$is_import++;
+						push @{ $row->{_fields} }, { field => $import_col, value => $row->{$import_col}, class => 'any' };
+					}
+				}
+				if ($is_import){
+#					# Remove host
+#					shift(@{ $row->{_fields} });
+					
+					# Add node
+					push @{ $row->{_fields} }, { field => 'node', value => $row->{node}, class => 'any' };
+				}
+				# Resolve column names for fields
+				foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
+					my $value = delete $row->{$col};
+					# Swap the generic name with the specific field name for this class
+					my $field = $self->node_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
+					if (defined $value and $field){
+						# See if we need to apply a conversion
+						$value = $self->resolve_value($row->{class_id}, $value, $col);
+						push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $self->node_info->{classes_by_id}->{ $row->{class_id} } };
+					}
+				}
+				push @tmp, $row;
+			}
+		}
+		
+		# Now that we've got our results, order by our given order by
+		if ($q->orderby_dir eq 'DESC'){
+			foreach my $row (sort { $b->{_orderby} <=> $a->{_orderby} } @tmp){
+				$q->results->add_result($row);
+				last if not $q->analytics and $q->results->records_returned >= $q->limit;
+			}
+		}
+		else {
+			foreach my $row (sort { $a->{_orderby} <=> $b->{_orderby} } @tmp){
+				$q->results->add_result($row);
+				last if not $q->analytics and $q->results->records_returned >= $q->limit;
+			}
+		}
+		
+#		# Trim to just the limit asked for unless we're doing analytics
+#		foreach my $row (sort { $a->{timestamp} <=> $b->{timestamp} } @tmp){
+#			$q->results->add_result($row);
+#			last if not $q->analytics and $q->results->records_returned >= $q->limit;
+#		}
+		$q->results->total_records($total_records);
+	}
+	
+	$self->log->debug('completed query in ' . (time() - $overall_start) . ' with ' . $q->results->records_returned . ' rows with approximate: ' . $q->results->is_approximate);
+	
+	my $total_docs = 0;
+	foreach my $node (keys %$ret){
+		foreach my $key (keys %{ $ret->{$node}->{meta} }){
+			if ($key =~ /^docs\[/){
+				$total_docs += $ret->{$node}->{meta}->{$key};
+			}
+		}
+	}
+	
+	my %keywords;
+	foreach my $node (keys %$ret){
+		foreach my $key (keys %{ $ret->{$node}->{meta} }){
+			if ($key =~ /^keyword\[(\d+)\]/){
+				$keywords{$1} = $ret->{$node}->{meta}->{$key};
+			}
+		}
+	}
+	my %keyword_stats;
+	foreach my $node (keys %$ret){
+		foreach my $key (keys %{ $ret->{$node}->{meta} }){
+			$key =~ /^([\w\_\.\@]+)\[(\d+)\]/;
+			next unless defined $1 and defined $2;
+			$keyword_stats{ $keywords{$2} } ||= {};
+			$keyword_stats{ $keywords{$2} }->{$1} += $ret->{$node}->{meta}->{$key} unless $1 eq 'keyword';
+		}
+	}
+	
+	foreach my $keyword_id (keys %keyword_stats){
+		next unless $total_docs;
+		$keyword_stats{$keyword_id}->{percentage} = $keyword_stats{$keyword_id}->{docs} / $total_docs * 100;
+	}  
+	
+	$q->stats({
+		%{ $q->stats },
+		keywords => \%keyword_stats, 
+		total_docs => $total_docs, 
+		total_time => (time() - $overall_start),
+		docs_filtered_per_sec => ($total_docs / (time() - $overall_start)),
+		%stats
+	});
+	
+	return 1;
+}
+
+sub old_sphinx_query {
+	my ($self, $q) = @_;
+	
+	$self->log->debug('peer_label: ' . $q->peer_label);
+	my $overall_start = time();
+	my %stats;
+	my $start_time = time();
+	my $queries = $self->_build_query($q);
+	$stats{build_query} = (time() - $start_time);
+	
+	$start_time = time();
+	my $nodes = $self->_get_sphinx_nodes($q);
+	$stats{connect_to_nodes} = (time() - $start_time);
+	
+	my $ret = {};
+	
+	foreach my $node (keys %{ $nodes }){
+		if (exists $nodes->{$node}->{error}){
+			my $err_str = 'not using node ' . $node . ' because ' . $nodes->{$node}->{error};
+			$self->add_warning(502, $err_str, { sphinx => $q->peer_label });
+			$self->log->warn($err_str);
+			delete $nodes->{$node};
+		}
+	}
+	
+	unless (scalar keys %$nodes){
+		throw(502, 'No nodes available', { mysql => 1 });
+	}
+	
+	# Get indexes from all nodes in parallel
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub {
+		$cv->send;
+	});
+	
+	foreach my $node (keys %$nodes){
+		$ret->{$node} = {};
+		my $node_info = $self->node_info->{nodes}->{$node};
+		# Prune indexes
+		my @index_arr;
+		
+		my $total_rows_searched = 0;
+		my %heterogeneous_schemas;
+		my $distributed_threshold = 1_000_000_000;
+		if ($self->conf->get('distributed_threshold')){
+			$distributed_threshold = $self->conf->get('distributed_threshold');
+		}
+		
 #		if ($q->start and $q->end){
 			foreach my $index (@{ $node_info->{indexes}->{indexes} }){
 				if (
@@ -2890,7 +3513,7 @@ sub _unlimited_sphinx_query {
 		
 		# Turn off verbose logging for the search
 		my $old_log_level = $self->log->level;
-		$self->log->level($ERROR) unless $self->conf->get('debug_all');
+		#$self->log->level($ERROR) unless $self->conf->get('debug_all');
 		
 		# Execute search
 		$self->_sphinx_query($batch_q);
@@ -3074,17 +3697,20 @@ sub _build_sphinx_match_str {
 		}
 		if (scalar keys %not){
 			#$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
-			push @{ $class_match_strs{not} }, '!(' . join('|', sort keys %not) . ')';
+			push @{ $class_match_strs{not} }, '(' . join('|', sort keys %not) . ')';
 		}
 		#push @class_match_strs, $class_match_str if $class_match_str;
 	}
 	
 	#if (@class_match_strs){
-	foreach my $boolean (keys %class_match_strs){
+	foreach my $boolean (qw(and or)){
 		if (scalar @{ $class_match_strs{$boolean} }){
 			$match_str .= ' (' . join('|', @{ $class_match_strs{$boolean} }) . ')';
 		}
-	}	
+	}
+	if (scalar @{ $class_match_strs{not} }){
+		$match_str .= ' !(' . join('|', @{ $class_match_strs{not} }) . ')';
+	}
 
 	$self->log->trace('match str: ' . $match_str);		
 	
@@ -3097,6 +3723,8 @@ sub _build_archive_match_str {
 	# Move field terms over
 	foreach my $boolean (qw(and or not)){
 		foreach my $term (keys %{ $q->terms->{any_field_terms}->{$boolean} }){
+			# Make sure they're not quoted (any other bad chars are already removed by the query parser, but enclosing quotes could remain).
+			$term =~ s/^"([^"]+)"$/$1/;
 			$q->terms->{any_field_terms_sql}->{$boolean}->{$term} = delete $q->terms->{any_field_terms}->{$boolean};
 		}
 	}
@@ -3139,6 +3767,7 @@ sub _build_archive_match_str {
 		# First, the ANDs
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
+				$value =~ s/^"([^"]+)"$/$1/;
 				$and{$field . ' LIKE "%' . $value . '%"'} = 1;
 			}
 		}
@@ -3146,6 +3775,7 @@ sub _build_archive_match_str {
 		# Then, the NOTs
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{not}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$field} }){
+				$value =~ s/^"([^"]+)"$/$1/;
 				$not{$field . ' LIKE "%' . $value . '%"'} = 1;
 			}
 		}
@@ -3153,6 +3783,7 @@ sub _build_archive_match_str {
 		# Then, the ORs
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{or}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$field} }){
+				$value =~ s/^"([^"]+)"$/$1/;
 				$or{$field . ' LIKE "%' . $value . '%"'} = 1;
 			}
 		}
@@ -3424,13 +4055,14 @@ sub _build_query {
 	
 	my $select = "$positive_qualifier AS positive_qualifier, $negative_qualifier AS negative_qualifier, $permissions_qualifier AS permissions_qualifier";
 	my $where;
+	my $match_str;
 	if ($q->archive or not $q->query_term_count){
-		my $match_str = $self->_build_archive_match_str($q);
+		$match_str = $self->_build_archive_match_str($q);
 		$match_str = '1=1' unless $match_str;
 		$where = $match_str . ' AND ' . $positive_qualifier . ' AND NOT ' . $negative_qualifier . ' AND ' . $permissions_qualifier;
 	}
 	else {
-		$where = 'MATCH(\'' . $self->_build_sphinx_match_str($q) .'\')';
+		$where = $match_str = 'MATCH(\'' . $self->_build_sphinx_match_str($q) .'\')';
 		$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0 AND permissions_qualifier=1';
 	}
 	
@@ -3452,6 +4084,7 @@ sub _build_query {
 				push @queries, {
 					select => $select,
 					where => $where,
+					match_str => $match_str,
 					values => [ @values ],
 				};
 				next;
@@ -3474,6 +4107,7 @@ sub _build_query {
 				push @queries, {
 					select => $ordered_select,
 					where => $where . ($class_id ? ' AND class_id=?' : ''),
+					match_str => $match_str,
 					values => [ @values, $class_id ? $class_id : () ],
 					groupby => $Fields::Field_order_to_attr->{ $field_infos->{$class_id}->{field_order} },
 					groupby_field => $field,
@@ -3487,19 +4121,25 @@ sub _build_query {
 		# Check if we have multiple classes for any string field matches
 		my %distinct_str_fields;
 		foreach my $class_id (keys %{ $q->terms->{field_terms}->{and} }){
-			my $needed_fields_string = join(',', sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} });
-			$distinct_str_fields{$needed_fields_string} ||= {};
-			$distinct_str_fields{$needed_fields_string}->{$class_id} = 1;
+			foreach my $field (keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
+				if (scalar @{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
+					my $needed_fields_string = join(',', sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} });
+					$distinct_str_fields{$needed_fields_string} ||= {};
+					$distinct_str_fields{$needed_fields_string}->{$class_id} = 1;
+					last;
+				}
+			}
+			
 #			foreach my $abstract_field (keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
 #				$distinct_str_fields{$abstract_field} ||= {};
 #				$distinct_str_fields{$abstract_field}->{$class_id} = 1;
 #			}
 		}
 		
-		if (scalar keys %distinct_str_fields > 1){
+		if (scalar keys %distinct_str_fields > 1 and not $q->archive and $q->query_term_count){
 			foreach my $class_id (@{ $clauses{classes}->{vals} }){
 				my $class_select = $select;
-				$where = 'MATCH(\'' . $self->_build_sphinx_match_str($q, $class_id) .'\')';
+				$where = $match_str = 'MATCH(\'' . $self->_build_sphinx_match_str($q, $class_id) .'\')';
 				$where .=  ' AND positive_qualifier=1 AND negative_qualifier=0 AND permissions_qualifier=1';
 				my $orderby;
 				if ($q->orderby){
@@ -3518,6 +4158,7 @@ sub _build_query {
 				push @queries, {
 					select => $class_select,
 					where => $where . ($class_id ? ' AND class_id=?' : ''),
+					match_str => $match_str,
 					values => [ @values, $class_id ],
 					orderby => $q->orderby ? $orderby : 'timestamp',
 					orderby_dir => $q->orderby_dir,
@@ -3539,6 +4180,7 @@ sub _build_query {
 				push @queries, {
 					select => $select . ', ' . $orderby . ' AS _orderby',
 					where => $where . ($class_id ? ' AND class_id=?' : ''),
+					match_str => $match_str,
 					values => [ @values, $class_id ? $class_id : () ],
 					orderby => $orderby,
 					orderby_dir => $q->orderby_dir,
@@ -3551,6 +4193,7 @@ sub _build_query {
 			push @queries, {
 				select => $select,
 				where => $where,
+				match_str => $match_str,
 				values => [ @values ]
 			};
 		}
@@ -4801,7 +5444,7 @@ sub _archive_query {
 		
 		if ($q->timeout and (Time::HiRes::time() - $q->start_time) > ($q->timeout/1000)){
 			my $e = 'Hit query timeout on peer ' . $q->peer_label;
-			$q->results->is_approximate(1);
+			$q->results->is_approximate(2);
 			$self->log->error($e);
 			$self->add_warning(502, $e, { timeout => $q->peer_label });
 			$cv->end;
