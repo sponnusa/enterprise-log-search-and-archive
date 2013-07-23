@@ -919,7 +919,7 @@ sub _check_auth_header {
 # Helper function to convert $@ into an Ouch exception if it isn't one already
 sub catch_any {
 	if ($@){
-		return ref($@) ? $@ : new Ouch(500, $@);
+		return blessed($@) ? $@ : new Ouch(500, $@);
 	}
 }
 

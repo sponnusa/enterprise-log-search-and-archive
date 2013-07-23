@@ -5679,7 +5679,7 @@ sub _external_query {
 			if ($plugin =~ /\:\:$datasource/i){
 				$self->log->debug('loading plugin ' . $plugin);
 				my %compiled_args;
-				eval {
+				my $e = try {
 					%compiled_args = (
 						conf => $self->conf,
 						log => $self->log, 
@@ -5689,13 +5689,19 @@ sub _external_query {
 					my $plugin_object = $plugin->new(%compiled_args);
 					$plugin_object->query($q);
 				};
-				if ($@){
+				if (catch_all($e)){
 					delete $compiled_args{user};
 					delete $compiled_args{cache};
 					delete $compiled_args{conf};
 					delete $compiled_args{log};
 					$self->log->error('Error creating plugin ' . $plugin . ' with args ' . Dumper(\%compiled_args) . ': ' . $@);
-					$self->add_warning(500, $@, { transform => $q->peer_label });
+					$self->log->debug('e: ' . Dumper($e));
+					if (blessed($e)){
+						push @{ $self->warnings }, $e;
+					}
+					else {
+						$self->add_warning(500, $e, { datasource => $datasource });
+					}
 				}
 				next DATASOURCES_LOOP;
 			}
