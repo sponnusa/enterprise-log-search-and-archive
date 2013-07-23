@@ -113,7 +113,16 @@ sub _query {
 	
 	$self->log->debug('query: ' . $query_string);
 	
-	my ($where, $placeholders) = @{ $self->parser->parse($query_string)->dbi };
+	my ($where, $placeholders);
+	my $e = try {
+		($where, $placeholders) = @{ $self->parser->parse($query_string)->dbi };
+	};
+	if (catch_all($e)){
+		my ($err) = split(/\n/, $e, 0);
+		$err =~ s/ at \/.+\.pm line \d+\.//;
+		throw(400, $err, { query_string => $query_string });
+	}
+	
 	#$where =~ s/(?:(?:AND|OR|NOT)\s*)?1=1//g; # clean up dummy values
 	$where =~ s/(?:AND|OR|NOT)\s*$//; # clean up any trailing booleans
 	$self->log->debug('where: ' . Dumper($where));

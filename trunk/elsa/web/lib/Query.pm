@@ -952,9 +952,9 @@ sub _parse_query {
 	$self->log->trace("terms: " . Dumper($self->terms));
 	$self->log->trace("classes: " . Dumper($self->classes));
 	
-	$self->log->debug('count_terms: ' . $self->_count_terms());
+	$self->log->debug('count_terms: ' . $self->index_term_count());
 	# Decide if any attrs need to be search terms
-	if (not $self->_count_terms()){
+	if (not $self->index_term_count()){
 		# Favor non-meta attrs as keywords, choose the longest term
 		my %candidates;
 		# If we have AND terms, just use those
@@ -997,9 +997,8 @@ sub _parse_query {
 				}
 			}
 		}
-		elsif (not exists $self->datasources->{sphinx} or $self->has_import_search_terms or
-			($self->terms->{field_terms_sql} and ($self->terms->{field_terms_sql}->{and} or $self->terms->{field_terms_sql}->{or}))){
-			# ok without positive value
+		elsif (not exists $self->datasources->{sphinx} or $self->has_import_search_terms or $self->_count_terms){
+			# ok
 		}
 		else {
 			$self->log->debug('terms: ' . Dumper($self->terms));
@@ -1106,18 +1105,6 @@ sub _parse_query {
 	
 	# Save this query_term_count for later use
 	$self->query_term_count($query_term_count);
-	
-	# Put the field_terms_sql back to field_terms now that we've done the count
-	foreach my $boolean (keys %{ $self->terms->{field_terms_sql} }){
-		foreach my $class_id (keys %{ $self->terms->{field_terms_sql}->{$boolean} }){
-			foreach my $raw_field (keys %{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id} }){
-				foreach my $term (@{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id}->{$raw_field} }){
-					push @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $term;
-				}
-			}
-		}
-	}
-	delete $self->terms->{field_terms_sql};
 	
 #	# we might have a class-only query
 #	foreach my $class (keys %{ $self->classes->{distinct} }){
@@ -1237,6 +1224,17 @@ sub _count_terms {
 			}
 		}
 	}
+	
+	if ($self->terms->{field_terms_sql}){
+		foreach my $boolean (qw(or and)){
+			next unless $self->terms->{field_terms_sql}->{$boolean};
+			foreach my $class_id (keys %{ $self->terms->{field_terms_sql}->{$boolean} }){
+				foreach my $field (keys %{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id} }){
+					$query_term_count += scalar @{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id}->{$field} };
+				}
+			}
+		}
+	}
 	return $query_term_count;
 }
 
@@ -1319,11 +1317,24 @@ sub filter_stopwords {
 
 sub has_stopword_terms {
 	my $self = shift;
-	return (scalar keys %{ $self->terms->{any_field_terms_sql}->{and} }) + (scalar keys %{ $self->terms->{any_field_terms_sql}->{not} });
+	my $terms_count = (scalar keys %{ $self->terms->{any_field_terms_sql}->{and} }) + (scalar keys %{ $self->terms->{any_field_terms_sql}->{not} });
+	if ($self->terms->{field_terms_sql}){
+		foreach my $boolean (keys %{ $self->terms->{field_terms_sql} }){
+			foreach my $class_id (keys %{ $self->terms->{field_terms_sql}->{$boolean} }){
+				foreach my $raw_field (keys %{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id} }){
+					foreach my $term (@{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id}->{$raw_field} }){
+						$terms_count++;
+					}
+				}
+			}
+		}
+	}
+	return $terms_count;
 }
 
 sub _parse_query_term {
 	my $self = shift;
+	return 1 unless $self->datasources->{sphinx}; # short-circuit here to prevent parsing logic extending into external datasources
 	my $terms = shift;
 	my $given_operator = shift;
 	
@@ -1489,7 +1500,8 @@ sub _parse_query_term {
 				delete $self->datasources->{sphinx}; # no longer using our normal datasource
 				$self->datasources->{ $term_hash->{value} } = 1;
 				$self->log->trace("Set datasources " . Dumper($self->datasources));
-				next;
+				# Stop parsing immediately as the rest will be done by the datasource itself
+				return 1;
 			}
 			elsif ($term_hash->{field} eq 'nobatch'){
 				$self->meta_params->{nobatch} = 1;
@@ -1552,10 +1564,10 @@ sub _parse_query_term {
 				#$term_hash->{value} =~ s/^\-$/\\\-/g;
 				#$term_hash->{value} =~ s/([^a-zA-Z0-9\.\_\-\@])\-([^a-zA-Z0-9\.\_\-\@]*)/$1\\\\\-$2/g;
 				# Sphinx can only handle numbers up to 15 places (though this is fixed in very recent versions)
-				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
-					throw(400, 'Integer search terms must be 15 or fewer digits, received ' 
-						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.', { term => $term_hash->{value} });
-				}
+#				if ($term_hash->{value} =~ /^[0-9]{15,}$/){
+#					throw(400, 'Integer search terms must be 15 or fewer digits, received ' 
+#						. $term_hash->{value} . ' which is ' .  length($term_hash->{value}) . ' digits.', { term => $term_hash->{value} });
+#				}
 				if($term_hash->{quote}){
 					$term_hash->{value} = $self->normalize_quoted_value($term_hash->{value});
 				}
@@ -1570,7 +1582,6 @@ sub _parse_query_term {
 			
 			$self->log->debug('term_hash value now: ' . $term_hash->{value});
 			
-						
 			my $boolean = 'or';
 				
 			# Reverse if necessary
@@ -1825,15 +1836,37 @@ sub convert_to_archive {
 			}
 		}
 	}
+	# Put the field_terms_sql back to field_terms now that we've done the count
+	if ($self->terms->{field_terms_sql}){
+		foreach my $boolean (keys %{ $self->terms->{field_terms_sql} }){
+			foreach my $class_id (keys %{ $self->terms->{field_terms_sql}->{$boolean} }){
+				foreach my $raw_field (keys %{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id} }){
+					foreach my $term (@{ $self->terms->{field_terms_sql}->{$boolean}->{$class_id}->{$raw_field} }){
+						push @{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$raw_field} }, $term;
+					}
+				}
+			}
+		}
+	}
+	delete $self->terms->{field_terms_sql};
 }
 
 sub dedupe_warnings {
 	my $self = shift;
 	my %uniq;
 	foreach my $warning ($self->all_warnings){
-		next if blessed($warning);
-		#my $key = $warning->code . $warning->message . $self->json->encode($warning->data);
-		my $key = $warning->{code} . $warning->{message} . $self->json->encode($warning->{data});
+		my $key;
+		if (blessed($warning)){
+			$key = $warning->code . $warning->message . $self->json->encode($warning->data);
+		}
+		elsif (ref($warning)){
+			$key = $warning->{code} . $warning->{message} . $self->json->encode($warning->{data});
+		}
+		else {
+			$self->log->warn('Improperly formatted warning received: ' . $warning);
+			$key = $warning;
+			$warning = { code => 500, message => $warning, data => {} };
+		}
 		$uniq{$key} ||= [];
 		push @{ $uniq{$key} }, $warning;
 	}

@@ -106,6 +106,9 @@ sub call {
 			foreach my $warning ($self->api->all_warnings){
 				push @{ $ret->warnings }, $warning;
 			}
+			if ($ret->can('dedupe_warnings')){
+				$ret->dedupe_warnings();
+			}
 		}
 		$res->body([encode_utf8($self->api->json->encode($ret))]);
 	}

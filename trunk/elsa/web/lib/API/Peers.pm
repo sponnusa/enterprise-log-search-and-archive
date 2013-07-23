@@ -262,6 +262,8 @@ sub local_query {
 #		$self->send_to($q);
 #	}
 
+	$q->dedupe_warnings();
+	
 	return $q;
 }
 
