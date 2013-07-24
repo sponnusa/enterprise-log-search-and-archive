@@ -80,6 +80,9 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("day", "int", "NONE
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("host_id", "int", "NONE");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("program_id", "int", "NONE");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("class_id", "int", "NONE");
+INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("host", "int", "IPv4", "IPv4");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("program", "int", "number");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("class", "int", "number");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("msg", "string", "NONE");
 
 INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("ip", "int", "PCRE-IPv4", "IPv4");
@@ -114,7 +117,6 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_sid", "string"
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_msg", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_classification", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("sig_priority", "int", "NUMBER");
-INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("host", "int", "IPv4", "IPv4");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("authmethod", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("device", "string", "QSTRING");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("service", "string", "QSTRING");
