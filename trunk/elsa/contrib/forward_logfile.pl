@@ -56,6 +56,34 @@ my $l4pconf = qq(
 Log::Log4perl::init( \$l4pconf ) or die("Unable to init logger\n");
 my $Log = Log::Log4perl::get_logger("ELSA") or die("Unable to init logger\n");
 
+my %Forwarders = (
+	'scp' => 'Forwarder::SSH',
+	'cp' => 'Forwarder::Copy',
+	'url' => 'Forwarder::URL',
+);
+if ($Config_json->get('forwarding/destinations')){
+	foreach my $forwarding_hash (@{ $Config_json->get('forwarding/destinations') }){
+		if ($forwarding_hash->{package}){
+			$Forwarders{ $forwarding_hash->{method} } = $forwarding_hash->{package};
+		}
+	}
+}
+foreach my $forwarder_method (keys %Forwarders){
+	eval {
+		(my $file = $Forwarders{$forwarder_method}) =~ s|::|/|g; 
+		require $file . '.pm';
+		$Forwarders{$forwarder_method}->import();
+		1;
+	};
+	if ($@){
+		my $package = delete $Forwarders{$forwarder_method};
+		$Log->error('Unable to use configured package ' . $package . ': ' . $@);
+	}
+	else {
+		$Forwarders{$forwarder_method} = $Forwarders{$forwarder_method};
+	}
+}
+
 my $filename = $Opts{f};
 die('File not found') unless -f $filename;
 
@@ -69,6 +97,7 @@ close($fh);
 $fh = new IO::File($filename);
 my $batch_counter = 0;
 my ($start, $end) = (2**32, 0);
+$Log->trace('Calculating count, start, and end');
 while (<$fh>){
 	$batch_counter++;
 	my (undef, $timestamp) = split(/\t/, $_);
@@ -79,6 +108,7 @@ while (<$fh>){
 		$end = $timestamp;
 	}
 }
+$Log->trace('Finished');
 
 $args->{batch_counter} = $batch_counter;
 $args->{file} = $filename;
@@ -95,6 +125,7 @@ my $shortfile = $1;
 my $compressed_filename = $filename . '.zip';
 
 my $time_start = Time::HiRes::time();
+$Log->trace('Compressing to ' . $compressed_filename);
 $zip->addFile($filename, $shortfile);
 unless( $zip->writeToFileNamed($compressed_filename) == Archive::Zip::AZ_OK()){
 	die('Unable to create compressed file ' . $compressed_filename);
@@ -110,20 +141,13 @@ $args->{file} = $compressed_filename;
 # Move the buffer file and new program file to remote location
 foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
 	my $forwarder;
-	if ($dest_hash->{method} eq 'cp'){
-		require Forwarder::Copy;
-		$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
-	}
-	elsif ($dest_hash->{method} eq 'scp'){
-		require Forwarder::SSH;
-		$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
-	}
-	elsif ($dest_hash->{method} eq 'url'){
-		require Forwarder::URL;
-		$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
+	my $package = $Forwarders{ $dest_hash->{method} };
+	if ($package){
+		$forwarder = $package->new(log => $Log, conf => $Config_json, %{ $dest_hash });
 	}
 	else {
 		$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
+		next;
 	}
 	$forwarder->forward($args);
 }

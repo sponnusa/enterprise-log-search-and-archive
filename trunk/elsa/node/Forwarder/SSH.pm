@@ -7,6 +7,8 @@ extends 'Forwarder';
 has 'dir' => (is => 'rw', isa => 'Str', required => 1);
 has 'ssh' => (is => 'rw', isa => 'Net::OpenSSH', required => 1);
 
+sub identifiers { [ 'dir', 'host' ] };
+
 sub BUILDARGS {
 	my ($class, %params) = @_;
 	

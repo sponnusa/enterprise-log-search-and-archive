@@ -5,6 +5,7 @@ use File::Copy;
 extends 'Forwarder';
 
 has 'dir' => (is => 'rw', isa => 'Str', required => 1);
+sub identifiers { [ 'dir' ] };
 
 sub forward {
 	my $self = shift;
