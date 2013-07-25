@@ -93,6 +93,10 @@ sub BUILD {
 		my $is_allowed = 0;
 		ALLOWED_LOOP: foreach my $allowed_group (@{ $self->conf->get('allowed_groups') }){
 			foreach my $group (@{ $self->groups }){
+				$group =~ s/\A\s+//; 
+				$group =~ s/\s+\z//;
+				$allowed_group =~ s/\A\s+//; 
+				$allowed_group =~ s/\s+\z//;
 				if ($allowed_group eq $group){
 					$is_allowed = $allowed_group;
 					last ALLOWED_LOOP;
@@ -233,7 +237,10 @@ sub _init_ldap {
 			}
 		}
 		if ( $attr eq $self->conf->get('ldap/groups_attr') ) {
-			$self->add_group($entry->get_value($attr));
+			my @values = $entry->get_value($attr);
+			foreach my $value (@values){
+				$self->add_group($value);
+			}
 		}
 		# Is the group this user is a member of a designated admin group?
 		foreach my $group (@{ $self->groups }){
