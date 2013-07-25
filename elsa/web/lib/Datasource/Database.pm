@@ -26,6 +26,7 @@ has 'parser' => (is => 'rw', isa => 'Object');
 has 'db' => (is => 'rw', isa => 'Object');
 has 'timestamp_column' => (is => 'rw', isa => 'Str');
 has 'timestamp_is_int' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
+has 'query_object' => (is => 'rw', isa => 'Object');
 
 our %Numeric_types = ( int => 1, ip_int => 1, float => 1 );
 our %Mixed_types = ( proto => 1 );
@@ -92,8 +93,19 @@ sub BUILD {
 	}
 			
 	foreach my $field (keys %$Fields::Reserved_fields){
-	 	#$cols{$field} = { name => $field, callback => sub { '1=1' } };
-	 	$cols{$field} = { name => $field, callback => sub { '' } };
+		if ($field eq 'datasource'){
+			$cols{$field} = { name => $field, callback => sub { '' } };
+		}
+		else {
+		 	$cols{$field} = { name => $field, callback => sub { 
+		 		my ($col, $op, $val) = @_;
+		 		$self->query_object->set_directive($col, $val, $op);
+		 		$self->log->debug('set_directive: ' . join(',', $col, $op, $val));
+		 		return undef;
+		 		}
+	 		};
+		}
+	 	#$cols{$field} = { name => $field, callback => sub { '' } };
 	}
 	
 	$self->log->debug('cols ' . Dumper(\%cols));
@@ -105,6 +117,7 @@ sub BUILD {
 sub _query {
 	my $self = shift;
 	my $q = shift;
+	$self->query_object($q);
 	
 	my ($query, $sth);
 	
@@ -116,6 +129,7 @@ sub _query {
 	my ($where, $placeholders);
 	my $e = try {
 		($where, $placeholders) = @{ $self->parser->parse($query_string)->dbi };
+		#$self->log->debug('query now: ' . Dumper($self->query_object));
 	};
 	if (catch_all($e)){
 		my ($err) = split(/\n/, $e, 0);

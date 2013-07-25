@@ -1717,6 +1717,149 @@ sub _parse_query_term {
 	return 1;
 }
 
+sub set_directive {
+	my $self = shift;
+	my $directive = shift;
+	my $value = shift;
+	my $op = shift;
+	$op ||= '=';
+	
+	if ($directive eq 'start'){
+		# special case for start/end
+		if ($value =~ /^\d+$/){
+			$self->start(int($value));
+		}
+		else {
+			#$self->start(UnixDate(ParseDate($value), "%s"));
+			my $tz_diff = $self->timezone_diff($value);
+			$self->start(UnixDate(ParseDate($value), "%s") + $tz_diff);
+		}
+		$self->log->debug('start is now: ' . $self->start .', ' . (scalar localtime($self->start)));
+	}
+	elsif ($directive eq 'end'){
+		# special case for start/end
+		if ($value =~ /^\d+$/){
+			$self->end(int($value));
+		}
+		else {
+			my $tz_diff = $self->timezone_diff($value);
+			$self->end(UnixDate(ParseDate($value), "%s") + $tz_diff);
+		}
+	}
+	elsif ($directive eq 'limit'){
+		# special case for limit
+		$self->limit(sprintf("%d", $value));
+		throw(400, 'Invalid limit', { term => 'limit' }) unless $self->limit > -1;
+	}
+	elsif ($directive eq 'offset'){
+		# special case for offset
+		$self->offset(sprintf("%d", $value));
+		throw(400, 'Invalid offset', { term => 'offset' }) unless $self->offset > -1;
+	}
+	elsif ($directive eq 'class'){
+		# special case for class
+		my $class;
+		$self->log->trace('classes: ' . Dumper($self->node_info->{classes}));
+		if ($self->node_info->{classes}->{ uc($value) }){
+			$class = lc($self->node_info->{classes}->{ uc($value) });
+		}
+		elsif (uc($value) eq 'ANY'){
+			my @classes;
+			foreach my $class_name (keys %{ $self->node_info->{classes} }){
+				next if $class_name eq 'ANY';
+				push @classes, { field => 'class', value => $class_name, op => $op };
+			}
+			$self->_parse_query_term({ '' => \@classes }, $op);
+		}
+		else {
+			throw(400, "Unknown class $value", { term => $value });
+		}
+		
+		if ($op eq '-'){
+			# We're explicitly removing this class
+			$self->classes->{excluded}->{ $class } = 1;
+		}
+		else {
+			$self->classes->{given}->{ $class } = 1;
+		}
+		$self->log->debug("Set operator $op for given class " . $value);		
+	}
+	elsif ($directive eq 'groupby'){
+		my $value = lc($value);
+		#TODO implement groupby import with new import system
+		my $field_infos = $self->get_field($value);
+		$self->log->trace('$field_infos ' . Dumper($field_infos));
+		if ($field_infos or $value eq 'node'){
+			$self->add_groupby(lc($value));
+			foreach my $class_id (keys %$field_infos){
+				$self->classes->{groupby}->{$class_id} = 1;
+			}
+			$self->log->trace("Set groupby " . Dumper($self->groupby));
+		}
+	}
+	elsif ($directive eq 'orderby'){
+		my $value = lc($value);
+		my $field_infos = $self->get_field($value);
+		$self->log->trace('$field_infos ' . Dumper($field_infos));
+		if ($field_infos or $value eq 'node'){
+			$self->orderby($value);
+			foreach my $class_id (keys %$field_infos){
+				$self->classes->{groupby}->{$class_id} = 1;
+			}
+			$self->log->trace("Set orderby " . Dumper($self->orderby));
+		}
+	}
+	elsif ($directive eq 'orderby_dir'){
+		if (uc($value) eq 'DESC'){
+			$self->orderby_dir('DESC');
+		}
+	}
+	elsif ($directive eq 'node'){
+		if ($value =~ /^[\w\.\:]+$/){
+			if ($op eq '-'){
+				$self->nodes->{excluded}->{ $value } = 1;
+			}
+			else {
+				$self->nodes->{given}->{ $value } = 1;
+			}
+		}
+	}
+	elsif ($directive eq 'cutoff'){
+		$self->limit($self->cutoff(sprintf("%d", $value)));
+		throw(400, 'Invalid cutoff', { term => 'cutoff' }) unless $self->cutoff > -1;
+		$self->log->trace("Set cutoff " . $self->cutoff);
+	}
+	elsif ($directive eq 'datasource'){
+		delete $self->datasources->{sphinx}; # no longer using our normal datasource
+		$self->datasources->{ $value } = 1;
+		$self->log->trace("Set datasources " . Dumper($self->datasources));
+	}
+	elsif ($directive eq 'nobatch'){
+		$self->meta_params->{nobatch} = 1;
+		$self->log->trace("Set batch override.");
+	}
+	elsif ($directive eq 'livetail'){
+		$self->meta_params->{livetail} = 1;
+		$self->livetail(1);
+		$self->archive(1);
+		$self->log->trace("Set livetail.");
+	}
+	elsif ($directive eq 'archive'){
+		$self->meta_params->{archive} = 1;
+		$self->archive(1);
+		$self->log->trace("Set archive.");
+		next;
+	}
+	elsif ($directive eq 'analytics'){
+		$self->meta_params->{analytics} = 1;
+		$self->analytics(1);
+		$self->log->trace("Set analytics.");
+	}
+	else {
+		throw(400, 'Invalid directive', { term => $directive });
+	}
+}
+
 sub cancel {
 	my $self = shift;
 	

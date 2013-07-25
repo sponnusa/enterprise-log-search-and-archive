@@ -5706,7 +5706,7 @@ sub _external_query {
 				next DATASOURCES_LOOP;
 			}
 		}
-		throw(404, 'datasource ' . $datasource . ' not found', { datasource => $datasource });
+		$q->add_warning(404, 'datasource ' . $datasource . ' not found', { datasource => $datasource });
 	}
 	return $q;
 }
