@@ -1278,14 +1278,14 @@ sub filter_stopwords {
 		STOPWORD_LOOP: foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{and} }){
 			my $regex = _term_to_regex($stopword);
 			foreach my $field (qw(msg program node host class)){
-				if ($record->{$field} =~ qr/$regex/){
+				if ($record->{$field} =~ qr/$regex/i){
 					$self->log->debug('Found stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);
 					$to_find--;
 					last STOPWORD_LOOP;
 				}
 			}
 			foreach my $field_hash (@{ $record->{_fields} }){
-				if ($field_hash->{value} =~ qr/$regex/){
+				if ($field_hash->{value} =~ qr/$regex/i){
 					$self->log->debug('Found stopword: ' . $stopword . ' for term ' . $field_hash->{value});
 					$to_find--;
 					last STOPWORD_LOOP;
@@ -1299,13 +1299,13 @@ sub filter_stopwords {
 		foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{not} }){
 			my $regex = _term_to_regex($stopword);
 			foreach my $field (qw(msg program node host class)){
-				if ($record->{$field} =~ qr/$regex/){
+				if ($record->{$field} =~ qr/$regex/i){
 					$self->log->debug('Found not stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);
 					return 0;
 				}
 			}
 			foreach my $field_hash (@{ $record->{_fields} }){
-				if ($field_hash->{value} =~ qr/$regex/){
+				if ($field_hash->{value} =~ qr/$regex/i){
 					$self->log->debug('Found not stopword: ' . $stopword . ' for term ' . $field_hash->{value});
 					return 0;
 				}
