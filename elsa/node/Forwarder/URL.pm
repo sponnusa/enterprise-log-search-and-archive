@@ -12,6 +12,8 @@ has 'username' => (is => 'rw', isa => 'Str', required => 1);
 has 'apikey' => (is => 'rw', isa => 'Str', required => 1);
 has 'ua' => (is => 'rw', isa => 'LWP::UserAgent', required => 1);
 
+sub identifiers { [ 'url' ] };
+
 sub BUILDARGS {
 	my ($class, %params) = @_;
 	

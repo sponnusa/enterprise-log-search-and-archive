@@ -28,8 +28,6 @@ our $Db_timeout = 3;
 our $Bulk_dir = '/tmp';
 our $Auth_timestamp_grace_period = 86400;
 
-
-
 has 'log' => ( is => 'ro', isa => 'Log::Log4perl::Logger', required => 1 );
 has 'conf' => (is => 'rw', isa => 'Object', required => 1);
 has 'db' => (is => 'rw', isa => 'Object', required => 1);
@@ -520,6 +518,8 @@ sub _get_node_info {
 		$ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } ||= [];
 		push @{ $ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } }, $field_hash;
 	}
+	
+	$ret->{directives} = $Fields::Reserved_fields;
 	
 	$ret->{updated_at} = time();
 	#$ret->{updated_for_admin} = $user->is_admin;

@@ -1,6 +1,14 @@
 #!/usr/bin/perl
 use strict;
 use Data::Dumper;
+
+# Include the directory this script is in
+use FindBin;
+use lib $FindBin::Bin;
+
+# Log must go first to load its Moose dependencies before others
+use Log;
+
 use IO::Handle;
 use POSIX;
 use Config::JSON;
@@ -8,17 +16,12 @@ use Getopt::Std;
 use String::CRC32;
 use Log::Log4perl;
 use DBI;
-use FindBin;
 use JSON;
 use IO::File;
 use Digest::MD5;
 use Time::HiRes;
 use File::Copy;
 
-# Include the directory this script is in
-use lib $FindBin::Bin;
-
-use Log;
 use Indexer;
 use Reader;
 use Writer;
@@ -95,6 +98,33 @@ my $Run          = 1;
 my $Class_info = Reader::get_class_info($Dbh);
 my $Cache = {};
 _init_cache();
+my %Forwarders = (
+	'scp' => 'Forwarder::SSH',
+	'cp' => 'Forwarder::Copy',
+	'url' => 'Forwarder::URL',
+);
+if ($Config_json->get('forwarding/destinations')){
+	foreach my $forwarding_hash (@{ $Config_json->get('forwarding/destinations') }){
+		if ($forwarding_hash->{package}){
+			$Forwarders{ $forwarding_hash->{method} } = $forwarding_hash->{package};
+		}
+	}
+}
+foreach my $forwarder_method (keys %Forwarders){
+	eval {
+		(my $file = $Forwarders{$forwarder_method}) =~ s|::|/|g; 
+		require $file . '.pm';
+		$Forwarders{$forwarder_method}->import();
+		1;
+	};
+	if ($@){
+		my $package = delete $Forwarders{$forwarder_method};
+		$Log->error('Unable to use configured package ' . $package . ': ' . $@);
+	}
+	else {
+		$Forwarders{$forwarder_method} = $Forwarders{$forwarder_method};
+	}
+}
 
 unless (-f $Conf->{sphinx}->{config_file}){
 	_create_sphinx_conf();
@@ -498,21 +528,30 @@ sub _forward {
 				foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
 					my $forwarder;
 					next if ($is_ops and not exists $dest_hash->{ops}) or (not $is_ops and exists $dest_hash->{ops});
-					if ($dest_hash->{method} eq 'cp'){
-						require Forwarder::Copy;
-						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
-					}
-					elsif ($dest_hash->{method} eq 'scp'){
-						require Forwarder::SSH;
-						$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
-					}
-					elsif ($dest_hash->{method} eq 'url'){
-						require Forwarder::URL;
-						$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
+					my $package = $Forwarders{ $dest_hash->{method} };
+					if ($package){
+						$forwarder = $package->new(log => $Log, conf => $Config_json, %{ $dest_hash });
 					}
 					else {
 						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
+						next;
 					}
+					
+#					if ($dest_hash->{method} eq 'cp'){
+#						require Forwarder::Copy;
+#						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
+#					}
+#					elsif ($dest_hash->{method} eq 'scp'){
+#						require Forwarder::SSH;
+#						$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
+#					}
+#					elsif ($dest_hash->{method} eq 'url'){
+#						require Forwarder::URL;
+#						$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
+#					}
+#					else {
+#						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
+#					}
 					my $ok = $forwarder->forward($args);
 					unless ($ok){
 						$forwarding_errors++;
@@ -551,20 +590,31 @@ sub _forward {
 					# Verify this destination is still valid
 					my $found = 0;
 					foreach my $config_dest_hash (@{ $Conf->{forwarding}->{destinations} }){
+						my $forwarder_package = $Forwarders{ $dest_hash->{method} };
+						my $identifiers = $forwarder_package->identifiers;
 						if ($dest_hash->{method} eq $config_dest_hash->{method}){
-							if ($dest_hash->{method} eq 'cp' and $dest_hash->{dir} eq $config_dest_hash->{dir}){
-								$found = 1;
-								last;
+							my $matched = 0;
+							foreach my $identifier (@$identifiers){
+								if ($dest_hash->{$identifier} eq $config_dest_hash->{$identifier}){
+									$matched++;
+								}
 							}
-							elsif ($dest_hash->{method} eq 'scp' and $dest_hash->{dir} eq $config_dest_hash->{dir} 
-									and $dest_hash->{host} eq $config_dest_hash->{host}){								
+							if ($matched == scalar @$identifiers){
 								$found = 1;
-								last;
 							}
-							elsif ($dest_hash->{method} eq 'url' and $dest_hash->{url} eq $config_dest_hash->{url}){
-								$found = 1;
-								last;
-							}
+#							if ($dest_hash->{method} eq 'cp' and $dest_hash->{dir} eq $config_dest_hash->{dir}){
+#								$found = 1;
+#								last;
+#							}
+#							elsif ($dest_hash->{method} eq 'scp' and $dest_hash->{dir} eq $config_dest_hash->{dir} 
+#									and $dest_hash->{host} eq $config_dest_hash->{host}){								
+#								$found = 1;
+#								last;
+#							}
+#							elsif ($dest_hash->{method} eq 'url' and $dest_hash->{url} eq $config_dest_hash->{url}){
+#								$found = 1;
+#								last;
+#							}
 						}
 					}
 					if (not $found){
@@ -576,21 +626,29 @@ sub _forward {
 						next;
 					}
 					$Log->info('Retrying forward of file ' . $file_args->{file} . ' with args ' . Dumper($dest_hash));
-					if ($dest_hash->{method} eq 'cp'){
-						require Forwarder::Copy;
-						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
-					}
-					elsif ($dest_hash->{method} eq 'scp'){
-						require Forwarder::SSH;
-						$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
-					}
-					elsif ($dest_hash->{method} eq 'url'){
-						require Forwarder::URL;
-						$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
+					my $package = $Forwarders{ $dest_hash->{method} };
+					if ($package){
+						$forwarder = $package->new(log => $Log, conf => $Config_json, %{ $dest_hash });
 					}
 					else {
 						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
+						next;
 					}
+#					if ($dest_hash->{method} eq 'cp'){
+#						require Forwarder::Copy;
+#						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
+#					}
+#					elsif ($dest_hash->{method} eq 'scp'){
+#						require Forwarder::SSH;
+#						$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
+#					}
+#					elsif ($dest_hash->{method} eq 'url'){
+#						require Forwarder::URL;
+#						$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
+#					}
+#					else {
+#						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
+#					}
 					my $ok = $forwarder->forward($file_args);
 					if ($ok){
 						$query = 'DELETE FROM failed_buffers WHERE hash=?';
