@@ -974,47 +974,50 @@ sub _parse_query {
 	if (not $self->index_term_count()){
 		# Favor non-meta attrs as keywords, choose the longest term
 		my %candidates;
-		# If we have AND terms, just use those
-		if (scalar keys %{ $self->terms->{attr_terms}->{and} }){
-			my $terms = $self->terms->{attr_terms}->{and}->{'='};
-			$self->log->debug('$terms: ' . Dumper($terms));
-			foreach my $field_name (keys %$terms){
-				next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
-				foreach my $class_id (keys %{ $terms->{$field_name} }){
-					foreach my $attr (keys %{ $terms->{$field_name}->{$class_id} }){
-						foreach my $raw_value (@{ $terms->{$field_name}->{$class_id}->{$attr} }){
-							$self->log->debug('considering term: ' . $raw_value);
-							next if $self->is_stopword($raw_value);
-							my $col = $attr;
-							$col =~ s/^attr\_//;
-							my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
-							$candidates{$resolved_value} = { boolean => 'and', class_id => $class_id, real_field => $attr };
-						}
-					}
-				}
-			}
-		}
-		elsif (scalar keys %{ $self->terms->{attr_terms}->{or} }){
-			my $terms = $self->terms->{attr_terms}->{or}->{'='};
-			foreach my $field_name (keys %$terms){
-				next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
-				foreach my $class_id (keys %{ $terms->{$field_name} }){
-					foreach my $attr (keys %{ $terms->{$field_name}->{$class_id} }){
-						foreach my $raw_value (@{ $terms->{$field_name}->{$class_id}->{$attr} }){
-							if ($self->is_stopword($raw_value)){
-								$self->add_warning(200, $raw_value . ' is too common, not included in search', { term => $raw_value });
-								next;
+		foreach my $boolean (qw(and or)){
+			if ($self->_has_positive_attrs($boolean)){
+				my $terms = $self->terms->{attr_terms}->{$boolean}->{'='};
+				$self->log->debug('$terms: ' . Dumper($terms));
+				foreach my $field_name (keys %$terms){
+					next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
+					foreach my $class_id (keys %{ $terms->{$field_name} }){
+						foreach my $attr (keys %{ $terms->{$field_name}->{$class_id} }){
+							foreach my $raw_value (@{ $terms->{$field_name}->{$class_id}->{$attr} }){
+								$self->log->debug('considering term: ' . $raw_value);
+								next if $self->is_stopword($raw_value);
+								my $col = $attr;
+								$col =~ s/^attr\_//;
+								my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
+								$candidates{$resolved_value} = { boolean => $boolean, class_id => $class_id, real_field => $attr };
 							}
-							my $col = $attr;
-							$col =~ s/^attr\_//;
-							my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
-							$candidates{$resolved_value} = { boolean => 'or', class_id => $class_id, real_field => $col };
 						}
 					}
 				}
 			}
+			last if scalar keys %candidates; # If we have AND terms, just use those
 		}
-		elsif (not exists $self->datasources->{sphinx} or $self->has_import_search_terms or $self->_count_terms){
+#		elsif ($self->terms->{attr_terms}->{or} and $self->terms->{attr_terms}->{or}->{'='} and scalar keys %{ $self->terms->{attr_terms}->{or}->{'='} }){
+#			my $terms = $self->terms->{attr_terms}->{or}->{'='};
+#			foreach my $field_name (keys %$terms){
+#				next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
+#				foreach my $class_id (keys %{ $terms->{$field_name} }){
+#					foreach my $attr (keys %{ $terms->{$field_name}->{$class_id} }){
+#						foreach my $raw_value (@{ $terms->{$field_name}->{$class_id}->{$attr} }){
+#							$self->log->debug('considering term: ' . $raw_value);
+#							if ($self->is_stopword($raw_value)){
+#								$self->add_warning(200, $raw_value . ' is too common, not included in search', { term => $raw_value });
+#								next;
+#							}
+#							my $col = $attr;
+#							$col =~ s/^attr\_//;
+#							my $resolved_value = $self->resolve_value($class_id, $raw_value, $col);
+#							$candidates{$resolved_value} = { boolean => 'or', class_id => $class_id, real_field => $col };
+#						}
+#					}
+#				}
+#			}
+#		}
+		if (scalar keys %candidates or $self->_has_positive_attrs or not exists $self->datasources->{sphinx} or $self->has_import_search_terms or $self->_count_terms){
 			# ok
 		}
 		else {
@@ -1024,7 +1027,7 @@ sub _parse_query {
 		$self->log->debug('candidates: ' . Dumper(\%candidates));
 		
 		if (scalar keys %candidates){
-			if (scalar keys %{ $self->terms->{attr_terms}->{and} }){
+			if ($self->_has_positive_attrs){
 				# Determine longest
 				my $longest = (sort { length($b) <=> length($a) } keys %candidates)[0];
 				my $info = $candidates{$longest};
@@ -1058,6 +1061,7 @@ sub _parse_query {
 		else {
 			foreach my $boolean (qw(and or not)){
 				foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+					next if $op =~ /[\<\>]/;
 					if ($self->terms->{attr_terms}->{$boolean}->{$op}->{host} 
 						and $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}
 						and $self->terms->{attr_terms}->{$boolean}->{$op}->{host}->{0}->{host_id}){
@@ -1224,6 +1228,15 @@ sub _parse_query {
 	}
 	
 	return 1;
+}
+
+sub _has_positive_attrs {
+	my $self = shift;
+	my $boolean = shift;
+	$boolean ||= 'and';
+	return ($self->terms->{attr_terms}->{$boolean} 
+		and $self->terms->{attr_terms}->{$boolean}->{'='} 
+		and scalar keys %{ $self->terms->{attr_terms}->{$boolean}->{'='} }) ? 1 : 0;
 }
 
 sub _count_terms {
