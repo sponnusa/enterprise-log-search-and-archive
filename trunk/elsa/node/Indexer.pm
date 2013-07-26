@@ -1310,11 +1310,11 @@ sub load_records {
 	
 	my $load_start = time();
 	# CONCURRRENT allows the table to be open for reading whilst the LOAD DATA occurs so that queries won't stack up
-	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE "%s" INTO TABLE %s ' .
+	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE %s ' .
 		'(id, @timevar, host_id, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5) ' .
-		'SET timestamp = IF(@timevar > 10000, @timevar, UNIX_TIMESTAMP(@timevar))', $args->{file}, $full_table);
+		'SET timestamp = IF(@timevar > 10000, @timevar, UNIX_TIMESTAMP(@timevar))', $full_table);
 	$sth = $self->db->prepare($query);
-	$sth->execute();
+	$sth->execute($args->{file});
 	my $records = $sth->rows();
 	unless ($records){
 		$self->log->error('Empty file: ' . Dumper($args));
@@ -1433,9 +1433,9 @@ sub archive_records {
 	}
 	
 	my $load_start = time();
-	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE "%s" INTO TABLE %s', $args->{file}, $full_table);
+	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE %s', $full_table);
 	$sth = $self->db->prepare($query);
-	$sth->execute();
+	$sth->execute($args->{file});
 	my $records = $sth->rows();
 	my $load_time = time() - $load_start;
 	my $rps = $records / $load_time;
@@ -2811,8 +2811,9 @@ sub record_host_stats {
 	}
 	close(TSV);
 	
-	$self->db->do('LOAD DATA CONCURRENT LOCAL INFILE "' . $load_file . '" INTO TABLE host_stats') or
-		$self->log->error('Error loading stats file: ' . $DBI::errstr);
+	$query = 'LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE host_stats';
+	$sth = $self->db->prepare($query);
+	$sth->execute($load_file);
 	
 	$self->log->trace("Finished in " . (Time::HiRes::time() - $overall_start) . " with $total records counted");
 }

@@ -613,6 +613,22 @@ sub _parse_query {
 	$self->log->trace('given_classes before adjustments: ' . Dumper($self->classes->{given}));
 	$self->log->trace('distinct_classes before adjustments: ' . Dumper($self->classes->{distinct}));
 	
+	# Add on any class 0 fields
+	foreach my $boolean (qw(and or not)){
+		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
+			$self->classes->{distinct}->{$class_id} = 1;
+		}
+	}
+	foreach my $boolean (qw(and or not range_and range_not range_or)){
+		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
+			foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
+				foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
+					$self->classes->{distinct}->{$class_id} = 1;
+				}
+			}
+		}
+	}
+	
 	# Verify that all asked for classes are available in the groupby
 	if (scalar keys %{ $self->classes->{given} } and scalar keys %{ $self->classes->{groupby} } ){
 		foreach my $class_id (keys %{ $self->classes->{given} }){
@@ -641,7 +657,7 @@ sub _parse_query {
 			else {
 				$self->log->warn('Not allowed to query given class ' . $key);
 			}
-		}
+		}	
 	}
 	elsif (scalar keys %{ $self->classes->{distinct} }) {
 		foreach my $key (keys %{ $self->classes->{distinct} }){
@@ -684,6 +700,7 @@ sub _parse_query {
 	foreach my $field_name (keys %{ $self->terms->{distinct_fields} }){
 		my $field_infos = $self->get_field($field_name);
 		foreach my $class_id (keys %{ $self->classes->{distinct} }){
+			next unless $class_id;
 			unless ($field_infos->{$class_id} or $field_infos->{0}){
 				$self->log->trace('Class ' . $class_id . ' does not have field ' . $field_name);
 				delete $self->classes->{distinct}->{$class_id};
@@ -719,7 +736,7 @@ sub _parse_query {
 	# Remove any terms or attrs that aren't in distinct classes now
 	foreach my $boolean (qw(and or not)){
 		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
-			unless ($self->classes->{distinct}){
+			unless ($self->classes->{distinct}->{$class_id}){
 				delete $self->terms->{field_terms}->{$boolean}->{$class_id};
 			}
 		}
@@ -728,7 +745,7 @@ sub _parse_query {
 		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
 			foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
 				foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
-					unless ($self->classes->{distinct}){
+					unless ($self->classes->{distinct}->{$class_id}){
 						delete $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id};
 					}
 				}
