@@ -3898,11 +3898,13 @@ sub _build_query {
 	push @{ $clauses{permissions}->{clauses} }, [ @perm_fields_clause ] if scalar @perm_fields_clause;
 
 	foreach my $class_id (keys %{ $q->classes->{distinct} }){
+		next unless $class_id;
 		push @{ $clauses{classes}->{clauses} }, [ 'class_id=?' ];
 		push @{ $clauses{classes}->{vals} }, $class_id;
 	}
 
 	foreach my $class_id (keys %{ $q->classes->{excluded} }){
+		next unless $class_id;
 		push @{ $clauses{not}->{clauses} }, [ 'class_id=?' ];
 		push @{ $clauses{not}->{vals} }, $class_id;
 	}
