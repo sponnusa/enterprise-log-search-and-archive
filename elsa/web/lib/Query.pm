@@ -649,7 +649,7 @@ sub _parse_query {
 		}
 	}
 	elsif (scalar keys %{ $self->classes->{given} }){ #if 0 (meaning any) is given, go with permitted classes
-		$self->classes->{distinct} = {};
+		$self->classes->{distinct} = $self->classes->{distinct}->{0} ? { 0 => 1 } : {}; # include class zero if necessary
 		foreach my $key (keys %{ $self->classes->{given} }){
 			if ($self->classes->{permitted}->{$key} or exists $self->classes->{partially_permitted}->{$key}){
 				$self->classes->{distinct}->{$key} = 1;
