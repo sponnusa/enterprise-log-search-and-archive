@@ -447,8 +447,9 @@ sub upload {
 			
 			if ($unzipped_file_shortname =~ /programs/){
 				$self->log->info('Loading programs file ' . $zipped_file);
-				$query = 'LOAD DATA LOCAL INFILE "' . $zipped_file . '" INTO TABLE ' . $syslog_db_name . '.programs';
-				$self->db->do($query);
+				$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs';
+				$sth = $self->db->prepare($query);
+				$sth->execute($zipped_file);
 				unlink($zipped_file);
 				next;
 			}
