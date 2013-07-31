@@ -7,7 +7,8 @@ use DBI;
 use JSON;
 use URL::Encode qw(url_encode);
 use Time::HiRes;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 extends 'Transform';
 
 our $Name = 'Database';

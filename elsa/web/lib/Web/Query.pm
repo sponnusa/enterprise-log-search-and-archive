@@ -6,7 +6,8 @@ use Plack::Request;
 use Plack::Session;
 use Encode;
 use Scalar::Util;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 
 use Utils;
 
@@ -45,20 +46,23 @@ sub call {
 		$res->body('not found');
 		return $res->finalize();
 	}
-	my $ret;
+	my ($ret, $e);
 	try {
 		$self->api->freshen_db;
 		$ret = $self->api->$method($args);
 		unless ($ret){
 			$ret = { error => $self->api->last_error };
 		}
+	}
+	catch {
+		$e = catch_any(shift);
 	};
 #	if ($@){
 #		my $e = $@;
 #		$self->api->log->error($e);
 #		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
 #	}
-	if (my $e = catch_any){
+	if ($e){
 		$self->api->log->error($e->trace);
 		$res->status($e->code);
 		$res->body([encode_utf8($self->api->json->encode($e))]);

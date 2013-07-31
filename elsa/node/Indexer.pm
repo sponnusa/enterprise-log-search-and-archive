@@ -327,7 +327,8 @@ sub initial_validate_directory {
 	my @files;
 	while (my $short_file = readdir(DIR)){
 		my $file = $self->conf->get('buffer_dir') . '/' . $short_file;
-		next if $file =~ /\./;
+		#next if $file =~ /\./;
+		next if $file =~ /host_stats.tsv/ or $file =~ /\.zip$/;
 		# Strip any double slashes
 		$file =~ s/\/{2,}/\//g;
 		push @files, $file;

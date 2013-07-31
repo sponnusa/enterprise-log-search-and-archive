@@ -5,7 +5,8 @@ use CHI;
 use AnyEvent::HTTP;
 use Socket;
 use JSON;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 extends 'Transform';
 
 use Utils;
@@ -359,10 +360,10 @@ sub _lookup_org {
 			};
 			$self->log->trace('org cache data: ' . Dumper($data));
 			$self->cache->set($key, $data);
-		};
-		if (my $e = catch_any){
-			$self->log->error($e->trace);
 		}
+		catch {
+			$self->log->error($_);
+		};
 		$self->cv->end;
 		return;
 	};

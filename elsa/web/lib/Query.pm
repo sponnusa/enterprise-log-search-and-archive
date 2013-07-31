@@ -12,7 +12,8 @@ use Storable qw(dclone);
 use Socket;
 use Log::Log4perl::Level;
 use Date::Manip;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 use String::CRC32;
 
 # Object for dealing with user queries
@@ -510,7 +511,7 @@ sub _parse_query {
 	}
 		
 	# Check for meta limit
-	if ($self->meta_params->{limit}){
+	if (exists $self->meta_params->{limit}){
 		$self->limit(sprintf("%d", $self->meta_params->{limit}));
 		$self->log->debug("Set limit " . $self->limit);
 	}
@@ -711,26 +712,6 @@ sub _parse_query {
 		throw(400, 'No event classes have all of these fields: ' . join(', ', sort keys %{ $self->terms->{distinct_fields} }), { query_string => $self->query_string });
 	}
 	
-	# Remove any terms or attrs that aren't in distinct classes now
-	foreach my $boolean (qw(and or not)){
-		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
-			unless ($self->classes->{distinct}->{$class_id}){
-				delete $self->terms->{field_terms}->{$boolean}->{$class_id};
-			}
-		}
-	}
-	foreach my $boolean (qw(and or not range_and range_not range_or)){
-		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
-			foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
-				foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
-					unless ($self->classes->{distinct}->{$class_id}){
-						delete $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id};
-					}
-				}
-			}
-		}
-	}	
-	
 	$self->log->debug('attr before conversion: ' . Dumper($self->terms->{attr_terms}));
 	
 	# Remove any terms or attrs that aren't in distinct classes now
@@ -751,7 +732,7 @@ sub _parse_query {
 				}
 			}
 		}
-	}	
+	}
 	
 	$self->log->debug('attr_terms: ' . Dumper($self->terms->{attr_terms}));
 	
@@ -1027,7 +1008,7 @@ sub _parse_query {
 		$self->log->debug('candidates: ' . Dumper(\%candidates));
 		
 		if (scalar keys %candidates){
-			if ($self->_has_positive_attrs){
+			if ($self->_has_positive_attrs('and')){
 				# Determine longest
 				my $longest = (sort { length($b) <=> length($a) } keys %candidates)[0];
 				my $info = $candidates{$longest};
@@ -1232,11 +1213,24 @@ sub _parse_query {
 
 sub _has_positive_attrs {
 	my $self = shift;
-	my $boolean = shift;
-	$boolean ||= 'and';
-	return ($self->terms->{attr_terms}->{$boolean} 
-		and $self->terms->{attr_terms}->{$boolean}->{'='} 
-		and scalar keys %{ $self->terms->{attr_terms}->{$boolean}->{'='} }) ? 1 : 0;
+	my $given_boolean = shift;
+	
+	my @booleans;
+	if ($given_boolean){
+		@booleans = ($given_boolean);
+	}
+	else {
+		@booleans = qw(and or);
+	}
+	
+	my $count = 0;
+	foreach my $boolean (@booleans){
+		$count += ($self->terms->{attr_terms}->{$boolean} 
+			and $self->terms->{attr_terms}->{$boolean}->{'='} 
+			and scalar keys %{ $self->terms->{attr_terms}->{$boolean}->{'='} }) ? 1 : 0;
+	}
+	
+	return $count;
 }
 
 sub _count_terms {

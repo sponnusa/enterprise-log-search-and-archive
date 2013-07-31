@@ -10,7 +10,8 @@ use Time::HiRes qw(time);
 use Search::QueryParser::SQL;
 use Date::Manip;
 use Socket;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 extends 'Datasource';
 with 'Fields';
 
@@ -27,6 +28,7 @@ has 'db' => (is => 'rw', isa => 'Object');
 has 'timestamp_column' => (is => 'rw', isa => 'Str');
 has 'timestamp_is_int' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'query_object' => (is => 'rw', isa => 'Object');
+has 'gmt_offset' => (is => 'rw', isa => 'Int');
 
 our %Numeric_types = ( int => 1, ip_int => 1, float => 1 );
 our %Mixed_types = ( proto => 1 );
@@ -34,7 +36,8 @@ our %Mixed_types = ( proto => 1 );
 sub BUILD {
 	my $self = shift;
 	
-	$self->db(DBI->connect($self->dsn, $self->username, $self->password, { RaiseError => 1 }));
+	# LongReadLen will allow MS-SQL to read in n number bytes before giving a truncation error
+	$self->db(DBI->connect($self->dsn, $self->username, $self->password, { RaiseError => 1, LongReadLen => 20_000 }));
 	my ($query, $sth);
 	
 	$self->query_template =~ /FROM\s+([\w\_]+)/;
@@ -127,15 +130,15 @@ sub _query {
 	$self->log->debug('query: ' . $query_string);
 	
 	my ($where, $placeholders);
-	my $e = try {
+	try {
 		($where, $placeholders) = @{ $self->parser->parse($query_string)->dbi };
 		#$self->log->debug('query now: ' . Dumper($self->query_object));
-	};
-	if (catch_all($e)){
-		my ($err) = split(/\n/, $e, 0);
+	}
+	catch {
+		my ($err) = split(/\n/, $_, 0);
 		$err =~ s/ at \/.+\.pm line \d+\.//;
 		throw(400, $err, { query_string => $query_string });
-	}
+	};
 	
 	#$where =~ s/(?:(?:AND|OR|NOT)\s*)?1=1//g; # clean up dummy values
 	$where =~ s/(?:AND|OR|NOT)\s*$//; # clean up any trailing booleans
@@ -219,6 +222,20 @@ sub _query {
 		}
 	}
 	
+	my ($start, $end, $start_int, $end_int);
+	if (defined $self->gmt_offset){
+		$start_int = $q->start + $self->gmt_offset;
+		$start = epoch2iso($start_int, 1);
+		$end_int = $q->end + $self->gmt_offset;
+		$end = epoch2iso($end_int, 1);
+	}
+	else {
+		$start_int = $q->start;
+		$start = epoch2iso($q->start);
+		$end_int = $q->end;
+		$end = epoch2iso($q->end);
+	}
+	
 	if ($q->has_groupby){
 		if ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
 			foreach my $row (@{ $self->fields }){
@@ -230,7 +247,7 @@ sub _query {
 						else {
 							$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
 						}
-						push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);
+						push @$placeholders, $start, $end;
 						last;
 					}
 					elsif ($row->{alias} eq 'timestamp_int'){
@@ -240,7 +257,7 @@ sub _query {
 						else {
 							$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
 						}
-						push @$placeholders, $q->start, $q->end;
+						push @$placeholders, $start_int, $end_int;
 						last;
 					}
 				}
@@ -263,7 +280,7 @@ sub _query {
 					else {
 						$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
 					}
-					push @$placeholders, epoch2iso($q->start), epoch2iso($q->end);
+					push @$placeholders, $start, $end;
 				}
 				elsif ($row->{alias} eq 'timestamp_int'){
 					if ($where and $where ne ' '){
@@ -272,7 +289,7 @@ sub _query {
 					else {
 						$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
 					}
-					push @$placeholders, $q->start, $q->end;
+					push @$placeholders, $start_int, $end_int;
 				}
 			}
 			else {

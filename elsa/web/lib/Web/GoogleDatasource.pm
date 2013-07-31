@@ -9,6 +9,8 @@ use Scalar::Util;
 use Data::Google::Visualization::DataSource;
 use Data::Google::Visualization::DataTable;
 use DateTime;
+use Try::Tiny;
+use Ouch qw(:trytiny);
 
 with 'Fields';
 
@@ -66,8 +68,11 @@ sub call {
 		}
 	
 		my $datatable = Data::Google::Visualization::DataTable->new();
-	
-		if ($ret->has_groupby){
+		
+		if (ref($ret) and $ret->{code}){
+			throw($ret->{code}, $ret->{message}, $ret->{data});
+		}
+		elsif (blessed($ret) and $ret->has_groupby){
 			#$self->api->log->debug('ret: ' . Dumper($ret));
 			$self->api->log->debug('all_groupbys: ' . Dumper($ret->all_groupbys));
 			$self->api->log->debug('groupby: ' . Dumper($ret->groupby));
@@ -135,8 +140,12 @@ sub call {
 				}
 			}
 		}
+		elsif (blessed($ret)){
+			throw(400, 'groupby required');
+		}
 		else {
-			die('groupby required');
+			$self->log->error('Unknown error with ret: ' . Dumper($ret));
+			throw(500, 'Internal error');
 		}
 		$datasource->datatable($datatable);
 		

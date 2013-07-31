@@ -6,7 +6,8 @@ use Plack::Request;
 use Encode;
 use Scalar::Util;
 use Digest::SHA qw(sha512_hex);
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 
 use Utils;
 
@@ -55,7 +56,7 @@ sub call {
 		$res->body('not found');
 		return $res->finalize();
 	}
-	my $ret;
+	my ($ret, $e);
 	try {
 		$self->api->freshen_db;
 		if ($req->upload and $req->uploads->{filename}){
@@ -65,17 +66,16 @@ sub call {
 		unless ($ret){
 			$ret = { error => $self->api->last_error };
 		}
+	}
+	catch {
+		$e = catch_any(shift);
 	};
-	if (my $e = catch_any){
+	
+	if ($e){
 		$self->api->log->error($e->trace);
 		$res->status($e->code);
 		$res->body([encode_utf8($self->api->json->encode($e))]);
 	}
-#	if ($@){
-#		my $e = $@;
-#		$self->api->log->error($e);
-#		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
-#	}
 	elsif (ref($ret) and ref($ret) eq 'ARRAY'){
 		# API function returned Plack-compatible response
 		return $ret;

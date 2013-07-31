@@ -26,7 +26,8 @@ use Carp;
 use Log::Log4perl::Level;
 use Storable qw(freeze thaw);
 use AnyEvent::HTTP;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 use B qw(svref_2object);
 
 use User;
@@ -2100,7 +2101,8 @@ sub _sphinx_query {
 				$self->add_warning(501, $q->peer_label . ' had ' . $count . ' indexes had a non-existent fields: ' . join(', ', keys %heterogeneous_schemas));
 			}
 			$self->log->debug('no indexes for node ' . $node);
-			
+			$self->log->info('No indexes satisfy field requirements, executing against raw SQL');
+			$q->add_warning(200, 'No indexes satisfy field requirements, query did not use an index', { indexed => 0 });
 			$self->_archive_query($q);
 			next;
 		}
@@ -3771,6 +3773,7 @@ sub _build_archive_match_str {
 	}
 	
 	foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
+		next unless $class_id; # Ignore meta attrs
 		# First, the ANDs
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
@@ -5677,11 +5680,13 @@ sub _external_query {
 			}
 		}
 		
+		my $found = 0;
 		foreach my $plugin ($self->datasource_plugins()){
 			if ($plugin =~ /\:\:$datasource/i){
 				$self->log->debug('loading plugin ' . $plugin);
+				$found++;
 				my %compiled_args;
-				my $e = try {
+				try {
 					%compiled_args = (
 						conf => $self->conf,
 						log => $self->log, 
@@ -5690,8 +5695,9 @@ sub _external_query {
 					);
 					my $plugin_object = $plugin->new(%compiled_args);
 					$plugin_object->query($q);
-				};
-				if (catch_all($e)){
+				}
+				catch {
+					my $e = catch_any(shift);
 					delete $compiled_args{user};
 					delete $compiled_args{cache};
 					delete $compiled_args{conf};
@@ -5704,11 +5710,12 @@ sub _external_query {
 					else {
 						$self->add_warning(500, $e, { datasource => $datasource });
 					}
-				}
-				next DATASOURCES_LOOP;
+				
+					next DATASOURCES_LOOP;
+				};
 			}
 		}
-		$q->add_warning(404, 'datasource ' . $datasource . ' not found', { datasource => $datasource });
+		throw(404, 'datasource ' . $datasource . ' not found', { datasource => $datasource }) unless $found;
 	}
 	return $q;
 }

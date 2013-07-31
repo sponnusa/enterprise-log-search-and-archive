@@ -7,7 +7,8 @@ use Socket qw(inet_aton);
 use AnyEvent::HTTP;
 use URL::Encode qw(url_encode);
 use JSON;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 extends 'Transform';
 with 'Utils';
 

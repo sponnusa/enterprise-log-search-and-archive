@@ -117,8 +117,9 @@ builder {
 			
 			if ($unzipped_file_shortname =~ /programs/){
 				$Log->info('Loading programs file ' . $file);
-				$query = 'LOAD DATA LOCAL INFILE "' . $file . '" INTO TABLE programs';
-				$Dbh->do($query);
+				$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE programs';
+				$sth = $Dbh->prepare($query);
+				$sth->execute($file);
 				next;
 			}
 			

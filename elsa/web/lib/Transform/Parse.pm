@@ -1,7 +1,8 @@
 package Transform::Parse;
 use Moose;
 use Data::Dumper;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 extends 'Transform';
 our $Name = 'Parse';
 has 'name' => (is => 'ro', isa => 'Str', required => 1, default => $Name);

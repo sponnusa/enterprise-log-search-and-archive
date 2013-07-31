@@ -3,7 +3,8 @@ use Moose;
 extends 'API';
 use Data::Dumper;
 use URI::Encode qw(uri_decode);
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);
 
 use Utils;
 

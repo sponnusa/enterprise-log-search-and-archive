@@ -16,7 +16,8 @@ use URI::Escape qw(uri_escape);
 use Time::HiRes qw(time);
 use Digest::SHA qw(sha512_hex);
 use Sys::Hostname;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 use Exporter qw(import);
 
 our @EXPORT = qw(catch_any);
@@ -792,6 +793,19 @@ sub _peer_query {
 		$headers->{Authorization} = $self->_get_auth_header($peer);
 		$q->peer_requests->{$peer} = http_post $url, $request_body, headers => $headers, sub {
 			my ($body, $hdr) = @_;
+			unless ($hdr and $hdr->{Status} < 400){
+				my $e;
+				try {
+					my $raw = $self->json->decode($body);
+					$e = bless($raw, 'Ouch') if $raw->{code} and $raw->{message};
+				};
+				$e ||= new Ouch(500, 'Internal error');
+				$self->log->error('Peer ' . $peer_label . ' got error: ' . $e->trace);
+				$q->add_warning($e->code, $e->message, $e->data);
+				delete $q->peer_requests->{$peer};
+				$cv->end;
+				return;
+			}
 			eval {
 				my $raw_results = $self->json->decode($body);
 				if ($raw_results and ref($raw_results) and $raw_results->{error}){
@@ -917,10 +931,18 @@ sub _check_auth_header {
 }
 
 # Helper function to convert $@ into an Ouch exception if it isn't one already
+#sub catch_any {
+#	if ($@){
+#		return blessed($@) ? $@ : new Ouch(500, $@);
+#	}
+#}
+
 sub catch_any {
-	if ($@){
-		return blessed($@) ? $@ : new Ouch(500, $@);
-	}
+	return $_ if blessed($_);
+	$_ =~ /(.+) at \S+ line \d+\.$/;
+	my $e = new Ouch(500, $1, {});
+	$e->shortmess($_);
+	return $e;
 }
 
 1;
