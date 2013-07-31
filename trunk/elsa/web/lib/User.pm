@@ -6,7 +6,8 @@ with 'MooseX::Traits';
 with Storage('format' => 'Storable');
 use DBI;
 use Data::Dumper;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 
 our @Serializable = qw(username uid permissions email groups extra_attrs is_admin session_start_time preferences); 
 

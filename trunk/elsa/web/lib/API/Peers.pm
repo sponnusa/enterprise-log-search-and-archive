@@ -12,7 +12,8 @@ use IO::File;
 use Time::HiRes qw(time);
 use Hash::Merge::Simple qw(merge);
 use File::Path;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);
 
 use lib qw(../);
 use Utils;
@@ -384,12 +385,13 @@ sub stats {
 						$results{$peer}->{nodes}->{$peer} = delete $results{$peer}->{nodes}->{$node};
 					}
 				}
-			};
-			if (my $e = catch_any){
+			}
+			catch {
+				my $e = catch_any(shift);
 				$self->log->error($e->message . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
 				$self->add_warning(502, 'peer ' . $peer . ': ' . $e->message, { http => $peer });
 				delete $results{$peer};
-			}
+			};
 			$cv->end;
 		};
 	}
@@ -593,12 +595,13 @@ sub result {
 				}
 				$stats{$peer}->{total_request_time} = (time() - $start);
 				$results{$peer} = { %$raw_results }; #undef's the guard
-			};
-			if (my $e = catch_any){
+			}
+			catch {
+				my $e = catch_any(shift);
 				$self->log->error($e->message . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
 				$self->add_warning(502, 'peer ' . $peer . ': ' . $e->message, { peer => $peer });
 				delete $results{$peer};
-			}
+			};
 			$cv->end;
 		};
 	}

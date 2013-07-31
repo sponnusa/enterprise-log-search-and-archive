@@ -8,7 +8,8 @@ use JSON -convert_blessed_universally;
 use URI::Escape qw(uri_unescape);
 use Encode;
 use MIME::Base64;
-use Ouch qw(:traditional);
+use Try::Tiny;
+use Ouch qw(:trytiny);;
 
 use Utils;
 use YUI;
@@ -417,8 +418,9 @@ sub transform {
 			}
 			$args->{results} = $self->api->json->decode(uri_unescape(delete $args->{data}));
 			$self->api->log->debug( "Decoded $args as : " . Dumper($args) );
-		};
-		if (my $e = catch_any){
+		}
+		catch {
+			my $e = catch_any($_);
 			$self->api->log->error("invalid args, error: $e, args: " . Dumper($args));
 			#return { error => 'Unable to build results object from args' };
 			$e->throw;
