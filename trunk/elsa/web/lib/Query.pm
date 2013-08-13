@@ -1549,11 +1549,10 @@ sub _parse_query_term {
 				if (grep { $_ eq $value } @$Fields::Import_fields){
 					throw(400, 'Cannot group by an import meta tag', { term => $value });
 				}
-				elsif (not scalar keys %$field_infos){
+				elsif (not scalar keys %$field_infos and $value ne 'node'){
 					throw(404, 'Field ' . $value . ' not a valid groupby value', { term => $value });
 				}
-				
-				if ($value eq 'node'){
+				else {
 					$self->add_groupby(lc($value));
 					foreach my $class_id (keys %$field_infos){
 						$self->classes->{groupby}->{$class_id} = 1;
