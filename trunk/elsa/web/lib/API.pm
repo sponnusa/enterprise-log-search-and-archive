@@ -3511,6 +3511,8 @@ sub _unlimited_sphinx_query {
 		return if $q->check_cancelled;
 		
 		my $batch_q = $q->clone;
+		$batch_q->original_timeout($q->timeout);
+		$batch_q->timeout(0);
 		$batch_q->results(Results->new(results => []));
 		
 		# Turn off verbose logging for the search
@@ -3633,12 +3635,10 @@ sub _build_sphinx_match_str {
 		$and{$term} = 1;
 	}
 		
-	my @or = ();
 	foreach my $term (keys %{ $q->terms->{any_field_terms}->{or} }){
 		$or{$term} = 1;
 	}
 	
-	my @not = ();
 	foreach my $term (keys %{ $q->terms->{any_field_terms}->{not} }){
 		$not{$term} = 1;
 	}
@@ -3673,40 +3673,43 @@ sub _build_sphinx_match_str {
 	#foreach my $class_id (sort keys %{ $q->classes->{distinct} }, sort keys %{ $q->classes->{partially_permitted} }){
 	foreach my $class_id (sort keys %classes){
 		next if defined $given_class_id and $class_id != $given_class_id;
-		(%and, %or, %not) = ();
+		#(%and, %or, %not) = ();
+		my %class_and = %and;
+		my %class_or = %or;
+		my %class_not = %not;
 		my $class_match_str = '';
 		# First, the ANDs
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
-				$and{'(@' . $field . ' ' . $value . ')'} = 1;
+				$class_and{'(@' . $field . ' ' . $value . ')'} = 1;
 			}
 		}
 				
 		# Then, the NOTs
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{not}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$field} }){
-				$not{'(@' . $field . ' ' . $value . ')'} = 1;
+				$class_not{'(@' . $field . ' ' . $value . ')'} = 1;
 			}
 		}
 		
 		# Then, the ORs
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{or}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$field} }){
-				$or{'(@' . $field . ' ' . $value . ')'} = 1;
+				$class_or{'(@' . $field . ' ' . $value . ')'} = 1;
 			}
 		}
 		
-		if (scalar keys %and){
+		if (scalar keys %class_and){
 			#$class_match_str .= ' (' . join(' ', sort keys %and) . ')';
-			push @{ $class_match_strs{and} }, '(' . join(' ', sort keys %and) . ')';
+			push @{ $class_match_strs{and} }, '(' . join(' ', sort keys %class_and) . ')';
 		}
-		if (scalar keys %or){
+		if (scalar keys %class_or){
 			#$class_match_str .= ' (' . join('|', sort keys %or) . ')';
-			push @{ $class_match_strs{or} }, '(' . join('|', sort keys %or) . ')';
+			push @{ $class_match_strs{or} }, '(' . join('|', sort keys %class_or) . ')';
 		}
-		if (scalar keys %not){
+		if (scalar keys %class_not){
 			#$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
-			push @{ $class_match_strs{not} }, '(' . join('|', sort keys %not) . ')';
+			push @{ $class_match_strs{not} }, '(' . join('|', sort keys %class_not) . ')';
 		}
 		#push @class_match_strs, $class_match_str if $class_match_str;
 	}
@@ -3714,11 +3717,11 @@ sub _build_sphinx_match_str {
 	#if (@class_match_strs){
 	foreach my $boolean (qw(and or)){
 		if (scalar @{ $class_match_strs{$boolean} }){
-			$match_str .= ' (' . join('|', @{ $class_match_strs{$boolean} }) . ')';
+			$match_str = ' (' . join('|', @{ $class_match_strs{$boolean} }) . ')';
 		}
 	}
 	if (scalar @{ $class_match_strs{not} }){
-		$match_str .= ' !(' . join('|', @{ $class_match_strs{not} }) . ')';
+		$match_str = ' !(' . join('|', @{ $class_match_strs{not} }) . ')';
 	}
 
 	$self->log->trace('match str: ' . $match_str);		
@@ -3745,30 +3748,63 @@ sub _build_archive_match_str {
 	my (%and, %or, %not);
 	foreach my $term (keys %{ $q->terms->{any_field_terms_sql}->{and} }){
 		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
-			$and{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+			if ($q->use_sql_regex){
+				$and{'(msg RLIKE "' . $q->term_to_sql_term($1) . '" OR host_id=' . $2 . ')'} = 1;
+			}
+			else {
+				$and{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+			}
+			
 		}
 		else {
-			$and{'msg LIKE "%' . $term . '%"'} = 1;
+			if ($q->use_sql_regex){
+				$and{'msg RLIKE "' . $q->term_to_sql_term($term) . '"'} = 1;
+			}
+			else {
+				$and{'msg LIKE "%' . $term . '%"'} = 1;
+			}
 		}
 	}
 		
 	my @or = ();
 	foreach my $term (keys %{ $q->terms->{any_field_terms_sql}->{or} }){
 		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
-			$or{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+			if ($q->use_sql_regex){
+				$or{'(msg RLIKE "' . $q->term_to_sql_term($1) . '" OR host_id=' . $2 . ')'} = 1;
+			}
+			else {
+				$or{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+			}
+			
 		}
 		else {
-			$or{'msg LIKE "%' . $term . '%"'} = 1;
+			if ($q->use_sql_regex){
+				$or{'msg RLIKE "' . $q->term_to_sql_term($term) . '"'} = 1;
+			}
+			else {
+				$or{'msg LIKE "%' . $term . '%"'} = 1;
+			}
 		}
 	}
 	
 	my @not = ();
 	foreach my $term (keys %{ $q->terms->{any_field_terms_sql}->{not} }){
 		if ($term =~ /^\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\|(\d+)\)$/){
-			$not{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+			if ($q->use_sql_regex){
+				$not{'(msg RLIKE "' . $q->term_to_sql_term($1) . '" OR host_id=' . $2 . ')'} = 1;
+			}
+			else {
+				$not{'(msg LIKE "%' . $1 . '%" OR host_id=' . $2 . ')'} = 1;
+			}
+			
 		}
 		else {
-			$not{'msg LIKE "%' . $term . '%"'} = 1;
+			if ($q->use_sql_regex){
+				$not{'msg RLIKE "' . $q->term_to_sql_term($term) . '"'} = 1;
+			}
+			else {
+				$not{'msg LIKE "%' . $term . '%"'} = 1;
+			}
 		}
 	}
 	
@@ -3778,7 +3814,12 @@ sub _build_archive_match_str {
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
 				$value =~ s/^"([^"]+)"$/$1/;
-				$and{$field . ' LIKE "%' . $value . '%"'} = 1;
+				if ($q->use_sql_regex){
+					$and{$field . ' RLIKE "' . $q->term_to_sql_term($value) . '"'} = 1;
+				}
+				else {
+					$and{$field . ' LIKE "%' . $value . '%"'} = 1;
+				}
 			}
 		}
 				
@@ -3786,7 +3827,12 @@ sub _build_archive_match_str {
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{not}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{not}->{$class_id}->{$field} }){
 				$value =~ s/^"([^"]+)"$/$1/;
-				$not{$field . ' LIKE "%' . $value . '%"'} = 1;
+				if ($q->use_sql_regex){
+					$not{$field . ' RLIKE "' . $q->term_to_sql_term($value) . '"'} = 1;
+				}
+				else {
+					$not{$field . ' LIKE "%' . $value . '%"'} = 1;
+				}
 			}
 		}
 		
@@ -3794,7 +3840,12 @@ sub _build_archive_match_str {
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{or}->{$class_id} }){
 			foreach my $value (@{ $q->terms->{field_terms}->{or}->{$class_id}->{$field} }){
 				$value =~ s/^"([^"]+)"$/$1/;
-				$or{$field . ' LIKE "%' . $value . '%"'} = 1;
+				if ($q->use_sql_regex){
+					$or{$field . ' RLIKE "' . $q->term_to_sql_term($value) . '"'} = 1;
+				}
+				else {
+					$or{$field . ' LIKE "%' . $value . '%"'} = 1;
+				}
 			}
 		}
 	}
@@ -4132,21 +4183,19 @@ sub _build_query {
 	else {
 		# Check if we have multiple classes for any string field matches
 		my %distinct_str_fields;
-		foreach my $class_id (keys %{ $q->terms->{field_terms}->{and} }){
-			foreach my $field (keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
-				if (scalar @{ $q->terms->{field_terms}->{and}->{$class_id}->{$field} }){
-					my $needed_fields_string = join(',', sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} });
-					$distinct_str_fields{$needed_fields_string} ||= {};
-					$distinct_str_fields{$needed_fields_string}->{$class_id} = 1;
-					last;
+		foreach my $boolean (qw(and or)){
+			foreach my $class_id (keys %{ $q->terms->{field_terms}->{$boolean} }){
+				foreach my $field (keys %{ $q->terms->{field_terms}->{$boolean}->{$class_id} }){
+					if (scalar @{ $q->terms->{field_terms}->{$boolean}->{$class_id}->{$field} }){
+						my $needed_fields_string = join(',', sort keys %{ $q->terms->{field_terms}->{$boolean}->{$class_id} });
+						$distinct_str_fields{$needed_fields_string} ||= {};
+						$distinct_str_fields{$needed_fields_string}->{$class_id} = 1;
+						last;
+					}
 				}
 			}
-			
-#			foreach my $abstract_field (keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
-#				$distinct_str_fields{$abstract_field} ||= {};
-#				$distinct_str_fields{$abstract_field}->{$class_id} = 1;
-#			}
 		}
+		$self->log->debug('%distinct_str_fields: ' . Dumper(\%distinct_str_fields));
 		
 		if (scalar keys %distinct_str_fields > 1 and not $q->archive and $q->query_term_count){
 			foreach my $class_id (@{ $clauses{classes}->{vals} }){
@@ -5331,7 +5380,6 @@ sub _archive_query {
 		
 		my $queries = $self->_build_query($q);
 		foreach my $table (@table_arr){
-			my $start = time();
 			foreach my $query (@$queries){
 				# strip sphinx-specific attr_ prefix
 				$query->{where} =~ s/attr\_((?:i|s)\d)([<>=]{1,2})\?/$1$2\?/g; 
@@ -5454,7 +5502,9 @@ sub _archive_query {
 		
 		last if $total_found >= $q->limit;
 		
-		if ($q->timeout and (Time::HiRes::time() - $q->start_time) > ($q->timeout/1000)){
+		my $timeout = $q->original_timeout ? $q->original_timeout : $q->timeout;
+		$self->log->debug('timeout: ' . ($timeout/1000) . ', current duration: ' . (Time::HiRes::time() - $q->start_time));
+		if ($timeout and (Time::HiRes::time() - $q->start_time) > ($timeout/1000)){
 			my $e = 'Hit query timeout on peer ' . $q->peer_label;
 			$q->results->is_approximate(2);
 			$self->log->error($e);

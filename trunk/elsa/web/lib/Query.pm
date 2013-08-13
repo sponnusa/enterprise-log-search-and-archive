@@ -20,6 +20,7 @@ use String::CRC32;
 
 our $Default_limit = 100;
 our $Tokenizer_regex = '[^A-Za-z0-9\\-\\.\\@\\_]';
+our $Sql_tokenizer_regex = '[^-A-Za-z0-9\\.\\@\\_]';
 
 # Required
 has 'user' => (is => 'rw', isa => 'User', required => 1);
@@ -72,6 +73,8 @@ has 'query_term_count' => (is => 'rw', isa => 'Num', required => 1, default => 0
 has 'max_query_time' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'program_translations' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'implicit_plus' => (is => 'rw', isa => 'Bool', required => 1, default => 1);
+has 'use_sql_regex' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
+has 'original_timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 
 # Optional
 has 'query_string' => (is => 'rw', isa => 'Str');
@@ -313,6 +316,39 @@ sub _term_to_regex {
 	return ($regex);
 }
 
+sub term_to_sql_term {
+	my $self = shift;
+	my $term = shift;
+	my $field_name = shift;
+	my $regex = $term;
+	return if $field_name and $field_name eq 'class'; # we dont' want to highlight class integers
+	if (my @m = $regex =~ /^\(+ (\@\w+)\ ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		if ($m[0] eq '@class'){
+			return; # we dont' want to search this
+		}
+		else {
+			my @ret = @m[1..$#m];# don't return the field name
+			foreach (@ret){
+				$_ = '(^|' . $Sql_tokenizer_regex . ')(' . $_ . ')(' . $Sql_tokenizer_regex . '|$)';
+			}
+			return $ret[0];
+		}
+	}
+	elsif (@m = $regex =~ /^\( ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		foreach (@m){
+			$_ = '(^|' . $Sql_tokenizer_regex . ')(' . $_ . ')(' . $Sql_tokenizer_regex . '|$)';
+		}
+		return $m[0];
+	}
+	$regex =~ s/^\s{2,}/\ /;
+	$regex =~ s/\s{2,}$/\ /;
+	$regex =~ s/\s/\./g;
+	$regex =~ s/\\{2,}/\\/g;
+	$regex =~ s/[^a-zA-Z0-9\.\_\-\@]//g;
+	$regex = '(^|' . $Sql_tokenizer_regex . ')(' . $regex . ')(' . $Sql_tokenizer_regex . '|$)';
+	return $regex;
+}
+
 sub TO_JSON {
 	my $self = shift;
 	my $ret = {
@@ -495,6 +531,10 @@ sub _parse_query {
 		
 	# Strip off any transforms and apply later
 	($raw_query, my @transforms) = split(/\s*\|\s+/, $raw_query);
+	
+	# Make sure that any lone lowercase 'or' terms are uppercase for DWIM behavior
+	$raw_query =~ s/\sor\s/ OR /gi;
+	
 	$self->log->trace('query: ' . $raw_query . ', transforms: ' . join(' ', @transforms));
 	$self->transforms([ @transforms ]);
 	
@@ -946,6 +986,25 @@ sub _parse_query {
 #			}
 #		}
 #	}
+
+	# Include all OR ints as any terms
+	if (my $terms = $self->terms->{attr_terms}->{or}->{'='}){
+		$self->log->debug('$terms: ' . Dumper($terms));
+		foreach my $field_name (keys %$terms){
+			next if $field_name eq 'host' or $field_name eq 'program' or $field_name eq 'class'; 
+			foreach my $class_id (keys %{ $terms->{$field_name} }){
+				foreach my $attr (keys %{ $terms->{$field_name}->{$class_id} }){
+					foreach my $raw_value (@{ $terms->{$field_name}->{$class_id}->{$attr} }){
+						$self->log->debug('considering term: ' . $raw_value);
+						$attr =~ s/^attr\_//;
+						my $resolved_value = $self->resolve_value($class_id, $raw_value, $attr);
+						my $term = $self->_term_to_sphinx_term($class_id, $attr, $resolved_value);
+						$self->terms->{any_field_terms}->{or}->{$term} = 1;
+					}
+				}
+			}
+		}
+	}
 	
 	$self->log->trace("terms: " . Dumper($self->terms));
 	$self->log->trace("classes: " . Dumper($self->classes));
@@ -1286,8 +1345,19 @@ sub is_stopword {
 	my $stopwords = $self->conf->get('stopwords');
 	
 	# Check all field terms to see if they are a stopword and warn if necessary
-	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH' and exists $stopwords->{ lc($keyword) }){
-		return 1;
+	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
+		if (exists $stopwords->{ lc($keyword) }){
+			return 1;
+		}
+		elsif ($keyword =~ /^"([^"]+)"$/){
+			my @possible_terms = split(/\s+/, $1);
+			foreach my $term (@possible_terms){
+				if (exists $stopwords->{ lc($term) }){
+					$self->log->trace('Found stopword ' . $term . ' embedded in quoted term ' . $keyword);
+					return 1;
+				}
+			}
+		}
 	}
 	return 0;
 }
@@ -1475,7 +1545,15 @@ sub _parse_query_term {
 #				}
 				my $field_infos = $self->get_field($value);
 				$self->log->trace('$field_infos ' . Dumper($field_infos));
-				if ($field_infos or $value eq 'node'){
+				
+				if (grep { $_ eq $value } @$Fields::Import_fields){
+					throw(400, 'Cannot group by an import meta tag', { term => $value });
+				}
+				elsif (not scalar keys %$field_infos){
+					throw(404, 'Field ' . $value . ' not a valid groupby value', { term => $value });
+				}
+				
+				if ($value eq 'node'){
 					$self->add_groupby(lc($value));
 					foreach my $class_id (keys %$field_infos){
 						$self->classes->{groupby}->{$class_id} = 1;

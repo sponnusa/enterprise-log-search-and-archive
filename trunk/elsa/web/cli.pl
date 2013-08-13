@@ -28,7 +28,7 @@ my $start = time();
 my $api = API->new(config_file => $config_file);
 my $user = User->new(conf => $api->conf, username => 'system');
 
-my $q = $api->query({query_string => $query, user => $user});
+my $q = $api->query({query_string => $query, user => $user, node_info => $api->info});
 my $duration = time() - $start;
 exit unless $q->results->total_records;
 my $format = $opts{f} ? $opts{f} : 'tsv';

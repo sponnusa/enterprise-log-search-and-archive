@@ -230,7 +230,8 @@ sub local_query {
 	elsif (not $q->index_term_count){
 		# Skip Sphinx, execute a raw SQL search
 		$self->log->info('No query terms, executing against raw SQL');
-		$q->add_warning(200, 'No query terms, query did not use an index', { indexed => 0 }); 
+		$q->add_warning(200, 'No query terms, query did not use an index', { indexed => 0 });
+		$q->use_sql_regex(1); # we need to emulate how Sphinx matches 
 		$self->_archive_query($q);
 	}
 	elsif (($q->analytics or ($q->limit > $API::Max_limit)) and not $q->has_groupby){
