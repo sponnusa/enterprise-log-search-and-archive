@@ -141,6 +141,7 @@ $args->{file} = $compressed_filename;
 # Move the buffer file and new program file to remote location
 foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
 	my $forwarder;
+	next if exists $dest_hash->{ops};
 	my $package = $Forwarders{ $dest_hash->{method} };
 	if ($package){
 		$forwarder = $package->new(log => $Log, conf => $Config_json, %{ $dest_hash });
