@@ -3674,9 +3674,9 @@ sub _build_sphinx_match_str {
 	foreach my $class_id (sort keys %classes){
 		next if defined $given_class_id and $class_id != $given_class_id;
 		#(%and, %or, %not) = ();
-		my %class_and = %and;
-		my %class_or = %or;
-		my %class_not = %not;
+		my %class_and;# = %and;
+		my %class_or;# = %or;
+		my %class_not;# = %not;
 		my $class_match_str = '';
 		# First, the ANDs
 		foreach my $field (sort keys %{ $q->terms->{field_terms}->{and}->{$class_id} }){
@@ -3701,27 +3701,41 @@ sub _build_sphinx_match_str {
 		
 		if (scalar keys %class_and){
 			#$class_match_str .= ' (' . join(' ', sort keys %and) . ')';
-			push @{ $class_match_strs{and} }, '(' . join(' ', sort keys %class_and) . ')';
+			push @{ $class_match_strs{and} }, '(' . join(' ', sort keys %class_and, sort keys %and) . ')';
 		}
 		if (scalar keys %class_or){
 			#$class_match_str .= ' (' . join('|', sort keys %or) . ')';
-			push @{ $class_match_strs{or} }, '(' . join('|', sort keys %class_or) . ')';
+			push @{ $class_match_strs{or} }, '(' . join('|', sort keys %class_or, sort keys %or) . ')';
 		}
 		if (scalar keys %class_not){
 			#$class_match_str .= ' !(' . join('|', sort keys %not) . ')';
-			push @{ $class_match_strs{not} }, '(' . join('|', sort keys %class_not) . ')';
+			push @{ $class_match_strs{not} }, '(' . join('|', sort keys %class_not, sort keys %not) . ')';
 		}
 		#push @class_match_strs, $class_match_str if $class_match_str;
 	}
 	
 	#if (@class_match_strs){
-	foreach my $boolean (qw(and or)){
-		if (scalar @{ $class_match_strs{$boolean} }){
-			$match_str = ' (' . join('|', @{ $class_match_strs{$boolean} }) . ')';
+	
+	if (scalar @{ $class_match_strs{and} } or scalar @{ $class_match_strs{or} } or scalar @{ $class_match_strs{not} }){
+		$match_str = '';
+		if (scalar @{ $class_match_strs{and} }){
+			$match_str .= ' (' . join(' ', @{ $class_match_strs{and} }) . ')';
 		}
-	}
-	if (scalar @{ $class_match_strs{not} }){
-		$match_str = ' !(' . join('|', @{ $class_match_strs{not} }) . ')';
+		elsif (scalar keys %and){
+			$match_str .= ' (' . join(' ', sort keys %and) . ')';
+		}
+		if (scalar @{ $class_match_strs{or} }){
+			$match_str .= ' (' . join('|', @{ $class_match_strs{or} }) . ')';
+		}
+		elsif (scalar keys %or){
+			$match_str .= ' (' . join(' ', sort keys %or) . ')';
+		}
+		if (scalar @{ $class_match_strs{not} }){
+			$match_str .= ' !(' . join('|', @{ $class_match_strs{not} }) . ')';
+		}
+		elsif (scalar keys %not){
+			$match_str .= ' !(' . join('|', sort keys %not) . ')';
+		}
 	}
 
 	$self->log->trace('match str: ' . $match_str);		
