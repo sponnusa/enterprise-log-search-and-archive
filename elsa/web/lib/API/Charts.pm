@@ -11,7 +11,7 @@ use Utils;
 sub _handle_errors {
 	my $self = shift;
 	my $msg_prefix = shift;
-	if (my $e = catch_any){
+	if (my $e = catch_any(shift)){
 		my $errstr = $msg_prefix . ': ' . $e->message;
 		$self->log->error($errstr);
 		$self->db->rollback;
@@ -80,8 +80,10 @@ sub add_dashboard {
 		}
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error creating dashboard', $_);
 	};
-	$self->_handle_errors('Error creating dashboard');
 	
 	return { dashboard_id => $dashboard_id };
 }
@@ -124,8 +126,10 @@ sub del_dashboard {
 		$ok = $sth->rows;
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error deleting dashboard', $_);
 	};
-	$self->_handle_errors('Error deleting dashboard');
 	return { ok => $ok };
 }
 
@@ -176,8 +180,10 @@ sub update_dashboard {
 		$self->log->debug('query: ' . $query . ', id=' . $args->{id});
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error updating dashboard', $_);
 	};
-	$self->_handle_errors('Error updating dashboard');
 	
 	return { ok => $sth->rows };
 }
@@ -227,8 +233,10 @@ sub export_dashboard {
 		}
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error exporting dashboard', $_);
 	};
-	$self->_handle_errors('Error exporting dashboard');
 	return $ret;
 }
 
@@ -309,8 +317,10 @@ sub add {
 		$sth->execute($args->{dashboard_id}, $chart_id, $args->{x} ? $args->{x} : 0, $args->{y} ? $args->{y} : 0);
 		
 		$self->db->commit unless $no_xa;
+	}
+	catch {
+		$self->_handle_errors('Error creating chart', $_);
 	};
-	$self->_handle_errors('Error creating chart');
 	
 	return $ret;
 }
@@ -409,8 +419,10 @@ sub del {
 			}
 		}
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error deleting chart', $_);
 	};
-	$self->_handle_errors('Error deleting chart');
 	
 	return { ok => $rows };
 }
@@ -529,8 +541,10 @@ sub move {
 		}
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error moving chart', $_);
 	};
-	$self->_handle_errors('Error moving chart');
 	return $self->_get_rows($args);
 }
 
@@ -717,8 +731,10 @@ sub add_query {
 		$query_id = $self->db->{mysql_insertid};
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error creating query', $_);
 	};
-	$self->_handle_errors('Error creating query');
 	
 	return { query_id => $query_id, label => $args->{label}, query => $args->{query} };
 }
@@ -744,8 +760,10 @@ sub del_query {
 		$ok = $sth->rows;
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error deleting query', $_);
 	};
-	$self->_handle_errors('Error deleting query');
 	
 	return { ok => $ok };
 }
@@ -778,8 +796,10 @@ sub update_query {
 		$query_id = $self->db->{mysql_insertid};
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error updating query', $_);
 	};
-	$self->_handle_errors('Error creating query');
 	
 	return { ok => $sth->rows };
 }
@@ -820,8 +840,10 @@ sub update {
 		}
 		
 		$self->db->commit;
+	}
+	catch {
+		$self->_handle_errors('Error updating chart', $_);
 	};
-	$self->_handle_errors('Error creating query');
 	
 	return { ok => $sth->rows };
 }
