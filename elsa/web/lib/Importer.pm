@@ -10,6 +10,7 @@ has 'timezone' => (is => 'rw', isa => 'Str', required => 1, default => 'local');
 has 'host' => (is => 'rw', isa => 'Str');
 has 'start' => (is => 'rw', isa => 'Int');
 has 'end' => (is => 'rw', isa => 'Int');
+has 'year' => (is => 'rw', isa => 'Int');
 
 sub heuristic { return 0 }
 sub detect_filename { return 0 }

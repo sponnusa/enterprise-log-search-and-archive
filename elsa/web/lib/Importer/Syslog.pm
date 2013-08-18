@@ -5,7 +5,6 @@ use IO::File;
 use DateTime;
 use DateTime::Format::Strptime;
 
-
 sub local_syslog { return 1 }
 sub heuristic {
 	my $self = shift;
@@ -47,7 +46,7 @@ sub process {
 	my $start = 2**32;
 	my $end = 0;
 	my @localtime = localtime;
-	my $year = $localtime[5] + 1900;
+	my $year = $self->year ? $self->year : $localtime[5] + 1900;
 	
 	# Write header
 	#$outfile->print($self->get_header($id) . "\n");

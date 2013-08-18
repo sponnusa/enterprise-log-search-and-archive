@@ -51,6 +51,7 @@ has 'start' => (is => 'rw', isa => 'Int');
 has 'end' => (is => 'rw', isa => 'Int');
 has 'class' => (is => 'rw', isa => 'Str');
 has 'host' => (is => 'rw', isa => 'Str');
+has 'year' => (is => 'rw', isa => 'Int');
 
 #sub BUILDARGS {
 #	my $class = shift;
@@ -74,6 +75,9 @@ sub BUILD {
 		my %other_args;
 		if ($self->class){
 			$other_args{class} = $self->class;
+		}
+		if ($self->year){
+			$other_args{year} = $self->year;
 		}
 		eval {
 			my $plugin = $plugin_name->new(log => $self->log, conf => $self->conf, db => $self->db, %other_args);
