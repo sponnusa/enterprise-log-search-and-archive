@@ -404,7 +404,7 @@ sub parse_line {
 	#$line[FIELD_PROGRAM] =~ s/[^a-zA-Z0-9\_\-]/\_/g;
 	
 	# Host gets the int version of itself
-	$line[FIELD_HOST] = $line[FIELD_HOST] ? unpack('N*', inet_aton($line[FIELD_HOST])) : 2130706433;
+	$line[FIELD_HOST] = $line[FIELD_HOST] =~ /\./ ? unpack('N*', inet_aton($line[FIELD_HOST])) : 2130706433;
 	
 	# Perform a crc32 conversion of the program and store it in the cache for later recording
 	if ($self->cache->{ $line[FIELD_PROGRAM] }){
@@ -420,7 +420,7 @@ sub parse_line {
 	if ($line[FIELD_CLASS_ID] ne 1){ #skip default since there aren't any fields
 		# Convert any IP fields as necessary
 		foreach my $field_order (keys %{ $self->class_info->{field_conversions}->{ $line[FIELD_CLASS_ID] }->{'IPv4'} }){
-			$line[$field_order] = $line[$field_order] ? unpack('N', inet_aton($line[$field_order])) : 2130706433;
+			$line[$field_order] = $line[$field_order] =~ /\./ ? unpack('N', inet_aton($line[$field_order])) : 2130706433;
 		}
 		
 		# Convert any proto fields as necessary

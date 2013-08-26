@@ -2,8 +2,24 @@ package Importer::Syslog;
 use Moose;
 extends 'Importer';
 use IO::File;
-use DateTime;
-use DateTime::Format::Strptime;
+use POSIX;
+#use DateTime;
+#use DateTime::Format::Strptime;
+
+our $Month_map = {
+	Jan => '01',
+	Feb => '02',
+	Mar => '03',
+	Apr => '04',
+	May => '05',
+	Jun => '06',
+	Jul => '07',
+	Aug => '08',
+	Sep => '09',
+	Oct => '10',
+	Nov => '11',
+	Dec => '12',
+};
 
 sub local_syslog { return 1 }
 sub heuristic {
@@ -41,10 +57,12 @@ sub process {
 	my $outfile = new IO::File("> $outfile_location") or die("Cannot open $outfile_location");
 	my $counter = 0;
 	my $lines_to_skip = $self->lines_to_skip;
-	my $timezone = DateTime::TimeZone->new( name => $self->timezone )->name;
-	my $parser = DateTime::Format::Strptime->new(pattern => '%b %d %T %Y', time_zone => $timezone);
-	my $start = 2**32;
-	my $end = 0;
+#	my $timezone = DateTime::TimeZone->new( name => $self->timezone )->name;
+#	my $parser = DateTime::Format::Strptime->new(pattern => '%b %d %T %Y', time_zone => $timezone);
+#	my $start = 2**32;
+#	my $end = 0;
+	my @start = (99,99,99,99,99);
+	my @end = (0,0,0,0,0);
 	my @localtime = localtime;
 	my $year = $self->year ? $self->year : $localtime[5] + 1900;
 	
@@ -55,22 +73,39 @@ sub process {
 		if ($. <= $lines_to_skip){
 			next;
 		}
-		$_ =~ /^((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\ \d{2}\:\d{2}\:\d{2})\ (\S+)\ ([^\:]+): ([^\n]+)/;
-		my $dt = $parser->parse_datetime("$1 $year") or next;
-		my ($host, $program, $msg) = ($2, $3, $4);
-		my $date = $dt->strftime('%Y-%m-%dT%H:%M:%S.000Z');
-		if ($dt->epoch < $start){
-			$start = $dt->epoch;
+		$_ =~ /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\ (\d{2})\:(\d{2})\:(\d{2})\ (\S+)\ ([^\:]+): ([^\n]+)/;
+		my ($month, $day, $hour, $minute, $second) = ($Month_map->{$1}, $2, $3, $4, $5);
+		if (length($day) == 1){
+			$day = '0' . $day;
 		}
-		if ($dt->epoch > $end){
-			$end = $dt->epoch;
+		my ($host, $program, $msg) = ($6, $7, $8);
+		my $date = $year . '-' . $month . '-' . $day . 'T' . $hour . ':' . $minute . ':' . $second . '.000Z';
+		if ($month < $start[0] and $day < $start[1] and $hour < $start[2] and $minute < $start[3]
+			and $second < $start[4]){
+				@start = (int($month), $day, $hour, $minute, $second);
 		}
+		if ($month > $end[0] and $day > $end[1] and $hour > $end[2] and $minute > $end[3]
+			and $second > $end[4]){
+				@end = (int($month), $day, $hour, $minute, $second);
+		}
+#		$_ =~ /^((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\ \d{2}\:\d{2}\:\d{2})\ (\S+)\ ([^\:]+): ([^\n]+)/;
+#		my $dt = $parser->parse_datetime("$1 $year") or next;
+#		my ($host, $program, $msg) = ($2, $3, $4);
+#		my $date = $dt->strftime('%Y-%m-%dT%H:%M:%S.000Z');
+#		if ($dt->epoch < $start){
+#			$start = $dt->epoch;
+#		}
+#		if ($dt->epoch > $end){
+#			$end = $dt->epoch;
+#		}
 		#$outfile->print($_);
 		$outfile->print("1 $date $host $program - $id - $msg\n");
 		$counter++;
 	}
-	$self->start($start);
-	$self->end($end);
+	$self->start(mktime(@start[4,3,2,1,0], $year));
+	#$self->start($start);
+	$self->end(mktime(@end[4,3,2,1,0], $year));
+	#$self->end($end);
 	return $counter;
 }
 
