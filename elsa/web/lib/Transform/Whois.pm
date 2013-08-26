@@ -47,7 +47,7 @@ sub BUILD {
 		
 		foreach my $key (keys %{ $datum }){
 			if ($datum->{$key} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
-				$datum->{transforms}->{$Name}->{$key} = {};
+				$datum->{transforms}->{$Name}->{$key} = { ip => $datum->{$key} };
 				$self->_lookup($datum, $key);
 			}
 		}
