@@ -147,7 +147,7 @@ centos_get_node_packages(){
 		yum -yq install mysql-server mysql-libs mysql-devel
 	fi
 	
-	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel perl-Module-Build perl-Module-Install
+	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel perl-Module-Build perl-Module-Install perl-CPAN perl-Test-Simple perl-ExtUtils-MakeMaker
 	
 	return $?
 }
@@ -859,7 +859,7 @@ centos_get_web_packages(){
 	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
 		yum -yq install mysql mysql-libs mysql-devel
 	fi
-	yum -yq install curl subversion make gcc gcc-c++ httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python krb5-devel perl-Module-Install perl-libwww-perl
+	yum -yq install curl subversion make gcc gcc-c++ httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python krb5-devel perl-Module-Install perl-libwww-perl perl-CPAN perl-Test-Simple perl-ExtUtils-MakeMaker
 	return $?
 }
 
