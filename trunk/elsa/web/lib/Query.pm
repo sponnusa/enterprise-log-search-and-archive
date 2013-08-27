@@ -1798,7 +1798,7 @@ sub _parse_query_term {
 			# Otherwise there was no field given, search all fields
 			elsif (defined $term_hash->{value}){
 				# If the term is an IP, let's also search for its integer representation
-				if ($term_hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
+				if ($self->conf->get('convert_ip_to_int') and $term_hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 					$self->terms->{any_field_terms}->{$boolean}->{'(' . $term_hash->{value} . '|' . unpack('N*', inet_aton($term_hash->{value})) . ')'} = 1;
 					if ($boolean ne 'not'){
 						$self->terms->{any_field_terms}->{or}->{ $term_hash->{value} } = 1;
