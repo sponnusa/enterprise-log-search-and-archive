@@ -236,30 +236,28 @@ sub _query {
 		$end = epoch2iso($q->end);
 	}
 	
-	if ($q->has_groupby){
-		if ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
-			foreach my $row (@{ $self->fields }){
-				if ($row->{alias}){
-					if ($row->{alias} eq 'timestamp'){
-						if ($where and $where ne ' '){
-							$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-						}
-						else {
-							$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-						}
-						push @$placeholders, $start, $end;
-						last;
+	if ($q->has_groupby and $time_select_conversions->{iso}->{ $q->groupby->[0] }){
+		foreach my $row (@{ $self->fields }){
+			if ($row->{alias}){
+				if ($row->{alias} eq 'timestamp'){
+					if ($where and $where ne ' '){
+						$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
 					}
-					elsif ($row->{alias} eq 'timestamp_int'){
-						if ($where and $where ne ' '){
-							$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-						}
-						else {
-							$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-						}
-						push @$placeholders, $start_int, $end_int;
-						last;
+					else {
+						$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
 					}
+					push @$placeholders, $start, $end;
+					last;
+				}
+				elsif ($row->{alias} eq 'timestamp_int'){
+					if ($where and $where ne ' '){
+						$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+					}
+					else {
+						$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+					}
+					push @$placeholders, $start_int, $end_int;
+					last;
 				}
 			}
 		}
