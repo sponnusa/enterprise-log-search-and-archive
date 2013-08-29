@@ -483,8 +483,7 @@ sub normalize_value {
 		return $value;
 	}
 	
-	return $value unless $self->node_info->{field_conversions}->{ $class_id };
-	#$self->log->debug("normalizing for class_id $class_id with the following: " . Dumper($self->node_info->{field_conversions}->{ $class_id }));
+	return $value unless $self->info->{field_conversions}->{ $class_id };
 	
 	if ($field_order == $Field_to_order->{host}){ #host is handled specially
 		my @ret;
@@ -535,20 +534,20 @@ sub normalize_value {
 		}
 	}
 	elsif ($field_order == $Field_to_order->{class}){
-		return $self->node_info->{classes}->{ uc($value) };
+		return $self->info->{classes}->{ uc($value) };
 	}
-	elsif ($self->node_info->{field_conversions}->{ $class_id }->{'IPv4'}
-		and $self->node_info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
+	elsif ($self->info->{field_conversions}->{ $class_id }->{'IPv4'}
+		and $self->info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
 		and $value =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 		return unpack('N', inet_aton($value));
 	}
-	elsif ($self->node_info->{field_conversions}->{ $class_id }->{PROTO} 
-		and $self->node_info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
+	elsif ($self->info->{field_conversions}->{ $class_id }->{PROTO} 
+		and $self->info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
 		$self->log->trace("Converting $value to proto");
 		return exists $Proto_map->{ uc($value) } ? $Proto_map->{ uc($value) } : int($value);
 	}
-	elsif ($self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
-		and $self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
+	elsif ($self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
+		and $self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
 		if ($Field_order_to_attr->{$field_order} =~ /attr_s/){
 			$self->log->trace("Converting $value to CRC of country_code");
 			return crc32(join('', unpack('c*', pack('A*', uc($value)))));
@@ -645,26 +644,24 @@ sub resolve_value {
 			return $value;
 		}
 	}
-	#$self->log->debug('field_order ' . $field_order . ', col: ' . $col . ', conversions: ' . Dumper($self->node_info->{field_conversions}->{ $class_id }));
 	
 	if ($Field_order_to_meta_attr->{$field_order}){
-		#$self->log->trace('interpreting field_order ' . $field_order . ' with class ' . $class_id . ' to be meta');
 		$class_id = 0;
 	}
 	
-	if ($self->node_info->{field_conversions}->{ $class_id }->{TIME}->{$field_order}){
+	if ($self->info->{field_conversions}->{ $class_id }->{TIME}->{$field_order}){
 		return epoch2iso($value * $Time_values->{ $Field_order_to_attr->{$field_order} });
 	}
-	elsif ($self->node_info->{field_conversions}->{ $class_id }->{IPv4}->{$field_order}){
+	elsif ($self->info->{field_conversions}->{ $class_id }->{IPv4}->{$field_order}){
 		#$self->log->debug("Converting $value from IPv4");
 		return inet_ntoa(pack('N', $value));
 	}
-	elsif ($self->node_info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
+	elsif ($self->info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
 		#$self->log->debug("Converting $value from proto");
 		return exists $Inverse_proto_map->{ $value } ? $Inverse_proto_map->{ $value } : $value;
 	}
-	elsif ($self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
-		and $self->node_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
+	elsif ($self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
+		and $self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
 		my @arr = $value =~ /(\d{2})(\d{2})/;
 		if (@arr){
 			return unpack('A*', pack('c*', @arr));
@@ -674,25 +671,12 @@ sub resolve_value {
 		}
 	}
 	elsif ($Field_order_to_attr->{$field_order} eq 'class_id'){
-		return $self->node_info->{classes_by_id}->{$class_id};
+		return $self->info->{classes_by_id}->{$class_id};
 	}
 	else {
 		#apparently we don't know about any conversions
 		#$self->log->debug("No conversion for $value and class_id $class_id");
 		return $value; 
-	}
-}
-
-sub normalize_quoted_value {
-	my $self = shift;
-	my $value = shift;
-	
-	# Quoted integers don't work for some reason
-	if ($value =~ /^[a-zA-Z0-9]+$/){
-		return $value;
-	}
-	else {
-		return '"' . $value . '"';
 	}
 }
 

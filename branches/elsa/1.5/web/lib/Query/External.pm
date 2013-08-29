@@ -1,4 +1,4 @@
-package Query::Sphinx;
+package Query::External;
 use Moose;
 extends 'Query';
 

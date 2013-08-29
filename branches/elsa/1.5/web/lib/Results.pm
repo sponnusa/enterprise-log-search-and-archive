@@ -18,6 +18,7 @@ has 'bulk_file' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', handles 
 has 'bulk_dir' => (is => 'rw', isa => 'Str', required => 1, default => $Bulk_dir);
 has 'json' => (is => 'rw', isa => 'JSON', required => 1, default => sub { return JSON->new->allow_nonref->allow_blessed->pretty(0) });
 has 'is_approximate' => (is => 'rw', isa => 'Int', required => 1, default => 0);
+has 'percentage_complete' => (is => 'rw', isa => 'Num', required => 1, default => 0);
 
 sub BUILDARGS {
 	my $class = shift;

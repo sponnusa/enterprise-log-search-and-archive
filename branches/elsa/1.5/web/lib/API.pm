@@ -37,8 +37,6 @@ use SyncMysql;
 #use AsyncMysql;
 #use AsyncDB;
 
-our $Max_limit = 10000;
-our $Max_query_terms = 128;
 our $Livetail_poll_interval = 5;
 our $Scheduled_query_cols = { map { $_ => 1 } (qw(id username query frequency start end connector params enabled last_alert alert_threshold)) };
 
@@ -1834,70 +1832,6 @@ sub query {
 	}
 	
 	return $q;
-}
-
-sub _estimate_query_time {
-	my ($self, $q) = @_;
-	
-	my $query_time = 0;
-	
-	if ($q->archive){
-		my $largest = 0;
-		
-		my $archive_query_rows_per_second = 300_000; # guestimate
-		if ($self->conf->get('archive_query_rows_per_second')){
-			$archive_query_rows_per_second = $self->conf->get('archive_query_rows_per_second');
-		}
-		
-		# For every node, find the total rows that will have to be searched and use the largest value (each node queries in parallel).
-		foreach my $node (keys %{ $q->node_info->{nodes} }){
-			my $node_info = $q->node_info->{nodes}->{$node};
-			my $total_rows = 0;
-			foreach my $table (@{ $node_info->{tables}->{tables} }){
-				next unless $table->{table_type} eq 'archive';
-				if ($q->start and $q->end){
-					if ((($q->start >= $table->{start_int} and $q->start <= $table->{end_int})
-						or ($q->end >= $table->{start_int} and $q->end <= $table->{end_int})
-						or ($q->start <= $table->{start_int} and $q->end >= $table->{end_int})
-						or ($table->{start_int} <= $q->start and $table->{end_int} >= $q->end))
-					){
-						$self->log->trace('including ' . ($table->{max_id} - $table->{min_id}) . ' rows');
-						$total_rows += ($table->{max_id} - $table->{min_id});
-					}
-				}
-				else {
-					$self->log->trace('including ' . ($table->{max_id} - $table->{min_id}) . ' rows');
-					$total_rows += ($table->{max_id} - $table->{min_id});
-				}
-			}
-			if ($total_rows > $largest){
-				$largest = $total_rows;
-				$self->log->trace('found new largest ' . $largest);
-			}
-		}
-		$query_time = $largest / $archive_query_rows_per_second;
-	}
-	else {
-		# Do a query with a cutoff=1 to find the total number of docs to be filtered through and apply an estimate
-		my ($save_cutoff, $save_limit) = ($q->cutoff, $q->limit);
-		$q->cutoff(1);
-		$q->limit(1);
-		$self->_sphinx_query($q);
-		
-		my $sphinx_filter_rows_per_second = 500_000; # guestimate of how many found hits/sec/node sphinx will filter
-		if ($self->conf->get('sphinx_filter_rows_per_second')){
-			$sphinx_filter_rows_per_second = $self->conf->get('sphinx_filter_rows_per_second');
-		}
-		
-		$self->log->trace('total_docs: ' . $q->results->total_docs);
-		$query_time = ($q->results->total_docs / $sphinx_filter_rows_per_second / (scalar keys %{ $q->node_info->{nodes} }));
-		
-		# Reset to original vals
-		$q->cutoff($save_cutoff);
-		$q->limit($save_limit);
-	}	
-	
-	return $query_time;
 }
 
 sub get_log_info {
