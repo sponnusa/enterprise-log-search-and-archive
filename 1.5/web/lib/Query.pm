@@ -30,8 +30,9 @@ has 'meta_params' => (is => 'rw', isa => 'HashRef', required => 1, default => su
 has 'type' => (is => 'rw', isa => 'Str', required => 1, default => 'index');
 has 'results' => (is => 'rw', isa => 'Results', required => 1);
 has 'start_time' => (is => 'ro', isa => 'Num', required => 1, default => sub { Time::HiRes::time() });
-has 'groupby' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
-	handles => { has_groupby => 'count', all_groupbys => 'elements', add_groupby => 'push' });
+#has 'groupby' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
+#	handles => { has_groupby => 'count', all_groupbys => 'elements', add_groupby => 'push' });
+has 'groupby' => (is => 'rw', isa => 'Str');
 has 'orderby' => (is => 'rw', isa => 'Str');
 has 'orderby_dir' => (is => 'rw', isa => 'Str', required => 1, default => 'ASC');
 has 'timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
@@ -61,14 +62,12 @@ has 'highlights' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', require
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'timezone_difference' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { start => 0, end => 0 } });
 has 'peer_requests' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
-has 'import_search_terms' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
-	handles => { 'has_import_search_terms' => 'count', 'all_import_search_terms' => 'elements' });
 has 'id_ranges' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_id_ranges' => 'count', 'all_id_ranges' => 'elements' });
 has 'max_query_time' => (is => 'rw', isa => 'Int', required => 1, default => 0);
-has 'program_translations' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'use_sql_regex' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'original_timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
+has 'datasources' => (is => 'rw', isa => 'HashRef');
 
 # Optional
 has 'query_string' => (is => 'rw', isa => 'Str');
@@ -78,7 +77,6 @@ has 'raw_query' => (is => 'rw', isa => 'Str');
 has 'comments' => (is => 'rw', isa => 'Str');
 has 'time_taken' => (is => 'rw', isa => 'Num', trigger => \&_set_time_taken);
 has 'batch_message' => (is => 'rw', isa => 'Str');
-has 'node_info' => (is => 'rw', isa => 'HashRef');
 #has 'import_groupby' => (is => 'rw', isa => 'Str');
 has 'peer_label' => (is => 'rw', isa => 'Str');
 has 'from_peer' => (is => 'rw', isa => 'Str');
@@ -88,6 +86,7 @@ sub BUILDARGS {
 	my %params = @_;
 	
 	$params{results} ||= new Results();
+	$params{info} = $params{parser}->info;
 	
 	return \%params;
 }
@@ -102,7 +101,9 @@ sub BUILD {
 		return $self;
 	}
 	
-	if ($self->has_groupby){
+	$self->_normalize_terms();
+	
+	if ($self->groupby){
 		$self->results( new Results::Groupby() );
 	}
 	
@@ -243,13 +244,13 @@ sub set_directive {
 	elsif ($directive eq 'class'){
 		# special case for class
 		my $class;
-		$self->log->trace('classes: ' . Dumper($self->node_info->{classes}));
-		if ($self->node_info->{classes}->{ uc($value) }){
-			$class = lc($self->node_info->{classes}->{ uc($value) });
+		$self->log->trace('classes: ' . Dumper($self->info->{classes}));
+		if ($self->info->{classes}->{ uc($value) }){
+			$class = lc($self->info->{classes}->{ uc($value) });
 		}
 		elsif (uc($value) eq 'ANY'){
 			my @classes;
-			foreach my $class_name (keys %{ $self->node_info->{classes} }){
+			foreach my $class_name (keys %{ $self->info->{classes} }){
 				next if $class_name eq 'ANY';
 				push @classes, { field => 'class', value => $class_name, op => $op };
 			}
@@ -448,53 +449,6 @@ sub dedupe_warnings {
 	$self->warnings([@dedupe]);
 }
 
-sub filter_stopwords {
-	my $self = shift;
-	my $record = shift;
-	
-	# Filter any records which have stopwords
-	if (scalar keys %{ $self->terms->{any_field_terms_sql}->{and} }){
-		my $to_find = scalar keys %{ $self->terms->{any_field_terms_sql}->{and} };
-		STOPWORD_LOOP: foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{and} }){
-			my $regex = QueryParser::_term_to_regex($stopword);
-			foreach my $field (qw(msg program node host class)){
-				if ($record->{$field} =~ qr/$regex/i){
-					$self->log->debug('Found stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);
-					$to_find--;
-					last STOPWORD_LOOP;
-				}
-			}
-			foreach my $field_hash (@{ $record->{_fields} }){
-				if ($field_hash->{value} =~ qr/$regex/i){
-					$self->log->debug('Found stopword: ' . $stopword . ' for term ' . $field_hash->{value});
-					$to_find--;
-					last STOPWORD_LOOP;
-				}
-			}
-		}
-		return 0 if $to_find;
-	}
-	
-	if (scalar keys %{ $self->terms->{any_field_terms_sql}->{not} }){
-		foreach my $stopword (keys %{ $self->terms->{any_field_terms_sql}->{not} }){
-			my $regex = QueryParser::_term_to_regex($stopword);
-			foreach my $field (qw(msg program node host class)){
-				if ($record->{$field} =~ qr/$regex/i){
-					$self->log->debug('Found not stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);
-					return 0;
-				}
-			}
-			foreach my $field_hash (@{ $record->{_fields} }){
-				if ($field_hash->{value} =~ qr/$regex/i){
-					$self->log->debug('Found not stopword: ' . $stopword . ' for term ' . $field_hash->{value});
-					return 0;
-				}
-			}
-		}
-	}
-	return 1;
-}
-
 sub has_stopword_terms {
 	my $self = shift;
 	my $terms_count = (scalar keys %{ $self->terms->{any_field_terms_sql}->{and} }) + (scalar keys %{ $self->terms->{any_field_terms_sql}->{not} });
@@ -510,6 +464,54 @@ sub has_stopword_terms {
 		}
 	}
 	return $terms_count;
+}
+
+sub count_terms {
+	my $self = shift;
+	my $given_boolean = shift;
+	my $count = 0;
+	foreach my $boolean (keys %{ $self->terms }){
+		next if $given_boolean and $boolean ne $given_boolean;
+		$count += scalar keys %{ $self->terms->{$boolean} };
+	}
+	return $count;
+}
+
+sub _normalize_terms {
+	my $self = shift;
+	return 1;
+}
+
+sub _build_query {
+	my $self = shift;
+}
+
+sub _get_permissions_clause {
+	my $self = shift;
+}
+
+sub permitted_classes {
+	my $self = shift;
+	if ($self->user->permissions->{class_id}->{0}){
+		my %classes = %{ $self->info->{classes_by_id} };
+		delete $classes{0};
+		return \%classes;
+	}
+	else {
+		my %ret;
+		foreach my $class_id (keys %{ $self->info->{classes_by_id} }){
+			next unless $class_id; # skip 0
+			if ($self->user->is_permitted('class_id', $class_id)){
+				$ret{$class_id} = $self->info->{classes_by_id}->{$class_id};
+			}
+		}
+		return \%ret;
+	}
+}
+
+
+sub execute {
+	my $self = shift;
 }
 
 
