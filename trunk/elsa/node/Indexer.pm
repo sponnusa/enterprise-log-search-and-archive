@@ -613,6 +613,11 @@ sub _oversize_log_rotate {
 	my $archive_size_limit = $log_size_limit * $self->conf->get('archive/percentage') * .01;
 	$self->log->trace('Effective log_size_limit: ' . $log_size_limit . ', archive_limit: ' . $archive_size_limit);
 	
+	unless ($log_size_limit){
+		$self->log->error('Unable to get log_size_limit, got: ' . $log_size_limit);
+		return 0;
+	}
+	
 	while ($self->_get_current_archive_size() > $archive_size_limit){
 		$self->_get_lock('directory');
 		
