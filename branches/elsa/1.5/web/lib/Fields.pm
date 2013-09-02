@@ -595,7 +595,7 @@ sub get_field {
 		# We were given an FQDN, so there is only one class this can be
 		foreach my $field_hash (@{ $self->node_info->{fields} }){
 			if (lc($field_hash->{fqdn_field}) eq lc($raw_field)){
-				return { $self->node_info->{classes}->{uc($class)} => $field_hash };
+				return { $self->info->{classes}->{uc($class)} => $field_hash };
 			}
 		}
 	}
@@ -619,7 +619,7 @@ sub get_field {
 		};
 	}
 		
-	foreach my $row (@{ $self->node_info->{fields} }){
+	foreach my $row (@{ $self->info->{fields} }){
 		if ($row->{value} eq $field){
 			$fields{ $row->{class_id} } = $row;
 		}

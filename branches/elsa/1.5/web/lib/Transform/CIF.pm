@@ -63,20 +63,19 @@ sub _query_native_cif {
 	my $self = shift;
 	my $keys = shift;
 	
-	foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = {};
+	foreach my $record ($self->results->all_results){
+		$record->{transforms}->{$Name} = {};
 		
 		$self->cv(AnyEvent->condvar);
-		$self->cv->begin;
-		foreach my $key (keys %{ $datum }){
+		$self->cv->begin(sub { $self->on_transform->() });
+		foreach my $key ($self->results->keys($record)){
 			if ($keys->{$key}){
-				$datum->{transforms}->{$Name}->{$key} = {};
-				$self->_query($datum, $key, $datum->{$key});
+				$record->{transforms}->{$Name}->{$key} = {};
+				$self->_query($record, $key, $self->results->value($record, $key));
 			}
 		}
 		
 		$self->cv->end;
-		$self->cv->recv;
 	}
 }
 
@@ -97,25 +96,26 @@ sub _query_cif_rest_sphinx {
 	$query = 'SELECT * FROM infrastructure WHERE MATCH(?) AND subnet_start <= ? AND subnet_end >= ?';
 	my $ip_sth = $cif->prepare($query);
 	
-	RECORD_LOOP: foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = {};
-		foreach my $key (keys %{ $datum }){
-			if ($keys->{$key} and $Fields->{ $key }){
-				$datum->{transforms}->{$Name}->{$key} = {};
-				my $info = $self->cache->get($datum->{$key});
+	RECORD_LOOP: foreach my $record ($self->results->all_results){
+		$record->{transforms}->{$Name} = {};
+		foreach my $key ($self->results->keys($record)){
+			my $value = $self->results->value($record, $key);
+			if ($value and $Fields->{ $key }){
+				$record->{transforms}->{$Name}->{$key} = {};
+				my $info = $self->cache->get($value);
 				if ($info and ref($info) eq 'HASH' and scalar keys %$info){
-					$datum->{transforms}->{$Name}->{$key} = $info;
+					$record->{transforms}->{$Name}->{$key} = $info;
 					#$self->log->trace('using cached value for ' . $datum->{$key} . ': ' . Dumper($info));
 					next;
 				}
 								
 				my $row;
 				# Handle IP's
-				if ($datum->{$key} =~ /^(\d{1,3}\.\d{1,3}\.)\d{1,3}\.\d{1,3}$/){
-					next if $self->_check_local($datum->{$key});
-					$self->log->trace('checking ' . $datum->{$key});
+				if ($value =~ /^(\d{1,3}\.\d{1,3}\.)\d{1,3}\.\d{1,3}$/){
+					next if $self->_check_local($value);
+					$self->log->trace('checking ' . $value);
 					my $first_octets = $1;
-					my $ip_int = unpack('N*', inet_aton($datum->{$key}));
+					my $ip_int = unpack('N*', inet_aton($value));
 					$ip_sth->bind_param(1, '@address ' . $first_octets . '* @description -search @alternativeid -www.alexa.com @alternativeid -support.clean-mx.de');
 					$ip_sth->bind_param(2, $ip_int, SQL_INTEGER);
 					$ip_sth->bind_param(3, $ip_int, SQL_INTEGER);
@@ -127,19 +127,19 @@ sub _query_cif_rest_sphinx {
 							if ($col eq 'detecttime' or $col eq 'created'){
 								$row->{$col} = epoch2iso($row->{$col});
 							}
-							$datum->{transforms}->{$Name}->{$key}->{$col} = $row->{$col};
+							$record->{transforms}->{$Name}->{$key}->{$col} = $row->{$col};
 						}
-						$self->cache->set($datum->{$key}, $datum->{transforms}->{$Name}->{$key});
+						$self->cache->set($value, $record->{transforms}->{$Name}->{$key});
 						next RECORD_LOOP;
 					}
 				}
 				
-				$self->log->trace('checking ' . $datum->{$key});
-				$sth->execute($datum->{$key} . ' -@description search');
+				$self->log->trace('checking ' . $value);
+				$sth->execute($value . ' -@description search');
 				$row = $sth->fetchrow_hashref;
 			
 				unless ($row){
-					$self->cache->set($datum->{$key}, {});
+					$self->cache->set($value, {});
 					next;
 				}
 				
@@ -148,9 +148,9 @@ sub _query_cif_rest_sphinx {
 					if ($col eq 'detecttime' or $col eq 'created'){
 						$row->{$col} = epoch2iso($row->{$col});
 					}
-					$datum->{transforms}->{$Name}->{$key}->{$col} = $row->{$col};
+					$record->{transforms}->{$Name}->{$key}->{$col} = $row->{$col};
 				}
-				$self->cache->set($datum->{$key}, $datum->{transforms}->{$Name}->{$key});
+				$self->cache->set($record->{$key}, $record->{transforms}->{$Name}->{$key});
 				next RECORD_LOOP;
 			}
 		}
@@ -174,12 +174,12 @@ sub _check_local {
 
 sub _query {
 	my $self = shift;
-	my $datum = shift;
+	my $record = shift;
 	my $key = shift;
 	my $query = shift;
 	
 	if ($self->_check_local($query)){
-		$datum->{transforms}->{$Name}->{$key} = {};
+		$record->{transforms}->{$Name}->{$key} = {};
 		return;
 	}
 	
@@ -218,7 +218,7 @@ sub _query {
 		return 0;
 	});
 	if ($info){
-		$datum->{transforms}->{$Name}->{$key} = $info;
+		$record->{transforms}->{$Name}->{$key} = $info;
 		$self->cv->end;
 		return;
 	}
@@ -318,20 +318,20 @@ sub _query {
 						$cif_datum->{reason} = $entry->{Incident}->{Description};
 					}
 					foreach my $cif_key (keys %$cif_datum){
-						$datum->{transforms}->{$Name}->{$key}->{$cif_key} ||= {};
-						$datum->{transforms}->{$Name}->{$key}->{$cif_key}->{ $cif_datum->{$cif_key} } = 1;
+						$record->{transforms}->{$Name}->{$key}->{$cif_key} ||= {};
+						$record->{transforms}->{$Name}->{$key}->{$cif_key}->{ $cif_datum->{$cif_key} } = 1;
 					}
 					#$datum->{transforms}->{$Name}->{$key} = $cif_datum;
 					#$self->cache->set($url, $cif_datum);
 				}
 			}
 			my $final = {};
-			foreach my $cif_key (sort keys %{ $datum->{transforms}->{$Name}->{$key} }){
-				$final->{$cif_key} = join(' ', sort keys %{ $datum->{transforms}->{$Name}->{$key}->{$cif_key} });
+			foreach my $cif_key (sort keys %{ $record->{transforms}->{$Name}->{$key} }){
+				$final->{$cif_key} = join(' ', sort keys %{ $record->{transforms}->{$Name}->{$key}->{$cif_key} });
 			}
-			$datum->{transforms}->{$Name}->{$key} = $final;
+			$record->{transforms}->{$Name}->{$key} = $final;
 					
-			$self->cache->set($url, $datum->{transforms}->{$Name}->{$key});
+			$self->cache->set($url, $record->{transforms}->{$Name}->{$key});
 		}
 		# CIF v1.0 format
 		elsif ($data and ref($data) eq 'ARRAY'){
@@ -348,17 +348,17 @@ sub _query {
 				$self->log->debug('cif_datum: ' . Dumper($cif_datum));
 					
 				foreach my $cif_key (keys %$cif_datum){
-					$datum->{transforms}->{$Name}->{$key}->{$cif_key} ||= {};
-					$datum->{transforms}->{$Name}->{$key}->{$cif_key}->{ $cif_datum->{$cif_key} } = 1;
+					$record->{transforms}->{$Name}->{$key}->{$cif_key} ||= {};
+					$record->{transforms}->{$Name}->{$key}->{$cif_key}->{ $cif_datum->{$cif_key} } = 1;
 				}
 			}
 			my $final = {};
-			foreach my $cif_key (sort keys %{ $datum->{transforms}->{$Name}->{$key} }){
-				$final->{$cif_key} = join(' ', sort keys %{ $datum->{transforms}->{$Name}->{$key}->{$cif_key} });
+			foreach my $cif_key (sort keys %{ $record->{transforms}->{$Name}->{$key} }){
+				$final->{$cif_key} = join(' ', sort keys %{ $record->{transforms}->{$Name}->{$key}->{$cif_key} });
 			}
-			$datum->{transforms}->{$Name}->{$key} = $final;
+			$record->{transforms}->{$Name}->{$key} = $final;
 					
-			$self->cache->set($url, $datum->{transforms}->{$Name}->{$key});
+			$self->cache->set($url, $record->{transforms}->{$Name}->{$key});
 		}
 		$self->cv->end;
 	};

@@ -8,6 +8,7 @@ use Encode;
 use Scalar::Util;
 use Try::Tiny;
 use Ouch qw(:trytiny);;
+use AnyEvent;
 
 use Utils;
 
@@ -26,78 +27,85 @@ sub call {
 	my $method = $self->_extract_method($req->request_uri);
 	$self->api->log->debug('method: ' . $method);
 	
-	# Make sure private methods can't be run from the web
-	if ($method =~ /^\_/){
-		$res->status(404);
-		$res->body('not found');
-		return $res->finalize();
+	# If we don't have a nonblocking web server (Apache), we need to have an overarching blocking recv
+	my $cv;
+	if (not $env->{'psgi.nonblocking'}){
+		$cv = AnyEvent->condvar;
 	}
-	
-	my $args = $req->parameters->as_hashref;
-	$self->api->log->debug('args: ' . Dumper($args));
-	if ($self->session->get('user')){
-		$args->{user} = $self->api->get_stored_user($self->session->get('user'));
-	}
-	else {
-		$args->{user} = $self->api->get_user($req->user);
-	}
-	unless ($self->api->can($method)){
-		$res->status(404);
-		$res->body('not found');
-		return $res->finalize();
-	}
-	my ($ret, $e);
-	try {
-		$self->api->freshen_db;
-		$ret = $self->api->$method($args);
-		unless ($ret){
-			$ret = { error => $self->api->last_error };
+	return sub {
+		my $write = shift;
+		try {	
+			# Make sure private methods can't be run from the web
+			if ($method =~ /^\_/){
+				$res->status(404);
+				$res->body('not found');
+				$write->($res->finalize());
+				$cv and $cv->send;
+			}
+			
+			my $args = $req->parameters->as_hashref;
+			$self->api->log->debug('args: ' . Dumper($args));
+			if ($self->session->get('user')){
+				$args->{user} = $self->api->get_stored_user($self->session->get('user'));
+			}
+			else {
+				$args->{user} = $self->api->get_user($req->user);
+			}
+			unless ($self->api->can($method)){
+				$res->status(404);
+				$res->body('not found');
+				return $res->finalize();
+			}
+			
+			$self->api->$method($args, sub {
+				my $ret = shift;
+				if (not $ret){
+					$ret = { error => $self->api->last_error };
+				}
+				elsif (ref($ret) and ref($ret) eq 'HASH' and $ret->{mime_type}){
+					$res->content_type($ret->{mime_type});
+					if (ref($ret->{ret}) and ref($ret->{ret}) eq 'HASH'){
+						if ($self->api->has_warnings){
+							$ret->{ret}->{warnings} = $self->api->warnings;
+						}
+					}
+					elsif (ref($ret->{ret}) and blessed($ret->{ret}) and $ret->{ret}->can('add_warning') and $self->api->has_warnings){
+						foreach my $warning ($self->api->all_warnings){
+							push @{ $ret->{ret}->warnings }, $warning;
+						}
+					}
+					$res->body($ret->{ret});
+					if ($ret->{filename}){
+						$res->header('Content-disposition', 'attachment; filename=' . $ret->{filename});
+					}
+				}
+				else {
+					if (ref($ret) and ref($ret) eq 'HASH'){
+						if ($self->api->has_warnings){
+							$ret->{warnings} = $self->api->warnings;
+						}
+					}
+					elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->api->has_warnings){
+						foreach my $warning ($self->api->all_warnings){
+							push @{ $ret->warnings }, $warning;
+						}
+					}
+					$res->body([encode_utf8($self->api->json->encode($ret))]);
+				}
+				$write->($res->finalize());
+				$cv and $cv->send;
+			});
 		}
-	}
-	catch {
-		$e = catch_any(shift);
+		catch {
+			my $e = shift;
+			$self->api->log->error($e->trace);
+			$res->status($e->code);
+			$res->body([encode_utf8($self->api->json->encode($e))]);
+			$write->($res->finalize());
+			$cv and $cv->send;
+		};
+		$cv and $cv->recv;
 	};
-#	if ($@){
-#		my $e = $@;
-#		$self->api->log->error($e);
-#		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
-#	}
-	if ($e){
-		$self->api->log->error($e->trace);
-		$res->status($e->code);
-		$res->body([encode_utf8($self->api->json->encode($e))]);
-	}
-	elsif (ref($ret) and ref($ret) eq 'HASH' and $ret->{mime_type}){
-		$res->content_type($ret->{mime_type});
-		if (ref($ret->{ret}) and ref($ret->{ret}) eq 'HASH'){
-			if ($self->api->has_warnings){
-				$ret->{ret}->{warnings} = $self->api->warnings;
-			}
-		}
-		elsif (ref($ret->{ret}) and blessed($ret->{ret}) and $ret->{ret}->can('add_warning') and $self->api->has_warnings){
-			foreach my $warning ($self->api->all_warnings){
-				push @{ $ret->{ret}->warnings }, $warning;
-			}
-		}
-		$res->body($ret->{ret});
-		if ($ret->{filename}){
-			$res->header('Content-disposition', 'attachment; filename=' . $ret->{filename});
-		}
-	}
-	else {
-		if (ref($ret) and ref($ret) eq 'HASH'){
-			if ($self->api->has_warnings){
-				$ret->{warnings} = $self->api->warnings;
-			}
-		}
-		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->api->has_warnings){
-			foreach my $warning ($self->api->all_warnings){
-				push @{ $ret->warnings }, $warning;
-			}
-		}
-		$res->body([encode_utf8($self->api->json->encode($ret))]);
-	}
-	$res->finalize();
 }
 
 1;

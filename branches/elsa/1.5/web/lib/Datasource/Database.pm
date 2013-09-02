@@ -11,7 +11,8 @@ use Search::QueryParser::SQL;
 use Date::Manip;
 use Socket;
 use Try::Tiny;
-use Ouch qw(:trytiny);;
+use Ouch qw(:trytiny);
+use AnyEvent;
 extends 'Datasource';
 with 'Fields';
 
@@ -120,7 +121,11 @@ sub BUILD {
 sub _query {
 	my $self = shift;
 	my $q = shift;
+	my $cb = shift;
 	$self->query_object($q);
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { $cb->() });
 	
 	my ($query, $sth);
 	
@@ -167,7 +172,7 @@ sub _query {
 		}
 	};
 	
-	if ($q->has_groupby){
+	if ($q->groupby){
 		# Check to see if there is a numeric count field
 		my $count_field;
 		foreach my $field (@{ $self->fields }){
@@ -236,7 +241,7 @@ sub _query {
 		$end = epoch2iso($q->end);
 	}
 	
-	if ($q->has_groupby){
+	if ($q->groupby){
 		if ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
 			foreach my $row (@{ $self->fields }){
 				if ($row->{alias}){
@@ -299,7 +304,7 @@ sub _query {
 	}
 
 	my $orderby;
-	if ($q->has_groupby){
+	if ($q->groupby){
 		if ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
 			$orderby = '_groupby ASC';
 		}
@@ -326,7 +331,7 @@ sub _query {
 		$self->log->debug('row: ' . Dumper($row));
 		push @rows, $row;
 	}
-	if ($q->has_groupby){
+	if ($q->groupby){
 		my %results;
 		my $total_records = 0;
 		my $records_returned = 0;
@@ -478,7 +483,7 @@ sub _query {
 	$self->log->debug('completed query in ' . $q->time_taken . ' with ' . $q->results->total_records . ' rows');
 	$self->log->debug('results: ' . Dumper($q->results));
 	
-	return 1;
+	$cv->end;
 }
 
  

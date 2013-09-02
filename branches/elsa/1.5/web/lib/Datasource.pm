@@ -11,10 +11,10 @@ has 'args' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { []
 sub query {
 	my $self = shift;
 	my $q = shift;
+	my $cb = shift;
 
 	$self->_is_authorized($q) or die('Unauthorized');
-	#$self->_build_query($q);
-	$self->_query($q);
+	$self->_query($q, $cb);
 	
 	return $q;	
 }

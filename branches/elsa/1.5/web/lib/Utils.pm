@@ -197,7 +197,6 @@ sub _get_info {
 	my $ret = { };
 	$self->_get_db(sub {
 		my $db = shift;
-		$self->log->debug('got db: ' . Dumper($db));
 		unless ($db and $db->{dbh}){
 			$self->add_warning(502, 'msyql connection error', { mysql => 1 });
 			$cb->();
@@ -319,6 +318,7 @@ sub _get_info {
 				else {
 					$self->log->error('No tables');
 					$ret->{error} = 'No tables';
+					
 				}
 				$cv->end;
 			});
@@ -697,17 +697,17 @@ sub _merge_node_info {
 }
 
 sub _peer_query {
-	my ($self, $q) = @_;
+	my ($self, $q, $cb) = @_;
 	my ($query, $sth);
 	
 	# Execute search on every peer
 	my @peers;
 	foreach my $peer (keys %{ $self->conf->get('peers') }){
-		if (scalar keys %{ $q->nodes->{given} }){
-			if ($q->nodes->{given}->{$peer}){
+		if (scalar keys %{ $q->peers->{given} }){
+			if ($q->peers->{given}->{$peer}){
 				# Normal case, fall through
 			}
-			elsif ($q->nodes->{given}->{ $q->peer_label }){
+			elsif ($q->peers->{given}->{ $q->peer_label }){
 				# Translate the peer label to localhost
 				push @peers, '127.0.0.1';
 				next;
@@ -717,8 +717,8 @@ sub _peer_query {
 				next;
 			}
 		}
-		elsif (scalar keys %{ $q->nodes->{excluded} }){
-			next if $q->nodes->{excluded}->{$peer};
+		elsif (scalar keys %{ $q->peers->{excluded} }){
+			next if $q->peers->{excluded}->{$peer};
 		}
 		push @peers, $peer;
 	}
@@ -726,7 +726,25 @@ sub _peer_query {
 	$self->log->trace('Executing global query on peers ' . join(', ', @peers));
 	
 	my $cv = AnyEvent->condvar;
-	$cv->begin;
+	$cv->begin(sub {
+		$self->log->debug('stats: ' . Dumper($q->stats));
+	
+		$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+		
+		$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+		
+#		if (scalar keys %batches){
+#			$query = 'INSERT INTO foreign_queries (qid, peer, foreign_qid) VALUES (?,?,?)';
+#			$sth = $self->db->prepare($query);
+#			foreach my $peer (sort keys %batches){
+#				$sth->execute($q->qid, $peer, $batches{$peer});
+#			}
+#			$self->log->trace('Updated query to have foreign_qids ' . Dumper(\%batches));
+#		}
+		
+		$cb->($q);
+	});
+	
 	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded', 'User-Agent' => $self->user_agent_name };
 	my %batches;
 	foreach my $peer (@peers){
@@ -752,6 +770,7 @@ sub _peer_query {
 		$headers->{Authorization} = $self->_get_auth_header($peer);
 		$q->peer_requests->{$peer} = http_post $url, $request_body, headers => $headers, sub {
 			my ($body, $hdr) = @_;
+			$self->log->debug('body: ' . Dumper($body));
 			unless ($hdr and $hdr->{Status} < 400){
 				my $e;
 				try {
@@ -776,9 +795,9 @@ sub _peer_query {
 				#my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
 				my $is_groupby = $raw_results->{groupby} ? 1 : 0;
 				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
-				if ($q->has_groupby and ref($raw_results->{results}) ne 'HASH'){
-					$self->log->error('Wrong: ' . Dumper($q->TO_JSON) . "\n" . Dumper($raw_results));
-				}
+#				if ($q->groupby and ref($raw_results->{results}) ne 'HASH'){
+#					$self->log->error('Wrong: ' . Dumper($q->TO_JSON) . "\n" . Dumper($raw_results));
+#				}
 				#my $results_package = ref($raw_results->{results}) eq 'ARRAY' ? 'Results' : 'Results::Groupby';
 				my $results_obj = $results_package->new(results => $raw_results->{results}, 
 					total_records => $raw_results->{totalRecords}, is_approximate => $raw_results->{approximate});
@@ -811,9 +830,6 @@ sub _peer_query {
 				if ($is_groupby){
 					$q->groupby($raw_results->{groupby});
 				}
-				else {
-					$q->groupby([]);
-				}
 				my $stats = $raw_results->{stats};
 				$stats ||= {};
 				$stats->{total_request_time} = (time() - $start);
@@ -829,23 +845,8 @@ sub _peer_query {
 		};
 	}
 	$cv->end;
-	$cv->recv;
-	$self->log->debug('stats: ' . Dumper($q->stats));
 	
-	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
-	
-	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
-	
-	if (scalar keys %batches){
-		$query = 'INSERT INTO foreign_queries (qid, peer, foreign_qid) VALUES (?,?,?)';
-		$sth = $self->db->prepare($query);
-		foreach my $peer (sort keys %batches){
-			$sth->execute($q->qid, $peer, $batches{$peer});
-		}
-		$self->log->trace('Updated query to have foreign_qids ' . Dumper(\%batches));
-	}
-	
-	return $q;
+	$self->log->debug('sent, ' . Dumper($cv));
 }
 
 sub _get_auth_header {

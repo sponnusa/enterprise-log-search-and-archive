@@ -18,8 +18,6 @@ use Try::Tiny;
 use Ouch qw(:trytiny);;
 use String::CRC32;
 
-our $Tokenizer_regex = '[^A-Za-z0-9\\-\\.\\@\\_]';
-our $Sql_tokenizer_regex = '[^-A-Za-z0-9\\.\\@\\_]';
 our $QueryClasses = [qw(Query::Sphinx Query::External Query::SQL)];
 our $Query_time_batch_threshold = 120;
 our $Max_limit = 10000;
@@ -36,7 +34,6 @@ use SyncMysql;
 has 'user' => (is => 'rw', isa => 'User', required => 1);
 has 'query_string' => (is => 'rw', isa => 'Str');
 has 'meta_params' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
-#has 'raw_query' => (is => 'rw', isa => 'Str');
 has 'qid' => (is => 'rw', isa => 'Int');
 has 'schedule_id' => (is => 'rw', isa => 'Int');
 has 'peer_label' => (is => 'rw', isa => 'Str');
@@ -55,12 +52,12 @@ has 'directives' => (is => 'rw', isa => 'HashRef', required => 1, default => sub
 	start => 0, 
 	end => time(), 
 	limit => $Default_limit,
-	datasources => { sphinx => 1 },
+	datasources => {},
 }});
 has 'custom_directives' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'terms' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'transforms' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
-	handles => { has_transforms => 'count', all_transforms => 'elements', num_transforms => 'count' });
+	handles => { has_transforms => 'count', all_transforms => 'elements', num_transforms => 'count', add_transforms => 'push' });
 has 'connectors' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { has_connectors => 'count', all_connectors => 'elements', num_connectors => 'count',
 	connector_idx => 'get', add_connector => 'push' });
@@ -68,7 +65,7 @@ has 'highlights' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', require
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_warnings' => 'count', 'clear_warnings' => 'clear', 'all_warnings' => 'elements' });
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
-has 'on_connect' => (is => 'rw', isa => 'CodeRef', required => 1);
+has 'on_connect' => (is => 'rw', isa => 'CodeRef');
 
 # Object for deterministically parsing queries into query objects
 
@@ -138,6 +135,7 @@ sub BUILD {
 	# Set known values here
 	if ($self->meta_params->{archive}){
 		$self->directives->{archive} = 1;
+		$self->directives->{use_sql_regex} = 0;
 	}
 	if ($self->meta_params->{livetail}){
 		$self->directives->{livetail} = 1;
@@ -167,7 +165,7 @@ sub BUILD {
 	unless ($self->info){
 		$self->_get_info(sub {
 			my $ret = shift;
-			$self->log->debug('got info: ' . Dumper($ret));
+			#$self->log->debug('got info: ' . Dumper($ret));
 			$self->info($ret);
 			$self->on_connect->($self);
 		});
@@ -178,6 +176,7 @@ sub BUILD {
 
 sub parse {
 	my $self = shift;
+	my $given_query_class = shift;
 	
 	# Parse first to see if limit gets set which could incidate a batch job
 	$self->_parse_query();
@@ -218,7 +217,13 @@ sub parse {
 #		}
 #	}
 	
-	$self->query_class($self->_choose_query_class);
+	if ($given_query_class){
+		$self->log->info('Overriding query class decision with given class ' . $given_query_class);
+		$self->query_class($given_query_class);
+	}
+	else {
+		$self->query_class($self->_choose_query_class);
+	}
 	
 	$self->stats->{get_info} = $self->info->{took};
 	
@@ -230,7 +235,6 @@ sub parse {
 		db => $self->db,
 		json => $self->json,
 		parser => $self,
-		#raw_query => $self->raw_query,
 		query_string => $self->query_string,
 		meta_params => $self->meta_params,
 		highlights => $self->highlights,
@@ -293,12 +297,16 @@ sub _choose_query_class {
 	if ($self->has_import_search_terms and not $self->index_term_count){
 		return 'Query::Import';
 	}
-	elsif (not $self->directives->{datasources}->{sphinx}){
+	elsif (scalar keys %{ $self->directives->{datasources} } and not $self->directives->{datasources}->{sphinx}){
 		return 'Query::External';
 	}
 	elsif ($self->directives->{livetail}){
 		throw(400, 'Livetail not currently supported', { term => 'livetail' });
 		#return 'Query::Livetail';
+	}
+	elsif ($self->directives->{archive}){
+		$self->directives->{use_sql_regex} = 0;
+		return 'Query::SQL';
 	}
 	elsif (not $self->index_term_count){
 		# Skip Sphinx, execute a raw SQL search
@@ -317,18 +325,23 @@ sub _choose_query_class {
 			}
 			
 			# Are all terms stopwords?
-			if (scalar keys %{ $self->stopword_terms } >= $self->index_term_count){
+			my $non_stopwords = 0;
+			foreach my $boolean (qw(and or)){
+				foreach my $key (keys %{ $self->terms->{$boolean} }){
+					if ($self->is_stopword($self->terms->{$boolean}->{$key}->{value})){
+						if ($boolean eq 'or'){
+							throw(400, 'Query term ' . $self->terms->{or}->{$key}->{value} . ' is too common', { term => $self->terms->{or}->{$key}->{value} });
+						}
+					}
+					else {
+						$non_stopwords++;
+					}
+				}
+			}
+			unless ($non_stopwords){
 				$self->log->info('All terms were too common to use an index, executing against raw SQL');
 				$self->add_warning(200, 'Query terms were too common, query did not use an index', { indexed => 0 });
 				return 'Query::SQL';
-			}
-			else {
-				# Are any of these terms OR stopwords?
-				foreach my $key (keys %{ $self->terms->{or} }){
-					if (exists $self->stopword_terms->{ $self->terms->{or}->{$key}->{value} }){
-						throw(400, 'Query term ' . $self->terms->{or}->{$key}->{value} . ' is too common', { term => $self->terms->{or}->{$key}->{value} });
-					}
-				}
 			}
 		}		
 		
@@ -381,7 +394,7 @@ sub _parse_query {
 	$raw_query =~ s/\sor\s/ OR /gi;
 	
 	$self->log->trace('query: ' . $raw_query . ', transforms: ' . join(' ', @transforms));
-	$self->transforms([ @transforms ]);
+	$self->add_transforms(@transforms);
 	
 	# See if there are any connectors given
 	if ($self->meta_params->{connector}){
@@ -481,7 +494,7 @@ sub _parse_query {
 	# Exclude our from_peer
 	if ($self->from_peer and $self->from_peer ne '_external'){
 		$self->log->debug('Not executing query on ' . $self->from_peer . ' which is my from_peer to avoid a loop.');
-		$self->nodes->{excluded}->{ $self->from_peer } = 1;
+		$self->directives->{peers}->{excluded}->{ $self->from_peer } = 1;
 	}
 	
 	return 1;
@@ -564,7 +577,6 @@ sub _parse_query_term {
 					$self->directives->{start} = int($term_hash->{value});
 				}
 				else {
-					#$self->start(UnixDate(ParseDate($term_hash->{value}), "%s"));
 					my $tz_diff = $self->timezone_diff($term_hash->{value});
 					$self->directives->{start} = UnixDate(ParseDate($term_hash->{value}), "%s") + $tz_diff;
 				}
@@ -577,7 +589,6 @@ sub _parse_query_term {
 					$self->directives->{end} = int($term_hash->{value});
 				}
 				else {
-					#$self->end(UnixDate(ParseDate($term_hash->{value}), "%s"));
 					my $tz_diff = $self->timezone_diff($term_hash->{value});
 					$self->directives->{end} = UnixDate(ParseDate($term_hash->{value}), "%s") + $tz_diff;
 				}
@@ -585,14 +596,14 @@ sub _parse_query_term {
 			}
 			elsif ($term_hash->{field} eq 'limit'){
 				# special case for limit
-				$self->limit(sprintf("%d", $term_hash->{value}));
-				throw(400, 'Invalid limit', { term => 'limit' }) unless $self->limit > -1;
+				$self->directives->{limit} = sprintf("%d", $term_hash->{value});
+				throw(400, 'Invalid limit', { term => 'limit' }) unless $self->directives->{limit} > -1;
 				next;
 			}
 			elsif ($term_hash->{field} eq 'offset'){
 				# special case for offset
-				$self->offset(sprintf("%d", $term_hash->{value}));
-				throw(400, 'Invalid offset', { term => 'offset' }) unless $self->offset > -1;
+				$self->directives->{offset} = sprintf("%d", $term_hash->{value});
+				throw(400, 'Invalid offset', { term => 'offset' }) unless $self->directives->{offset} > -1;
 				next;
 			}
 			elsif ($term_hash->{field} eq 'class'){
@@ -657,43 +668,43 @@ sub _parse_query_term {
 				my $field_infos = $self->get_field($value);
 				$self->log->trace('$field_infos ' . Dumper($field_infos));
 				if ($field_infos or $value eq 'node'){
-					$self->orderby($value);
+					$self->directives->{orderby} = $value;
 					foreach my $class_id (keys %$field_infos){
 						$self->classes->{groupby}->{$class_id} = 1;
 					}
-					$self->log->trace("Set orderby " . Dumper($self->orderby));
+					$self->log->trace("Set orderby " . Dumper($self->directives->{orderby}));
 				}
 				next;
 			}
 			elsif ($term_hash->{field} eq 'orderby_dir'){
 				if (uc($term_hash->{value}) eq 'DESC'){
-					$self->orderby_dir('DESC');
+					$self->directives->{orderby_dir} = 'DESC';
 				}
 				next;
 			}
 			elsif ($term_hash->{field} eq 'node'){
 				if ($term_hash->{value} =~ /^[\w\.\:]+$/){
 					if ($effective_operator eq '-'){
-						$self->nodes->{excluded}->{ $term_hash->{value} } = 1;
+						$self->peers->{excluded}->{ $term_hash->{value} } = 1;
 					}
 					else {
-						$self->nodes->{given}->{ $term_hash->{value} } = 1;
+						$self->peers->{given}->{ $term_hash->{value} } = 1;
 					}
 				}
 				next;
 			}
 			elsif ($term_hash->{field} eq 'cutoff'){
-				$self->directives->{limit} = ($self->cutoff(sprintf("%d", $term_hash->{value})));
-				throw(400, 'Invalid cutoff', { term => 'cutoff' }) unless $self->cutoff > -1;
-				$self->log->trace("Set cutoff " . $self->cutoff);
+				$self->directives->{limit} = $self->directives->{cutoff} = sprintf("%d", $term_hash->{value});
+				throw(400, 'Invalid cutoff', { term => 'cutoff' }) unless $self->directives->{cutoff} > -1;
+				$self->log->trace("Set cutoff " . $self->directives->{cutoff});
 				next;
 			}
 			elsif ($term_hash->{field} eq 'datasource'){
 				delete $self->directives->{datasources}->{sphinx}; # no longer using our normal datasource
-				$self->datasources->{ $term_hash->{value} } = 1;
+				$self->directives->{datasources}->{ $term_hash->{value} } = 1;
 				$self->log->trace("Set datasources " . Dumper($self->directives->{datasources}));
 				# Stop parsing immediately as the rest will be done by the datasource itself
-				return 1;
+				#return 1;
 			}
 			elsif ($term_hash->{field} eq 'nobatch'){
 				$self->meta_params->{nobatch} = 1;
@@ -920,72 +931,6 @@ sub _set_batch {
 	return $sth->rows;
 }
 
-sub term_to_regex {
-	my $self = shift;
-	my $term = shift;
-	my $field_name = shift;
-	my $regex = $term;
-	return if $field_name and $field_name eq 'class'; # we dont' want to highlight class integers
-	if (my @m = $regex =~ /^\(+ (\@\w+)\ ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
-		if ($m[0] eq '@class'){
-			return; # we dont' want to highlight class integers
-		}
-		else {
-			my @ret = @m[1..$#m];# don't return the field name
-			foreach (@ret){
-				$_ = '(?:^|' . $Tokenizer_regex . ')(' . $_ . ')(?:' . $Tokenizer_regex . '|$)';
-			}
-			return  @ret;
-		}
-	}
-	elsif (@m = $regex =~ /^\( ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
-		foreach (@m){
-			$_ = '(?:^|' . $Tokenizer_regex . ')(' . $_ . ')(?:' . $Tokenizer_regex . '|$)';
-		}
-		return @m;
-	}
-	$regex =~ s/^\s{2,}/\ /;
-	$regex =~ s/\s{2,}$/\ /;
-	$regex =~ s/\s/\./g;
-	$regex =~ s/\\{2,}/\\/g;
-	$regex =~ s/[^a-zA-Z0-9\.\_\-\@]//g;
-	$regex = '(?:^|' . $Tokenizer_regex . ')(' . $regex . ')(?:' . $Tokenizer_regex . '|$)';
-	return ($regex);
-}
-
-sub term_to_sql_term {
-	my $self = shift;
-	my $term = shift;
-	my $field_name = shift;
-	my $regex = $term;
-	return if $field_name and $field_name eq 'class'; # we dont' want to highlight class integers
-	if (my @m = $regex =~ /^\(+ (\@\w+)\ ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
-		if ($m[0] eq '@class'){
-			return; # we dont' want to search this
-		}
-		else {
-			my @ret = @m[1..$#m];# don't return the field name
-			foreach (@ret){
-				$_ = '(^|' . $Sql_tokenizer_regex . ')(' . $_ . ')(' . $Sql_tokenizer_regex . '|$)';
-			}
-			return $ret[0];
-		}
-	}
-	elsif (@m = $regex =~ /^\( ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
-		foreach (@m){
-			$_ = '(^|' . $Sql_tokenizer_regex . ')(' . $_ . ')(' . $Sql_tokenizer_regex . '|$)';
-		}
-		return $m[0];
-	}
-	$regex =~ s/^\s{2,}/\ /;
-	$regex =~ s/\s{2,}$/\ /;
-	$regex =~ s/\s/\./g;
-	$regex =~ s/\\{2,}/\\/g;
-	$regex =~ s/[^a-zA-Z0-9\.\_\-\@]//g;
-	$regex = '(^|' . $Sql_tokenizer_regex . ')(' . $regex . ')(' . $Sql_tokenizer_regex . '|$)';
-	return $regex;
-}
-
 sub timezone_diff {
 	my $self = shift;
 	my $time = shift;
@@ -1023,6 +968,9 @@ sub _check_for_stopwords {
 			foreach my $key (keys %{ $self->terms->{$boolean} }){
 				my $term = $self->terms->{$boolean}->{$key}->{value};
 				if ($self->is_stopword($term)){
+					if ($boolean eq 'or'){
+						throw(400, 'Query term ' . $self->terms->{or}->{$key}->{value} . ' is too common', { term => $self->terms->{or}->{$key}->{value} });
+					}
 					$self->log->trace('Found stopword: ' . $term);
 					$self->stopword_terms->{$term} = 1;
 					$num_removed_terms++;

@@ -4,6 +4,7 @@ use Data::Dumper;
 use SyncMysql;
 use Time::HiRes qw(time);
 use AnyEvent;
+use Try::Tiny;
 use Ouch qw(:trytiny);
 use Socket;
 use String::CRC32;
@@ -14,14 +15,12 @@ extends 'Query';
 has 'sphinx_db' => (is => 'rw', isa => 'HashRef');
 has 'post_filters' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { { and => {}, not => {} } },
 	handles => { has_postfilters => 'keys' });
+has 'schemas' => (is => 'rw', isa => 'HashRef');
 
 sub BUILD {
 	my $self = shift;
 	
-	# Map directives to their properties
-	foreach my $prop (keys %{ $self->parser->directives }){
-		$self->$prop($self->parser->directives->{$prop});
-	}
+	$self->schemas($self->_get_index_groups());
 	
 	return $self;
 }
@@ -30,6 +29,46 @@ sub estimate_query_time {
 	my $self = shift;
 	
 	my $query_time = 0;
+	
+	# AND terms x OR terms x individual classes x rows in indexes
+	my $num_ands = scalar keys %{ $self->terms->{and} };
+	my $num_ors = scalar keys %{ $self->terms->{or} };
+	my $num_nots = scalar keys %{ $self->terms->{not} };
+	my $total_terms = $num_ands + $num_ors + $num_nots;
+	
+	my $total_queries = 0;
+	my $total_search = 0;
+	my $rows_to_search = 0;
+	my $num_indexes = 0;
+	
+	foreach my $group_key (keys %{ $self->schemas }){
+		my $indexes = $self->_get_index_list($self->schemas->{$group_key});
+		my $queries = $self->_build_queries($group_key);
+		$num_indexes += scalar @$indexes;
+		$total_queries += scalar @$queries;
+
+		foreach my $index_name (@$indexes){
+			$rows_to_search += $self->schemas->{$group_key}->{$index_name}->{records};
+		}
+	
+		$total_search += ($rows_to_search / (scalar @$indexes) * $total_queries * $total_terms);
+	}
+	
+	my $ret = {
+		indexes => $num_indexes,
+		records => $rows_to_search,
+		queries => $total_queries,
+		and_terms => $num_ands,
+		not_terms => $num_nots,
+		or_terms => $num_ors,
+		total_records_searched => $total_search,
+		estimated_records_searched_per_second => 1_000_000_000,
+		estimated_time => $total_search / 1_000_000_000,
+	};
+	
+	$self->estimated($ret);
+	
+	return $ret;
 	
 	# Do we have any stopwords?
 	$query_time += ((scalar keys %{ $self->parser->stopword_terms }) * 10);
@@ -41,7 +80,7 @@ sub estimate_query_time {
 #	my ($save_cutoff, $save_limit) = ($self->directives->{cutoff}, $self->directives->{limit});
 #	$q->cutoff(1);
 #	$q->limit(1);
-#	$self->_sphinx_query($q);
+#	$self->_query($q);
 #	
 #	my $sphinx_filter_rows_per_second = 500_000; # guestimate of how many found hits/sec/node sphinx will filter
 #	if ($self->conf->get('sphinx_filter_rows_per_second')){
@@ -61,15 +100,25 @@ sub estimate_query_time {
 
 sub _normalize_quoted_value {
 	my $self = shift;
-	my $value = shift;
+	my $hash = shift;
 	
-	# Quoted integers don't work for some reason
-	if ($value =~ /^[a-zA-Z0-9]+$/){
-		return $value;
+	if ($Fields::Field_to_order->{ $hash->{field} }){
+		$hash->{value} =~ s/^["']//;
+		$hash->{value} =~ s/["']$//;
+		return $hash->{value};
 	}
-	else {
-		return '"' . $value . '"';
-	}
+	
+#	# Quoted integers don't work for some reason
+#	if ($hash->{value} =~ /^['"][a-zA-Z0-9]+['"]$/){
+#		$hash->{value} =~ s/^["']//;
+#		$hash->{value} =~ s/["']$//;
+#		return $hash->{value};
+#	}
+#	else {
+#		return $hash->{value};
+#	}
+
+	return '"' . $hash->{value} . '"';
 }
 
 sub _normalize_terms {
@@ -79,27 +128,39 @@ sub _normalize_terms {
 	foreach my $boolean (keys %{ $self->terms }){
 		foreach my $key (keys %{ $self->terms->{$boolean} }){
 			my $term_hash = $self->terms->{$boolean}->{$key};
-			# Get rid of any non-indexed chars
-			$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g;
-			# Escape backslashes followed by a letter
-			$term_hash->{value} =~ s/\\([a-zA-Z])/\ $1/g;
-			#$term_hash->{value} =~ s/\\\\/\ /g; # sphinx doesn't do this for some reason
-			# Escape any '@' or sphinx will error out thinking it's a field prefix
-			if ($term_hash->{value} =~ /\@/ and not $term_hash->{quote}){
-				# need to quote
-				$term_hash->{value} = '"' . $term_hash->{value} . '"';
-			}
-			# Escape any hyphens
-			$term_hash->{value} =~ s/\-/\\\\\-/g;
-			
 			if($term_hash->{quote}){
-				$term_hash->{value} = $self->_normalize_quoted_value($term_hash->{value});
+				$term_hash->{value} = $self->_normalize_quoted_value($term_hash);
 			}
+			else {
+				# Get rid of any non-indexed chars
+				$term_hash->{value} =~ s/[^a-zA-Z0-9\.\@\-\_\\]/\ /g;
+				# Escape backslashes followed by a letter
+				$term_hash->{value} =~ s/\\([a-zA-Z])/\ $1/g;
+				#$term_hash->{value} =~ s/\\\\/\ /g; # sphinx doesn't do this for some reason
+				# Escape any '@' or sphinx will error out thinking it's a field prefix
+				if ($term_hash->{value} =~ /\@/){
+					# need to quote
+					$term_hash->{value} = '"' . $term_hash->{value} . '"';
+				}
+				# Escape any hyphens
+				$term_hash->{value} =~ s/\-/\\\\\-/g;
+				
+			}
+			
 			if ($term_hash->{value} =~ /^"?\s+"?$/){
 				my $err = 'Term ' . $term_hash->{value} . ' was comprised of only non-indexed chars and removed';
 				$self->add_warning(400, $err, { term => $term_hash->{value} });
 				$self->log->warn($err);
 				next;
+			}
+			
+			# Set case
+			$term_hash->{field} = lc($term_hash->{field});
+			if ($term_hash->{field} eq 'class'){
+				$term_hash->{value} = uc($term_hash->{value});
+			}
+			else {
+				$term_hash->{value} = lc($term_hash->{value});
 			}
 		}
 	}
@@ -109,17 +170,22 @@ sub _normalize_terms {
 
 sub _build_queries {
 	my $self = shift;
-	my $index = shift;
+	my $group_key = shift;
+	
+#	unless($self->_get_index_schema($index)){
+#		$self->add_warning(417, 'No index schema found for index ' . $index . ', not including in search', { index => $index });
+#		return [];
+#	}
 	
 	my @queries;
 	# All OR's get factored out and become separate queries
 	if (scalar keys %{ $self->terms->{or} }){
 		foreach my $key (keys %{ $self->terms->{or} }){
-			push @queries, @{ $self->_build_query($index, $key) };
+			push @queries, @{ $self->_build_query($group_key, $key) };
 		}
 	}
 	elsif (scalar keys %{ $self->terms->{and} }){
-		push @queries, @{ $self->_build_query($index) };
+		push @queries, @{ $self->_build_query($group_key) };
 	}
 	else {
 		throw(400, 'No positive value in query', { query => 0 });
@@ -130,17 +196,18 @@ sub _build_queries {
 
 sub _build_query {
 	my $self = shift;
-	my $index = shift;
+	my $group_key = shift;
 	my $or_key = shift;
 	
 	my $classes = $self->_get_class_ids($or_key);
 	$self->log->debug('searching classes: ' . join(',', sort keys %$classes));
 	my @queries;
 	foreach my $class_id (sort keys %$classes){
-		my $terms_and_filters = $self->_get_search_terms($class_id, $index, $or_key);
+		my $terms_and_filters = $self->_get_search_terms($class_id, $group_key, $or_key);
 		$self->log->debug('terms_and_filters: ' . Dumper($terms_and_filters));
 		my $match_str = $self->_get_match_str($class_id, $terms_and_filters->{searches});
 		my $attr_str = $self->_get_attr_tests($class_id, $terms_and_filters->{filters});
+		$self->log->debug('attr_str: ' . $attr_str);
 		my $query = {
 			select => $self->_get_select_clause($class_id, $attr_str),
 			where => $self->_get_where_clause($class_id, $match_str),
@@ -178,7 +245,7 @@ sub _get_groupby_clause {
 	my $class_id = shift;
 	
 	return '' unless $self->groupby;
-	return $self->_sphinx_attr($self->groupby, $class_id);
+	return $self->_attr($self->groupby, $class_id);
 }
 
 sub _get_orderby_clause {
@@ -186,7 +253,7 @@ sub _get_orderby_clause {
 	my $class_id = shift;
 	
 	return '' unless $self->orderby;
-	return $self->_sphinx_attr($self->orderby, $class_id);
+	return $self->_attr($self->orderby, $class_id);
 }
 
 # Divine what classes this query will encompass given the terms
@@ -195,129 +262,133 @@ sub _get_class_ids {
 	my $or_key = shift;
 	
 	my %classes;
+	my $all_classes = 0;
 	
 	# If there is a groupby, verify that the classes in the groupby match the terms
 	if ($self->groupby){
-		my $field_classes = $self->_classes_for_field($self->groupby);
-		foreach my $class_id (keys %$field_classes){
-			if ($self->user->is_permitted('class_id', $class_id)){
-				$classes{$class_id} = $field_classes->{$class_id};
-			}
+		if ($Fields::Field_to_order->{ $self->groupby }){
+			$all_classes = 1;
 		}
-		unless (scalar keys %classes){
-			throw(401, 'No authorized classes for groupby field ' . $self->groupby, { term -> $self->groupby });
+		else {
+			my $field_classes = $self->_classes_for_field($self->groupby);
+			foreach my $class_id (keys %$field_classes){
+				if ($self->user->is_permitted('class_id', $class_id)){
+					$classes{$class_id} = $field_classes->{$class_id};
+				}
+			}
+			unless (scalar keys %classes){
+				throw(401, 'No authorized classes for groupby field ' . $self->groupby, { term => $self->groupby });
+			}
 		}
 	}
 	# If there is a orderby, verify that the classes in the orderby match the terms
 	elsif ($self->orderby){
-		my $field_classes = $self->_classes_for_field($self->orderby);
-		foreach my $class_id (keys %$field_classes){
-			if ($self->user->is_permitted('class_id', $class_id)){
-				$classes{$class_id} = $field_classes->{$class_id};
-			}
+		if ($Fields::Field_to_order->{ $self->orderby }){
+			$all_classes = 1;
 		}
-		unless (scalar keys %classes){
-			throw(401, 'No authorized classes for orderby field ' . $self->orderby, { term -> $self->orderby });
+		else {
+			my $field_classes = $self->_classes_for_field($self->orderby);
+			foreach my $class_id (keys %$field_classes){
+				if ($self->user->is_permitted('class_id', $class_id)){
+					$classes{$class_id} = $field_classes->{$class_id};
+				}
+			}
+			unless (scalar keys %classes){
+				throw(401, 'No authorized classes for orderby field ' . $self->orderby, { term => $self->orderby });
+			}
 		}
 	}
 	
 	# Find the unique fields requested
 	my %fields;
 	if ($or_key){
-		$self->terms->{or}->{$or_key}->{field} and $fields{ $self->terms->{or}->{$or_key}->{field} } = 1;
+		$self->terms->{or}->{$or_key}->{field} and $fields{ $self->terms->{or}->{$or_key}->{field} } = $self->terms->{or}->{$or_key}->{value};
 	}
 	foreach my $boolean (qw(and not)){
 		foreach my $key (keys %{ $self->terms->{$boolean} }){
-#			# If we find any term that is an OR with an unspecified field, we have to search all classes
-#			if (not $self->terms->{$boolean}->{$key}->{field} and $boolean eq 'or'){
-#				return $self->permitted_classes;
-#			}
-			$self->terms->{$boolean}->{$key}->{field} and $fields{ $self->terms->{$boolean}->{$key}->{field} } = 1;
+			$self->terms->{$boolean}->{$key}->{field} and $fields{ $self->terms->{$boolean}->{$key}->{field} } = $self->terms->{$boolean}->{$key}->{value};
 		}
 	}
 	
 	# Foreach field, find classes
 	foreach my $field (keys %fields){
-		my $field_classes = $self->_classes_for_field($field);
-		foreach my $class_id (keys %$field_classes){
-			if ($self->groupby and not exists $classes{$class_id}){
-				throw(400, 'Term ' . $field . ' is incompatible with groupby field . ' . $self->groupby, { term => $field });
+		if ($field eq 'class'){
+			if ($self->info->{classes}->{ $fields{$field} }){
+				return { $self->info->{classes}->{ $fields{$field} } => $fields{$field} };
 			}
-			elsif ($self->orderby and not exists $classes{$class_id}){
-				throw(400, 'Term ' . $field . ' is incompatible with orderby field . ' . $self->orderby, { term => $field });
+			else {
+				throw(400, 'Invalid class ' . $fields{$field}, { term => $fields{$field} });
+			}
+		}
+		my $field_classes = $self->_classes_for_field($field);
+		$self->log->debug('classes for field ' . $field . ': ' . Dumper($field_classes));
+		
+		if ($self->groupby or $self->orderby and not $all_classes){
+			# Find the intersection of these classes
+			my $same_counter = 0;
+			foreach my $class_id (keys %$field_classes){
+				$same_counter++ if exists $classes{$class_id};
 			}
 			
-			if ($self->user->is_permitted('class_id', $class_id)){
-				$classes{$class_id} = $field_classes->{$class_id};
+			if (not $same_counter){
+				throw(400, 'Term ' . $field . ' is incompatible with groupby or orderby field', { term => $field });
 			}
+			else {
+				foreach my $class_id (keys %classes){
+					if (not exists $field_classes->{$class_id}){
+						$self->log->debug('Removing class_id ' . $class_id . ' because field ' . $field . ' does not have it');
+						delete $classes{$class_id};
+					}
+				}
+			}
+		}
+		elsif (scalar keys %classes){
+			# Find the intersection of these classes with the current list
+			my @intersection = grep { exists $classes{$_} } keys %$field_classes;
+			#$self->log->debug('intersection: ' . Dumper(\@intersection));
+			%classes = ();
+			@classes{ @intersection } = @{ $field_classes }{ @intersection };
+			$self->log->debug('classes after intersection of field ' . $field . ': ' . Dumper(\%classes));
+		}
+		else {
+			%classes = %$field_classes;
 		}
 	}
 	
 	# Verify field permissions
 	foreach my $boolean (qw(and or not)){
 		foreach my $key (keys %{ $self->terms->{$boolean} }){
+			next unless $self->terms->{$boolean}->{$key}->{field};
 			foreach my $class_id (keys %classes){
-				unless ($self->user->is_permitted($self->terms->{$boolean}->{$key}->{field}, $self->terms->{$boolean}->{$key}->{value}, $class_id)){
+				my $field = $self->terms->{$boolean}->{$key}->{field};
+				if (not $self->get_field($field, $class_id) and $self->_attr($field, $class_id)){
+					$field = $self->_attr($field, $class_id);
+				}
+				unless ($self->user->is_permitted($field, $self->terms->{$boolean}->{$key}->{value}, $class_id)){
 					delete $classes{$class_id};
 				}
 			}
 		}
 	}
 	
+	$self->log->debug('classes: ' . Dumper(\%classes));
+	
 	# If no classes are specified via terms/groupby/orderby, go with all
-	unless (scalar keys %fields or $self->groupby or $self->orderby){
-		if (not $self->user->permissions->{class_id}->{0}){
-			return $self->permitted_classes;
-		}
-		else {
+	unless (scalar keys %classes){
+		if ($self->user->permissions->{class_id}->{0}){
 			return { 0 => 1 };
 		}
-	}
-	
-	return \%classes;
-}
-		
-sub _classes_for_field {
-	my $self = shift;
-	my $field_name = shift;
-	my $field_hashes = $self->info->{fields_by_name}->{$field_name};
-	my %classes;
-	foreach my $field_hash (@$field_hashes){
-		$classes{ $field_hash->{class_id} } = $field_hash->{class};
-	}
-	return \%classes;
-}
-
-sub _sphinx_col_name {
-	my $self = shift;
-	my $field_name = shift;
-	my $class_id = shift;
-	
-	my $field_hashes = $self->info->{fields_by_name}->{$field_name};
-	foreach my $field_hash (@$field_hashes){
-		if ($field_hash->{class_id} eq $class_id){
-			return $Fields::Field_order_to_field->{ $field_hash->{field_order} };
+		else {
+			return $self->permitted_classes;
 		}
 	}
-		
-	#throw(500, 'Unable to find column for field ' . $field_name, { term => $field_name });
-	return;
-}
-
-sub _is_int_field {
-	my $self = shift;
-	my $field_name = shift;
-	my $class_id = shift;
+#	unless (scalar keys %fields or $self->groupby or $self->orderby){
+#		if (not $self->user->permissions->{class_id}->{0}){
+#			return $self->permitted_classes;
+#		}
+#	}
 	
-	my $field_hashes = $self->info->{fields_by_name}->{$field_name};
-	foreach my $field_hash (@$field_hashes){
-		if ($field_hash->{class_id} eq $class_id){
-			return $field_hash->{field_type};
-		}
-	}
-		
-	#throw(500, 'Unable to find type for field ' . $field_name, { term => $field_name });
-	return;
+	return \%classes;
 }
 
 sub _get_match_str {
@@ -331,8 +402,9 @@ sub _get_match_str {
 		$clauses{ $hash->{boolean} } ||= {};
 		
 		if ($hash->{field}){
-			my $value = $self->_sphinx_value($hash->{field}, $hash->{value}, $class_id);
-			my $field = $self->_sphinx_col_name($hash->{field}, $class_id);
+			#my $value = $self->_value($hash, $class_id);
+			my $value = $hash->{value};
+			my $field = $self->_search_field($hash->{field}, $class_id);
 			$clauses{ $hash->{boolean} }->{'(@' . $field . ' ' . $value . ')'} = 1;
 		}
 		else {
@@ -349,169 +421,29 @@ sub _get_match_str {
 		push @boolean_clauses, '(' . join('|', sort keys %{ $clauses{or} }) . ')';
 	}
 	if (scalar keys %{ $clauses{not} }){
-		push @boolean_clauses, '(' . join('|', sort keys %{ $clauses{not} }) . ')';
+		push @boolean_clauses, '!(' . join('|', sort keys %{ $clauses{not} }) . ')';
 	}
 	
 	return join(' ', @boolean_clauses);
 }
 
-sub _sphinx_value {
+
+
+sub _index_has {
 	my $self = shift;
-	my $field_name = shift;
+	my $index_schema = shift;
+	my $type = shift;
 	my $value = shift;
-	my $class_id = shift;
 	
-	my $field_order;
-	if ($field_name){
-		my $field_hash = $self->_get_field($field_name, $class_id);
-		$field_order = $field_hash->{field_order};
-	}
-	else {
-		$field_order = -1;
-	}
-	
-	my $orig_value = $value;
-	$value =~ s/^\"//;
-	$value =~ s/\"$//;
-	
-	#$self->log->trace('args: ' . Dumper($args) . ' value: ' . $value . ' field_order: ' . $field_order);
-	
-	unless (defined $class_id and defined $value and defined $field_order){
-		$self->log->error('Missing an arg: ' . $class_id . ', ' . $value . ', ' . $field_order);
-		return $value;
-	}
-	
-	return $value unless $self->info->{field_conversions}->{ $class_id };
-	
-	if ($field_order == $Fields::Field_to_order->{host}){ #host is handled specially
-		my @ret;
-		if ($value =~ /^"?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"?$/) {
-			@ret = ( unpack('N*', inet_aton($1)) ); 
-		}
-		elsif ($value =~ /^"?([a-zA-Z0-9\-\.]+)"?$/){
-			my $host_to_resolve = $1;
-			unless ($host_to_resolve =~ /\./){
-				my $fqdn_hostname = Sys::Hostname::FQDN::fqdn();
-				$fqdn_hostname =~ /^[^\.]+\.(.+)/;
-				my $domain = $1;
-				$self->log->debug('non-fqdn given, assuming to be domain: ' . $domain);
-				$host_to_resolve .= '.' . $domain;
-			}
-			$self->log->debug('resolving and converting host ' . $host_to_resolve. ' to inet_aton');
-			my $res   = Net::DNS::Resolver->new;
-			my $query = $res->search($host_to_resolve);
-			if ($query){
-				my @ips;
-				foreach my $rr ($query->answer){
-					next unless $rr->type eq "A";
-					$self->log->debug('resolved host ' . $host_to_resolve . ' to ' . $rr->address);
-					push @ips, $rr->address;
-				}
-				if (scalar @ips){
-					foreach my $ip (@ips){
-						my $ip_int = unpack('N*', inet_aton($ip));
-						push @ret, $ip_int;
-					}
-				}
-				else {
-					throw(500, 'Unable to resolve host ' . $host_to_resolve . ': ' . $res->errorstring, { external_dns => $host_to_resolve });
-				}
-			}
-			else {
-				throw(500, 'Unable to resolve host ' . $host_to_resolve . ': ' . $res->errorstring, { external_dns => $host_to_resolve });
-			}
-		}
-		else {
-			throw(400, 'Invalid host given: ' . Dumper($value), { host => $value });
-		}
-		if (wantarray){
-			return @ret;
-		}
-		else {
-			return $ret[0];
-		}
-	}
-	elsif ($field_order == $Fields::Field_to_order->{class}){
-		return $self->info->{classes}->{ uc($value) };
-	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{'IPv4'}
-		and $self->info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
-		and $value =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
-		$self->log->debug('converting ' . $value . ' to IPv4');
-		return unpack('N', inet_aton($value));
-	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{PROTO} 
-		and $self->info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
-		$self->log->trace("Converting $value to proto");
-		return exists $Fields::Proto_map->{ uc($value) } ? $Fields::Proto_map->{ uc($value) } : int($value);
-	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
-		and $self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
-		if ($Fields::Field_order_to_attr->{$field_order} =~ /attr_s/){
-			$self->log->trace("Converting $value to CRC of country_code");
-			return crc32(join('', unpack('c*', pack('A*', uc($value)))));
-		}
-		else {
-			$self->log->trace("Converting $value to country_code");
-			return join('', unpack('c*', pack('A*', uc($value))));
-		}
-	}
-	elsif ($Fields::Field_order_to_attr->{$field_order} eq 'program_id'){
-		$self->log->trace("Converting $value to attr");
-		return crc32($value);
-	}
-	elsif ($Fields::Field_order_to_attr->{$field_order} =~ /^attr_s\d+$/){
-		# String attributes need to be crc'd
-		return crc32($value);
-	}
-	else {
-		# Integer value
-		if ($orig_value == 0 or int($orig_value)){
-			return $orig_value;
-		}
-		else {
-			# Try to find an int and use that
-			$orig_value =~ s/\\?\s//g;
-			if (int($orig_value)){
-				return $orig_value;
-			}
-			else {
-				throw(400, 'Invalid query term, not an integer: ' . $orig_value, { term => $orig_value });
-			}
-		}
-	}
-		
-	throw(500, 'Unable to find value for field ' . $field_name, { term => $field_name });
+	return grep { $_ eq $value } @{ $index_schema->{$type} };
 }
 
-sub _get_field {
+sub _is_stopword {
 	my $self = shift;
-	my $field_name = shift;
-	my $class_id = shift;
+	my $index_schema = shift;
+	my $word = shift;
 	
-	my $field_hashes = $self->info->{fields_by_name}->{$field_name};
-	foreach my $field_hash (@$field_hashes){
-		if ($field_hash->{class_id} eq $class_id){
-			return $field_hash
-		}
-	}
-		
-	throw(500, 'Unable to find column for field ' . $field_name, { term => $field_name });
-}
-
-sub _sphinx_attr {
-	my $self = shift;
-	my $field_name = shift;
-	my $class_id = shift;
-	
-	my $field_hashes = $self->info->{fields_by_name}->{$field_name};
-	foreach my $field_hash (@$field_hashes){
-		if ($field_hash->{class_id} eq $class_id){
-			return $Fields::Field_order_to_attr->{ $field_hash->{field_order} };
-		}
-	}
-		
-	throw(500, 'Unable to find column for field ' . $field_name, { term => $field_name });
+	return exists $index_schema->{stopwords}->{ lc($word) } or $self->parser->is_stopword($word);
 }
 
 sub _get_attr_tests {
@@ -521,8 +453,9 @@ sub _get_attr_tests {
 	
 	my %terms;
 	foreach my $hash (@$filters){
-		my $attr = $self->_sphinx_attr($hash->{field}, $class_id);
-		push @{ $terms{ $hash->{boolean} } }, sprintf('%s=%d', $attr, $self->_sphinx_value($hash->{field}, $hash->{value}, $class_id));
+		my $attr = $self->_attr($hash->{field}, $class_id);
+		my $value = $self->_value($hash, $class_id);
+		push @{ $terms{ $hash->{boolean} } }, sprintf('%s=%d', $attr, $value);
 	}
 	
 	my @attr_clauses;
@@ -533,7 +466,7 @@ sub _get_attr_tests {
 		push @attr_clauses, '(' . join(' OR ', @{ $terms{or} }) . ')';
 	}
 	if ($terms{not} and scalar @{ $terms{not} }){
-		push @attr_clauses, 'NOT (' . join(' OR ', @{ $terms{or} }) . ')';
+		push @attr_clauses, 'NOT (' . join(' OR ', @{ $terms{not} }) . ')';
 	}
 	
 	return scalar @attr_clauses ? join(' AND ', @attr_clauses) : 1;
@@ -546,7 +479,7 @@ sub _get_select_clause {
 	
 	if ($self->groupby){
 		return {
-			clause => 'SELECT COUNT(*) AS _count, ' . $self->_sphinx_col_name($self->groupby, $class_id) . ' AS _groupby, '
+			clause => 'SELECT id, COUNT(*) AS _count, ' . $self->_attr($self->groupby, $class_id) . ' AS _groupby, '
 			. $attr_string . ' AS attr_tests',
 			values => [],
 		}
@@ -560,7 +493,7 @@ sub _get_select_clause {
 sub _get_search_terms {
 	my $self = shift;
 	my $class_id = shift;
-	my $index = shift;
+	my $group_key = shift;
 	my $or_key = shift;
 
 	my $ret = { searches => [], filters => [] };
@@ -573,119 +506,114 @@ sub _get_search_terms {
 		}
 	}
 	if ($or_key){
+		$self->log->debug('or_key: ' . $or_key);
 		$local_terms->{and}->{$or_key} = $self->terms->{or}->{$or_key};
 	}
 	
-	$self->log->debug('or_key: ' . $or_key);
+	my $index_schema = $self->_get_index_schema($group_key);
+	$self->log->debug('index_schema: ' . Dumper($index_schema));
+	
+	# Check for some basic problems, like impossible ANDs
+	foreach my $key (keys %{ $local_terms->{and} }){
+		my %hash = %{ $local_terms->{and}->{$key} };
+		my @same_fields = grep { 
+			$local_terms->{and}->{$_}->{field} eq $hash{field} 
+				and $local_terms->{and}->{$_}->{value} ne $hash{value} 
+			} keys %{ $local_terms->{and} };
+		foreach my $same_field_key (@same_fields){
+			if ($self->_is_int_field($local_terms->{and}->{$same_field_key}->{field}, $class_id)){
+				throw(400, 'Impossible query, conflicting terms: ' . join(', ', $key, @same_fields), { term => $local_terms->{and}->{$same_field_key}->{value} });
+			}
+		}
+	}
 	
 	foreach my $boolean (qw(and not)){
 		foreach my $key (keys %{ $local_terms->{$boolean} }){
 			my %hash = %{ $local_terms->{$boolean}->{$key} };
 			$hash{boolean} = $boolean;
-			my $index_schema = $self->_get_index_schema($index);
-			
-			my $added_to_search = 0;
-#			# An OR has to be a search term
-#			if ($boolean eq 'or'){
-#				if ($hash{field} and $self->_sphinx_col_name($hash{field}, $class_id) 
-#					and $index_schema->{fields}->{ $self->_sphinx_col_name($hash{field}, $class_id) }){
-#					push @{ $ret->{searches} }, { %hash };
-#				}
-#				elsif ($hash{field}){
-#					$self->add_warning(304, 'Removing field stipulation ' . $hash{field} . ' for value ' . $hash{value}, { term => $hash{value} });
-#					$hash{field} = '';
-#					push @{ $ret->{searches} }, { %hash };
-#					$added_to_search = 1;
-#				}
-#			}
 			
 			# Is this a non-search op?
-			unless ($hash{op} eq ':' or $hash{op} eq '=' or $hash{op} eq '~'){
-				push @{ $ret->{filters} }, { %hash } if $hash{field};
+			if ($hash{field} and not ($hash{op} eq ':' or $hash{op} eq '=' or $hash{op} eq '~')){
+				push @{ $ret->{filters} }, { %hash };
 				next;
 			}
 			
 			# Is it an int field?
 			if($hash{field} and $self->_is_int_field($hash{field}, $class_id)){
-				push @{ $ret->{filters} }, { %hash } if $hash{field};
+				$self->log->debug('field ' . $hash{field} . ' was an int field');
+				push @{ $ret->{filters} }, { %hash };
 				next;
 			}
 			
 			# Is this a stopword?
-			elsif ($self->parser->stopword_terms->{ $hash{value} }){
+			elsif ($self->_is_stopword($index_schema, $hash{value})){
 				# Will need to tack it on the post filter list
 				$self->post_filters->{ $hash{boolean} }->{ $hash{value} } = $hash{field};
 				next;
 			}
 			
 			# Is it quoted and the op isn't ~ ?
-			elsif ($hash{op} ne '~' and $hash{quoted}){
+			elsif ($hash{field} and $hash{op} ne '~' and $hash{quoted}){
 				# Make it a filter
-				push @{ $ret->{filters} }, { %hash } if $hash{field};
+				push @{ $ret->{filters} }, { %hash };
 				next;
 			}
 			# Default to search term
-			elsif (not $added_to_search){ # Verify that we didn't already add this above
-				if (($hash{field} and $self->_sphinx_col_name($hash{field}, $class_id) 
-					and $index_schema->{fields}->{ $self->_sphinx_col_name($hash{field}, $class_id) }) or not $hash{field}){
-					push @{ $ret->{searches} }, { %hash };
-				}
-				else {
-					$self->log->warn('Making term ' . $hash{value} . ' into a filter because the field does not exist in this schema');
-					push @{ $ret->{filters} }, { %hash };
-				}
+			if (not $hash{field} or ($hash{field} and $self->_search_field($hash{field}, $class_id) 
+				and $self->_index_has($index_schema, 'fields', $self->_search_field($hash{field}, $class_id)) ) ){
+				push @{ $ret->{searches} }, { %hash };
+			}
+#			elsif($hash{field} and $self->_attr($hash{field}, $class_id) 
+#				and $index_schema->{attrs}->{ $self->_attr($hash{field}, $class_id) }){
+#				$self->log->warn('Making term ' . $hash{value} . ' into a filter because the field does not exist in this schema');
+#				push @{ $ret->{filters} }, { %hash };
+#			}
+			else {
+				throw(400, 'Unable to find field ' . $hash{field} . ' for class ' . $self->info->{classes_by_id}->{$class_id}, { term => $hash{field} });
 			}
 		}
 	}
 	
-#	# Any lone OR filters?
-#	my @ors_to_move;
-#	foreach my $hash (@{ $ret->{filters} }){
-#		if ($hash->{boolean} eq 'or'){
-#			push @ors_to_move, $hash;
-#		}
-#	}
-#	if (scalar @ors_to_move == 1){
-#		# Is there a term there already?
-#		my $hash = pop(@ors_to_move);
-#		foreach my $existing (@{ $ret->{searches} }){
-#			if ($existing->{op} eq $hash->{op} and $existing->{value} eq $hash->{value} and $existing->{boolean} eq $hash->{boolean}){
-#				$self->log->trace('No need to move single OR value, value exists as a search term already');
-#			}
-#			else {
-#				$self->log->trace('Cannot have a single OR filter, moving to search terms: ' . Dumper($ret));
-#				push @{ $ret->{searches} }, $hash;
-#			}
-#		}
-#	}
-	
 	# Do we have any search terms now?
-	if (scalar @{ $ret->{searches} }){
+	if (grep { $_->{boolean} eq 'and' } @{ $ret->{searches} }){
 		return $ret;
 	}
+	
+	$self->log->debug('no search terms, finding candidates: ' . Dumper($ret));
 	
 	# else, we need to try to find a search term from the filters
 	my %candidates;
 	my %int_candidates;
-#	my %or_candidates;
+	#$self->log->debug('index_schema: ' . Dumper($index_schema));
 	foreach my $hash (@{ $ret->{filters} }){
-#		if ($hash->{boolean} eq 'or'){
-#			$or_candidates{ $hash->{value} } = $hash;
-#		}
 		next unless $hash->{boolean} eq 'and';
-		next if $self->parser->stopword_terms->{ $hash->{value} };
+		next if $self->_is_stopword($index_schema, $hash->{value});
 		
 		# Verify this field exists in this index
-		if ($hash->{field}){
-			my $index_schema = $self->_get_index_schema($index);
-			my $field = $self->_sphinx_col_name($hash->{field}, $class_id);
-			unless ($index_schema->{fields}->{$field}){
-				$int_candidates{ $hash->{value} } = $hash;
-				next;
+		my $field = $self->_search_field($hash->{field}, $class_id);
+		my $attr = $self->_attr($hash->{field}, $class_id);
+		if (($field and $self->_is_meta($field)) or ($attr and $self->_is_meta($attr))){
+			$self->log->debug('meta attr ' . $hash->{field} . ' not a candidate');
+		}
+		elsif ($field and $self->_index_has($index_schema, 'fields', $field)){
+			$self->log->debug($field . ' with value ' . $hash->{value} . ' is a candidate');
+			$candidates{ $hash->{value} } = $hash;
+		}
+		elsif ($attr and $self->_index_has($index_schema, 'attrs', $attr)){
+			if ($self->_is_int_field($hash->{field}, $class_id)){
+				my $value = $self->_value($hash, $class_id);
+				$int_candidates{ $value } = $hash;
+				$self->log->debug('attr ' . $attr . ' with value ' . $value . ' is an int candidate');
+			}
+			else {
+				$self->log->debug('attr ' . $attr . ' with value ' . $hash->{value} . ' is not an int candidate');
 			}
 		}
-		
-		$candidates{ $hash->{value} } = $hash;
+		else {
+			$self->log->debug('index_schema: ' . Dumper($index_schema));
+			throw(500, 'Unable to find field or attr for ' . $hash->{field}, { term => $hash->{field} });
+		}
+		next;
 	}
 	
 	if (scalar keys %candidates){
@@ -696,14 +624,13 @@ sub _get_search_terms {
 	elsif (scalar keys %int_candidates){
 		# Use an attribute as an anyfield query, pick the highest number
 		my $biggest = (sort { int($b) <=> int($a) } keys %int_candidates)[0];
+		$self->log->debug('biggest value: ' . $biggest);
 		push @{ $ret->{searches} }, { field => '', value => $biggest, boolean => 'and' };
 	}
-#	elsif (scalar keys %or_candidates){
-#		# Use all OR's
-#		foreach my $term (keys %or_candidates){
-#			push @{ $ret->{searches} }, { field => '', value => $term, boolean => 'or' };
-#		}
-#	}
+	
+	unless (scalar @{ $ret->{searches} }){
+		throw(302, 'No search terms after checking fields and stopwords', { location => 'Query::SQL', directives => { use_sql_regex => 1 } });
+	}
 	
 	return $ret;
 }
@@ -712,17 +639,58 @@ sub _get_permissions_clause {
 	my $self = shift;
 }
 
-sub _get_index_list {
+sub _get_index_groups {
 	my $self = shift;
 	
-	my @indexes;
+	# Sort the indexes into groups by schema
+	my %schemas;
 	foreach my $index (@{ $self->info->{indexes}->{indexes} }){
+		my $group_key = '';
+		if ($index->{schema}){
+			foreach my $key (sort keys %{ $index->{schema} }){
+				if (ref($index->{schema}->{$key}) and ref($index->{schema}->{$key}) eq 'HASH'){
+					foreach my $schema_key (sort keys %{ $index->{schema}->{$key} }){
+						$group_key .= $schema_key . ':' . $index->{schema}->{$key}->{$schema_key};
+					}
+				}
+				elsif (ref($index->{schema}->{$key}) and ref($index->{schema}->{$key}) eq 'ARRAY'){
+					foreach my $schema_key (@{ $index->{schema}->{$key} }){
+						$group_key .= $schema_key;
+					}
+				}
+				else {
+					$group_key .= $key;
+				}
+			}
+			$group_key = crc32($group_key);
+			$schemas{$group_key} ||= {};
+			$schemas{$group_key}->{ $index->{name} } = $index;
+		}
+	}
+	
+	return \%schemas;
+}
+
+sub _get_index_list {
+	my $self = shift;
+	my $indexes = shift;
+	
+	# Sort the indexes by time
+	my $sort_fn;
+	if ($self->orderby_dir eq 'DESC'){
+		$sort_fn = sub { $indexes->{$b}->{start_int} <=> $indexes->{$a}->{start_int} };
+	}
+	else {
+		$sort_fn = sub { $indexes->{$a}->{start_int} <=> $indexes->{$b}->{start_int} };
+	}
+	
+	my @indexes;
+	foreach my $index_name (sort $sort_fn keys %{ $indexes }){
 		# Check that the time is right
-		if (($index->{start_int} <= $self->start and $index->{end_int} >= $self->start)
-			or ($index->{start_int} <= $self->end and $index->{end_int} >= $self->end)
-			or ($index->{start_int} >= $self->start and $index->{end_int} <= $self->end)){
-			
-			push @indexes, $index;
+		if (($indexes->{$index_name}->{start_int} <= $self->start and $indexes->{$index_name}->{end_int} >= $self->start)
+			or ($indexes->{$index_name}->{start_int} <= $self->end and $indexes->{$index_name}->{end_int} >= $self->end)
+			or ($indexes->{$index_name}->{start_int} >= $self->start and $indexes->{$index_name}->{end_int} <= $self->end)){
+			push @indexes, $index_name;
 		}
 	}
 	
@@ -731,13 +699,15 @@ sub _get_index_list {
 
 sub _get_index_schema {
 	my $self = shift;
-	my $index_name = shift;
-	foreach my $index (@{ $self->info->{indexes}->{indexes} }){
-		if ($index->{name} eq $index_name){
-			return $index->{schema};
-		}
-	}
-	throw(500, 'Unable to find index ' . $index_name);
+	my $group_key = shift;
+	throw(500, 'Unable to find index ' . $group_key) unless $self->schemas->{$group_key};
+	return (values %{ $self->schemas->{$group_key} })[0]->{schema};
+#	foreach my $index (@{ $self->info->{indexes}->{indexes} }){
+#		if ($index->{name} eq $index_name){
+#			return $index->{schema};
+#		}
+#	}
+	
 }
 	
 
@@ -751,40 +721,44 @@ sub execute {
 			$cb->($self->errors);
 			return;
 		}
-		my $indexes = $self->_get_index_list();
-		$self->log->trace('Querying indexes: ' . scalar @$indexes);
-		
-		unless (scalar @$indexes){
-			$self->add_warning('516', 'No data for time period queried', { term => 'start' });
-			$cb->($self->results);
-			return;
-		}
-		
 		my $start = time();
 		my $counter = 0;
 		my $total = 0;
 		my $cv = AnyEvent->condvar;
 		$cv->begin(sub {
-			if ($self->has_errors){
-				$cb->($self->errors);
-			}
-			else {
+			if (not $self->has_errors){
 				$self->results->percentage_complete(100 * $counter / $total);
-				$cb->($self->results);
+				if ($self->results->total_records > $self->results->total_docs){
+					$self->results->total_docs($self->results->total_records);
+				}
 			}
+			$cb->();
 		});
-		foreach my $index (@$indexes){
+		
+		foreach my $group_key (keys %{ $self->schemas }){
+			my $indexes = $self->_get_index_list($self->schemas->{$group_key});
+			
+			$self->log->trace('Querying indexes: ' . scalar @$indexes);
+			
+			unless (scalar @$indexes){
+				$self->add_warning('516', 'No data for time period queried', { term => 'start' });
+				$cb->();
+				return;
+			}
+			
+			
+			
 			last if $self->limit and $self->results->records_returned >= $self->limit;
-			if ($self->timeout and (time() - $start) >= $self->timeout){
+			if ($self->timeout and (time() - $start) >= ($self->timeout/1000)){
 				$self->results->is_approximate(1);
 				last;
 			}
-			my $queries = $self->_build_queries($index->{name});
+			my $queries = $self->_build_queries($group_key);
 			$total += scalar @$queries;
-			$self->log->debug('index: ' . Dumper($index));
+			$self->log->debug('$group_key: ' . Dumper($group_key));
 			foreach my $query (@$queries){
 				$cv->begin;
-				$self->_sphinx_query($index->{name}, $query, sub {
+				$self->_query($indexes, $query, sub {
 					my $per_index_results = shift;
 					$counter++;
 					if (not $per_index_results or $per_index_results->{error}){
@@ -793,15 +767,16 @@ sub execute {
 					$cv->end;
 				});
 			}
+			
 		}
 		
 		$cv->end;
 	});
 }
 
-sub _sphinx_query {
+sub _query {
 	my $self = shift;
-	my $index = shift;
+	my $indexes = shift;
 	my $query = shift;
 	my $cb = shift;
 	
@@ -812,7 +787,7 @@ sub _sphinx_query {
 		$cb->($ret);
 	});
 	my @values = (@{ $query->{select}->{values} }, @{ $query->{where}->{values} });
-	my $query_string = $query->{select}->{clause} . ' FROM ' . $index . ' WHERE ' . $query->{where}->{clause};
+	my $query_string = $query->{select}->{clause} . ' FROM ' . join(',', @$indexes) . ' WHERE ' . $query->{where}->{clause};
 	if ($self->groupby){
 		$query_string .= ' GROUP BY ' . $query->{groupby} . ' ORDER BY _count ';
 	}
@@ -841,7 +816,6 @@ sub _sphinx_query {
 		my $sphinx_query_time = (time() - $start);
 		$self->log->debug('Sphinx query finished in ' . $sphinx_query_time);
 		$ret->{stats}->{sphinx_query} += $sphinx_query_time;
-		$start = time();
 		
 		if (not $rv){
 			my $e = 'sphinx got error ' .  Dumper($result);
@@ -849,6 +823,7 @@ sub _sphinx_query {
 			$self->add_warning(500, $e, { sphinx => $self->peer_label });
 			$ret = { error => $e };
 			$cv->end;
+			return;
 		}
 		my $rows = $result->{rows};
 		$ret->{sphinx_rows} ||= [];
@@ -870,9 +845,14 @@ sub _sphinx_query {
 		
 		# Go get the rows that contain the actual docs
 		if (scalar @{ $ret->{sphinx_rows} }){
-			$self->_get_rows($ret, sub { 
-				$self->_format_records($ret);
-				$self->_post_filter_results($ret);
+			$self->_get_rows($ret, sub {
+				if ($self->groupby){
+					$self->_format_records_groupby($ret);
+				}
+				else {
+					$self->_format_records($ret);
+					$self->_post_filter_results($ret);
+				}
 				$cv->end;
 			});
 		}
@@ -928,10 +908,8 @@ sub _get_rows {
 		if ($table =~ /import/){
 			$import_tables{$table} = $tables{$table};
 		}
-		else {
-			push @table_queries, $table_query;
-			push @table_query_values, @{ $tables{$table} };
-		}
+		push @table_queries, $table_query;
+		push @table_query_values, @{ $tables{$table} };
 	}
 	
 	if (keys %import_tables){
@@ -950,8 +928,12 @@ sub _get_extra_field_values {
 	my $cb = shift;
 	
 	my %programs;
-	foreach my $row (@{ $ret->{sphinx_rows} }){
+	foreach my $row (values %{ $ret->{results} }){
 		$programs{ $row->{program_id} } = $row->{program_id};
+	}
+	if (not scalar keys %programs){
+		$cb->($ret);
+		return;
 	}
 	
 	my $query;
@@ -968,13 +950,16 @@ sub _get_extra_field_values {
 			$self->log->error($errstr);
 			$self->add_warning(502, $errstr, { mysql => $self->peer_label });
 			$cv->end;
+			return;
 		}
 		elsif (not scalar @$rows){
 			$self->log->error('Did not get extra field value rows though we had values: ' . Dumper(\%programs)); 
 		}
-		$self->log->trace('got extra field value db rows: ' . (scalar @$rows));
-		foreach my $id (keys %{ $ret->{results} }){
-			$ret->{results}->{$id}->{program} = $programs{ $ret->{results}->{$id}->{program_id} };
+		else {
+			$self->log->trace('got extra field value db rows: ' . (scalar @$rows));
+			foreach my $id (keys %{ $ret->{results} }){
+				$ret->{results}->{$id}->{program} = $programs{ $ret->{results}->{$id}->{program_id} };
+			}
 		}
 		$cv->end;
 	});
@@ -1035,6 +1020,103 @@ sub _format_records {
 	}
 	
 	$self->results->total_docs($self->results->total_docs + $ret->{meta}->{total_found});
+}
+
+sub _format_records_groupby {
+	my $self = shift;
+	my $ret = shift;
+	
+	my %agg;
+	my $total_records = 0;
+	
+	# One-off for grouping by node
+	if ($self->groupby eq 'node'){
+		my $node_label = $self->peer_label ? $self->peer_label : '127.0.0.1';
+		$agg{$node_label} = int($ret->{meta}->{total_found});
+		next;
+	}
+	foreach my $id (sort { $a <=> $b } keys %{ $ret->{results} }){
+		my $row = $ret->{results}->{$id};
+		# Resolve the _groupby col with the mysql col
+		unless (exists $ret->{results}->{ $row->{id} }){
+			$self->log->warn('mysql row for sphinx id ' . $row->{id} . ' did not exist');
+			next;
+		}
+		my $key;
+		if (exists $Fields::Time_values->{ $self->groupby }){
+			# We will resolve later
+			$key = $row->{'_groupby'};
+		}
+		elsif ($self->groupby eq 'program'){
+			$key = $ret->{results}->{ $row->{id} }->{program};
+		}
+		elsif ($self->groupby eq 'class'){
+			$key = $self->info->{classes_by_id}->{ $ret->{results}->{ $row->{id} }->{class_id} };
+		}
+		elsif (exists $Fields::Field_to_order->{ $self->groupby }){
+			# Resolve normally
+			$key = $self->resolve_value($row->{class_id}, $row->{'_groupby'}, $self->groupby);
+		}
+		else {
+			# Resolve with the mysql row
+			my $field_order = $self->get_field($self->groupby)->{ $row->{class_id} }->{field_order};
+			#$self->log->trace('resolving with row ' . Dumper($ret->{results}->{ $row->{id} }));
+			$key = $ret->{results}->{ $row->{id} }->{ $Fields::Field_order_to_field->{$field_order} };
+			$key = $self->resolve_value($row->{class_id}, $key, $Fields::Field_order_to_field->{$field_order});
+			$self->log->trace('field_order: ' . $field_order . ' key ' . $key);
+		}
+		$agg{ $key } += $row->{'_count'};	
+	}
+	
+	if (exists $Fields::Time_values->{ $self->groupby }){
+		# Sort these in ascending label order
+		my @tmp;
+		my $increment = $Fields::Time_values->{ $self->groupby };
+		my $use_gmt = $increment >= 86400 ? 1 : 0;
+		foreach my $key (sort { $a <=> $b } keys %agg){
+			$total_records += $agg{$key};
+			my $unixtime = $key * $increment;
+			
+			my $client_localtime = $unixtime - $self->timezone_diff($unixtime);					
+			$self->log->trace('key: ' . $key . ', tv: ' . $increment . 
+				', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($client_localtime)));
+			push @tmp, { 
+				intval => $unixtime, 
+				'_groupby' => epoch2iso($client_localtime, $use_gmt),
+				'_count' => $agg{$key}
+			};
+		}
+		
+		# Fill in zeroes for missing data so the graph looks right
+		my @zero_filled;
+		
+		$self->log->trace('using increment ' . $increment . ' for time value ' . $self->groupby);
+		OUTER: for (my $i = 0; $i < @tmp; $i++){
+			push @zero_filled, $tmp[$i];
+			if (exists $tmp[$i+1]){
+				for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
+					push @zero_filled, { 
+						'_groupby' => epoch2iso($j, $use_gmt),
+						intval => $j,
+						'_count' => 0
+					};
+					last OUTER if scalar @zero_filled >= $self->limit;
+				}
+			}
+		}
+		$self->results->add_results({ $self->groupby => [ @zero_filled ] });
+	}
+	else { 
+		# Sort these in descending value order
+		my @tmp;
+		foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
+			$total_records += $agg{$key};
+			push @tmp, { intval => $agg{$key}, '_groupby' => $key, '_count' => $agg{$key} };
+			last if scalar @tmp >= $self->limit;
+		}
+		$self->results->add_results({ $self->groupby => [ @tmp ] });
+		$self->log->debug('@tmp: ' . Dumper(\@tmp));
+	}
 }
 
 sub _post_filter_results {
@@ -1104,21 +1186,26 @@ sub _get_import_rows {
 		'datatype AS import_type, imported AS import_date, first_id, last_id FROM ' . $self->sphinx_db->{db} 
 		. '.imports WHERE ';
 	my @import_info_query_clauses;
-	foreach (sort values %$import_tables){
-		push @import_info_query_clauses, '? BETWEEN first_id AND last_id';
+	my @import_query_values;
+	foreach my $import_table (keys %{ $import_tables }){
+		foreach my $id (@{ $import_tables->{$import_table} }){
+			push @import_info_query_clauses, '? BETWEEN first_id AND last_id';
+			push @import_query_values, $id;
+		}
 	}
 	$import_info_query .= join(' OR ', @import_info_query_clauses);
 	
 	my $cv = AnyEvent->condvar;
 	$cv->begin(sub { $cb->($ret); });
 	
-	$self->sphinx_db->{dbh}->query($import_info_query, (sort values %$import_tables), sub { 
+	$self->sphinx_db->{dbh}->query($import_info_query, @import_query_values, sub { 
 		my ($dbh, $rows, $rv) = @_;
 		if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 			my $errstr = 'got error ' . $rows;
 			$self->log->error($errstr);
 			$self->add_warning(502, $errstr, { mysql => $self->peer_label });
 			$cv->end;
+			return;
 		}
 		elsif (not scalar @$rows){
 			$self->log->error('Did not get import info rows though we had import values: ' . Dumper($import_tables)); 
@@ -1175,6 +1262,7 @@ sub _get_mysql_rows {
 			$self->log->error($errstr);
 			$self->add_warning(502, $errstr, { sphinx => $self->peer_label });
 			$cv->end;
+			return;
 		}
 		elsif (not scalar @$rows){
 			$self->log->error('Did not get rows though we had Sphinx results!'); 
@@ -1185,6 +1273,11 @@ sub _get_mysql_rows {
 			$ret->{results} ||= {};
 			$row->{node} = $self->peer_label ? $self->peer_label : '127.0.0.1';
 			$row->{node_id} = unpack('N*', inet_aton($row->{node}));
+			if ($self->groupby){
+				my ($sphinx_row) = grep { $_->{id} eq $row->{id} } @{ $ret->{sphinx_rows} };
+				$row->{_groupby} = $sphinx_row->{_groupby};
+				$row->{_count} = $sphinx_row->{_count};
+			}
 			if ($self->orderby){
 				$row->{_orderby} = $orderby_map{ $row->{id} };
 			}

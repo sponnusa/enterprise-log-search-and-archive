@@ -39,45 +39,55 @@ sub BUILD {
 		$keys = { srcip => 1, dstip => 1, site => 1, ip => 1 };
 	}
 	
-	foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = {};
-		
-		$self->cv(AnyEvent->condvar); 
-		$self->cv->begin;
-		
-		foreach my $key (keys %{ $datum }){
-			if ($datum->{$key} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
-				$datum->{transforms}->{$Name}->{$key} = {};
-				$self->_lookup($datum, $key);
-			}
-		}
-		
-		$self->cv->end;
-		$self->cv->recv;
-		
-		foreach my $key (qw(srcip dstip)){
-			if ($datum->{transforms}->{$Name}->{$key} and $datum->{transforms}->{$Name}->{$key}->{is_local}){
-				my $deleted = delete $datum->{transforms}->{$Name}->{$key};
-				$datum->{transforms}->{$Name}->{$key}->{customer} = $deleted->{customer};
-				#$self->log->debug('transform: ' . Dumper($datum->{transforms}->{$Name}->{$key}));
-				last;
-			}
-		}
-		
-	}
+	$self->cv(AnyEvent->condvar); 
+	$self->cv->begin(sub {
+		$self->on_transform->();
+	});
 	
-	$self->log->info('cache hits: ' . $self->cache_stats->{hits} . ', misses: ' . $self->cache_stats->{misses});
+	try {
+		foreach my $record ($self->results->all_results){
+			$self->cv->begin;
+			
+			$record->{transforms}->{$Name} = {};
+			
+			foreach my $key ($self->results->keys($record)){
+				if ($self->results->value($record, $key) =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
+					$record->{transforms}->{$Name}->{$key} = {};
+					$self->_lookup($record, $key);
+				}
+			}
+			
+			$self->cv->end;
+			
+			foreach my $key (qw(srcip dstip)){
+				if ($record->{transforms}->{$Name}->{$key} and $record->{transforms}->{$Name}->{$key}->{is_local}){
+					my $deleted = delete $record->{transforms}->{$Name}->{$key};
+					$record->{transforms}->{$Name}->{$key}->{customer} = $deleted->{customer};
+					last;
+				}
+			}
+		}
+		$self->cv->end;
+		
+		$self->log->info('cache hits: ' . $self->cache_stats->{hits} . ', misses: ' . $self->cache_stats->{misses});
+	}
+	catch {
+		my $e = shift;
+		$self->log->error('error in whois: ' . $e);
+		$self->on_error->($e);
+		$self->on_transform->();
+	};
 	
 	return $self;
 }
 
 sub _lookup {
 	my $self = shift;
-	my $datum = shift;
+	my $record = shift;
 	my $field = shift;
-	my $ip = $datum->{$field};
+	my $ip = $self->results->value($record, $field);
 	
-	my $ret = $datum->{transforms}->{$Name}->{$field};
+	my $ret = $record->{transforms}->{$Name}->{$field};
 	$self->log->trace('Looking up ip ' . $ip);
 	$self->cv->begin;
 	
@@ -128,7 +138,7 @@ sub _lookup {
 			$self->log->trace( 'Using cached org' );
 		}
 		else {
-			$org = $self->_lookup_org($datum, $org_url, $field);
+			$org = $self->_lookup_org($record, $org_url, $field);
 		}
 		
 		$self->cv->end;
@@ -136,7 +146,7 @@ sub _lookup {
 	}
 	elsif ($ip_info and $ip_info->{ripe_ip}){
 		$self->cache_stats->{hits}++;
-		my $org = $self->_lookup_ip_ripe($datum, $ip_info->{ripe_ip}, $ip, $field);
+		my $org = $self->_lookup_ip_ripe($record, $ip_info->{ripe_ip}, $ip, $field);
 		$self->cv->end;
 		return;
 	}
@@ -168,7 +178,7 @@ sub _lookup {
 					or $whois->{net}->{orgRef}->{'@handle'} eq 'LACNIC'){
 					$self->log->trace('Getting RIPE IP with org ' . $whois->{net}->{orgRef}->{'@handle'});
 					$self->cache->set($ip_url, { ripe_ip => $whois->{net}->{orgRef}->{'@handle'} });
-					$org = $self->_lookup_ip_ripe($datum, $whois->{net}->{orgRef}->{'@handle'}, $ip, $field);
+					$org = $self->_lookup_ip_ripe($record, $whois->{net}->{orgRef}->{'@handle'}, $ip, $field);
 				}
 				else {
 					$ret->{name} = $whois->{net}->{name}->{'$'};
@@ -190,7 +200,7 @@ sub _lookup {
 						$self->log->trace( 'Using cached org' );		
 					}
 					else {
-						$self->_lookup_org($datum, $org_url, $field);
+						$self->_lookup_org($record, $org_url, $field);
 					}
 				}
 			}
@@ -218,7 +228,7 @@ sub _lookup {
 				$self->cache_stats->{hits}++;
 			}
 			else {
-				$self->_lookup_org($datum, $org_url, $field);
+				$self->_lookup_org($record, $org_url, $field);
 			}
 			
 		}
@@ -229,12 +239,12 @@ sub _lookup {
 
 sub _lookup_ip_ripe {
 	my $self = shift;
-	my $datum = shift;
+	my $record = shift;
 	my $registrar = shift;
 	my $ip = shift;
 	my $field = shift;
 	
-	my $ret = $datum->{transforms}->{$Name}->{$field};
+	my $ret = $record->{transforms}->{$Name}->{$field};
 	
 	my $ripe_url = 'http://apps.db.ripe.net/whois/grs-lookup/' . lc($registrar) . '-grs/inetnum/' . $ip;
 	my $cached = $self->cache->get($ripe_url);
@@ -300,13 +310,13 @@ sub _lookup_ip_ripe {
 
 sub _lookup_org {
 	my $self = shift;
-	my $datum = shift;
+	my $record = shift;
 	my $org_url = shift;
 	my $field = shift;
 	
 	$org_url =~ /\/([^\/]+)$/;
 	my $key = $1;
-	my $ret = $datum->{transforms}->{$Name}->{$field};
+	my $ret = $record->{transforms}->{$Name}->{$field};
 	
 	if (my $cached = $self->cache->get($key, 
 		expire_if => sub {
