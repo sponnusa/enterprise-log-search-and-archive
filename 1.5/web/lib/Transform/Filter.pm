@@ -34,66 +34,65 @@ sub BUILD {
 	$self->log->debug('field: ' . Dumper($self->field));
 	$self->log->debug('regex: ' . Dumper($self->regex));
 	
-	DATUM_LOOP: foreach my $datum (@{ $self->data }){
-		foreach my $key (keys %$datum){
-			next if ref($datum->{$key});
+	DATUM_LOOP: foreach my $record ($self->results->all_results){
+		foreach my $key ($self->results->keys($record)){
+			my $value = $self->results->value($record, $key);
 			next unless $key =~ $self->field;
-			$self->_check($datum, $datum->{$key}) and next DATUM_LOOP;
+			$self->_check($record, $value) and next DATUM_LOOP;
 		}
-		foreach my $transform (keys %{ $datum->{transforms} }){
-			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
-			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
-				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
-					foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
+		foreach my $transform (keys %{ $record->{transforms} }){
+			next unless ref($record->{transforms}->{$transform}) eq 'HASH';
+			foreach my $transform_field (keys %{ $record->{transforms}->{$transform} }){
+				if (ref($record->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+					foreach my $key (keys %{ $record->{transforms}->{$transform}->{$transform_field} }){
 						next unless "$transform.$transform_field.$key" =~ $self->field;
-						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
-							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{$key} }){
-								$self->_check($datum, $value) and next DATUM_LOOP;
+						if (ref($record->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
+							foreach my $value (@{ $record->{transforms}->{$transform}->{$transform_field}->{$key} }){
+								$self->_check($record, $value) and next DATUM_LOOP;
 							}
 						}
 						else {
-							$self->_check($datum, $datum->{transforms}->{$transform}->{$transform_field}->{$key}) and next DATUM_LOOP;
+							$self->_check($record, $record->{transforms}->{$transform}->{$transform_field}->{$key}) and next DATUM_LOOP;
 						}
 					}
 				}
-				elsif (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'
+				elsif (ref($record->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'
 					and $transform_field =~ $self->field){
-					foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field} }){
-						$self->_check($datum, $value) and next DATUM_LOOP;
+					foreach my $value (@{ $record->{transforms}->{$transform}->{$transform_field} }){
+						$self->_check($record, $value) and next DATUM_LOOP;
 					}
 				}
 			}
 		}
 	}
 	
-	my $count = scalar @{ $self->data };
-	for (my $i = 0; $i < $count; $i++){
-		if (exists $self->data->[$i]->{transforms}->{__DELETE__}){
-			splice(@{ $self->data }, $i, 1);
-			$count--;
-			$i--;
+	foreach my $record ($self->results->all_results){
+		if (exists $record->{transforms}->{__DELETE__}){
+			$self->results->delete_record($record);
 		}
 	}
 	
-	$self->log->debug('data: ' . Dumper($self->data));
+	$self->log->debug('results: ' . Dumper($self->results));
+	
+	$self->on_transform->();
 	
 	return $self;
 }
 
 sub _check {
 	my $self = shift;
-	my $datum = shift;
+	my $record = shift;
 	my $value = shift;
 	
 	if ($self->operator){
 		my $test = $value . ' ' . $self->operator . ' ' . $self->regex;
 		if (eval($test)){
-			$datum->{transforms}->{'__DELETE__'} = 1;
+			$record->{transforms}->{'__DELETE__'} = 1;
 			return 1;
 		}
 	}
 	elsif ($value =~ $self->regex){
-		$datum->{transforms}->{'__DELETE__'} = 1;
+		$record->{transforms}->{'__DELETE__'} = 1;
 		return 1;
 	}
 	return 0;	

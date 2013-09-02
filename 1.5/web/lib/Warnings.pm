@@ -11,8 +11,13 @@ sub add_warning {
 	my $errstr = shift;
 	my $data = shift;
 	
-	$self->log->warn($code . ': ' . $errstr . ', ' . Dumper($data));
-	push @{ $self->warnings }, new Ouch($code, $errstr, $data);
+	if ($code and ref($code) and ref($code) eq 'Ouch'){
+		push @{ $self->warnings }, $code;
+	}
+	else {
+		$self->log->warn($code . ': ' . $errstr . ', ' . Dumper($data));
+		push @{ $self->warnings }, new Ouch($code, $errstr, $data);
+	}
 }
 
 sub errors {

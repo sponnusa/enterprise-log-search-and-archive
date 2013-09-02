@@ -34,74 +34,75 @@ sub BUILD {
 	$self->log->debug('regex: ' . Dumper($self->regex));
 	#$self->log->debug('begin with data: ' . Dumper($self->data));
 	
-	DATUM_LOOP: foreach my $datum (@{ $self->data }){
-		foreach my $key (keys %$datum){
-			next if ref($datum->{$key});
+	DATUM_LOOP: foreach my $record ($self->results->all_results){
+		foreach my $key ($self->results->keys($record)){
 			next unless $key =~ $self->field;
-			$self->_check($datum, $datum->{$key}) and next DATUM_LOOP;
+			$self->_check($record, $self->results->value($record, $key)) and next DATUM_LOOP;
 		}
-		foreach my $transform (keys %{ $datum->{transforms} }){
-			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
-			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
-				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
-					foreach my $key (keys %{ $datum->{transforms}->{$transform}->{$transform_field} }){
+		foreach my $transform (keys %{ $record->{transforms} }){
+			next unless ref($record->{transforms}->{$transform}) eq 'HASH';
+			foreach my $transform_field (keys %{ $record->{transforms}->{$transform} }){
+				if (ref($record->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+					foreach my $key (keys %{ $record->{transforms}->{$transform}->{$transform_field} }){
 						next unless "$transform.$transform_field.$key" =~ $self->field;
 						#$self->log->trace('passed field ' . $transform_field . '.' . $key);
-						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
-							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{$key} }){
-								$self->_check($datum, $value) and next DATUM_LOOP;
+						if (ref($record->{transforms}->{$transform}->{$transform_field}->{$key}) eq 'ARRAY'){
+							foreach my $value (@{ $record->{transforms}->{$transform}->{$transform_field}->{$key} }){
+								$self->_check($record, $value) and next DATUM_LOOP;
 							}
 						}
 						else {
-							$self->_check($datum, $datum->{transforms}->{$transform}->{$transform_field}->{$key}) and next DATUM_LOOP;
+							$self->_check($record, $record->{transforms}->{$transform}->{$transform_field}->{$key}) and next DATUM_LOOP;
 						}
 					}
 				}
-				elsif (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'
+				elsif (ref($record->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'
 					and $transform . '. ' . $transform_field =~ $self->field){
 					#$self->log->trace('passed field ' . $transform_field);
-					foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field} }){
-						$self->_check($datum, $value) and next DATUM_LOOP;	
+					foreach my $value (@{ $record->{transforms}->{$transform}->{$transform_field} }){
+						$self->_check($record, $value) and next DATUM_LOOP;	
 					}
 				}
 			}
 		}
 	}
 
-	my $count = scalar @{ $self->data };
-	for (my $i = 0; $i < $count; $i++){
-		if (exists $self->data->[$i]->{transforms}->{$Name}){
-			delete $self->data->[$i]->{transforms}->{$Name}; # no need to clutter our final results
+	foreach my $record ($self->results->all_results){
+		if (exists $record->{transforms}->{$Name}){
+			delete $record->{transforms}->{$Name}; # no need to clutter our final results
 		}
 		else {
-			splice(@{ $self->data }, $i, 1);
-			$count--;
-			$i--;
+			$self->results->delete_record($record);
 		}
 	}
 	
-	$self->log->debug('final data: ' . Dumper($self->data));
+	$self->log->debug('final data: ' . Dumper($self->results));
+	
+	$self->on_transform->();
 	
 	return $self;
 }
 
 sub _check {
 	my $self = shift;
-	my $datum = shift;
+	my $record = shift;
 	my $value = shift;
 	
 	if ($self->operator){
 		my $test = $value . ' ' . $self->operator . ' ' . $self->regex;
 		if (eval($test)){
 			#$self->log->trace('passed value ' . $value);
-			$datum->{transforms}->{$Name} = '__KEEP__';
+			$record->{transforms}->{$Name} = '__KEEP__';
 			return 1;
 		}
 	}
 	elsif ($value =~ $self->regex){
 		#$self->log->trace('passed value ' . $value);
-		$datum->{transforms}->{$Name} = '__KEEP__';
+		$record->{transforms}->{$Name} = '__KEEP__';
 		return 1;
+	}
+	else {
+		#$self->log->trace('FAIL value ' . $value);
 	}
 	return 0;
 }

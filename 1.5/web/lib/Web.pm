@@ -10,6 +10,7 @@ use Encode;
 use MIME::Base64;
 use Try::Tiny;
 use Ouch qw(:trytiny);;
+use AnyEvent;
 
 use Utils;
 use YUI;
@@ -44,62 +45,79 @@ sub call {
 	
 	Log::Log4perl::MDC->put('client_ip_address', $req->address);
 	
-	my $body;
-	my $method = $self->_extract_method($req->request_uri);
-	$method ||= 'index';
-	$self->api->log->debug('method: ' . $method);
-	if (exists $Modes{ $method }){
-		if ($Modes{ $method } == 1){
-			my $user = $self->api->get_user($req->user);
-			if ($user){
-				$self->session->set('user', $user->freeze);
-				$self->session->set('user_info', $user->TO_JSON);
-				$body = $self->$method($req);
-				if (ref($body) and ref($body) eq 'HASH'){
-					if ($self->api->has_warnings){
-						$body->{warnings} = $self->api->warnings;
+	# If we don't have a nonblocking web server (Apache), we need to have an overarching blocking recv
+	my $cv;
+	if (not $env->{'psgi.nonblocking'}){
+		$cv = AnyEvent->condvar;
+	}
+	return sub {
+		my $write = shift;
+		try {
+			my $body;
+			my $method = $self->_extract_method($req->request_uri);
+			$method ||= 'index';
+			$self->api->log->debug('method: ' . $method);
+			if (exists $Modes{ $method }){
+				if ($Modes{ $method } == 1){
+					my $user = $self->api->get_user($req->user);
+					if ($user){
+						$self->session->set('user', $user->freeze);
+						$self->session->set('user_info', $user->TO_JSON);
+						$self->api->$method($req, sub {
+							$body = shift;
+							if (ref($body) and ref($body) eq 'HASH'){
+								if ($self->api->has_warnings){
+									$body->{warnings} = $self->api->warnings;
+								}
+								$body = [encode_utf8($self->api->json->encode($body))];
+								$self->api->log->trace('returning body: ' . Dumper($body));
+							}
+							$res->body($body);
+							$write->($res->finalize());
+							$cv and $cv->send;
+						});
 					}
-					$body = [encode_utf8($self->api->json->encode($body))];
-					$self->api->log->trace('returning body: ' . Dumper($body));
+					else {
+						$res->status(401);
+						$body = 'Unauthorized';
+						$res->body($body);
+						$write->($res->finalize());
+						$cv and $cv->send;
+					}
 				}
-			}
-			else {
-				$res->status(401);
-				$body = 'Unauthorized';
+				elsif ($Modes{ $method } == 2){
+					$self->$method($req, sub {
+						my $ret = shift;
+						if (not $ret){
+							$ret = { error => $self->api->last_error };
+						}
+						elsif (ref($ret) and $ret->{mime_type}){
+							$res->content_type($ret->{mime_type});
+							$body = $ret->{ret};
+							if ($ret->{filename}){
+								$res->header('Content-disposition', 'attachment; filename=' . $ret->{filename});
+							}
+						}
+						else {
+							$body = [encode_utf8($self->api->json->encode($ret))];
+						}
+						$body = [encode_utf8($self->api->json->encode($ret))];
+						$res->body($body);
+						$write->($res->finalize());
+						$cv and $cv->send;
+					});
+				}
 			}
 		}
-		elsif ($Modes{ $method } == 2){
-			my $ret;
-			eval {
-				$ret = $self->$method($req);
-				unless ($ret){
-					$ret = { error => $self->api->last_error };
-				}
-			};
-			if ($@){
-				my $e = $@;
-				$self->api->log->error($e);
-				$body = [encode_utf8($self->api->json->encode({error => $e}))];
-			}
-			elsif (ref($ret) and $ret->{mime_type}){
-				$res->content_type($ret->{mime_type});
-				$body = $ret->{ret};
-				if ($ret->{filename}){
-					$res->header('Content-disposition', 'attachment; filename=' . $ret->{filename});
-				}
-			}
-			else {
-				$body = [encode_utf8($self->api->json->encode($ret))];
-			}
-			$body = [encode_utf8($self->api->json->encode($ret))];
-		}
-	}
-	
-	unless ($body){
-		$body = { error => $self->api->last_error };
-	}
-	$res->body($body);
-	$res->finalize();
+		catch {
+			my $e = shift;
+			$self->api->log->error($e);
+			$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
+			$write->($res->finalize());
+			$cv and $cv->send;
+		};
+		$cv and $cv->recv;
+	};
 }
 
 sub _extract_method {

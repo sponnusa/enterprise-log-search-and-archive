@@ -16,10 +16,13 @@ use Date::Manip;
 use Try::Tiny;
 use Ouch qw(:trytiny);;
 use String::CRC32;
+use Module::Pluggable sub_name => 'transform_plugins', require => 1, search_path => [ qw(Transform) ];
+use CHI;
 
 # Object for dealing with user queries
 
 our $Default_limit = 100;
+our $Tokenizer_regex = '[^A-Za-z0-9\\-\\.\\@\\_]';
 
 # Required
 has 'user' => (is => 'rw', isa => 'User', required => 1);
@@ -48,7 +51,7 @@ has 'start' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'end' => (is => 'rw', isa => 'Int', required => 1, default => sub { time() });
 has 'cutoff' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'transforms' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
-	handles => { has_transforms => 'count', all_transforms => 'elements', num_transforms => 'count' });
+	handles => { has_transforms => 'count', all_transforms => 'elements', num_transforms => 'count', next_transform => 'shift' });
 has 'connectors' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { has_connectors => 'count', all_connectors => 'elements', num_connectors => 'count',
 		connector_idx => 'get', add_connector => 'push' });
@@ -56,7 +59,7 @@ has 'connector_params' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef',
 	handles => { has_connector_params => 'count', all_connector_params => 'elements', num_connector_params => 'count',
 		connector_params_idx => 'get', add_connector_params => 'push' });
 has 'terms' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
-has 'nodes' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { { given => {}, excluded => {} } });
+has 'peers' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { { given => {}, excluded => {} } });
 has 'hash' => (is => 'rw', isa => 'Str', required => 1, default => '');
 has 'highlights' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'stats' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
@@ -65,7 +68,7 @@ has 'peer_requests' => (is => 'rw', isa => 'HashRef', required => 1, default => 
 has 'id_ranges' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_id_ranges' => 'count', 'all_id_ranges' => 'elements' });
 has 'max_query_time' => (is => 'rw', isa => 'Int', required => 1, default => 0);
-has 'use_sql_regex' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
+has 'use_sql_regex' => (is => 'rw', isa => 'Bool', required => 1, default => 1);
 has 'original_timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'datasources' => (is => 'rw', isa => 'HashRef');
 
@@ -80,6 +83,7 @@ has 'batch_message' => (is => 'rw', isa => 'Str');
 #has 'import_groupby' => (is => 'rw', isa => 'Str');
 has 'peer_label' => (is => 'rw', isa => 'Str');
 has 'from_peer' => (is => 'rw', isa => 'Str');
+has 'estimated' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 
 sub BUILDARGS {
 	my $class = shift;
@@ -95,6 +99,11 @@ sub BUILD {
 	my $self = shift;
 	
 	my ($query, $sth);
+	
+	# Map directives to their properties
+	foreach my $prop (keys %{ $self->parser->directives }){
+		$self->$prop($self->parser->directives->{$prop});
+	}
 	
 	unless (defined $self->query_string){
 		# We may just be constructing this query as scaffolding for other things
@@ -189,18 +198,18 @@ sub TO_JSON {
 	return $ret;
 }
 
-#sub _set_time_taken {
-#	my ( $self, $new_val, $old_val ) = @_;
-#	my ($query, $sth);
-#	
-#	# Update the db to ack
-#	$query = 'UPDATE query_log SET num_results=?, milliseconds=? '
-#	  		. 'WHERE qid=?';
-#	$sth = $self->db->prepare($query);
-#	$sth->execute( $self->results->records_returned, $new_val, $self->qid );
-#	
-#	return $sth->rows;
-#}
+sub _set_time_taken {
+	my ( $self, $new_val, $old_val ) = @_;
+	my ($query, $sth);
+	
+	# Update the db to ack
+	$query = 'UPDATE query_log SET num_results=?, milliseconds=? '
+	  		. 'WHERE qid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute( $self->results->records_returned, $new_val, $self->qid );
+	
+	return $sth->rows;
+}
 
 sub set_directive {
 	my $self = shift;
@@ -302,10 +311,10 @@ sub set_directive {
 	elsif ($directive eq 'node'){
 		if ($value =~ /^[\w\.\:]+$/){
 			if ($op eq '-'){
-				$self->nodes->{excluded}->{ $value } = 1;
+				$self->peers->{excluded}->{ $value } = 1;
 			}
 			else {
-				$self->nodes->{given}->{ $value } = 1;
+				$self->peers->{given}->{ $value } = 1;
 			}
 		}
 	}
@@ -512,7 +521,377 @@ sub permitted_classes {
 
 sub execute {
 	my $self = shift;
+	my $cb = shift;
+	$cb->($self->results);
 }
 
+sub transform_results {
+	my $self = shift;
+	my $cb = shift;
+
+	$self->log->debug('transforms: ' . Dumper($self->transforms));
+	
+	if (not $self->has_transforms){
+		$cb->($self->results);
+		return;
+	}
+	
+	$self->log->debug('started with transforms: ' . Dumper($self->transforms));
+	my $raw_transform = $self->next_transform;
+	$self->log->debug('ended with transforms: ' . Dumper($self->transforms));
+	$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
+	my $transform = lc($1);
+	my @transform_args = $2 ? split(/\,/, $2) : ();
+	# Remove any args which are all whitespace
+	for (my $i = 0; $i < @transform_args; $i++){
+		if ($transform_args[$i] =~ /^\s+$/){
+			splice(@transform_args, $i, 1);
+		}
+	}
+	
+	if ($transform eq 'subsearch'){
+		$self->_subsearch(\@transform_args, sub {
+			my $q = shift;
+			$self->log->debug('got subsearch results: ' . Dumper($q->TO_JSON));
+			$self->results($q->results);
+			foreach my $warning ($q->all_warnings){
+				$self->add_warning($warning);
+			}
+			$q->transform_results($cb);
+		});
+	}
+	else {
+		my $num_found = 0;
+		my $cache = CHI->new(driver => 'RawMemory', datastore => {});
+		foreach my $plugin ($self->transform_plugins()){
+			if ($plugin =~ /\:\:$transform(?:\:\:|$)/i){
+				$self->log->debug('loading plugin ' . $plugin);
+				eval {
+					my $plugin_object = $plugin->new(
+						query_string => $self->query_string,
+						query_meta_params => $self->meta_params,
+						conf => $self->conf,
+						log => $self->log,
+						user => $self->user,
+						cache => $cache,
+						results => $self->results, 
+						args => [ @transform_args ],
+						on_transform => sub {
+							$self->log->debug('Finished transform ' . $plugin . ' with results ' . Dumper($self->results->results));
+							$self->transform_results($cb);
+						},
+						on_error => sub {
+							$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
+								. Dumper($self->results->results) . ' and args ' . Dumper(\@transform_args) . ': ' . $@);
+							$self->add_warning(500, $@, { transform => $self->peer_label });
+							$self->transform_results($cb);
+						});
+						$num_found++;
+				};
+				if ($@){
+					$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
+						. Dumper($self->results->results) . ' and args ' . Dumper(\@transform_args) . ': ' . $@);
+					$self->add_warning(500, $@, { transform => $self->peer_label });
+				}
+				last;
+			}
+		}
+		unless ($num_found){
+			my $err = "failed to find transform $transform, only have transforms " .
+				join(', ', $self->transform_plugins());
+			$self->log->error($err);
+			$self->add_warning(400, $err, { transform => $self->peer_label });
+			$self->transform_results($cb);
+		}
+	}
+}
+
+sub _subsearch {
+	my $self = shift;
+	my $args = shift;
+	my $cb = shift;
+	$self->log->trace('Subsearch query: ' . join(' ', @$args));
+	my $qp = QueryParser->new(conf => $self->conf, log => $self->log, info => $self->parser->info, 
+		query_string => join(' ', @$args), transforms => $self->transforms);
+	my $q;
+	
+	try {
+		$q = $qp->parse();
+	}
+	catch {
+		my $e = shift;
+		$self->add_warning(400, 'Failed to parse subsearch query', { query_string => join(' ', @$args) });
+		$cb->();
+		return;
+	};
+	
+	try {
+		$q->execute(sub {
+			$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+			$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+		
+			# Apply transforms
+			$q->transform_results(sub { 
+				$q->dedupe_warnings();
+				$cb->($q);
+			});
+		});
+	}
+	catch {
+		my $e = shift;
+		$self->add_warning(500, $e);
+		$cb->();
+	};
+}
+
+sub estimate_query_time {
+	my $self = shift;
+	return $self->estimated;
+}
+
+sub _classes_for_field {
+	my $self = shift;
+	my $field_name = shift;
+	
+	my $field_hashes = $self->get_field($field_name);
+	unless ($field_hashes){
+		return $self->permitted_classes;
+	}
+	my %classes;
+	foreach my $class_id (keys %$field_hashes){
+		$classes{$class_id} = $self->info->{classes_by_id}->{$class_id};
+	}
+	return \%classes;
+}
+
+sub _value {
+	my $self = shift;
+	my $hash = shift;
+	my $class_id = shift;
+	
+	my $attr = $self->_attr($hash->{field}, $class_id);
+	
+	my $orig_value = $hash->{value};
+	$hash->{value} =~ s/^\"//;
+	$hash->{value} =~ s/\"$//;
+	
+	$self->log->trace('$hash: ' . Dumper($hash) . ' value: ' . $hash->{value} . ' $attr: ' . $attr);
+	
+	unless (defined $class_id and defined $hash->{value} and defined $attr){
+		$self->log->error('Missing an arg: ' . $class_id . ', ' . $hash->{value} . ', ' . $attr);
+		return $hash->{value};
+	}
+	
+	if ($attr eq 'host_id'){ #host is handled specially
+		my @ret;
+		if ($hash->{value} =~ /^"?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"?$/) {
+			@ret = ( unpack('N*', inet_aton($1)) ); 
+		}
+		elsif ($hash->{value} =~ /^"?([a-zA-Z0-9\-\.]+)"?$/){
+			my $host_to_resolve = $1;
+			unless ($host_to_resolve =~ /\./){
+				my $fqdn_hostname = Sys::Hostname::FQDN::fqdn();
+				$fqdn_hostname =~ /^[^\.]+\.(.+)/;
+				my $domain = $1;
+				$self->log->debug('non-fqdn given, assuming to be domain: ' . $domain);
+				$host_to_resolve .= '.' . $domain;
+			}
+			$self->log->debug('resolving and converting host ' . $host_to_resolve. ' to inet_aton');
+			my $res   = Net::DNS::Resolver->new;
+			my $query = $res->search($host_to_resolve);
+			if ($query){
+				my @ips;
+				foreach my $rr ($query->answer){
+					next unless $rr->type eq "A";
+					$self->log->debug('resolved host ' . $host_to_resolve . ' to ' . $rr->address);
+					push @ips, $rr->address;
+				}
+				if (scalar @ips){
+					foreach my $ip (@ips){
+						my $ip_int = unpack('N*', inet_aton($ip));
+						push @ret, $ip_int;
+					}
+				}
+				else {
+					throw(500, 'Unable to resolve host ' . $host_to_resolve . ': ' . $res->errorstring, { external_dns => $host_to_resolve });
+				}
+			}
+			else {
+				throw(500, 'Unable to resolve host ' . $host_to_resolve . ': ' . $res->errorstring, { external_dns => $host_to_resolve });
+			}
+		}
+		else {
+			throw(400, 'Invalid host given: ' . Dumper($hash->{value}), { host => $hash->{value} });
+		}
+		if (wantarray){
+			return @ret;
+		}
+		else {
+			return $ret[0];
+		}
+	}
+	elsif ($attr eq 'class_id'){
+		return $self->info->{classes}->{ uc($hash->{value}) };
+	}
+	elsif ($attr eq 'program_id'){
+		$self->log->trace("Converting $hash->{value} to program_id");
+		return crc32($hash->{value});
+	}
+	elsif ($attr =~ /^attr_s\d+$/){
+		# String attributes need to be crc'd
+		return crc32($hash->{value});
+	}
+	else {
+		my $field_order;
+		foreach (keys %{ $Fields::Field_order_to_attr }){
+			if ($Fields::Field_order_to_attr->{$_} eq $attr){
+				$field_order = $_;
+			}
+		}
+		if (defined $field_order){
+			if ($self->info->{field_conversions}->{ $class_id }->{'IPv4'}
+				and $self->info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
+				and $hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
+				$self->log->debug('converting ' . $hash->{value} . ' to IPv4 value ' . unpack('N', inet_aton($hash->{value})));
+				return unpack('N', inet_aton($hash->{value}));
+			}
+			elsif ($self->info->{field_conversions}->{ $class_id }->{PROTO} 
+				and $self->info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
+				$self->log->trace("Converting $hash->{value} to proto");
+				return exists $Fields::Proto_map->{ uc($hash->{value}) } ? $Fields::Proto_map->{ uc($hash->{value}) } : int($hash->{value});
+			}
+			elsif ($self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
+				and $self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
+				if ($Fields::Field_order_to_attr->{$field_order} =~ /attr_s/){
+					$self->log->trace("Converting $hash->{value} to CRC of country_code");
+					return crc32(join('', unpack('c*', pack('A*', uc($hash->{value})))));
+				}
+				else {
+					$self->log->trace("Converting $hash->{value} to country_code");
+					return join('', unpack('c*', pack('A*', uc($hash->{value}))));
+				}
+			}
+			else {
+				return $hash->{value};
+			}
+		}
+		else {
+			# Integer value
+			if ($orig_value == 0 or int($orig_value)){
+				return $orig_value;
+			}
+			else {
+				# Try to find an int and use that
+				$orig_value =~ s/\\?\s//g;
+				if (int($orig_value)){
+					return $orig_value;
+				}
+				else {
+					throw(400, 'Invalid query term, not an integer: ' . $orig_value, { term => $orig_value });
+				}
+			}
+		}
+	}
+	throw(500, 'Unable to find value for field ' . $hash->{field}, { term => $hash->{field} });
+}
+
+sub _attr {
+	my $self = shift;
+	my $field_name = shift;
+	my $class_id = shift;
+	
+	if ($Fields::Field_to_order->{$field_name}){
+		return $Fields::Field_order_to_attr->{ $Fields::Field_to_order->{$field_name} };
+	}
+	
+	my $field_hashes = $self->get_field($field_name);
+	if ($field_hashes->{$class_id}){
+		return $Fields::Field_order_to_attr->{ $field_hashes->{$class_id}->{field_order} };
+	}
+	return;
+}
+
+sub term_to_regex {
+	my $self = shift;
+	my $term = shift;
+	my $field_name = shift;
+	my $regex = $term;
+	return if $field_name and $field_name eq 'class'; # we dont' want to highlight class integers
+	if (my @m = $regex =~ /^\(+ (\@\w+)\ ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		if ($m[0] eq '@class'){
+			return; # we dont' want to highlight class integers
+		}
+		else {
+			my @ret = @m[1..$#m];# don't return the field name
+			foreach (@ret){
+				$_ = '(?:^|' . $Tokenizer_regex . ')(' . $_ . ')(?:' . $Tokenizer_regex . '|$)';
+			}
+			return  @ret;
+		}
+	}
+	elsif (@m = $regex =~ /^\( ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		foreach (@m){
+			$_ = '(?:^|' . $Tokenizer_regex . ')(' . $_ . ')(?:' . $Tokenizer_regex . '|$)';
+		}
+		return @m;
+	}
+	$regex =~ s/^\s{2,}/\ /;
+	$regex =~ s/\s{2,}$/\ /;
+	$regex =~ s/\s/\./g;
+	$regex =~ s/\\{2,}/\\/g;
+	$regex =~ s/[^a-zA-Z0-9\.\_\-\@]//g;
+	$regex = '(?:^|' . $Tokenizer_regex . ')(' . $regex . ')(?:' . $Tokenizer_regex . '|$)';
+	return ($regex);
+}
+
+
+sub _is_int_field {
+	my $self = shift;
+	my $field_name = shift;
+	my $class_id = shift;
+	
+	if ($self->_is_meta($field_name, $class_id)){
+		return 1;
+	}
+	
+	
+	my $field_hashes = $self->get_field($field_name);
+	if ($field_hashes->{$class_id} and $field_hashes->{$class_id}->{field_type} eq 'int'){
+		return 1;
+	}
+	
+	return;
+}
+
+sub _is_meta {
+	my $self = shift;
+	my $field_or_attr = shift;
+	
+	if ($Fields::Field_to_order->{$field_or_attr} 
+		and $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{$field_or_attr} }){
+		return 1;
+	}
+	else {
+		for (values %$Fields::Field_order_to_meta_attr){
+			if ($_ eq $field_or_attr){
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+sub _search_field {
+	my $self = shift;
+	my $field_name = shift;
+	my $class_id = shift;
+	
+	my $field_hashes = $self->get_field($field_name);
+	if ($field_hashes->{$class_id}){
+		return $Fields::Field_order_to_field->{ $field_hashes->{$class_id}->{field_order} };
+	}
+		
+	return;
+}
 
 1;

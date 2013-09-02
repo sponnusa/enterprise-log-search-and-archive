@@ -148,7 +148,7 @@ sub BUILD {
 	foreach my $datasource_type (keys %{ $self->node_datasources }){
 		my $template_conf = $self->node_datasources->{$datasource_type};
 		$self->system_datasources->{$datasource_type} = [];
-		foreach my $node (keys %{ $self->conf->get('nodes') }){
+		foreach my $node (keys %{ $self->conf->get('peers') }){
 			my $conf = { 
 				alias => sprintf($template_conf->{alias}, unpack('N*', inet_aton($node))),
 				dsn => sprintf($template_conf->{dsn}, $node, 
@@ -638,7 +638,7 @@ sub _get_group_members {
 }
 
 sub get_stats {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	my $user = $args->{user};
 		
 	my ($query, $sth);
@@ -678,7 +678,7 @@ sub get_stats {
 	}
 	
 	#$stats->{nodes} = $self->_get_nodes($user);
-	$stats->{nodes} = $self->_get_nodes($user);
+	$stats->{nodes} = $self->_get_peers($user);
 		
 	my $intervals = 100;
 	if ($args->{intervals}){
@@ -3424,12 +3424,12 @@ sub _get_ids {
 sub _unlimited_sphinx_query {
 	my ($self, $q) = @_;
 
-	# Keep running the sphinx query until we have less than $Max_limit results (no-limit query)
+	# Keep running the sphinx query until we have less than $Query::Max_limit results (no-limit query)
 	
 	my $overall_start = time();
 	my $overall_limit = $q->limit ? $q->limit : 100_000_000;
-	$q->limit($Max_limit);
-	#$q->cutoff($Max_limit);
+	$q->limit($Query::Max_limit);
+	#$q->cutoff($Query::Max_limit);
 	my %last_ids;
 	foreach my $node (keys %{ $self->node_info->{nodes} }){
 		$last_ids{ $node } ||= {};
@@ -3462,7 +3462,7 @@ sub _unlimited_sphinx_query {
 		unless ($initial_total){
 			$initial_total = $batch_q->results->total_records;
 			$self->log->trace('found $initial_total of '. $initial_total);
-			$q->cutoff($Max_limit);
+			$q->cutoff($Query::Max_limit);
 		}
 		$self->log->trace('query got ' . $batch_q->results->records_returned . ' of ' . $batch_q->results->total_records. ' results');
 		last if $batch_q->results->records_returned == 0;
@@ -3497,9 +3497,9 @@ sub _unlimited_sphinx_query {
 		
 		$q->start($latest_time);
 		
-#		# Safety in case there are more than $Max_limit results in one second
+#		# Safety in case there are more than $Query::Max_limit results in one second
 #		if (scalar @batch_results == 0){ # all were duplicates
-#			$q->offset($q->offset + $Max_limit);
+#			$q->offset($q->offset + $Query::Max_limit);
 #			next;
 #		}
 #		else {
@@ -3509,7 +3509,7 @@ sub _unlimited_sphinx_query {
 		$q->results->add_results(\@batch_results);
 		$self->log->debug('received: ' . $total .' of ' . $initial_total . ' with overall limit ' . $overall_limit);
 		last if $total >= $initial_total;
-		last if $batch_q->results->records_returned < $Max_limit;
+		last if $batch_q->results->records_returned < $Query::Max_limit;
 		if ($q->timeout and (Time::HiRes::time() - $overall_start) > ($q->timeout/1000)){
 			my $e = 'Hit query timeout on peer ' . $q->peer_label;
 			$q->results->is_approximate(2);
@@ -4307,7 +4307,7 @@ sub export {
 	}
 }
 
-sub transform {
+sub old_transform {
 	my ($self, $q) = @_;
 	
 	my $transform_args = { transforms => $q->transforms, results => [] };
@@ -4325,7 +4325,7 @@ sub transform {
 		if ($q->results->is_bulk){
 			$q->results->close();
 			my $ret_results = new Results();
-			while (my $subset = $q->results->get_results(0,$Max_limit)){
+			while (my $subset = $q->results->get_results(0, $Query::Max_limit)){
 				last unless scalar @$subset;
 				# Recursively transform this batch
 				my $subq = $q->clone;
@@ -4475,8 +4475,8 @@ sub transform {
 				last;
 			}
 			
-			for (my $values_counter = 0; $values_counter < scalar @values; $values_counter += $Max_query_terms){
-				my $end = $values_counter + $Max_query_terms;
+			for (my $values_counter = 0; $values_counter < scalar @values; $values_counter += $Query::Max_query_terms){
+				my $end = $values_counter + $Query::Max_query_terms;
 				if ($end > scalar @values){
 					$end = (scalar @values) - 1; # -1 doesn't work here
 				}
@@ -4826,7 +4826,7 @@ sub send_to {
 					if ($q->results->is_bulk){
 						$q->results->close();
 						my $ret_results = new Results();
-						while (my $results = $q->results->get_results(0,$Max_limit)){
+						while (my $results = $q->results->get_results(0,$Query::Max_limit)){
 							last unless scalar @$results;
 							my $plugin_object = $plugin->new(
 								api => $self,
@@ -4842,7 +4842,7 @@ sub send_to {
 								#$self->log->trace('returnable results: ' . scalar @{ $plugin_object->results->{results} });
 								foreach (@{ $plugin_object->results->{results} }){
 									last if ($q->limit and $ret_results->total_records > $q->limit) 
-										or ($ret_results->total_records > $Max_limit);
+										or ($ret_results->total_records > $Query::Max_limit);
 									$ret_results->add_result($_);
 								}
 							}
@@ -4850,7 +4850,7 @@ sub send_to {
 								#$self->log->trace('returnable results: ' . scalar @{ $plugin_object->results });
 								foreach (@{ $plugin_object->results }){
 									last if ($q->limit and $ret_results->total_records > $q->limit) 
-										or ($ret_results->total_records > $Max_limit);
+										or ($ret_results->total_records > $Query::Max_limit);
 									$ret_results->add_result($_);
 								}
 							}

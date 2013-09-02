@@ -41,6 +41,18 @@ sub TO_JSON {
 	};
 }
 
+sub delete_record {
+	my $self = shift;
+	my $given_record = shift;
+	for (my $i = 0; $i < @{ $self->results }; $i++){
+		if ($self->results->[$i]->{id} eq $given_record->{id}){
+			splice(@{ $self->results }, $i, 1);
+			return 1;
+		}
+	}
+	return 0;
+}
+
 sub remove_transforms {
 	my $self = shift;
 	my $ret = [];
@@ -151,6 +163,43 @@ sub get_results {
 			$counter++;
 		}
 		return \@ret;
+	}
+}
+
+sub keys {
+	my $self = shift;
+	my $record = shift;
+	
+	my @keys;
+	foreach my $key (keys %$record){
+		next if ref($record->{$key});
+		push @keys, $key;
+	}
+	
+	return @keys;	
+}
+
+sub value {
+	my $self = shift;
+	my $record = shift;
+	my $key = shift;
+	my $value = shift;
+	
+	if (exists $record->{$key}){
+		if (defined $value){
+			$record->{$key} = $value;
+		}
+		return $record->{$key};
+	}
+	else {
+		foreach my $field_hash (@{ $record->{_fields} }){
+			if ($field_hash->{field} eq $key){
+				if (defined $value){
+					$field_hash->{value} = $value;
+				}
+				return $field_hash->{value};
+			}
+		}
 	}
 }
 
