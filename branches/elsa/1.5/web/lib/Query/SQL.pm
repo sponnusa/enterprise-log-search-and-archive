@@ -554,7 +554,7 @@ sub _format_records_groupby {
 		elsif ($self->groupby eq 'class'){
 			$key = $self->meta_info->{classes_by_id}->{ $row->{class_id} };
 		}
-		elsif (exists $Fields::Field_to_order->{ $self->groupby }){
+		elsif (defined $Fields::Field_to_order->{ $self->groupby }){
 			# Resolve normally
 			$key = $self->resolve_value($row->{class_id}, $row->{_groupby}, $self->groupby);
 		}

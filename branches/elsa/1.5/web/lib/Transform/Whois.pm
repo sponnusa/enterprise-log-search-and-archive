@@ -48,6 +48,8 @@ sub BUILD {
 		foreach my $record ($self->results->all_results){
 			$self->cv->begin;
 			
+			$self->log->debug('record: ' . Dumper($record));
+			$record->{transforms} ||= {};
 			$record->{transforms}->{$Name} = {};
 			
 			foreach my $key ($self->results->keys($record)){

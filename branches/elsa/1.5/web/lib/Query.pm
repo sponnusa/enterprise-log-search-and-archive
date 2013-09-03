@@ -561,6 +561,19 @@ sub transform_results {
 		}
 	}
 	
+	# Check to see if we've already done this 
+	foreach my $record ($self->results->all_results){
+		if (exists $record->{transforms}){
+			foreach my $found_transform (keys %{ $record->{transforms} }){
+				if (lc($transform) eq lc($found_transform)){
+					$self->log->trace('Already performed transform ' . $transform);
+					$self->transform_results($cb);
+					return;
+				}
+			}
+		}
+	}
+	
 	if ($transform eq 'subsearch'){
 		$self->_subsearch(\@transform_args, sub {
 			my $q = shift;
@@ -589,6 +602,7 @@ sub transform_results {
 						results => $self->results, 
 						args => [ @transform_args ],
 						on_transform => sub {
+							$self->_post_transform();
 							$self->log->debug('Finished transform ' . $plugin . ' with results ' . Dumper($self->results->results));
 							$self->transform_results($cb);
 						},
@@ -615,6 +629,120 @@ sub transform_results {
 			$self->add_warning(400, $err, { transform => $self->peer_label });
 			$self->transform_results($cb);
 		}
+	}
+	
+}
+
+sub _post_transform {
+	my $self = shift;
+	
+	# Now go back and insert the transforms
+	if ($self->groupby){
+		my @groupby_results;
+		foreach my $row ($self->results->all_results){
+			$self->log->debug('row: ' . Dumper($row));
+			if (exists $row->{transforms} and scalar keys %{ $row->{transforms} }){
+				foreach my $transform (sort keys %{ $row->{transforms} }){
+					next unless ref($row->{transforms}->{$transform}) eq 'HASH';
+					foreach my $field (sort keys %{ $row->{transforms}->{$transform} }){
+						if (ref($row->{transforms}->{$transform}->{$field}) eq 'HASH'){
+							my $add_on_str = $row->{_groupby};
+							foreach my $data_attr (keys %{ $row->{transforms}->{$transform}->{$field} }){
+								if (ref($row->{transforms}->{$transform}->{$field}->{$data_attr}) eq 'ARRAY'){
+									$add_on_str .= ' ' . $data_attr . '=' . join(',', @{ $row->{transforms}->{$transform}->{$field}->{$data_attr} }); 
+								}
+								else {
+									$add_on_str .= ' ' . $data_attr . '=' .  $row->{transforms}->{$transform}->{$field}->{$data_attr};
+								}
+							}
+							$self->log->debug('add_on_str: ' . $add_on_str);
+							$row = { '_count' => $row->{_count}, '_groupby' => ($row->{ $self->groupby } . ' ' . $add_on_str) };
+						}
+						# If it's an array, we want to concatenate all fields together.
+						elsif (ref($row->{transforms}->{$transform}->{$field}) eq 'ARRAY'){
+							my $arr_add_on_str = '';
+							foreach my $value (@{ $row->{transforms}->{$transform}->{$field} }){
+								$arr_add_on_str .= ' ' . $field . '=' .  $value;
+							}
+							if ($arr_add_on_str ne ''){
+								$row = { '_count' => $row->{_count}, '_groupby' => ($row->{ $self->groupby } . ' ' . $arr_add_on_str) };
+							}
+						}
+					}
+				}
+				push @groupby_results, $row;
+			}
+			else {
+				push @groupby_results, $row;
+			}
+		}
+		$self->log->debug('@groupby_results: ' . Dumper(\@groupby_results));
+		$self->results(Results::Groupby->new(results => { $self->groupby => [ @groupby_results ] }));		
+	}
+	else {
+		my @final;
+		#$self->log->debug('$transform_args->{results}: ' . Dumper($transform_args->{results}));
+		#$self->log->debug('results: ' . Dumper($q->results->results));
+		foreach my $row ($self->results->all_results){
+			foreach my $transform (sort keys %{ $row->{transforms} }){
+				next unless ref($row->{transforms}->{$transform}) eq 'HASH';
+				foreach my $transform_field (sort keys %{ $row->{transforms}->{$transform} }){
+					if ($transform_field eq '__REPLACE__'){
+						foreach my $transform_key (sort keys %{ $row->{transforms}->{$transform}->{$transform_field} }){
+							my $value = $row->{$transform_key};
+							# Perform replacement on fields
+							foreach my $row_field_hash (@{ $row->{_fields} }){
+								if ($row_field_hash->{field} eq $transform_key){
+									$row_field_hash->{value} = $value;
+								}
+							}
+							# Perform replacement on attrs
+							foreach my $row_key (keys %{ $row }){
+								next if ref($row->{$row_key});
+								if ($row_key eq $transform_key){
+									$row->{$row_key} = $value;
+								}
+							}
+						}
+					}
+					elsif (ref($row->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+						foreach my $transform_key (sort keys %{ $row->{transforms}->{$transform}->{$transform_field} }){
+							my $value = $row->{transforms}->{$transform}->{$transform_field}->{$transform_key};
+							if (ref($value) eq 'ARRAY'){
+								foreach my $value_str (@$value){
+									push @{ $row->{_fields} }, { 
+										field => $transform_field . '.' . $transform_key, 
+										value => $value_str, 
+										class => 'Transform.' . $transform,
+									};
+								}
+							}
+							else {			
+								push @{ $row->{_fields} }, { 
+									field => $transform_field . '.' . $transform_key, 
+									value => $value,
+									class => 'Transform.' . $transform,
+								};
+							}
+						}
+					}
+					elsif (ref($row->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY'){
+						foreach my $value (@{ $row->{transforms}->{$transform}->{$transform_field} }){
+							push @{ $row->{_fields} }, { 
+								field => $transform . '.' . $transform_field, 
+								value => $value,
+								class => 'Transform.' . $transform,
+							};
+						}
+					}
+				}
+			}
+			push @final, $row;
+			last;
+		}
+		$self->log->debug('final: ' . Dumper(\@final));
+		$self->results(Results->new(results => [ @final ]));
+		$self->groupby('');
 	}
 }
 
@@ -812,7 +940,7 @@ sub _attr {
 	my $field_name = shift;
 	my $class_id = shift;
 	
-	if ($Fields::Field_to_order->{$field_name}){
+	if (defined $Fields::Field_to_order->{$field_name}){
 		return $Fields::Field_order_to_attr->{ $Fields::Field_to_order->{$field_name} };
 	}
 	
@@ -879,7 +1007,7 @@ sub _is_meta {
 	my $self = shift;
 	my $field_or_attr = shift;
 	
-	if ($Fields::Field_to_order->{$field_or_attr} 
+	if (defined $Fields::Field_to_order->{$field_or_attr} 
 		and $Fields::Field_order_to_meta_attr->{ $Fields::Field_to_order->{$field_or_attr} }){
 		return 1;
 	}
