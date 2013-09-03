@@ -149,13 +149,24 @@ sub BUILD {
 
 sub TO_JSON {
 	my $self = shift;
+	
+	# Find highlights to inform the web client
+	foreach my $boolean (qw(and or)){
+		foreach my $key (sort keys %{ $self->terms->{$boolean} }){
+			my @regex = $self->term_to_regex($self->terms->{$boolean}->{$key});
+			foreach (@regex){
+				$self->highlights->{$_} = 1 if defined $_;
+			}
+		}
+	}
+	
 	my $ret = {
 		qid => $self->qid,
 		totalTime => $self->time_taken,
 		results => $self->results->results, 
 		totalRecords => $self->results->total_records, 
 		recordsReturned => $self->results->records_returned,	
-		groupby => $self->groupby,
+		groupby => $self->groupby ? [ $self->groupby ] : [], # return an array for future faceting support
 		orderby_dir => $self->orderby_dir,
 		query_string => $self->query_string,
 		query_meta_params => $self->meta_params,

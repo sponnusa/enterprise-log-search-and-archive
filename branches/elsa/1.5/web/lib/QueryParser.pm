@@ -259,9 +259,9 @@ sub _choose_query_class {
 			return 'Query::SQL';
 		}
 		else {
-			my $msg = 'Adjusting query time to earliest index date ' . $self->meta_info->{indexes_min};
+			my $msg = 'Adjusting query time to earliest index date ' . scalar localtime($self->meta_info->{indexes_min});
 			$self->log->info($msg);
-			$self->add_warning(200, $msg);
+			#$self->add_warning(200, $msg);
 		}
 	}
 	elsif ($self->directives->{end} and $self->directives->{end} > $self->meta_info->{indexes_max}){
@@ -269,9 +269,9 @@ sub _choose_query_class {
 			return 'Query::SQL';
 		}
 		else {
-			my $msg = 'Adjusting query time to latest index date ' . $self->meta_info->{indexes_max};
+			my $msg = 'Adjusting query time to latest index date ' . scalar localtime($self->meta_info->{indexes_max});
 			$self->log->info($msg);
-			$self->add_warning(200, $msg);
+			#$self->add_warning(200, $msg);
 		}
 	}
 	
