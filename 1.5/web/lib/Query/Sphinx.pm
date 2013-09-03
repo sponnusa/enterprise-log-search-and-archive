@@ -320,6 +320,9 @@ sub _get_class_ids {
 				throw(400, 'Invalid class ' . $fields{$field}, { term => $fields{$field} });
 			}
 		}
+		elsif ($self->_is_meta($field)){
+			next;
+		}
 		my $field_classes = $self->_classes_for_field($field);
 		$self->log->debug('classes for field ' . $field . ': ' . Dumper($field_classes));
 		
@@ -396,48 +399,12 @@ sub _search_value {
 	my $value = shift;
 	my $group_key = shift;
 	
-	my $schema = (values %{ $self->schemas->{$group_key} })[0]->{schema};
-	my $chars = $schema->{chars};
-	my @terms = split(/\s*\,\s*/, $chars);
-	my %chars_indexed;
-	foreach (@terms){
-		next if /\->/;
-		if (/([^\.]+)\.\.([^\.]+)/){
-			my ($start, $end) = ($1, $2);
-			if ($start =~ /U\+(..)/){
-				$start = hex($1);
-			}
-			else {
-				$start = ord($1);
-			}
-			if ($end =~ /U\+(..)/){
-				$end = hex($2);
-			}
-			else {
-				$end = ord($2);
-			}
-			$self->log->debug('start: ' . $start . ', end: ' . $end);
-			for ($start..$end){
-				$chars_indexed{ chr($_) } = 1;
-			}
-		}
-		else {
-			if (/U\+(..)/){
-				$self->log->debug($_ . ' as ' . chr(hex($1)));
-				$chars_indexed{ chr(hex($1)) } = 1;
-			}
-			else {
-				$self->log->debug('regular: ' . $_);
-				$chars_indexed{ $_ } = 1;
-			}
-		}
-	}
-	$self->log->debug('chars_indexed: ' . Dumper(\%chars_indexed));
+	my $chars_indexed = (values %{ $self->schemas->{$group_key} })[0]->{schema}->{chars_indexed};
 	
 	my @value_chars = split(//, $value);
 	my @output;
 	foreach (@value_chars){
-		if (exists $chars_indexed{$_}){
+		if (exists $chars_indexed->{$_}){
 			push @output, $_;
 		}
 		else {
@@ -445,6 +412,9 @@ sub _search_value {
 		}
 	}
 	
+	if ($value =~ /^["']/ and $value =~ /["']$/){
+		return '"' . join('', @output) . '"';
+	}
 	return join('', @output);
 }
 	
@@ -612,7 +582,7 @@ sub _get_search_terms {
 			}
 			
 			# Is it quoted and the op isn't ~ ?
-			elsif ($hash{field} and $hash{op} ne '~' and $hash{quoted}){
+			elsif ($hash{field} and $hash{op} ne '~' and $hash{quote}){
 				# Make it a filter
 				push @{ $ret->{filters} }, { %hash };
 				next;
@@ -660,9 +630,9 @@ sub _get_search_terms {
 		}
 		elsif ($attr and $self->_index_has($index_schema, 'attrs', $attr)){
 			if ($self->_is_int_field($hash->{field}, $class_id)){
-				my $value = $self->_value($hash, $class_id);
-				$int_candidates{ $value } = $hash;
-				$self->log->debug('attr ' . $attr . ' with value ' . $value . ' is an int candidate');
+				#my $value = $self->_value($hash, $class_id);
+				$int_candidates{ $hash->{value} } = $hash;
+				$self->log->debug('attr ' . $attr . ' with value ' . $hash->{value} . ' is an int candidate');
 			}
 			else {
 				$self->log->debug('attr ' . $attr . ' with value ' . $hash->{value} . ' is not an int candidate');
@@ -682,7 +652,8 @@ sub _get_search_terms {
 	}
 	elsif (scalar keys %int_candidates){
 		# Use an attribute as an anyfield query, pick the highest number
-		my $biggest = (sort { int($b) <=> int($a) } keys %int_candidates)[0];
+		#my $biggest = (sort { int($b) <=> int($a) } keys %int_candidates)[0];
+		my $biggest = (sort { length($b) <=> length($a) } keys %int_candidates)[0];
 		$self->log->debug('biggest value: ' . $biggest);
 		push @{ $ret->{searches} }, { field => '', value => $biggest, boolean => 'and' };
 	}
@@ -725,6 +696,43 @@ sub _get_index_groups {
 				}
 			}
 			$group_key = crc32($group_key);
+			
+			my $chars = $index->{schema}->{chars};
+			my @terms = split(/\s*\,\s*/, $chars);
+			my %chars_indexed;
+			foreach (@terms){
+				next if /\->/;
+				if (/([^\.]+)\.\.([^\.]+)/){
+					my ($start, $end) = ($1, $2);
+					if ($start =~ /U\+(..)/){
+						$start = hex($1);
+					}
+					else {
+						$start = ord($1);
+					}
+					if ($end =~ /U\+(..)/){
+						$end = hex($2);
+					}
+					else {
+						$end = ord($2);
+					}
+					for ($start..$end){
+						$chars_indexed{ chr($_) } = 1;
+					}
+				}
+				else {
+					if (/U\+(..)/){
+						$self->log->debug($_ . ' as ' . chr(hex($1)));
+						$chars_indexed{ chr(hex($1)) } = 1;
+					}
+					else {
+						$chars_indexed{ $_ } = 1;
+					}
+				}
+			}
+			#$self->log->debug('chars_indexed: ' . Dumper(\%chars_indexed));
+			$index->{schema}->{chars_indexed} = { %chars_indexed };
+			
 			$schemas{$group_key} ||= {};
 			$schemas{$group_key}->{ $index->{name} } = $index;
 		}
