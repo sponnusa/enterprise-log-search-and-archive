@@ -153,7 +153,7 @@ sub TO_JSON {
 	# Find highlights to inform the web client
 	foreach my $boolean (qw(and or)){
 		foreach my $key (sort keys %{ $self->terms->{$boolean} }){
-			my @regex = $self->term_to_regex($self->terms->{$boolean}->{$key});
+			my @regex = $self->term_to_regex($self->terms->{$boolean}->{$key}->{value}, $self->terms->{$boolean}->{$key}->{field});
 			foreach (@regex){
 				$self->highlights->{$_} = 1 if defined $_;
 			}
@@ -879,6 +879,7 @@ sub _value {
 	}
 	elsif ($attr =~ /^attr_s\d+$/){
 		# String attributes need to be crc'd
+		$self->log->debug('computed crc32 value ' . crc32($hash->{value}) . ' for value ' . $hash->{value});
 		return crc32($hash->{value});
 	}
 	else {
