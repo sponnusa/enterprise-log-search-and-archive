@@ -695,7 +695,7 @@ sub _peer_query {
 					$q->add_warning(502, 'Peer ' . $peer_label . ' encountered an error.', { http => $peer });
 					return;
 				}
-				my $is_groupby = $raw_results->{groupby} ? 1 : 0;
+				my $is_groupby = $raw_results->{groupby} and scalar @{ $raw_results->{groupby} } ? 1 : 0;
 				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
 				my $results_obj = $results_package->new(results => $raw_results->{results}, 
 					total_records => $raw_results->{totalRecords}, is_approximate => $raw_results->{approximate});

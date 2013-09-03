@@ -59,7 +59,10 @@ my $Required = {
 			plugins => [],
 			info => [],
 			admin_groups => 'array',
-			nodes => [],
+			data_db => {
+				username => 'string',
+				password => 'string',
+			},
 			admin_email_address => 'string',
 			max_concurrent_archive_queries => 'integer',
 			schedule_interval => 'integer',
@@ -165,6 +168,13 @@ my $Additions = {
 		say 'Creating dummy stopwords config entry';
 		$conf->set('sphinx/stopwords', { file => '/usr/local/etc/sphinx_stopwords.txt', top_n => 0, interval => 0, whitelist => [] });
 	},
+	'data_db' => sub {
+		my $fails = shift;
+		my $conf = shift;
+		say 'Creating data_db entry';
+		$conf->set('data_db', { db => 'syslog', username => 'elsa', password => 'biglog' });
+	},
+		
 #	'mysql_dir' => sub {
 #		my $fails = shift;
 #		my $conf = shift;
