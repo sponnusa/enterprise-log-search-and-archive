@@ -102,7 +102,7 @@ sub _normalize_quoted_value {
 	my $self = shift;
 	my $hash = shift;
 	
-	if ($Fields::Field_to_order->{ $hash->{field} }){
+	if (defined $Fields::Field_to_order->{ $hash->{field} }){
 		$hash->{value} =~ s/^["']//;
 		$hash->{value} =~ s/["']$//;
 		return $hash->{value};
@@ -205,7 +205,7 @@ sub _build_query {
 	foreach my $class_id (sort keys %$classes){
 		my $terms_and_filters = $self->_get_search_terms($class_id, $group_key, $or_key);
 		$self->log->debug('terms_and_filters: ' . Dumper($terms_and_filters));
-		my $match_str = $self->_get_match_str($class_id, $terms_and_filters->{searches});
+		my $match_str = $self->_get_match_str($class_id, $terms_and_filters->{searches}, $group_key);
 		my $attr_str = $self->_get_attr_tests($class_id, $terms_and_filters->{filters});
 		$self->log->debug('attr_str: ' . $attr_str);
 		my $query = {
@@ -266,7 +266,7 @@ sub _get_class_ids {
 	
 	# If there is a groupby, verify that the classes in the groupby match the terms
 	if ($self->groupby){
-		if ($Fields::Field_to_order->{ $self->groupby }){
+		if (defined $Fields::Field_to_order->{ $self->groupby }){
 			$all_classes = 1;
 		}
 		else {
@@ -283,7 +283,7 @@ sub _get_class_ids {
 	}
 	# If there is a orderby, verify that the classes in the orderby match the terms
 	elsif ($self->orderby){
-		if ($Fields::Field_to_order->{ $self->orderby }){
+		if (defined $Fields::Field_to_order->{ $self->orderby }){
 			$all_classes = 1;
 		}
 		else {
@@ -323,7 +323,7 @@ sub _get_class_ids {
 		my $field_classes = $self->_classes_for_field($field);
 		$self->log->debug('classes for field ' . $field . ': ' . Dumper($field_classes));
 		
-		if ($self->groupby or $self->orderby and not $all_classes){
+		if (($self->groupby or $self->orderby) and not $all_classes){
 			# Find the intersection of these classes
 			my $same_counter = 0;
 			foreach my $class_id (keys %$field_classes){
@@ -391,10 +391,69 @@ sub _get_class_ids {
 	return \%classes;
 }
 
+sub _search_value {
+	my $self = shift;
+	my $value = shift;
+	my $group_key = shift;
+	
+	my $schema = (values %{ $self->schemas->{$group_key} })[0]->{schema};
+	my $chars = $schema->{chars};
+	my @terms = split(/\s*\,\s*/, $chars);
+	my %chars_indexed;
+	foreach (@terms){
+		next if /\->/;
+		if (/([^\.]+)\.\.([^\.]+)/){
+			my ($start, $end) = ($1, $2);
+			if ($start =~ /U\+(..)/){
+				$start = hex($1);
+			}
+			else {
+				$start = ord($1);
+			}
+			if ($end =~ /U\+(..)/){
+				$end = hex($2);
+			}
+			else {
+				$end = ord($2);
+			}
+			$self->log->debug('start: ' . $start . ', end: ' . $end);
+			for ($start..$end){
+				$chars_indexed{ chr($_) } = 1;
+			}
+		}
+		else {
+			if (/U\+(..)/){
+				$self->log->debug($_ . ' as ' . chr(hex($1)));
+				$chars_indexed{ chr(hex($1)) } = 1;
+			}
+			else {
+				$self->log->debug('regular: ' . $_);
+				$chars_indexed{ $_ } = 1;
+			}
+		}
+	}
+	$self->log->debug('chars_indexed: ' . Dumper(\%chars_indexed));
+	
+	my @value_chars = split(//, $value);
+	my @output;
+	foreach (@value_chars){
+		if (exists $chars_indexed{$_}){
+			push @output, $_;
+		}
+		else {
+			push @output, ' ';
+		}
+	}
+	
+	return join('', @output);
+}
+	
+
 sub _get_match_str {
 	my $self = shift;
 	my $class_id = shift;
 	my $searches = shift;
+	my $group_key = shift;
 	
 	my %clauses;
 	
@@ -403,7 +462,7 @@ sub _get_match_str {
 		
 		if ($hash->{field}){
 			#my $value = $self->_value($hash, $class_id);
-			my $value = $hash->{value};
+			my $value = $self->_search_value($hash->{value}, $group_key);
 			my $field = $self->_search_field($hash->{field}, $class_id);
 			$clauses{ $hash->{boolean} }->{'(@' . $field . ' ' . $value . ')'} = 1;
 		}
@@ -1067,7 +1126,7 @@ sub _format_records_groupby {
 		elsif ($self->groupby eq 'class'){
 			$key = $self->meta_info->{classes_by_id}->{ $ret->{results}->{ $row->{id} }->{class_id} };
 		}
-		elsif (exists $Fields::Field_to_order->{ $self->groupby }){
+		elsif (defined $Fields::Field_to_order->{ $self->groupby }){
 			# Resolve normally
 			$key = $self->resolve_value($row->{class_id}, $row->{'_groupby'}, $self->groupby);
 		}

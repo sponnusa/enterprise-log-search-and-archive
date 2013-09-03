@@ -726,7 +726,7 @@ sub _peer_query {
 				}
 				#$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
 				if ($is_groupby){
-					$q->groupby($raw_results->{groupby});
+					$q->groupby($raw_results->{groupby}->[0]);
 				}
 				my $stats = $raw_results->{stats};
 				$stats ||= {};

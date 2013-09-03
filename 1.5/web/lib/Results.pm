@@ -358,7 +358,12 @@ sub all_results {
 			push @$ret, $_;
 		}
 	}
-	return $ret;
+	if (wantarray){
+		return @$ret;
+	}
+	else {
+		return $ret;
+	}
 }
 
 1;
