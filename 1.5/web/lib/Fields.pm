@@ -483,7 +483,7 @@ sub normalize_value {
 		return $value;
 	}
 	
-	return $value unless $self->info->{field_conversions}->{ $class_id };
+	return $value unless $self->meta_info->{field_conversions}->{ $class_id };
 	
 	if ($field_order == $Field_to_order->{host}){ #host is handled specially
 		my @ret;
@@ -534,20 +534,20 @@ sub normalize_value {
 		}
 	}
 	elsif ($field_order == $Field_to_order->{class}){
-		return $self->info->{classes}->{ uc($value) };
+		return $self->meta_info->{classes}->{ uc($value) };
 	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{'IPv4'}
-		and $self->info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
+	elsif ($self->meta_info->{field_conversions}->{ $class_id }->{'IPv4'}
+		and $self->meta_info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
 		and $value =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 		return unpack('N', inet_aton($value));
 	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{PROTO} 
-		and $self->info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
+	elsif ($self->meta_info->{field_conversions}->{ $class_id }->{PROTO} 
+		and $self->meta_info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
 		$self->log->trace("Converting $value to proto");
 		return exists $Proto_map->{ uc($value) } ? $Proto_map->{ uc($value) } : int($value);
 	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
-		and $self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
+	elsif ($self->meta_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
+		and $self->meta_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
 		if ($Field_order_to_attr->{$field_order} =~ /attr_s/){
 			$self->log->trace("Converting $value to CRC of country_code");
 			return crc32(join('', unpack('c*', pack('A*', uc($value)))));
@@ -595,7 +595,7 @@ sub get_field {
 		# We were given an FQDN, so there is only one class this can be
 		foreach my $field_hash (@{ $self->node_info->{fields} }){
 			if (lc($field_hash->{fqdn_field}) eq lc($raw_field)){
-				return { $self->info->{classes}->{uc($class)} => $field_hash };
+				return { $self->meta_info->{classes}->{uc($class)} => $field_hash };
 			}
 		}
 	}
@@ -619,7 +619,7 @@ sub get_field {
 		};
 	}
 		
-	foreach my $row (@{ $self->info->{fields} }){
+	foreach my $row (@{ $self->meta_info->{fields} }){
 		if ($row->{value} eq $field){
 			$fields{ $row->{class_id} } = $row;
 		}
@@ -649,19 +649,19 @@ sub resolve_value {
 		$class_id = 0;
 	}
 	
-	if ($self->info->{field_conversions}->{ $class_id }->{TIME}->{$field_order}){
+	if ($self->meta_info->{field_conversions}->{ $class_id }->{TIME}->{$field_order}){
 		return epoch2iso($value * $Time_values->{ $Field_order_to_attr->{$field_order} });
 	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{IPv4}->{$field_order}){
+	elsif ($self->meta_info->{field_conversions}->{ $class_id }->{IPv4}->{$field_order}){
 		#$self->log->debug("Converting $value from IPv4");
 		return inet_ntoa(pack('N', $value));
 	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
+	elsif ($self->meta_info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
 		#$self->log->debug("Converting $value from proto");
 		return exists $Inverse_proto_map->{ $value } ? $Inverse_proto_map->{ $value } : $value;
 	}
-	elsif ($self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
-		and $self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
+	elsif ($self->meta_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
+		and $self->meta_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
 		my @arr = $value =~ /(\d{2})(\d{2})/;
 		if (@arr){
 			return unpack('A*', pack('c*', @arr));
@@ -671,7 +671,7 @@ sub resolve_value {
 		}
 	}
 	elsif ($Field_order_to_attr->{$field_order} eq 'class_id'){
-		return $self->info->{classes_by_id}->{$class_id};
+		return $self->meta_info->{classes_by_id}->{$class_id};
 	}
 	else {
 		#apparently we don't know about any conversions

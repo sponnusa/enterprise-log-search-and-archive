@@ -1,6 +1,6 @@
-package Web::GoogleDatasource;
+package View::GoogleDatasource;
 use Moose;
-extends 'Web';
+extends 'View';
 use Data::Dumper;
 use Plack::Request;
 use Plack::Session;
@@ -31,24 +31,24 @@ sub call {
 		$res->content_type('text/plain');
 		$res->header('Access-Control-Allow-Origin' => '*');
 		
-		$self->api->clear_warnings;
+		$self->controller->clear_warnings;
 		
 		
 		if ($self->session->get('user')){
-			$args->{user} = $self->api->get_stored_user($self->session->get('user'));
+			$args->{user} = $self->controller->get_stored_user($self->session->get('user'));
 		}
 		else {
-			$args->{user} = $self->api->get_user($req->user);
+			$args->{user} = $self->controller->get_user($req->user);
 		}		
 	
-		my $check_args = $self->api->json->decode($args->{q});
+		my $check_args = $self->controller->json->decode($args->{q});
 		if ($args->{user}->is_admin){
-			$self->api->log->debug('$check_args: ' . Dumper($check_args));
+			$self->controller->log->debug('$check_args: ' . Dumper($check_args));
 			# Trust admin
 			$query_args = $check_args;
 		}
 		else {
-			$query_args = $self->api->_get_query($check_args) or die('Query not found'); # this is now from the database, so we can trust the input
+			$query_args = $self->controller->_get_query($check_args) or die('Query not found'); # this is now from the database, so we can trust the input
 		}
 		$query_args->{auth} = $check_args->{auth};
 		$query_args->{query_meta_params} = $check_args->{query_meta_params};
@@ -56,15 +56,15 @@ sub call {
 		$query_args->{system} = 1;
 		
 		unless ($query_args->{uid} eq $args->{user}->uid or $args->{user}->is_admin){
-			die('Invalid auth token') unless $self->api->_check_auth_token($query_args);
-			$self->api->log->info('Running query created by ' . $query_args->{username} . ' on behalf of ' . $req->user);
-			$query_args->{user} = $self->api->get_user(delete $query_args->{username});
+			die('Invalid auth token') unless $self->controller->_check_auth_token($query_args);
+			$self->controller->log->info('Running query created by ' . $query_args->{username} . ' on behalf of ' . $req->user);
+			$query_args->{user} = $self->controller->get_user(delete $query_args->{username});
 		}
 		
-		$self->api->freshen_db;
-		$ret = $self->api->query($query_args);
+		$self->controller->freshen_db;
+		$ret = $self->controller->query($query_args);
 		unless ($ret){
-			die($self->api->last_error);
+			die($self->controller->last_error);
 		}
 	
 		my $datatable = Data::Google::Visualization::DataTable->new();
@@ -73,14 +73,14 @@ sub call {
 			throw($ret->{code}, $ret->{message}, $ret->{data});
 		}
 		elsif (blessed($ret) and $ret->has_groupby){
-			#$self->api->log->debug('ret: ' . Dumper($ret));
-			$self->api->log->debug('all_groupbys: ' . Dumper($ret->all_groupbys));
-			$self->api->log->debug('groupby: ' . Dumper($ret->groupby));
+			#$self->controller->log->debug('ret: ' . Dumper($ret));
+			$self->controller->log->debug('all_groupbys: ' . Dumper($ret->all_groupbys));
+			$self->controller->log->debug('groupby: ' . Dumper($ret->groupby));
 			
 			# First add columns
 			my $value_id = 0;
 			foreach my $groupby ($ret->all_groupbys){
-				$self->api->log->debug('groupby: ' . Dumper($groupby));
+				$self->controller->log->debug('groupby: ' . Dumper($groupby));
 				my $label = $ret->meta_params->{comment} ? $ret->meta_params->{comment} : 'count'; 
 				if ($Fields::Time_values->{$groupby}){
 					$datatable->add_columns({id => $groupby, label => $groupby, type => 'datetime'}, {id => 'value' . $value_id++, label => $label, type => 'number'});
@@ -101,7 +101,7 @@ sub call {
 				if ($Fields::Time_values->{$groupby}){
 					my $tz = DateTime::TimeZone->new( name => "local");
 					foreach my $row (@{ $ret->results->results->{$groupby} }){
-						$self->api->log->debug('row: ' . Dumper($row));
+						$self->controller->log->debug('row: ' . Dumper($row));
 						$datatable->add_rows([ { v => DateTime->from_epoch(epoch => $row->{'intval'}, time_zone => $tz) }, { v => $row->{_count} } ]);
 					}
 				}
@@ -111,7 +111,7 @@ sub call {
 #						if ($ret->results->results->{$groupby}->[0] and $ret->results->results->{$groupby}->[0]->{_groupby} =~ /latitude/){
 #							$datatable->add_columns({id => 'latitude', label => 'latitude', type => 'number'}, {id => 'longitude', label => 'longitude', type => 'number'}, {id => 'value', label => $label, type => 'number'});
 #							foreach my $row (@{ $ret->results->results->{$groupby} }){
-#								$self->api->log->debug('row: ' . Dumper($row));
+#								$self->controller->log->debug('row: ' . Dumper($row));
 #								$row->{_groupby} =~ /latitude=(\-?\d+)/;
 #								my $lat = $1;
 #								$row->{_groupby} =~ /longitude=(\-?\d+)/;
@@ -123,7 +123,7 @@ sub call {
 							# Hope for country code
 							foreach my $row (@{ $ret->results->results->{$groupby} }){
 								my $cc = $row->{_groupby};
-								$self->api->log->debug('row: ' . Dumper($row));
+								$self->controller->log->debug('row: ' . Dumper($row));
 								if ($row->{_groupby} =~ /cc=(\w{2})/i){
 									$cc = $1;
 								}
@@ -133,7 +133,7 @@ sub call {
 					}
 					else {
 						foreach my $row (@{ $ret->results->results->{$groupby} }){
-							$self->api->log->debug('row: ' . Dumper($row));
+							$self->controller->log->debug('row: ' . Dumper($row));
 							$datatable->add_rows([ { v => $row->{_groupby} }, { v => $row->{_count} } ]);
 						}
 					}
@@ -150,19 +150,19 @@ sub call {
 		$datasource->datatable($datatable);
 		
 		if (ref($ret) and ref($ret) eq 'HASH'){
-			if ($self->api->has_warnings){
-				$self->api->log->debug('warnings: ' . Dumper($self->api->warnings));
-				$datasource->add_message({type => 'warning', reason => 'data_truncated', message => join(' ', @{ $self->api->warnings })});
+			if ($self->controller->has_warnings){
+				$self->controller->log->debug('warnings: ' . Dumper($self->controller->warnings));
+				$datasource->add_message({type => 'warning', reason => 'data_truncated', message => join(' ', @{ $self->controller->warnings })});
 			}
 		}
-		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->api->has_warnings){
-			$self->api->log->debug('warnings: ' . Dumper($self->api->warnings));
-			$datasource->add_message({type => 'warning', reason => 'data_truncated', message => join(' ', @{ $self->api->warnings })});
+		elsif (ref($ret) and blessed($ret) and $ret->can('add_warning') and $self->controller->has_warnings){
+			$self->controller->log->debug('warnings: ' . Dumper($self->controller->warnings));
+			$datasource->add_message({type => 'warning', reason => 'data_truncated', message => join(' ', @{ $self->controller->warnings })});
 		}
 	};
 	if ($@){
 		my $e = $@;
-		$self->api->log->error($e);
+		$self->controller->log->error($e);
 		$datasource->add_message({type => 'error', reason => 'access_denied', message => $e});
 		my ($headers, $body) = $datasource->serialize;
 		$res->headers(@$headers);
@@ -172,8 +172,8 @@ sub call {
 		my ($headers, $body) = $datasource->serialize;
 		$res->headers(@$headers);
 		$res->body([encode_utf8($body)]);
-		$self->api->log->debug('headers: ' . Dumper(@$headers));
-		$self->api->log->debug('body: ' . Dumper($body));
+		$self->controller->log->debug('headers: ' . Dumper(@$headers));
+		$self->controller->log->debug('body: ' . Dumper($body));
 	}
 	
 	$res->finalize();

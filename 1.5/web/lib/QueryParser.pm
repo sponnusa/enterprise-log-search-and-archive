@@ -162,11 +162,11 @@ sub BUILD {
 		}
 	}
 	
-	unless ($self->info){
+	unless ($self->meta_info){
 		$self->_get_info(sub {
 			my $ret = shift;
 			#$self->log->debug('got info: ' . Dumper($ret));
-			$self->info($ret);
+			$self->meta_info($ret);
 			$self->on_connect->($self);
 		});
 	}
@@ -225,7 +225,7 @@ sub parse {
 		$self->query_class($self->_choose_query_class);
 	}
 	
-	$self->stats->{get_info} = $self->info->{took};
+	$self->stats->{get_info} = $self->meta_info->{took};
 	
 	$self->log->trace('Creating new query of class ' . $self->query_class);
 	my $q = $self->query_class->new(
@@ -254,22 +254,22 @@ sub _choose_query_class {
 	my $self = shift;
 	
 	# Do we have indexed data for this time period?
-	if ($self->directives->{start} and $self->directives->{start} < $self->info->{indexes_min}){
-		if ($self->{directives}->{start} > $self->info->{archive_min}){
+	if ($self->directives->{start} and $self->directives->{start} < $self->meta_info->{indexes_min}){
+		if ($self->{directives}->{start} > $self->meta_info->{archive_min}){
 			return 'Query::SQL';
 		}
 		else {
-			my $msg = 'Adjusting query time to earliest index date ' . $self->info->{indexes_min};
+			my $msg = 'Adjusting query time to earliest index date ' . $self->meta_info->{indexes_min};
 			$self->log->info($msg);
 			$self->add_warning(200, $msg);
 		}
 	}
-	elsif ($self->directives->{end} and $self->directives->{end} > $self->info->{indexes_max}){
-		if ($self->{directives}->{end} < $self->info->{archive_max}){
+	elsif ($self->directives->{end} and $self->directives->{end} > $self->meta_info->{indexes_max}){
+		if ($self->{directives}->{end} < $self->meta_info->{archive_max}){
 			return 'Query::SQL';
 		}
 		else {
-			my $msg = 'Adjusting query time to latest index date ' . $self->info->{indexes_max};
+			my $msg = 'Adjusting query time to latest index date ' . $self->meta_info->{indexes_max};
 			$self->log->info($msg);
 			$self->add_warning(200, $msg);
 		}
@@ -405,8 +405,8 @@ sub _parse_query {
 		
 	# Check to see if the class was given in meta params
 	if ($self->meta_params->{class}){
-		my $class_name = $self->info->{classes}->{ uc($self->meta_params->{class}) };
-		my $class_value = sprintf("%d", $self->info->{classes}->{ uc($self->meta_params->{class}) });
+		my $class_name = $self->meta_info->{classes}->{ uc($self->meta_params->{class}) };
+		my $class_value = sprintf("%d", $self->meta_info->{classes}->{ uc($self->meta_params->{class}) });
 		$self->terms->{and}->{ $class_name . ':' . $class_value } = { field => $class_name, op => ':', value => $class_value };
 	}
 		
@@ -609,13 +609,13 @@ sub _parse_query_term {
 			elsif ($term_hash->{field} eq 'class'){
 				# special case for class
 				my $class;
-				$self->log->trace('classes: ' . Dumper($self->info->{classes}));
-				if ($self->info->{classes}->{ uc($term_hash->{value}) }){
-					$class = lc($self->info->{classes}->{ uc($term_hash->{value}) });
+				$self->log->trace('classes: ' . Dumper($self->meta_info->{classes}));
+				if ($self->meta_info->{classes}->{ uc($term_hash->{value}) }){
+					$class = lc($self->meta_info->{classes}->{ uc($term_hash->{value}) });
 				}
 				elsif (uc($term_hash->{value}) eq 'ANY'){
 					my @classes;
-					foreach my $class_name (keys %{ $self->info->{classes} }){
+					foreach my $class_name (keys %{ $self->meta_info->{classes} }){
 						next if $class_name eq 'ANY';
 						push @classes, { field => 'class', value => $class_name, op => $term_hash->{op} };
 					}
@@ -998,7 +998,7 @@ sub _check_permissions {
 			foreach my $key (keys %{ $self->terms->{$boolean} }){
 				my ($field, $value) = ($self->terms->{$boolean}->{$key}->{field}, $self->terms->{$boolean}->{$key}->{value});
 				my $forbidden;
-				if ($field eq 'class' and not $self->user->permissions->{class_id}->{ $self->info->{classes}->{$value} }){
+				if ($field eq 'class' and not $self->user->permissions->{class_id}->{ $self->meta_info->{classes}->{$value} }){
 					$forbidden = $value;
 				}
 				elsif ($field eq 'program' and not $self->user->permissions->{program_id}->{ crc32($value) }){

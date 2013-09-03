@@ -1,6 +1,6 @@
-package API::Charts;
+package Controller::Charts;
 use Moose;
-extends 'API';
+extends 'Controller';
 use Data::Dumper;
 use URI::Encode qw(uri_decode);
 use Try::Tiny;

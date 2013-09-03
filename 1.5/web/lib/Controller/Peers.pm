@@ -1,6 +1,6 @@
-package API::Peers;
+package Controller::Peers;
 use Moose;
-extends 'API';
+extends 'Controller';
 use Data::Dumper;
 use Log::Log4perl::Level;
 use AnyEvent::HTTP;
@@ -97,7 +97,7 @@ sub query {
 	try {
 		my $ret;
 		my $cv = AnyEvent->condvar;
-		$cv->begin(sub { $self->log->debug('cb here'); $cb->($ret) });
+		$cv->begin(sub { $cb->($ret) });
 		QueryParser->new(conf => $self->conf, log => $self->log, %$args, on_connect => sub {
 			my $qp = shift;
 			my $q = $qp->parse();
@@ -160,7 +160,7 @@ sub local_stats {
 }
 
 sub stats {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	my $overall_start = time();
@@ -172,10 +172,10 @@ sub stats {
 	}
 	$self->log->trace('Executing global node_info on peers ' . join(', ', @peers));
 	
-	my $cv = AnyEvent->condvar;
-	$cv->begin;
-	my %stats;
 	my %results;
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { $cb->(\%results) });
+	my %stats;
 	foreach my $peer (@peers){
 		$cv->begin;
 		my $peer_conf = $self->conf->get('peers/' . $peer);
@@ -213,7 +213,6 @@ sub stats {
 		};
 	}
 	$cv->end;
-	$cv->recv;
 	$stats{overall} = (time() - $overall_start);
 	$self->log->debug('stats: ' . Dumper(\%stats));
 	
@@ -240,7 +239,8 @@ sub upload {
 	my $buf;
 	read(FH, $buf, 2);
 	my $is_zipped = 0;
-	if ($buf eq 'PK'){
+	# Check for zip or gz magic
+	if ($buf eq 'PK' or $buf eq pack('C2', 0x1f, 0x8b)){
 		$self->log->trace('Detected that file upload is an archive');
 		$is_zipped = 1;
 	}
@@ -344,13 +344,13 @@ sub upload {
 }
 
 sub local_result {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
-	return $self->get_saved_result($args);
+	$self->get_saved_result($args, $cb);
 }
 
 sub result {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	my $overall_start = time();
@@ -366,10 +366,18 @@ sub result {
 	
 	$self->log->trace('Foreign query results on peers ' . Dumper(\%peers));
 	
-	my $cv = AnyEvent->condvar;
-	$cv->begin;
-	my %stats;
 	my %results;
+	my %stats;
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { 
+		$stats{overall} = (time() - $overall_start);
+		$self->log->debug('stats: ' . Dumper(\%stats));
+		$self->log->debug('merging: ' . Dumper(\%results));
+		my $overall_final = merge values %results;
+		$cb->($overall_final); 
+	});
+	
+	
 	foreach my $peer (sort keys %peers){
 		$cv->begin;
 		my $peer_conf = $self->conf->get('peers/' . $peer);
@@ -423,14 +431,104 @@ sub result {
 		};
 	}
 	$cv->end;
-	$cv->recv;
-	$stats{overall} = (time() - $overall_start);
-	$self->log->debug('stats: ' . Dumper(\%stats));
+}
+
+sub info {
+	my $self = shift;
+	my $args = shift;
+	my $cb = shift;
 	
-	$self->log->debug('merging: ' . Dumper(\%results));
-	my $overall_final = merge values %results;
+	my ($query, $sth);
+	my $overall_start = time();
+	
+	# Execute search on every peer
+	my @peers;
+	foreach my $peer (keys %{ $self->conf->get('peers') }){
+		push @peers, $peer;
+	}
+	$self->log->trace('Executing global node_info on peers ' . join(', ', @peers));
+	
+	my %results;
+	my %stats;
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { 
+		my $overall_final = $self->_merge_node_info(\%results);
+		$stats{overall} = (time() - $overall_start);
+		$self->log->debug('stats: ' . Dumper(\%stats));
+		$cb->($overall_final);
+	});
+	
+	foreach my $peer (@peers){
+		$cv->begin;
+		my $peer_conf = $self->conf->get('peers/' . $peer);
+		my $url = $peer_conf->{url} . 'API/';
+		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_info' : 'info';
+		$self->log->trace('Sending request to URL ' . $url);
+		my $start = time();
+		my $headers = { 
+			Authorization => $self->_get_auth_header($peer),
+		};
+		$results{$peer} = http_get $url, headers => $headers, sub {
+			my ($body, $hdr) = @_;
+			eval {
+				my $raw_results = $self->json->decode($body);
+				$stats{$peer}->{total_request_time} = (time() - $start);
+				$results{$peer} = { %$raw_results }; #undef's the guard
+			};
+			if ($@){
+				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
+				$self->add_warning(502, 'peer ' . $peer . ': ' . $@, { http => $peer });
+				delete $results{$peer};
+			}
+			$cv->end;
+		};
+	}
+	$cv->end;
+}
+
+sub _merge_node_info {
+	my ($self, $results) = @_;
+	#$self->log->debug('merging: ' . Dumper($results));
+	
+	# Merge these results
+	my $overall_final = merge values %$results;
+	
+	# Merge the times and counts
+	my %final = (nodes => {});
+	foreach my $peer (keys %$results){
+		next unless $results->{$peer} and ref($results->{$peer}) eq 'HASH';
+		if ($results->{$peer}->{nodes}){
+			foreach my $node (keys %{ $results->{$peer}->{nodes} }){
+				if ($node eq '127.0.0.1' or $node eq 'localhost'){
+					$final{nodes}->{$peer} ||= $results->{$peer}->{nodes};
+				}
+				else {
+					$final{nodes}->{$node} ||= $results->{$peer}->{nodes};
+				}
+			}
+		}
+		foreach my $key (qw(archive_min indexes_min)){
+			if (not $final{$key} or $results->{$peer}->{$key} < $final{$key}){
+				$final{$key} = $results->{$peer}->{$key};
+			}
+		}
+		foreach my $key (qw(archive indexes)){
+			$final{totals} ||= {};
+			$final{totals}->{$key} += $results->{$peer}->{totals}->{$key};
+		}
+		foreach my $key (qw(archive_max indexes_max indexes_start_max archive_start_max)){
+			if (not $final{$key} or $results->{$peer}->{$key} > $final{$key}){
+				$final{$key} = $results->{$peer}->{$key};
+			}
+		}
+	}
+	$self->log->debug('final: ' . Dumper(\%final));
+	foreach my $key (keys %final){
+		$overall_final->{$key} = $final{$key};
+	}
 	
 	return $overall_final;
 }
+
 
 __PACKAGE__->meta->make_immutable;

@@ -8,7 +8,7 @@ use lib $FindBin::Bin . '/../node/';
 use lib $FindBin::Bin . '/lib';
 
 use Indexer;
-use API;
+use Controller;
 use User;
 
 my %opts;

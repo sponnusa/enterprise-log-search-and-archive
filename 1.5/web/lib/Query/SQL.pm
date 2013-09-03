@@ -99,7 +99,7 @@ sub _get_table_groups {
 				$groups{$group_key}->{$table_name} = $schemas{$table_name};
 			}
 				
-			$self->info->{tables}->{schemas} = { %schemas };
+			$self->meta_info->{tables}->{schemas} = { %schemas };
 		}
 		else {
 			throw(500, 'Unable to get table schemas: ' . $rows);
@@ -115,7 +115,7 @@ sub _get_table_list {
 	return [] unless scalar keys %$tables_hash;
 	
 	my %tables;
-	foreach my $table_hash (@{ $self->info->{tables}->{tables} }){
+	foreach my $table_hash (@{ $self->meta_info->{tables}->{tables} }){
 		my $table_name = $table_hash->{table_name};
 		if ($table_name =~ /\./){
 			$table_name =~ s/[^\.]+\.//;
@@ -169,7 +169,7 @@ sub estimate_query_time {
 	my $query_time = 0;
 	
 	my $total_rows = 0;
-	foreach my $table_hash (@{ $self->info->{tables}->{tables} }){
+	foreach my $table_hash (@{ $self->meta_info->{tables}->{tables} }){
 		$total_rows += $table_hash->{records};
 	}
 	
@@ -482,7 +482,7 @@ sub _format_records {
 		$row->{_fields} = [
 				{ field => 'host', value => $row->{host}, class => 'any' },
 				{ field => 'program', value => $row->{program}, class => 'any' },
-				{ field => 'class', value => $self->info->{classes_by_id}->{ $row->{class_id} }, class => 'any' },
+				{ field => 'class', value => $self->meta_info->{classes_by_id}->{ $row->{class_id} }, class => 'any' },
 			];
 		my $is_import = 0;
 		foreach my $import_col (@{ $Fields::Import_fields }){
@@ -499,11 +499,11 @@ sub _format_records {
 		foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
 			my $value = delete $row->{$col};
 			# Swap the generic name with the specific field name for this class
-			my $field = $self->info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
+			my $field = $self->meta_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
 			if (defined $value and $field){
 				# See if we need to apply a conversion
 				$value = $self->resolve_value($row->{class_id}, $value, $col);
-				push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $self->info->{classes_by_id}->{ $row->{class_id} } };
+				push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $self->meta_info->{classes_by_id}->{ $row->{class_id} } };
 			}
 		}
 		push @tmp, $row;
@@ -552,7 +552,7 @@ sub _format_records_groupby {
 			$key = $row->{program};
 		}
 		elsif ($self->groupby eq 'class'){
-			$key = $self->info->{classes_by_id}->{ $row->{class_id} };
+			$key = $self->meta_info->{classes_by_id}->{ $row->{class_id} };
 		}
 		elsif (exists $Fields::Field_to_order->{ $self->groupby }){
 			# Resolve normally

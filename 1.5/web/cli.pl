@@ -5,7 +5,7 @@ use Time::HiRes qw(time);
 use Getopt::Std;
 use FindBin;
 use lib $FindBin::Bin . '/lib';
-use API;
+use Controller;
 
 my $config_file = -f '/etc/elsa_web.conf' ? '/etc/elsa_web.conf' : '/usr/local/elsa/etc/elsa_web.conf';
 if ($ENV{ELSA_CONF}){

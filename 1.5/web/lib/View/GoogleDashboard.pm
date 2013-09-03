@@ -1,6 +1,6 @@
-package Web::GoogleDashboard;
+package View::GoogleDashboard;
 use Moose;
-extends 'Web';
+extends 'View';
 use Data::Dumper;
 use Plack::Request;
 use Plack::Session;
@@ -106,9 +106,9 @@ sub call {
 		$self->path_to_inc('../');
 		
 		my $dashboard_name = $self->_extract_method($req->request_uri);
-		$self->api->log->debug('method: ' . $dashboard_name);
+		$self->controller->log->debug('method: ' . $dashboard_name);
 		
-		my $user = $self->api->get_user($req->user);
+		my $user = $self->controller->get_user($req->user);
 		if ($user){
 			$self->session->set('user', $user->freeze);
 			$self->session->set('user_info', $user->TO_JSON);
@@ -118,20 +118,20 @@ sub call {
 		
 		if ($req->request_uri =~ /[\?\&]edit[=]?/){
 			$args->{edit} = 1;
-			$self->api->log->trace('edit mode');
+			$self->controller->log->trace('edit mode');
 		}
 		
-		#$self->api->log->debug('dashboard args: ' . Dumper($args));
+		#$self->controller->log->debug('dashboard args: ' . Dumper($args));
 		if (exists $args->{start}){
 			$args->{start_time} = UnixDate(ParseDate($args->{start}), '%s');
-			$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+			$self->controller->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
 		}
 		else {
 			$args->{start_time} = (time() - (86400*7));
 		}
 		if (exists $args->{end}){
 			$args->{end_time} = UnixDate(ParseDate($args->{end}), '%s');
-			$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+			$self->controller->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
 		}
 		else {
 			$args->{end_time} = time;
@@ -154,11 +154,11 @@ sub call {
 				if ($args->{$arg}){
 					if ($args->{start}){
 						$args->{end_time} = ($args->{start_time} + ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
-						$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+						$self->controller->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
 					}
 					else {
 						$args->{start_time} = ($args->{end_time} - ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
-						$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+						$self->controller->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
 					}
 				}
 				last;
@@ -171,13 +171,13 @@ sub call {
 		}
 	
 	
-		$self->api->freshen_db;
+		$self->controller->freshen_db;
 		my ($query, $sth);
 		
 		$args->{user} = $user;
 		$args->{dashboard_name} = $dashboard_name;
-		if ($self->api->conf->get('dashboard_width')){
-			$args->{width} = $self->api->conf->get('dashboard_width');
+		if ($self->controller->conf->get('dashboard_width')){
+			$args->{width} = $self->controller->conf->get('dashboard_width');
 		}
 		else {
 			$args->{width} = $Default_width;
@@ -199,7 +199,7 @@ sub call {
 		}
 		else {
 			$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
-			$sth = $self->api->db->prepare($query);
+			$sth = $self->controller->db->prepare($query);
 			$sth->execute($dashboard_name);
 			my $row = $sth->fetchrow_hashref;
 			die('dashboard ' . $dashboard_name . ' not found or not authorized') unless $row;
@@ -208,23 +208,23 @@ sub call {
 			$self->title($args->{title});
 			$args->{alias} = $row->{alias};
 			$args->{auth_required} = $row->{auth_required};
-			unless ($self->api->_is_permitted($args)){
+			unless ($self->controller->_is_permitted($args)){
 				$res->status(401);
 				die('Unauthorized');
 			}
 		}
 		
-		$ret = $self->api->_get_rows($args);
+		$ret = $self->controller->_get_rows($args);
 		
 		delete $args->{user};
 	};
 	if ($@){
 		my $e = $@;
-		$self->api->log->error($e);
-		$res->body([encode_utf8($self->api->json->encode({error => $e}))]);
+		$self->controller->log->error($e);
+		$res->body([encode_utf8($self->controller->json->encode({error => $e}))]);
 	}
 	else {
-		$self->api->log->debug('data: ' . Dumper($ret));
+		$self->controller->log->debug('data: ' . Dumper($ret));
 		$res->body([$self->index($req, $args, $ret)]);
 	}
 		
@@ -254,15 +254,15 @@ sub _get_index_body {
 		$refresh = 'YAHOO.ELSA.dashboardRefreshInterval = ' . (1000 * int($args->{refresh})) . ';';
 	}
 		
-	my $json = $self->api->json->encode($queries);
+	my $json = $self->controller->json->encode($queries);
 	my $dir = $self->path_to_inc;
-	my $defaults = $self->api->json->encode({
+	my $defaults = $self->controller->json->encode({
 		groupby => [$args->{groupby}],
 		start => $args->{start_time},
 		end => $args->{end_time}
 	});
 		
-	my $yui = new YUI(%{ $self->api->conf->get('yui') });
+	my $yui = new YUI(%{ $self->controller->conf->get('yui') });
 	my $yui_css = $yui->css($dir);
 	my $yui_js = $yui->js($dir);
 
@@ -325,7 +325,7 @@ sub _generate_system_dashboard {
 	my $self = shift;
 	my $dashboard = shift;
 	
-	$self->api->log->trace('Generating system dashboard ' . $dashboard);
+	$self->controller->log->trace('Generating system dashboard ' . $dashboard);
 	
 	my $ret = { %{ $self->system_dashboards->{$dashboard} } };
 	$ret->{charts} = [];
@@ -333,7 +333,7 @@ sub _generate_system_dashboard {
 	if ($self->system_dashboards->{$dashboard}->{node_charts}){
 		foreach my $chart (@{ $self->system_dashboards->{$dashboard}->{node_charts} }){
 			my $clone = { %$chart };
-			foreach my $node (keys %{ $self->api->conf->get('nodes') }){
+			foreach my $node (keys %{ $self->controller->conf->get('nodes') }){
 				$clone->{chart_id} = $id_counter;
 				$clone->{query_id} = $id_counter;
 				$clone->{query} = sprintf($chart->{query}, unpack('N*', inet_aton($node)));
@@ -350,7 +350,7 @@ sub _generate_system_dashboard {
 		push @{ $ret->{charts} }, $clone;
 		$id_counter++;
 	}
-	$self->api->log->debug('ret: ' . Dumper($ret));
+	$self->controller->log->debug('ret: ' . Dumper($ret));
 	
 	return $ret;
 }
