@@ -50,7 +50,8 @@ sub estimate_query_time {
 		foreach my $index_name (@$indexes){
 			$rows_to_search += $self->schemas->{$group_key}->{$index_name}->{records};
 		}
-	
+		
+		next unless scalar @$indexes;
 		$total_search += ($rows_to_search / (scalar @$indexes) * $total_queries * $total_terms);
 	}
 	
@@ -160,7 +161,8 @@ sub _normalize_terms {
 				$term_hash->{value} = uc($term_hash->{value});
 			}
 			else {
-				$term_hash->{value} = lc($term_hash->{value});
+				#$term_hash->{value} = lc($term_hash->{value});
+				$term_hash->{value} = $term_hash->{value};
 			}
 		}
 	}
@@ -722,7 +724,6 @@ sub _get_index_groups {
 				}
 				else {
 					if (/U\+(..)/){
-						$self->log->debug($_ . ' as ' . chr(hex($1)));
 						$chars_indexed{ chr(hex($1)) } = 1;
 					}
 					else {
