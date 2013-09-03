@@ -32,9 +32,19 @@ sub local_query {
 		my $class = shift;
 		my $extra_directives = shift;
 		my $q = $qp->parse($class);
+		
 		Log::Log4perl::MDC->put('qid', $q->qid);
 		
 		try {
+			if ($self->conf->get('disallow_sql_search') and $qp->query_class eq 'Query::SQL'){
+				my $msg;
+				if (scalar keys %{ $qp->stopword_terms }){
+					throw(404, 'Cannot execute query, terms too common: ' . join(', ', keys %{ $qp->stopword_terms }), { terms => join(', ', keys %{ $qp->stopword_terms }) });
+				}
+				else {
+					throw(401, 'Query required SQL search which is not enabled', { search_type => 'SQL' });
+				}
+			}
 			if ($extra_directives){
 				# These directives were added by another class, not the user
 				$self->log->trace('Extra directives: ' . Dumper($extra_directives));

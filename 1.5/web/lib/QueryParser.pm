@@ -183,40 +183,6 @@ sub parse {
 	
 	$self->log->trace("Using timeout of " . $self->directives->{timeout});
 	
-#	# Find highlights to inform the web client
-#	foreach my $boolean (qw(and or)){
-#		foreach my $op (keys %{ $self->terms->{attr_terms}->{$boolean} }){
-#			foreach my $field_name (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op} }){
-#				foreach my $class_id (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name} }){
-#					foreach my $attr (keys %{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id} }){
-#						foreach my $term (@{ $self->terms->{attr_terms}->{$boolean}->{$op}->{$field_name}->{$class_id}->{$attr} }){
-#							my @regex = _term_to_regex($term, $field_name);
-#							foreach (@regex){
-#								$self->highlights->{$_} = 1 if defined $_;
-#							}
-#						}
-#					}
-#				}
-#			}
-#		}
-#		foreach my $class_id (keys %{ $self->terms->{field_terms}->{$boolean} }){
-#			foreach my $field_name (keys %{ $self->terms->{field_terms}->{$boolean}->{$class_id} }){
-#				foreach my $term (@{ $self->terms->{field_terms}->{$boolean}->{$class_id}->{$field_name} }){
-#					my @regex = _term_to_regex($term, $field_name);
-#					foreach (@regex){
-#						$self->highlights->{$_} = 1 if defined $_;
-#					}
-#				}
-#			}
-#		}
-#		foreach my $term (sort keys %{ $self->terms->{any_field_terms}->{$boolean} }, sort keys %{ $self->terms->{any_field_terms_sql}->{$boolean} }){
-#			my @regex = _term_to_regex($term);
-#			foreach (@regex){
-#				$self->highlights->{$_} = 1 if defined $_;
-#			}
-#		}
-#	}
-	
 	if ($given_query_class){
 		$self->log->info('Overriding query class decision with given class ' . $given_query_class);
 		$self->query_class($given_query_class);
