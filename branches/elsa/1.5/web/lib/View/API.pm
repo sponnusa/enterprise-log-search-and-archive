@@ -1,6 +1,6 @@
-package Web::API;
+package View::API;
 use Moose;
-extends 'Web';
+extends 'View';
 use Data::Dumper;
 use Plack::Request;
 use Encode;
@@ -19,12 +19,12 @@ sub call {
 	$res->content_type('text/plain');
 	$res->header('Access-Control-Allow-Origin' => '*');
 	
-	$self->api->clear_warnings;
+	$self->controller->clear_warnings;
 	
 	Log::Log4perl::MDC->put('client_ip_address', $req->address);
 	
-	my $method = $self->_extract_method($req->request_uri);
-	$self->api->log->debug('method: ' . $method);
+	my $method = $self->extract_method($req->request_uri);
+	$self->controller->log->debug('method: ' . $method);
 	
 	# Make sure private methods can't be run from the web
 	if ($method =~ /^\_/){
@@ -34,7 +34,7 @@ sub call {
 	}
 	
 	my $args = $req->parameters->as_hashref;
-	if ($req->user_agent eq $self->api->user_agent_name){
+	if ($req->user_agent eq $self->controller->user_agent_name){
 		$args->{from_peer} = $req->address;
 	}
 	else {
@@ -42,17 +42,17 @@ sub call {
 	}
 	$args->{client_ip_address} = $req->address;
 	
-	$self->api->log->debug('args: ' . Dumper($args));
+	$self->controller->log->debug('args: ' . Dumper($args));
 	
 	# Authenticate via apikey
-	unless ($self->api->_check_auth_header($req)){
+	unless ($self->controller->_check_auth_header($req)){
 		$res->status(401);
 		$res->body('unauthorized');
 		$res->header('WWW-Authenticate', 'ApiKey');
 		return $res->finalize();
 	}
 	
-	unless ($self->api->can($method)){
+	unless ($self->controller->can($method)){
 		$res->status(404);
 		$res->body('not found');
 		return $res->finalize();
@@ -67,20 +67,21 @@ sub call {
 	
 	return sub {
 		my $write = shift;
+		
 		try {
-			$self->api->freshen_db;
+			#$self->controller->freshen_db;
 			if ($req->upload and $req->uploads->{filename}){
 				$args->{upload} = $req->uploads->{filename};
 			}
-			$self->api->$method($args, sub {
+			$self->controller->$method($args, sub {
 				$ret = shift;
 				if ($ret and ref($ret) eq 'Ouch'){
 					$e = $ret;
 				}
 				if ($e){
-					$self->api->log->error($e->trace);
+					$self->controller->log->error($e->trace);
 					$res->status($e->code);
-					$res->body([encode_utf8($self->api->json->encode($e))]);
+					$res->body([encode_utf8($self->controller->json->encode($e))]);
 				}
 				elsif (ref($ret) and ref($ret) eq 'ARRAY'){
 					# API function returned Plack-compatible response
@@ -89,12 +90,12 @@ sub call {
 				elsif (ref($ret) and ref($ret) eq 'HASH' and $ret->{mime_type}){
 					$res->content_type($ret->{mime_type});
 					if (ref($ret->{ret}) and ref($ret->{ret}) eq 'HASH'){
-						if ($self->api->has_warnings){
-							$ret->{ret}->{warnings} = $self->api->warnings;
+						if ($self->controller->has_warnings){
+							$ret->{ret}->{warnings} = $self->controller->warnings;
 						}
 					}
 					elsif (ref($ret->{ret}) and blessed($ret->{ret}) and $ret->{ret}->can('add_warning')){
-						$ret->{ret}->warnings($self->api->warnings);
+						$ret->{ret}->warnings($self->controller->warnings);
 					}
 					
 					$res->body($ret->{ret});
@@ -104,19 +105,19 @@ sub call {
 				}
 				else {
 					if (ref($ret) and ref($ret) eq 'HASH'){
-						if ($self->api->has_warnings){
-							$ret->{warnings} = $self->api->warnings;
+						if ($self->controller->has_warnings){
+							$ret->{warnings} = $self->controller->warnings;
 						}
 					}
-					elsif (ref($ret) and blessed($ret) and $ret->can('warnings') and $self->api->has_warnings){
-						foreach my $warning ($self->api->all_warnings){
+					elsif (ref($ret) and blessed($ret) and $ret->can('warnings') and $self->controller->has_warnings){
+						foreach my $warning ($self->controller->all_warnings){
 							push @{ $ret->warnings }, $warning;
 						}
 						if ($ret->can('dedupe_warnings')){
 							$ret->dedupe_warnings();
 						}
 					}
-					$res->body([encode_utf8($self->api->json->encode($ret))]);
+					$res->body([encode_utf8($self->controller->json->encode($ret))]);
 				}
 				
 				$write->($res->finalize());
@@ -126,9 +127,9 @@ sub call {
 		}
 		catch {
 			my $e = shift;
-			$self->api->log->error($e->trace);
+			$self->controller->log->error($e->trace);
 			$res->status($e->code);
-			$res->body([encode_utf8($self->api->json->encode($e))]);
+			$res->body([encode_utf8($self->controller->json->encode($e))]);
 			$write->($res->finalize());
 		};
 		$cv and $cv->recv;

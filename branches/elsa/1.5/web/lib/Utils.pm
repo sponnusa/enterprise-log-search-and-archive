@@ -35,7 +35,7 @@ has 'db' => (is => 'rw', isa => 'Object', required => 1);
 has 'json' => (is => 'ro', isa => 'JSON', required => 1);
 #has 'bulk_dir' => (is => 'rw', isa => 'Str', required => 1, default => $Bulk_dir);
 has 'db_timeout' => (is => 'rw', isa => 'Int', required => 1, default => $Db_timeout);
-has 'info' => (is => 'rw', isa => 'HashRef');
+has 'meta_info' => (is => 'rw', isa => 'HashRef');
 
 around BUILDARGS => sub {
 	my $orig = shift;
@@ -600,102 +600,6 @@ sub _get_db {
 #	return \%nodes;
 #}
 
-sub info {
-	my $self = shift;
-	
-	my ($query, $sth);
-	my $overall_start = time();
-	
-	# Execute search on every peer
-	my @peers;
-	foreach my $peer (keys %{ $self->conf->get('peers') }){
-		push @peers, $peer;
-	}
-	$self->log->trace('Executing global node_info on peers ' . join(', ', @peers));
-	
-	my $cv = AnyEvent->condvar;
-	$cv->begin;
-	my %stats;
-	my %results;
-	foreach my $peer (@peers){
-		$cv->begin;
-		my $peer_conf = $self->conf->get('peers/' . $peer);
-		my $url = $peer_conf->{url} . 'API/';
-		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_info' : 'info';
-		$self->log->trace('Sending request to URL ' . $url);
-		my $start = time();
-		my $headers = { 
-			Authorization => $self->_get_auth_header($peer),
-		};
-		$results{$peer} = http_get $url, headers => $headers, sub {
-			my ($body, $hdr) = @_;
-			eval {
-				my $raw_results = $self->json->decode($body);
-				$stats{$peer}->{total_request_time} = (time() - $start);
-				$results{$peer} = { %$raw_results }; #undef's the guard
-			};
-			if ($@){
-				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
-				$self->add_warning(502, 'peer ' . $peer . ': ' . $@, { http => $peer });
-				delete $results{$peer};
-			}
-			$cv->end;
-		};
-	}
-	$cv->end;
-	$cv->recv;
-	$stats{overall} = (time() - $overall_start);
-	$self->log->debug('stats: ' . Dumper(\%stats));
-	
-	my $overall_final = $self->_merge_node_info(\%results);
-	
-	return $overall_final;
-}
-
-sub _merge_node_info {
-	my ($self, $results) = @_;
-	#$self->log->debug('merging: ' . Dumper($results));
-	
-	# Merge these results
-	my $overall_final = merge values %$results;
-	
-	# Merge the times and counts
-	my %final = (nodes => {});
-	foreach my $peer (keys %$results){
-		next unless $results->{$peer} and ref($results->{$peer}) eq 'HASH';
-		if ($results->{$peer}->{nodes}){
-			foreach my $node (keys %{ $results->{$peer}->{nodes} }){
-				if ($node eq '127.0.0.1' or $node eq 'localhost'){
-					$final{nodes}->{$peer} ||= $results->{$peer}->{nodes};
-				}
-				else {
-					$final{nodes}->{$node} ||= $results->{$peer}->{nodes};
-				}
-			}
-		}
-		foreach my $key (qw(archive_min indexes_min)){
-			if (not $final{$key} or $results->{$peer}->{$key} < $final{$key}){
-				$final{$key} = $results->{$peer}->{$key};
-			}
-		}
-		foreach my $key (qw(archive indexes)){
-			$final{totals} ||= {};
-			$final{totals}->{$key} += $results->{$peer}->{totals}->{$key};
-		}
-		foreach my $key (qw(archive_max indexes_max indexes_start_max archive_start_max)){
-			if (not $final{$key} or $results->{$peer}->{$key} > $final{$key}){
-				$final{$key} = $results->{$peer}->{$key};
-			}
-		}
-	}
-	$self->log->debug('final: ' . Dumper(\%final));
-	foreach my $key (keys %final){
-		$overall_final->{$key} = $final{$key};
-	}
-	
-	return $overall_final;
-}
-
 sub _peer_query {
 	my ($self, $q, $cb) = @_;
 	my ($query, $sth);
@@ -791,14 +695,8 @@ sub _peer_query {
 					$q->add_warning(502, 'Peer ' . $peer_label . ' encountered an error.', { http => $peer });
 					return;
 				}
-				#$self->log->debug('raw_results: ' . Dumper($raw_results));
-				#my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
 				my $is_groupby = $raw_results->{groupby} ? 1 : 0;
 				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
-#				if ($q->groupby and ref($raw_results->{results}) ne 'HASH'){
-#					$self->log->error('Wrong: ' . Dumper($q->TO_JSON) . "\n" . Dumper($raw_results));
-#				}
-				#my $results_package = ref($raw_results->{results}) eq 'ARRAY' ? 'Results' : 'Results::Groupby';
 				my $results_obj = $results_package->new(results => $raw_results->{results}, 
 					total_records => $raw_results->{totalRecords}, is_approximate => $raw_results->{approximate});
 				if ($results_obj->records_returned and not $q->results->records_returned){
@@ -845,8 +743,6 @@ sub _peer_query {
 		};
 	}
 	$cv->end;
-	
-	$self->log->debug('sent, ' . Dumper($cv));
 }
 
 sub _get_auth_header {

@@ -313,8 +313,8 @@ sub _get_class_ids {
 	# Foreach field, find classes
 	foreach my $field (keys %fields){
 		if ($field eq 'class'){
-			if ($self->info->{classes}->{ $fields{$field} }){
-				return { $self->info->{classes}->{ $fields{$field} } => $fields{$field} };
+			if ($self->meta_info->{classes}->{ $fields{$field} }){
+				return { $self->meta_info->{classes}->{ $fields{$field} } => $fields{$field} };
 			}
 			else {
 				throw(400, 'Invalid class ' . $fields{$field}, { term => $fields{$field} });
@@ -569,7 +569,7 @@ sub _get_search_terms {
 #				push @{ $ret->{filters} }, { %hash };
 #			}
 			else {
-				throw(400, 'Unable to find field ' . $hash{field} . ' for class ' . $self->info->{classes_by_id}->{$class_id}, { term => $hash{field} });
+				throw(400, 'Unable to find field ' . $hash{field} . ' for class ' . $self->meta_info->{classes_by_id}->{$class_id}, { term => $hash{field} });
 			}
 		}
 	}
@@ -644,7 +644,10 @@ sub _get_index_groups {
 	
 	# Sort the indexes into groups by schema
 	my %schemas;
-	foreach my $index (@{ $self->info->{indexes}->{indexes} }){
+	unless ($self->meta_info->{indexes} and $self->meta_info->{indexes}->{indexes}){
+		return \%schemas;
+	}
+	foreach my $index (@{ $self->meta_info->{indexes}->{indexes} }){
 		my $group_key = '';
 		if ($index->{schema}){
 			foreach my $key (sort keys %{ $index->{schema} }){
@@ -702,7 +705,7 @@ sub _get_index_schema {
 	my $group_key = shift;
 	throw(500, 'Unable to find index ' . $group_key) unless $self->schemas->{$group_key};
 	return (values %{ $self->schemas->{$group_key} })[0]->{schema};
-#	foreach my $index (@{ $self->info->{indexes}->{indexes} }){
+#	foreach my $index (@{ $self->meta_info->{indexes}->{indexes} }){
 #		if ($index->{name} eq $index_name){
 #			return $index->{schema};
 #		}
@@ -727,13 +730,24 @@ sub execute {
 		my $cv = AnyEvent->condvar;
 		$cv->begin(sub {
 			if (not $self->has_errors){
-				$self->results->percentage_complete(100 * $counter / $total);
+				if ($total){
+					$self->results->percentage_complete(100 * $counter / $total);
+				}
+				else {
+					$self->results->percentage_complete(100);
+				}
 				if ($self->results->total_records > $self->results->total_docs){
 					$self->results->total_docs($self->results->total_records);
 				}
 			}
 			$cb->();
 		});
+		
+		unless (scalar keys %{ $self->schemas }){
+			$self->add_warning('516', 'No data for time period queried', { term => 'start' });
+			$cb->();
+			return;
+		}
 		
 		foreach my $group_key (keys %{ $self->schemas }){
 			my $indexes = $self->_get_index_list($self->schemas->{$group_key});
@@ -874,7 +888,7 @@ sub _get_rows {
 	my %tables;
 	
 	ROW_LOOP: foreach my $row (@{ $ret->{sphinx_rows} }){
-		foreach my $table_hash (@{ $self->info->{tables}->{tables} }){
+		foreach my $table_hash (@{ $self->meta_info->{tables}->{tables} }){
 			next unless $table_hash->{table_type} eq 'index' or $table_hash->{table_type} eq 'import';
 			if ($table_hash->{min_id} <= $row->{id} and $row->{id} <= $table_hash->{max_id}){
 				$tables{ $table_hash->{table_name} } ||= [];
@@ -976,7 +990,7 @@ sub _format_records {
 		$row->{_fields} = [
 				{ field => 'host', value => $row->{host}, class => 'any' },
 				{ field => 'program', value => $row->{program}, class => 'any' },
-				{ field => 'class', value => $self->info->{classes_by_id}->{ $row->{class_id} }, class => 'any' },
+				{ field => 'class', value => $self->meta_info->{classes_by_id}->{ $row->{class_id} }, class => 'any' },
 			];
 		my $is_import = 0;
 		foreach my $import_col (@{ $Fields::Import_fields }){
@@ -993,11 +1007,11 @@ sub _format_records {
 		foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
 			my $value = delete $row->{$col};
 			# Swap the generic name with the specific field name for this class
-			my $field = $self->info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
+			my $field = $self->meta_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
 			if (defined $value and $field){
 				# See if we need to apply a conversion
 				$value = $self->resolve_value($row->{class_id}, $value, $col);
-				push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $self->info->{classes_by_id}->{ $row->{class_id} } };
+				push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $self->meta_info->{classes_by_id}->{ $row->{class_id} } };
 			}
 		}
 		push @tmp, $row;
@@ -1051,7 +1065,7 @@ sub _format_records_groupby {
 			$key = $ret->{results}->{ $row->{id} }->{program};
 		}
 		elsif ($self->groupby eq 'class'){
-			$key = $self->info->{classes_by_id}->{ $ret->{results}->{ $row->{id} }->{class_id} };
+			$key = $self->meta_info->{classes_by_id}->{ $ret->{results}->{ $row->{id} }->{class_id} };
 		}
 		elsif (exists $Fields::Field_to_order->{ $self->groupby }){
 			# Resolve normally

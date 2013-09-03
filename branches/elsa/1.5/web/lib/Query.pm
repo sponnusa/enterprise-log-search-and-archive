@@ -90,7 +90,7 @@ sub BUILDARGS {
 	my %params = @_;
 	
 	$params{results} ||= new Results();
-	$params{info} = $params{parser}->info;
+	$params{meta_info} = $params{parser}->meta_info;
 	
 	return \%params;
 }
@@ -163,6 +163,7 @@ sub TO_JSON {
 		highlights => $self->highlights,
 		stats => $self->stats,
 		approximate => $self->results->is_approximate,
+		percentage_complete => $self->results->percentage_complete,
 	};
 	
 	$ret->{query_meta_params}->{archive} = 1 if $self->archive;
@@ -253,13 +254,13 @@ sub set_directive {
 	elsif ($directive eq 'class'){
 		# special case for class
 		my $class;
-		$self->log->trace('classes: ' . Dumper($self->info->{classes}));
-		if ($self->info->{classes}->{ uc($value) }){
-			$class = lc($self->info->{classes}->{ uc($value) });
+		$self->log->trace('classes: ' . Dumper($self->meta_info->{classes}));
+		if ($self->meta_info->{classes}->{ uc($value) }){
+			$class = lc($self->meta_info->{classes}->{ uc($value) });
 		}
 		elsif (uc($value) eq 'ANY'){
 			my @classes;
-			foreach my $class_name (keys %{ $self->info->{classes} }){
+			foreach my $class_name (keys %{ $self->meta_info->{classes} }){
 				next if $class_name eq 'ANY';
 				push @classes, { field => 'class', value => $class_name, op => $op };
 			}
@@ -502,16 +503,16 @@ sub _get_permissions_clause {
 sub permitted_classes {
 	my $self = shift;
 	if ($self->user->permissions->{class_id}->{0}){
-		my %classes = %{ $self->info->{classes_by_id} };
+		my %classes = %{ $self->meta_info->{classes_by_id} };
 		delete $classes{0};
 		return \%classes;
 	}
 	else {
 		my %ret;
-		foreach my $class_id (keys %{ $self->info->{classes_by_id} }){
+		foreach my $class_id (keys %{ $self->meta_info->{classes_by_id} }){
 			next unless $class_id; # skip 0
 			if ($self->user->is_permitted('class_id', $class_id)){
-				$ret{$class_id} = $self->info->{classes_by_id}->{$class_id};
+				$ret{$class_id} = $self->meta_info->{classes_by_id}->{$class_id};
 			}
 		}
 		return \%ret;
@@ -611,7 +612,7 @@ sub _subsearch {
 	my $args = shift;
 	my $cb = shift;
 	$self->log->trace('Subsearch query: ' . join(' ', @$args));
-	my $qp = QueryParser->new(conf => $self->conf, log => $self->log, info => $self->parser->info, 
+	my $qp = QueryParser->new(conf => $self->conf, log => $self->log, meta_info => $self->parser->info, 
 		query_string => join(' ', @$args), transforms => $self->transforms);
 	my $q;
 	
@@ -659,7 +660,7 @@ sub _classes_for_field {
 	}
 	my %classes;
 	foreach my $class_id (keys %$field_hashes){
-		$classes{$class_id} = $self->info->{classes_by_id}->{$class_id};
+		$classes{$class_id} = $self->meta_info->{classes_by_id}->{$class_id};
 	}
 	return \%classes;
 }
@@ -731,7 +732,7 @@ sub _value {
 		}
 	}
 	elsif ($attr eq 'class_id'){
-		return $self->info->{classes}->{ uc($hash->{value}) };
+		return $self->meta_info->{classes}->{ uc($hash->{value}) };
 	}
 	elsif ($attr eq 'program_id'){
 		$self->log->trace("Converting $hash->{value} to program_id");
@@ -749,19 +750,19 @@ sub _value {
 			}
 		}
 		if (defined $field_order){
-			if ($self->info->{field_conversions}->{ $class_id }->{'IPv4'}
-				and $self->info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
+			if ($self->meta_info->{field_conversions}->{ $class_id }->{'IPv4'}
+				and $self->meta_info->{field_conversions}->{ $class_id }->{'IPv4'}->{$field_order}
 				and $hash->{value} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 				$self->log->debug('converting ' . $hash->{value} . ' to IPv4 value ' . unpack('N', inet_aton($hash->{value})));
 				return unpack('N', inet_aton($hash->{value}));
 			}
-			elsif ($self->info->{field_conversions}->{ $class_id }->{PROTO} 
-				and $self->info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
+			elsif ($self->meta_info->{field_conversions}->{ $class_id }->{PROTO} 
+				and $self->meta_info->{field_conversions}->{ $class_id }->{PROTO}->{$field_order}){
 				$self->log->trace("Converting $hash->{value} to proto");
 				return exists $Fields::Proto_map->{ uc($hash->{value}) } ? $Fields::Proto_map->{ uc($hash->{value}) } : int($hash->{value});
 			}
-			elsif ($self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
-				and $self->info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
+			elsif ($self->meta_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE} 
+				and $self->meta_info->{field_conversions}->{ $class_id }->{COUNTRY_CODE}->{$field_order}){
 				if ($Fields::Field_order_to_attr->{$field_order} =~ /attr_s/){
 					$self->log->trace("Converting $hash->{value} to CRC of country_code");
 					return crc32(join('', unpack('c*', pack('A*', uc($hash->{value})))));
