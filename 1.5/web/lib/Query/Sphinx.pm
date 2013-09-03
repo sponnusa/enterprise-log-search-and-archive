@@ -406,7 +406,7 @@ sub _search_value {
 	my @value_chars = split(//, $value);
 	my @output;
 	foreach (@value_chars){
-		if (exists $chars_indexed->{$_}){
+		if (exists $chars_indexed->{ lc($_) }){
 			push @output, $_;
 		}
 		else {
