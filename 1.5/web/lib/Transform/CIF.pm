@@ -67,7 +67,7 @@ sub _query_native_cif {
 		$record->{transforms}->{$Name} = {};
 		
 		$self->cv(AnyEvent->condvar);
-		$self->cv->begin(sub { $self->on_transform->() });
+		$self->cv->begin(sub { $self->on_transform->($self->results) });
 		foreach my $key ($self->results->keys($record)){
 			if ($keys->{$key}){
 				$record->{transforms}->{$Name}->{$key} = {};

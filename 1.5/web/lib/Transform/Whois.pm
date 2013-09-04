@@ -41,7 +41,7 @@ sub BUILD {
 	
 	$self->cv(AnyEvent->condvar); 
 	$self->cv->begin(sub {
-		$self->on_transform->();
+		$self->on_transform->($self->results);
 	});
 	
 	try {
@@ -77,7 +77,7 @@ sub BUILD {
 		my $e = shift;
 		$self->log->error('error in whois: ' . $e);
 		$self->on_error->($e);
-		$self->on_transform->();
+		$self->on_transform->($self->results);
 	};
 	
 	return $self;

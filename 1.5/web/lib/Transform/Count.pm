@@ -67,7 +67,7 @@ sub BUILD {
 	$self->data($ret);
 	$self->log->debug('data: ' . Dumper($self->data));
 	
-	$self->on_transform->();
+	$self->on_transform->($self->results);
 	
 	return $self;
 }

@@ -15,7 +15,6 @@ use Time::HiRes qw(time);
 use Time::Local;
 use Module::Pluggable sub_name => 'export_plugins', require => 1, search_path => [ qw(Export) ];
 use Module::Pluggable sub_name => 'info_plugins', require => 1, search_path => [ qw(Info) ];
-use Module::Pluggable sub_name => 'transform_plugins', require => 1, search_path => [ qw(Transform) ];
 use Module::Pluggable sub_name => 'connector_plugins', require => 1, search_path => [ qw(Connector) ];
 use Module::Pluggable sub_name => 'datasource_plugins', require => 1, search_path => [ qw(Datasource) ];
 use Module::Pluggable sub_name => 'stats_plugins', require => 1, search_path => [ qw(Stats) ];
@@ -74,7 +73,6 @@ sub BUILD {
 	# init plugins
 	$self->export_plugins();
 	$self->info_plugins();
-	$self->transform_plugins();
 	$self->connector_plugins();
 	$self->datasource_plugins();
 	
@@ -133,60 +131,73 @@ sub get_user_info {
 }
 
 sub get_saved_result {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
-	unless ($args and ref($args) eq 'HASH' and $args->{qid}){
-		$self->log->error('Invalid args: ' . Dumper($args));
-		return;
+	my $ret;
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { $cb->($ret) });
+	
+	try {
+		unless ($args and ref($args) eq 'HASH' and $args->{qid}){
+			$self->add_warning(500, 'Invalid args: ' . Dumper($args));
+			$cv->end;
+			return;
+		}
+		
+		# Authenticate the hash if given (so that the uid doesn't have to match)
+		if ($args->{hash} and $args->{hash} ne $self->_get_hash($args->{qid})){
+			$self->add_warning(401, q{You are not authorized to view another user's saved queries});
+			$cv->end;
+			return;
+		}
+		
+		my ($query, $sth);
+		
+		# Check to see if this is a foreign query (has results elsewhere)
+		$query = 'SELECT COUNT(*) FROM foreign_queries WHERE qid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{qid});
+		if ($sth->fetchrow_arrayref->[0]){
+			$self->_get_foreign_saved_result($args, $cb);
+			
+		}
+		
+		my @values = ($args->{qid});
+		
+		
+		$query = 'SELECT t2.uid, t2.query, milliseconds FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
+			'WHERE t1.qid=?';
+		if (not $args->{hash}){
+			$query .= ' AND uid=?';
+			push @values, $args->{user}->uid;
+		}
+		
+		$sth = $self->db->prepare($query);
+		$sth->execute(@values);
+		my $row = $sth->fetchrow_hashref;
+		unless ($row){
+			$self->_error('No saved results for qid ' . $args->{qid} . ' found.');
+			return;
+		}
+		
+		$query = 'SELECT data FROM saved_results_data WHERE qid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{qid});
+		$row = $sth->fetchrow_hashref;
+		
+		my $data = $self->json->decode($row->{data});
+		$self->log->debug('returning data: ' . Dumper($data));
+		if (ref($data) and ref($data) eq 'ARRAY'){
+			return { results => $data };
+		}
+		else {
+			return $data;
+		}
 	}
-	
-	# Authenticate the hash if given (so that the uid doesn't have to match)
-	if ($args->{hash} and $args->{hash} ne $self->_get_hash($args->{qid}) ){
-		$self->_error(q{You are not authorized to view another user's saved queries});
-		return;
-	}
-	
-	my ($query, $sth);
-	
-	# Check to see if this is a foreign query (has results elsewhere)
-	$query = 'SELECT COUNT(*) FROM foreign_queries WHERE qid=?';
-	$sth = $self->db->prepare($query);
-	$sth->execute($args->{qid});
-	if ($sth->fetchrow_arrayref->[0]){
-		return $self->_get_foreign_saved_result($args);
-	}
-	
-	my @values = ($args->{qid});
-	
-	
-	$query = 'SELECT t2.uid, t2.query, milliseconds FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
-		'WHERE t1.qid=?';
-	if (not $args->{hash}){
-		$query .= ' AND uid=?';
-		push @values, $args->{user}->uid;
-	}
-	
-	$sth = $self->db->prepare($query);
-	$sth->execute(@values);
-	my $row = $sth->fetchrow_hashref;
-	unless ($row){
-		$self->_error('No saved results for qid ' . $args->{qid} . ' found.');
-		return;
-	}
-	
-	$query = 'SELECT data FROM saved_results_data WHERE qid=?';
-	$sth = $self->db->prepare($query);
-	$sth->execute($args->{qid});
-	$row = $sth->fetchrow_hashref;
-	
-	my $data = $self->json->decode($row->{data});
-	$self->log->debug('returning data: ' . Dumper($data));
-	if (ref($data) and ref($data) eq 'ARRAY'){
-		return { results => $data };
-	}
-	else {
-		return $data;
-	}
+	catch {
+		
+	};
+	$cv->end;
 }
 
 sub _get_foreign_saved_result {

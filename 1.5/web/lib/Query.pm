@@ -561,18 +561,18 @@ sub transform_results {
 		}
 	}
 	
-	# Check to see if we've already done this 
-	foreach my $record ($self->results->all_results){
-		if (exists $record->{transforms}){
-			foreach my $found_transform (keys %{ $record->{transforms} }){
-				if (lc($transform) eq lc($found_transform)){
-					$self->log->trace('Already performed transform ' . $transform);
-					$self->transform_results($cb);
-					return;
-				}
-			}
-		}
-	}
+#	# Check to see if we've already done this 
+#	foreach my $record ($self->results->all_results){
+#		if (exists $record->{transforms}){
+#			foreach my $found_transform (keys %{ $record->{transforms} }){
+#				if (lc($transform) eq lc($found_transform)){
+#					$self->log->trace('Already performed transform ' . $transform);
+#					$self->transform_results($cb);
+#					return;
+#				}
+#			}
+#		}
+#	}
 	
 	if ($transform eq 'subsearch'){
 		$self->_subsearch(\@transform_args, sub {
@@ -591,7 +591,7 @@ sub transform_results {
 		foreach my $plugin ($self->transform_plugins()){
 			if ($plugin =~ /\:\:$transform(?:\:\:|$)/i){
 				$self->log->debug('loading plugin ' . $plugin);
-				eval {
+				try {
 					my $plugin_object = $plugin->new(
 						query_string => $self->query_string,
 						query_meta_params => $self->meta_params,
@@ -599,9 +599,14 @@ sub transform_results {
 						log => $self->log,
 						user => $self->user,
 						cache => $cache,
-						results => $self->results, 
+						results => $self->results,
 						args => [ @transform_args ],
 						on_transform => sub {
+							my $results_obj = shift;
+							if ($results_obj->can('groupby')){
+								$self->groupby( ($results_obj->all_groupbys )[0] );
+							}
+							$self->results($results_obj);
 							$self->_post_transform();
 							$self->log->debug('Finished transform ' . $plugin . ' with results ' . Dumper($self->results->results));
 							$self->transform_results($cb);
@@ -613,12 +618,13 @@ sub transform_results {
 							$self->transform_results($cb);
 						});
 						$num_found++;
-				};
-				if ($@){
-					$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
-						. Dumper($self->results->results) . ' and args ' . Dumper(\@transform_args) . ': ' . $@);
-					$self->add_warning(500, $@, { transform => $self->peer_label });
 				}
+				catch {
+					my $e = shift;
+					$self->log->error('Error creating plugin ' . $plugin . ' with data ' 
+						. Dumper($self->results->results) . ' and args ' . Dumper(\@transform_args) . ': ' . $e);
+					$self->add_warning(500, $e, { transform => $self->peer_label });
+				};
 				last;
 			}
 		}

@@ -12,99 +12,108 @@ has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 has 'count' => (is => 'ro', isa => 'Num', required => 1, default => 0);
 has 'operator' => (is => 'ro', isa => 'Str', required => 1, default => '>=');
 
+our $Valid_operators = {
+	'>' => 1,
+	'<' => 1,
+	'>=' => 1,
+	'<=' => 1,
+	'=' => 1,
+	'==' => 1,
+};
+
 sub BUILDARGS {
 	my $class = shift;
 	##my $params = $class->SUPER::BUILDARGS(@_);
 	my %params = @_;
 	if (defined $params{args}->[0]){
-		$params{count} = $params{args}->[0];
+		$params{count} = sprintf('%d', $params{args}->[0]);
 	}
 	if ($params{args}->[1]){
-		$params{operator} = $params{args}->[1];
+		$params{operator} = $Valid_operators->{ $params{args}->[1] } ? $params{args}->[1] : '>';
 	}
+	$params{groupby} = (sort $params{results}->all_groupbys)[0];
 	return \%params;
 }
 
 sub BUILD {
 	my $self = shift;
-	$self->log->trace('data: ' . Dumper($self->data));
+	$self->log->trace('results: ' . Dumper($self->results->results));
 	
-	DATUM_LOOP: foreach my $datum (@{ $self->data }){
-		foreach my $transform (keys %{ $datum->{transforms} }){
-			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
-			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
-				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
-					if (exists $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }){
-						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }) eq 'ARRAY'){
-							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }){
-								my $test = $value . ' ' . $self->operator . ' ' . $self->count;
+	DATUM_LOOP: foreach my $record ($self->results->all_results){
+		foreach my $transform (keys %{ $record->{transforms} }){
+			next unless ref($record->{transforms}->{$transform}) eq 'HASH';
+			foreach my $transform_field (keys %{ $record->{transforms}->{$transform} }){
+				if (ref($record->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+					if (exists $record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }){
+						if (ref($record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }) eq 'ARRAY'){
+							foreach my $value (@{ $record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }){
+								my $test = int($value) . ' ' . $self->operator . ' ' . $self->count;
 								if (eval($test)){
 									#$self->log->trace('passed value ' . $value);
-									$datum->{transforms}->{$Name} = '__KEEP__';
+									$record->{transforms}->{$Name} = '__KEEP__';
 									next DATUM_LOOP;
 								}
 							}
 						}
 						else {
-							if ($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } =~ /^\d+$/){
-								my $test = $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } . ' ' . $self->operator . ' ' . $self->count;
+							if ($record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } =~ /^\d+$/){
+								my $test = int($record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }) . ' ' . $self->operator . ' ' . $self->count;
 								if (eval($test)){
 									#$self->log->trace('passed value ' . $value);
-									$datum->{transforms}->{$Name} = '__KEEP__';
+									$record->{transforms}->{$Name} = '__KEEP__';
 									next DATUM_LOOP;
 								}
 							}
 						}
 					}
 				}
-				elsif (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY' 
+				elsif (ref($record->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY' 
 					and $transform_field eq $self->groupby){
-					foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field} }){
-						my $test = $value . ' ' . $self->operator . ' ' . $self->count;
+					foreach my $value (@{ $record->{transforms}->{$transform}->{$transform_field} }){
+						my $test = int($value) . ' ' . $self->operator . ' ' . $self->count;
 						if (eval($test)){
 							#$self->log->trace('passed value ' . $value);
-							$datum->{transforms}->{$Name} = '__KEEP__';
+							$record->{transforms}->{$Name} = '__KEEP__';
 							next DATUM_LOOP;
 						}
 					}
 				}
 			}
 		}
-		if (exists $datum->{ $self->groupby } ){
-			my $test = $datum->{count} . ' ' . $self->operator . ' ' . $self->count;
+		if (exists $record->{ $self->groupby } ){
+			my $test = int($record->{count}) . ' ' . $self->operator . ' ' . $self->count;
 			#$self->log->trace('test: ' . $test);
 			if (eval($test)){
 				#$self->log->trace('passed value ' . $value);
-				$datum->{transforms}->{$Name} = '__KEEP__';
+				$record->{transforms}->{$Name} = '__KEEP__';
 				next DATUM_LOOP;
 			}
 		}
-		elsif (exists $datum->{_count}){
-			my $test = $datum->{_count} . ' ' . $self->operator . ' ' . $self->count;
+		elsif (exists $record->{_count}){
+			my $test = int($record->{_count}) . ' ' . $self->operator . ' ' . $self->count;
 			if (eval($test)){
 				#$self->log->trace('passed value ' . $value);
-				$datum->{transforms}->{$Name} = '__KEEP__';
+				$record->{transforms}->{$Name} = '__KEEP__';
 				next DATUM_LOOP;
 			}
 		}
 	}
 	
 	my $ret = [];
-		
-	my $count = scalar @{ $self->data };
-	for (my $i = 0; $i < $count; $i++){
-		if (exists $self->data->[$i]->{transforms}->{$Name}){
-			delete $self->data->[$i]->{transforms}->{$Name}; # no need to clutter our final results
-			if (exists $self->data->[$i]->{_groupby}){
-				push @$ret, $self->data->[$i];
+	
+	foreach my $record ($self->results->all_results){
+		if (exists $record->{transforms}->{$Name}){
+			delete $record->{transforms}->{$Name}; # no need to clutter our final results
+			if (exists $record->{_groupby}){
+				push @$ret, $record;
 			}
 			else {
 				push @$ret, { 
-					_groupby => $self->data->[$i]->{ $self->groupby }, 
-					intval => $self->data->[$i]->{count}, 
-					_count => $self->data->[$i]->{count},
-					count => $self->data->[$i]->{count},
-					$self->groupby => $self->data->[$i]->{ $self->groupby },
+					_groupby => $record->{ $self->groupby }, 
+					intval => $record->{count}, 
+					_count => $record->{count},
+					count => $record->{count},
+					$self->groupby => $record->{ $self->groupby },
 				};
 			}
 		}
@@ -112,9 +121,11 @@ sub BUILD {
 	
 	# Sort
 	$ret = [ sort { $b->{intval} <=> $a->{intval} } @$ret ];
-	$self->data($ret);
+	$self->results->results({ $self->groupby => $ret });
 		
-	$self->log->debug('final data: ' . Dumper($self->data));
+	$self->log->debug('final data: ' . Dumper($self->results->results));
+	
+	$self->on_transform->($self->results);
 	
 	return $self;
 }

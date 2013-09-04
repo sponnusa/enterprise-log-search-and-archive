@@ -613,6 +613,11 @@ sub _oversize_log_rotate {
 	my $archive_size_limit = $log_size_limit * $self->conf->get('archive/percentage') * .01;
 	$self->log->trace('Effective log_size_limit: ' . $log_size_limit . ', archive_limit: ' . $archive_size_limit);
 	
+	unless ($log_size_limit){
+		$self->log->error('Unable to get log_size_limit, got: ' . $log_size_limit);
+		return 0;
+	}
+	
 	while ($self->_get_current_archive_size() > $archive_size_limit){
 		$self->_get_lock('directory');
 		
@@ -1022,7 +1027,8 @@ sub load_buffers {
 				$self->log->trace('Switched between import and regular index, must index here');
 				# Queue the previous sequence, not the current one
 				$self->_queue_for_indexing({ first_id => $first_id, last_id => $previous_last, 
-					start => $start, end => $previous_end, import_id => $was_import });
+					start => $start, end => $previous_end, import_id => $was_import })
+					or return 0;
 				$self->_index_records();
 				$self->record_host_stats();
 				$first_id = $batch_ids->{first_id};
@@ -1032,7 +1038,8 @@ sub load_buffers {
 				# Non-consecutive, must do an index for this batch
 				$self->log->debug('non-consecutive ids: ' . $batch_ids->{first_id} . ' and ' . $last_id);
 				$self->_queue_for_indexing({ first_id => $first_id, last_id => $previous_last, 
-					start => $start, end => $previous_end, import_id => $was_import });
+					start => $start, end => $previous_end, import_id => $was_import })
+					or return 0;
 				$self->_index_records();
 				$self->record_host_stats();
 				$first_id = $batch_ids->{first_id};
@@ -1068,6 +1075,7 @@ sub load_buffers {
 		#$self->index_records({ first_id => $first_id, last_id => $last_id, start => $start, end => $end });
 		my $index_id = $self->_queue_for_indexing({ first_id => $first_id, last_id => $last_id, 
 			start => $start, end => $end, import_id => $was_import });
+		return 0 unless $index_id;
 	}
 	
 	$self->_release_lock('directory');
@@ -1126,8 +1134,14 @@ sub _queue_for_indexing {
 	# Check to see if ram limitations dictate that these should be small permanent tables since they consume no ram
 	my $index_type = 'temporary';
 	if ($self->_over_mem_limit()){
-		$self->log->warn('Resources overlimit, using permanent index for this emergency');
-		$index_type = 'permanent';
+		if ($self->_free_perm_indexes()){
+			$self->log->warn('Resources overlimit, using permanent index for this emergency');
+			$index_type = 'permanent';
+		}
+		else {
+			$self->log->error('Resources overlimit and no open perm index slots');
+			return 0;
+		}
 	}
 	elsif (($args->{last_id} - $args->{first_id}) > $self->conf->get('sphinx/perm_index_size')){
 		$self->log->debug('Size dictates permanent index');
@@ -2611,6 +2625,20 @@ EOT
 	$template .= '}' . "\n";
 	
 	return $template;
+}
+
+sub _free_perm_indexes {
+	my $self = shift;
+	
+	my ($query, $sth);
+	
+	# Try to find an unused id
+	$query = 'SELECT COUNT(*) FROM indexes WHERE type=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute('permanent');
+	my $row = $sth->fetchrow_arrayref;
+	
+	return ($self->conf->get('num_indexes') - $row->[0] - 2); # - 2 is for safety padding in case some other proc uses an index in the meantime
 }
 
 sub _get_next_index_id {

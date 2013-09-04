@@ -119,11 +119,7 @@ sub query {
 				
 				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
 			
-				# Apply transforms
-				$q->transform_results(sub {
-					$q->dedupe_warnings();
-					$cb->($q);
-				});
+				$cb->($q);
 			});
 		});
 	}
