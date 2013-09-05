@@ -552,8 +552,11 @@ sub _get_db {
 		]);
 	};
 	if ($@){
-		$self->add_warning(502, $@, { mysql => 1 });
-	}		
+		throw(502, $@, { mysql => 1 });
+	}
+	elsif ($DBI::errstr){
+		throw(502, $DBI::errstr, { mysql => 1 });
+	}
 	
 	$self->log->trace('All connected in ' . (Time::HiRes::time() - $start) . ' seconds');
 	

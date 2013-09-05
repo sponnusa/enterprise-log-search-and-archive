@@ -38,7 +38,7 @@ else {
 }
 die('Cannot find node config file, specify with -n or env variable ELSA_NODE_CONF') unless -f $node_config_file;
 
-$ENV{DEBUG_LEVEL} = 'INFO'; # we don't want to fill our logs up with automated query logs
+#$ENV{DEBUG_LEVEL} = 'INFO'; # we don't want to fill our logs up with automated query logs
 
 my $indexer = Indexer->new(config_file => $node_config_file);
 if ($indexer->conf->get('debug_all')){

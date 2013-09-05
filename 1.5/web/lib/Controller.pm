@@ -3,7 +3,6 @@ use Moose;
 with 'MooseX::Traits';
 with 'Utils';
 with 'Fields';
-with 'StatsWriter';
 use Data::Dumper;
 use Date::Manip;
 use AnyEvent;
@@ -44,6 +43,7 @@ has 'cache' => (is => 'rw', isa => 'Object', required => 1, default => sub { ret
 has 'warnings' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { 'has_warnings' => 'count', 'clear_warnings' => 'clear', 'all_warnings' => 'elements' });
 has 'user_agent_name' => (is => 'ro', isa => 'Str', required => 1, default => 'ELSA API');
+has 'stat_objects' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] });
 
 ## Create a stats timer for these methods
 #around [qw(_sphinx_query _archive_query _external_query _unlimited_sphinx_query)] => sub {
@@ -75,6 +75,12 @@ sub BUILD {
 	$self->info_plugins();
 	$self->connector_plugins();
 	$self->datasource_plugins();
+	$self->stats_plugins();
+	
+	foreach my $plugin_name ($self->stats_plugins()){
+		my $plugin = $plugin_name->new(conf => $self->conf);
+		push @{ $self->stat_objects }, $plugin;
+	}
 	
 	return $self;
 }
@@ -158,13 +164,11 @@ sub get_saved_result {
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{qid});
 		if ($sth->fetchrow_arrayref->[0]){
-			$self->_get_foreign_saved_result($args, $cb);
-			
+			$self->_get_foreign_saved_result($args, sub { my $ret = shift; $cb->($ret); $cv->end });
+			return;
 		}
 		
 		my @values = ($args->{qid});
-		
-		
 		$query = 'SELECT t2.uid, t2.query, milliseconds FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
 			'WHERE t1.qid=?';
 		if (not $args->{hash}){
@@ -176,7 +180,9 @@ sub get_saved_result {
 		$sth->execute(@values);
 		my $row = $sth->fetchrow_hashref;
 		unless ($row){
-			$self->_error('No saved results for qid ' . $args->{qid} . ' found.');
+			$self->add_warning(404, 'No saved results for qid ' . $args->{qid} . ' found.');
+			$cb->();
+			$cv->end;
 			return;
 		}
 		
@@ -188,20 +194,22 @@ sub get_saved_result {
 		my $data = $self->json->decode($row->{data});
 		$self->log->debug('returning data: ' . Dumper($data));
 		if (ref($data) and ref($data) eq 'ARRAY'){
-			return { results => $data };
+			$cb->( { results => $data } );
 		}
 		else {
-			return $data;
+			$cv->($data);
 		}
 	}
 	catch {
-		
+		my $e = shift;
+		$self->add_warning(500, $e);
+		$cb->();
 	};
 	$cv->end;
 }
 
 sub _get_foreign_saved_result {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	# Switch over from this API to the Peers API for a global query using web services
 	my $peer = '127.0.0.1';
@@ -219,159 +227,150 @@ sub _get_foreign_saved_result {
 	my $headers = { 
 		Authorization => $self->_get_auth_header($peer),
 	};
-	my $results;
 	my $cv = AnyEvent->condvar;
+	my $ret;
+	$cv->begin(sub { $cb->($ret); });
 	my $guard; $guard = http_get $url, headers => $headers, sub {
 		my ($body, $hdr) = @_;
 		eval {
-			$results = $self->json->decode($body);
-			undef $guard;
+			$ret = $self->json->decode($body);
+			$self->log->trace('got foreign results: ' . Dumper($ret));
 		};
 		if ($@){
 			$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
 			$self->add_warning(502, 'peer ' . $peer . ': ' . $@, { http => $peer });
-			undef $guard;
 		}
-		$cv->send;
+		$cv->end;
+		undef $guard;
 	};
-	$cv->recv;
-	
-	$self->log->trace('got foreign results: ' . Dumper($results));
-	
-	return $results;
-}
-
-sub _error {
-	my $self = shift;
-	my $err = shift;
-	$self->log->error($err);
-	return $self->last_error($err);
 }
 
 sub get_permissions {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	throw(403, 'Admin required', { admin => 1 }) unless $args->{user}->is_admin;
 		
-	my $form_params = $self->get_form_params($args->{user});
+	$self->get_form_params($args->{user}, sub {
+		my $form_params = shift;
 	
-	# Build programs hash
-	my $programs = {};
-	foreach my $class_id (keys %{ $form_params->{programs} }){
-		foreach my $program_name (keys %{ $form_params->{programs}->{$class_id} }){
-			$programs->{ $form_params->{programs}->{$class_id}->{$program_name} } = $program_name;
-		}
-	}
-	
-	my ($query, $sth);
-	
-	$query = 'SELECT t3.uid, username, t1.gid, groupname, COUNT(DISTINCT(t4.attr_id)) AS has_exceptions' . "\n" .
-		'FROM groups t1' . "\n" .
-		'LEFT JOIN users_groups_map t2 ON (t1.gid=t2.gid)' . "\n" .
-		'LEFT JOIN users t3 ON (t2.uid=t3.uid)' . "\n" .
-		'LEFT JOIN permissions t4 ON (t1.gid=t4.gid)' . "\n" .
-		'WHERE groupname LIKE CONCAT("%", ?, "%")' . "\n" . 
-		'GROUP BY t1.gid' . "\n" .
-		'ORDER BY t1.gid ASC';
-	
-	my @values;
-	if ($args->{search}){
-		push @values, $args->{search};
-	}
-	else {
-		push @values, '';
-	}
-	$sth = $self->db->prepare($query);
-	$sth->execute(@values);
-	my @ldap_entries;
-	while (my $row = $sth->fetchrow_hashref){
-		push @ldap_entries, $row;
-	}
-	
-	$query = 'SELECT t2.groupname, t1.gid, attr, attr_id' . "\n" .
-		'FROM permissions t1' . "\n" .
-		'JOIN groups t2 ON (t1.gid=t2.gid)' . "\n" .
-		'WHERE t1.gid=?';
-	$sth = $self->db->prepare($query);
-	foreach my $ldap_entry (@ldap_entries){
-		$sth->execute($ldap_entry->{gid});
-		my %exceptions;
-		while (my $row = $sth->fetchrow_hashref){
-			$self->log->debug('got row: ' . Dumper($row));
-			if ($row->{attr}){
-				$exceptions{ $row->{attr} } ||= {};
-				if ($row->{attr} eq 'class_id'){
-					$row->{attr_value} = $form_params->{classes_by_id}->{ $row->{attr_id} };
-					if ($row->{attr_value}){
-						$exceptions{ $row->{attr} }->{ $row->{attr_value} } = $row->{attr_id};
-					}
-				}
-				elsif ($row->{attr} eq 'program_id'){
-					$row->{attr_value} = $programs->{ $row->{attr_id} };
-					if ($row->{attr_value}){
-						$exceptions{ $row->{attr} }->{ $row->{attr_value} } = $row->{attr_id};
-					}
-				}
-				elsif ($row->{attr} eq 'host_id'){
-					# Must be host_id == IP or IP range
-					if ($row->{attr_id} =~ /^\d+$/){
-						$row->{attr_value} = inet_ntoa(pack('N*', $row->{attr_id}));
-					}
-					elsif ($row->{attr_id} =~ /(\d+)\s*\-\s*(\d+)/){
-						$row->{attr_value} = inet_ntoa(pack('N*', $1)) . '-' . inet_ntoa(pack('N*', $2));
-					}
-					else {
-						$self->_error('bad host: ' . Dumper($args));
-						return;
-					}
-					$exceptions{ $row->{attr} }->{ $row->{attr_value} } = $row->{attr_id};
-				}
-				elsif ($row->{attr} eq 'node_id'){
-					# Must be node_id == IP or IP range
-					if ($row->{attr_id} =~ /^\d+$/){
-						$row->{attr_value} = inet_ntoa(pack('N*', $row->{attr_id}));
-					}
-					elsif ($row->{attr_id} =~ /(\d+)\s*\-\s*(\d+)/){
-						$row->{attr_value} = inet_ntoa(pack('N*', $1)) . '-' . inet_ntoa(pack('N*', $2));
-					}
-					else {
-						$self->_error('bad host: ' . Dumper($args));
-						return;
-					}
-					$exceptions{ $row->{attr} }->{ $row->{attr_value} } = $row->{attr_id};
-				}
-				else {
-					$exceptions{ $row->{attr} }->{ $row->{attr_id} } = $row->{attr_id};
-				}
-				$self->log->debug('attr=' . $row->{attr} . ', attr_id=' . $row->{attr_id} . ', attr_value=' . $row->{attr_value});
+		# Build programs hash
+		my $programs = {};
+		foreach my $class_id (keys %{ $form_params->{programs} }){
+			foreach my $program_name (keys %{ $form_params->{programs}->{$class_id} }){
+				$programs->{ $form_params->{programs}->{$class_id}->{$program_name} } = $program_name;
 			}
 		}
-		$ldap_entry->{_exceptions} = { %exceptions };
-	}
-	
-	$query = 'SELECT gid, filter FROM filters WHERE gid=?';
-	$sth = $self->db->prepare($query);
-	my %filters;
-	foreach my $ldap_entry (@ldap_entries){
-		$sth->execute($ldap_entry->{gid});
-		while (my $row = $sth->fetchrow_hashref){
-			$ldap_entry->{_exceptions}->{filter}->{ $row->{filter} } = $row->{filter};
+		
+		my ($query, $sth);
+		
+		$query = 'SELECT t3.uid, username, t1.gid, groupname, COUNT(DISTINCT(t4.attr_id)) AS has_exceptions' . "\n" .
+			'FROM groups t1' . "\n" .
+			'LEFT JOIN users_groups_map t2 ON (t1.gid=t2.gid)' . "\n" .
+			'LEFT JOIN users t3 ON (t2.uid=t3.uid)' . "\n" .
+			'LEFT JOIN permissions t4 ON (t1.gid=t4.gid)' . "\n" .
+			'WHERE groupname LIKE CONCAT("%", ?, "%")' . "\n" . 
+			'GROUP BY t1.gid' . "\n" .
+			'ORDER BY t1.gid ASC';
+		
+		my @values;
+		if ($args->{search}){
+			push @values, $args->{search};
 		}
-	}
-	
-	my $permissions = {
-		totalRecords => scalar @ldap_entries,
-		records_returned => scalar @ldap_entries,
-		results => [ @ldap_entries ],	
-	};
-	
-	$permissions->{form_params} = $form_params;
-	
-	return $permissions;
+		else {
+			push @values, '';
+		}
+		$sth = $self->db->prepare($query);
+		$sth->execute(@values);
+		my @ldap_entries;
+		while (my $row = $sth->fetchrow_hashref){
+			push @ldap_entries, $row;
+		}
+		
+		$query = 'SELECT t2.groupname, t1.gid, attr, attr_id' . "\n" .
+			'FROM permissions t1' . "\n" .
+			'JOIN groups t2 ON (t1.gid=t2.gid)' . "\n" .
+			'WHERE t1.gid=?';
+		$sth = $self->db->prepare($query);
+		foreach my $ldap_entry (@ldap_entries){
+			$sth->execute($ldap_entry->{gid});
+			my %exceptions;
+			while (my $row = $sth->fetchrow_hashref){
+				$self->log->debug('got row: ' . Dumper($row));
+				if ($row->{attr}){
+					$exceptions{ $row->{attr} } ||= {};
+					if ($row->{attr} eq 'class_id'){
+						$row->{attr_value} = $form_params->{classes_by_id}->{ $row->{attr_id} };
+						if ($row->{attr_value}){
+							$exceptions{ $row->{attr} }->{ $row->{attr_value} } = $row->{attr_id};
+						}
+					}
+					elsif ($row->{attr} eq 'program_id'){
+						$row->{attr_value} = $programs->{ $row->{attr_id} };
+						if ($row->{attr_value}){
+							$exceptions{ $row->{attr} }->{ $row->{attr_value} } = $row->{attr_id};
+						}
+					}
+					elsif ($row->{attr} eq 'host_id'){
+						# Must be host_id == IP or IP range
+						if ($row->{attr_id} =~ /^\d+$/){
+							$row->{attr_value} = inet_ntoa(pack('N*', $row->{attr_id}));
+						}
+						elsif ($row->{attr_id} =~ /(\d+)\s*\-\s*(\d+)/){
+							$row->{attr_value} = inet_ntoa(pack('N*', $1)) . '-' . inet_ntoa(pack('N*', $2));
+						}
+						else {
+							$self->_error('bad host: ' . Dumper($args));
+							return;
+						}
+						$exceptions{ $row->{attr} }->{ $row->{attr_value} } = $row->{attr_id};
+					}
+					elsif ($row->{attr} eq 'node_id'){
+						# Must be node_id == IP or IP range
+						if ($row->{attr_id} =~ /^\d+$/){
+							$row->{attr_value} = inet_ntoa(pack('N*', $row->{attr_id}));
+						}
+						elsif ($row->{attr_id} =~ /(\d+)\s*\-\s*(\d+)/){
+							$row->{attr_value} = inet_ntoa(pack('N*', $1)) . '-' . inet_ntoa(pack('N*', $2));
+						}
+						else {
+							$self->_error('bad host: ' . Dumper($args));
+							return;
+						}
+						$exceptions{ $row->{attr} }->{ $row->{attr_value} } = $row->{attr_id};
+					}
+					else {
+						$exceptions{ $row->{attr} }->{ $row->{attr_id} } = $row->{attr_id};
+					}
+					$self->log->debug('attr=' . $row->{attr} . ', attr_id=' . $row->{attr_id} . ', attr_value=' . $row->{attr_value});
+				}
+			}
+			$ldap_entry->{_exceptions} = { %exceptions };
+		}
+		
+		$query = 'SELECT gid, filter FROM filters WHERE gid=?';
+		$sth = $self->db->prepare($query);
+		my %filters;
+		foreach my $ldap_entry (@ldap_entries){
+			$sth->execute($ldap_entry->{gid});
+			while (my $row = $sth->fetchrow_hashref){
+				$ldap_entry->{_exceptions}->{filter}->{ $row->{filter} } = $row->{filter};
+			}
+		}
+		
+		my $permissions = {
+			totalRecords => scalar @ldap_entries,
+			records_returned => scalar @ldap_entries,
+			results => [ @ldap_entries ],	
+		};
+		
+		$permissions->{form_params} = $form_params;
+		
+		$cb->($permissions);
+	});
 }
 
 sub set_permissions {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	throw(403, 'Admin required', { admin => 1 }) unless $args->{user}->is_admin;
 	
@@ -379,18 +378,16 @@ sub set_permissions {
 		$self->_error('No set permissions action given: ' . Dumper($args));
 		return;
 	}
-	eval { $args->{permissions} = $self->json->decode( $args->{permissions} ); };
-	$self->log->debug('args: ' . Dumper($args));
-	if ($@) {
-		$self->_error(
-			'Error decoding permissions args: ' 
-			  . $@ . ' : '
-			  . Dumper($args));
-		return;
+	try { 
+		$args->{permissions} = $self->json->decode( $args->{permissions} ); 
 	}
+	catch {
+		my $e = shift;
+		$self->log->error('Error: ' . $e . ' args: ' . Dumper($args));
+		throw(500, 'Error decoding permissions: ' . $e);
+	};
 	unless ( $args->{permissions} and ref( $args->{permissions} ) eq 'ARRAY' ) {
-		$self->_error('Invalid permissions args: ' . Dumper($args));
-		return;
+		throw(500, 'Invalid permissions args: ' . Dumper($args));
 	}
 	
 	my ($query, $sth);
@@ -433,87 +430,7 @@ sub set_permissions {
 		}
 		$rows_updated += $sth->rows;
 	}
-	return {success => $rows_updated, groups_changed => $rows_updated};	
-}
-
-#sub _revalidate_group {
-#	my ( $self, $gid ) = @_;
-#	
-#	my $members = $self->_get_group_members($gid);
-#	unless ($members and ref($members) eq 'ARRAY' and scalar @$members){
-#		$self->log->error('No members found for gid ' . $gid);
-#		return;
-#	}
-#	my ($query, $sth);
-#	$query = 'SELECT uid FROM users WHERE username=?';
-#	$sth = $self->db->prepare($query);
-#	my %must_revalidate;
-#	foreach my $member (@$members){
-#		$sth->execute($member);
-#		my $row = $sth->fetchrow_hashref;
-#		if ($row){
-#			$must_revalidate{ $row->{uid} } = 1;
-#			$self->log->info('User ' . $member . ' must revalidate');
-#		}
-#	}
-#	#TODO find and expire these sessions
-#}
-
-sub _get_group_members {
-	my ( $self, $gid ) = @_;
-	my ($query, $sth);
-	$query = 'SELECT groupname FROM groups WHERE gid=?';
-	$sth = $self->db->prepare($query);
-	$sth->execute($gid);
-	my $row = $sth->fetchrow_hashref;
-	unless ($row){
-		$self->log->error('Unknown group for gid ' . $gid);
-		return;
-	}
-	my $group_search = $row->{groupname};
-	my @ret;
-	
-	if ( uc($self->conf->get('auth/method')) eq 'LDAP' ) {
-		# this will be a per-org implementation
-		unless ($self->ldap) {
-			$self->log->error('Unable to connect to LDAP server');
-			return;
-		}
-	
-		# Whittle the group name down to just the cn
-		my @filter_parts = split(/[a-zA-Z0-9]{2}\=/, $group_search);
-		$self->log->debug('filter_parts: ' . Dumper(\@filter_parts));
-		my $cn = $filter_parts[1];
-		chop($cn); # strip the trailing comma
-		unless (scalar @filter_parts > 1){
-			$self->log->error('Invalid filter: ' . $group_search);
-			return;
-		}
-		my $filter = sprintf( '(&(objectclass=group)(cn=%s))', $cn );
-		$self->log->debug('filter: ' . $filter);
-		my $result = $self->ldap->search( sizelimit => 2, filter => $filter );
-		my @entries = $result->entries();
-		$self->log->debug('entries: ' . Dumper(\@entries));
-		if ( scalar @entries < 1 ) {
-			$self->log->error(
-				'No entries found in LDAP server:' . $self->ldap->error() );
-			return;
-		}
-	}
-	elsif (lc($self->conf->get('auth/method')) eq 'db'){
-		$query = 'SELECT username FROM users t1 JOIN users_groups_map t2 ON (t1.uid=t2.uid) WHERE t2.gid=?';
-		$sth = $self->db->prepare($query);
-		$sth->execute($gid);
-		while (my $row = $sth->fetchrow_hashref){
-			push @ret, $row->{username};
-		}
-	}
-	else {
-		$self->log->error('No auth_method');
-		return;
-	}
-	$self->log->debug('Found members: ' . Dumper(\@ret));
-	return \@ret;
+	$cb->( {success => $rows_updated, groups_changed => $rows_updated} );	
 }
 
 sub get_stats {
@@ -555,23 +472,20 @@ sub get_stats {
 			push @{ $stats->{query_stats}->{$col} }, $row->{$col};
 		}
 	}
-	
-	#$stats->{nodes} = $self->_get_nodes($user);
-	$stats->{nodes} = $self->_get_peers($user);
 		
 	my $intervals = 100;
 	if ($args->{intervals}){
 		$intervals = sprintf('%d', $args->{intervals});
 	}
 	
-	#TODO figure out why a cv out here per-node does not work
-	foreach my $node (keys %{ $stats->{nodes} }){
-		next unless $stats->{nodes}->{$node}->{dbh};
-		# Get load stats
-		my $load_stats = {};
-		
-		my $cv = AnyEvent->condvar;
-		$cv->begin;
+	
+	# Get load stats
+	my $load_stats = {};
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { $cb->($stats) });
+	$self->_get_db(sub {
+		my $db = shift;
 		foreach my $item (qw(load archive index)){
 			$load_stats->{$item} = {
 				data => {
@@ -587,22 +501,22 @@ sub get_stats {
 				'FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
 			
 			$cv->begin;
-			unless ($stats->{nodes}->{$node}->{dbh}){
-				$self->log->warn('no dbh for node ' . $node . ':' . Dumper($stats->{nodes}->{$node}->{dbh}));
+			unless ($db->{dbh}){
+				throw(500, 'no dbh:' . Dumper($db));
 			}
-			$self->log->trace('get stat ' . $item . ' for node ' . $node);
-			$stats->{nodes}->{$node}->{dbh}->query($query, $item, $args->{start}, $args->{end}, sub {
+			$self->log->trace('get stat ' . $item);
+			$db->{dbh}->query($query, $item, $args->{start}, $args->{end}, sub {
 				my ($dbh, $rows, $rv) = @_;
-				$self->log->trace('got stat ' . $item . ' for node ' . $node . ': ' . Dumper($rows));
+				$self->log->trace('got stat ' . $item . ': ' . Dumper($rows));
 				$load_stats->{$item}->{summary} = $rows->[0];
 				$cv->end;
 			
 				$query = 'SELECT UNIX_TIMESTAMP(timestamp) AS ts, timestamp, bytes, count FROM stats WHERE type=? AND timestamp BETWEEN ? AND ?';
 				$cv->begin;
-				$stats->{nodes}->{$node}->{dbh}->query($query, $item, $args->{start}, $args->{end}, sub {
+				$db->{dbh}->query($query, $item, $args->{start}, $args->{end}, sub {
 					my ($dbh, $rows, $rv) = @_;
 					unless ($intervals and $load_stats->{$item}->{summary} and $load_stats->{$item}->{summary}->{total_time}){
-						$self->log->error('no stat for node ' . $node . ' and stat ' . $item);
+						$self->log->error('no stat for stat ' . $item);
 						$cv->end;
 						return;
 					}
@@ -610,7 +524,7 @@ sub get_stats {
 					# arrange in the number of buckets requested
 					my $bucket_size = ($load_stats->{$item}->{summary}->{total_time} / $intervals);
 					unless ($bucket_size){
-						$self->log->error('no bucket size ' . $node . ' and stat ' . $item);
+						$self->log->error('no bucket size, stat ' . $item);
 						$cv->end;
 						return;
 					}
@@ -639,55 +553,52 @@ sub get_stats {
 				});
 			});
 		}
-		$cv->end;
-		$cv->recv;	
-		$stats->{nodes}->{$node} = $load_stats;
-	}
-	
-	$self->log->trace('received');
+			
+		# Combine the stats info for the nodes
+		my $combined = {};
+		#$self->log->debug('got stats: ' . Dumper($stats->{nodes}));
 		
-	# Combine the stats info for the nodes
-	my $combined = {};
-	#$self->log->debug('got stats: ' . Dumper($stats->{nodes}));
-	
-	foreach my $stat (qw(load index archive)){
-		$combined->{$stat} = { x => [], LogsPerSec => [], KBytesPerSec => [] };
-		foreach my $node (keys %{ $stats->{nodes} }){
-			if ($stats->{nodes}->{$node} and $stats->{nodes}->{$node}->{$stat}){ 
-				my $load_data = $stats->{nodes}->{$node}->{$stat}->{data};
-				next unless $load_data;
-				for (my $i = 0; $i < (scalar @{ $load_data->{x} }); $i++){
-					next unless $load_data->{x}->[$i];
-					unless ($combined->{$stat}->{x}->[$i]){
-						$combined->{$stat}->{x}->[$i] = $load_data->{x}->[$i];
+		foreach my $stat (qw(load index archive)){
+			$combined->{$stat} = { x => [], LogsPerSec => [], KBytesPerSec => [] };
+			foreach my $node (keys %{ $stats->{nodes} }){
+				if ($stats->{nodes}->{$node} and $stats->{nodes}->{$node}->{$stat}){ 
+					my $load_data = $stats->{nodes}->{$node}->{$stat}->{data};
+					next unless $load_data;
+					for (my $i = 0; $i < (scalar @{ $load_data->{x} }); $i++){
+						next unless $load_data->{x}->[$i];
+						unless ($combined->{$stat}->{x}->[$i]){
+							$combined->{$stat}->{x}->[$i] = $load_data->{x}->[$i];
+						}
+						$combined->{$stat}->{LogsPerSec}->[$i] += $load_data->{LogsPerSec}->[$i];
+						$combined->{$stat}->{KBytesPerSec}->[$i] += $load_data->{KBytesPerSec}->[$i];
 					}
-					$combined->{$stat}->{LogsPerSec}->[$i] += $load_data->{LogsPerSec}->[$i];
-					$combined->{$stat}->{KBytesPerSec}->[$i] += $load_data->{KBytesPerSec}->[$i];
-				}
-			}	
+				}	
+			}
 		}
-	}
-	$stats->{combined_load_stats} = $combined;
-	
-	my $node_info = $self->_get_node_info(1);
-	$stats->{start} = $node_info->{indexes_min} ? epoch2iso($node_info->{indexes_min}) : epoch2iso($node_info->{archive_min});
-	$stats->{start_int} = $node_info->{indexes_min} ? $node_info->{indexes_min} : $node_info->{archive_min};
-	$stats->{display_start_int} = $node_info->{indexes_min} ? $node_info->{indexes_min} : $node_info->{archive_min};
-	$stats->{archive_start} = epoch2iso($node_info->{archive_min});
-	$stats->{archive_start_int} = $node_info->{archive_min};
-	$stats->{archive_display_start_int} = $node_info->{archive_min};
-	$stats->{end} = $node_info->{indexes_max} ? epoch2iso($node_info->{indexes_max}) : epoch2iso($node_info->{archive_max});
-	$stats->{end_int} = $node_info->{indexes_max} ? $node_info->{indexes_max} : $node_info->{archive_max};
-	$stats->{archive_end} = epoch2iso($node_info->{archive_max});
-	$stats->{archive_end_int} = $node_info->{archive_max};
-	$stats->{totals} = $node_info->{totals};
+		$stats->{combined_load_stats} = $combined;
 		
-	$self->log->debug('got stats: ' . Dumper($stats));
-	return $stats;
+		$self->_get_info(1, sub {
+			my $info = shift;
+			$stats->{start} = $info->{indexes_min} ? epoch2iso($info->{indexes_min}) : epoch2iso($info->{archive_min});
+			$stats->{start_int} = $info->{indexes_min} ? $info->{indexes_min} : $info->{archive_min};
+			$stats->{display_start_int} = $info->{indexes_min} ? $info->{indexes_min} : $info->{archive_min};
+			$stats->{archive_start} = epoch2iso($info->{archive_min});
+			$stats->{archive_start_int} = $info->{archive_min};
+			$stats->{archive_display_start_int} = $info->{archive_min};
+			$stats->{end} = $info->{indexes_max} ? epoch2iso($info->{indexes_max}) : epoch2iso($info->{archive_max});
+			$stats->{end_int} = $info->{indexes_max} ? $info->{indexes_max} : $info->{archive_max};
+			$stats->{archive_end} = epoch2iso($info->{archive_max});
+			$stats->{archive_end_int} = $info->{archive_max};
+			$stats->{totals} = $info->{totals};
+				
+			$self->log->debug('got stats: ' . Dumper($stats));
+			$cv->end;
+		});
+	});
 }
 
 sub get_form_params {
-	my ( $self, $user) = @_;
+	my ( $self, $user, $cb) = @_;
 	
 	eval {	
 		my $node_info = $self->info();
@@ -772,7 +683,7 @@ sub get_form_params {
 		$self->log->error('Error getting form params: ' . $@);
 	}
 		
-	return $form_params;
+	$cb->($form_params);
 }
 
 sub _get_schedule_actions {
@@ -793,7 +704,7 @@ sub _get_schedule_actions {
 }
 
 sub get_scheduled_queries {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	if ($args and ref($args) ne 'HASH'){
 		$self->_error('Invalid args: ' . Dumper($args));
@@ -845,11 +756,11 @@ sub get_scheduled_queries {
 		'totalRecords' => $totalRecords,
 		'recordsReturned' => scalar @rows,
 	};
-	return $ret;
+	$cb->($ret);
 }
 
 sub get_all_scheduled_queries {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	if ($args and ref($args) ne 'HASH'){
 		$self->_error('Invalid args: ' . Dumper($args));
@@ -902,11 +813,11 @@ sub get_all_scheduled_queries {
 		'totalRecords' => $totalRecords,
 		'recordsReturned' => scalar @rows,
 	};
-	return $ret;
+	$cb->($ret);
 }
 
 sub set_preference {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	foreach my $item (qw(id type name value)){	
 		unless (defined $args->{$item}){
@@ -927,11 +838,11 @@ sub set_preference {
 	$query = 'SELECT * FROM preferences WHERE id=? AND uid=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{id}, $args->{uid});
-	return $sth->fetchrow_hashref;
+	$cb->($sth->fetchrow_hashref);
 }
 
 sub add_preference {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	$args->{uid} = sprintf('%d', $args->{user}->uid);
 	
@@ -946,11 +857,11 @@ sub add_preference {
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{uid});
 	
-	return $sth->fetchrow_hashref;
+	$cb->($sth->fetchrow_hashref);
 }
 
 sub delete_preference {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	$args->{uid} = sprintf('%d', $args->{user}->uid);
 	
@@ -961,11 +872,11 @@ sub delete_preference {
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{uid}, $args->{id});
 	
-	return { id => $args->{id} };
+	$cb->({ id => $args->{id} });
 }
 
 sub schedule_query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	foreach my $item (qw(qid days time_unit)){	
 		unless (defined $args->{$item}){
@@ -1039,15 +950,14 @@ sub schedule_query {
 		$schedule_query_params->{connector}, $schedule_query_params->{params}, $alert_threshold);
 	my $ok = $sth->rows;
 	
-	return $ok;
+	$cb->($ok);
 }
 
 sub delete_saved_results {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	$self->log->debug('args: ' . Dumper($args));
 	unless ($args->{qid}){
-		$self->_error('Invalid args, no qid: ' . Dumper($args));
-		return;
+		throw(400, 'Invalid args, no qid: ' . Dumper($args));
 	}
 	my ($query, $sth);
 	# Verify this query belongs to the user
@@ -1056,8 +966,7 @@ sub delete_saved_results {
 	$sth->execute($args->{qid});
 	my $row = $sth->fetchrow_hashref;
 	unless ($row){
-		$self->_error('Invalid args, no results found for qid: ' . Dumper($args));
-		return;
+		throw(400, 'Invalid args, no results found for qid: ' . Dumper($args));
 	}
 	unless ($row->{uid} eq $args->{user}->uid or $args->{user}->is_admin){
 		$self->_error('Unable to alter these saved results based on your authorization: ' . Dumper($args));
@@ -1067,15 +976,15 @@ sub delete_saved_results {
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid});
 	if ($sth->rows){
-		return {deleted => $sth->rows};
+		$cb->({deleted => $sth->rows});
 	}
 	else {
-		$self->_error('Query ID ' . $args->{qid} . ' not found!');
+		throw(404, 'Query ID ' . $args->{qid} . ' not found!');
 	}
 }
 
 sub delete_scheduled_query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	$self->log->debug('args: ' . Dumper($args));
 	unless ($args->{id}){
 		$self->_error('Invalid args, no id: ' . Dumper($args));
@@ -1086,19 +995,18 @@ sub delete_scheduled_query {
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{user}->uid, $args->{id});
 	if ($sth->rows){
-		return {deleted => $sth->rows}
+		$cb->({deleted => $sth->rows});
 	}
 	else {
-		$self->_error('Schedule ID ' . $args->{id} . ' not found!');
+		throw(404, 'Schedule ID ' . $args->{id} . ' not found!');
 	}
 }
 
 sub update_scheduled_query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	$self->log->debug('args: ' . Dumper($args));
 	unless ($args->{id}){
-		$self->_error('Invalid args, no id: ' . Dumper($args));
-		return;
+		throw(400, 'Invalid args, no id: ' . Dumper($args));
 	}
 	my $attr_map = {};
 	foreach my $item (qw(query frequency start end connector params enabled alert_threshold)){
@@ -1109,7 +1017,7 @@ sub update_scheduled_query {
 	foreach my $given_arg (keys %{ $args }){
 		next if $given_arg eq 'id' or $given_arg eq 'user';
 		unless ($attr_map->{$given_arg}){
-			$self->_error('Invalid arg: ' . $given_arg);
+			throw(400, 'Invalid arg: ' . $given_arg);
 			return;
 		}
 		
@@ -1131,15 +1039,16 @@ sub update_scheduled_query {
 		$new_args->{$given_arg} = $args->{$given_arg};
 	}
 	
-	return $new_args;
+	$cb->($new_args);
 }
 
 sub save_results {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	$self->log->debug(Dumper($args));
 	
 	if (defined $args->{qid}){ # came from another Perl program, not the web, so no need to de-JSON
-		return $self->_save_results($args);
+		$cb->($self->_save_results($args));
+		return;
 	}
 	
 	my $user = $args->{user};
@@ -1152,7 +1061,7 @@ sub save_results {
 		$args->{num_results} = $num_results if $num_results;
 	};
 	if ($@){
-		$self->_error($@);
+		throw(500, $@);
 		return;
 	}
 	unless ($args->{qid} and $args->{results} and ref($args->{results})){
@@ -1163,7 +1072,7 @@ sub save_results {
 	$self->log->debug('got results to save: ' . Dumper($args));
 	$args->{user} = $user;
 	
-	$self->_save_results($args);
+	$cb->($self->_save_results($args));
 }
 
 sub _save_results {
@@ -1206,7 +1115,7 @@ sub _save_results {
 }
 
 sub get_saved_searches {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	if ($args and ref($args) ne 'HASH'){
 		$self->_error('Invalid args: ' . Dumper($args));
@@ -1248,15 +1157,15 @@ sub get_saved_searches {
 		push @$saved_queries, $row;
 	}
 	$self->log->debug( "saved_queries: " . Dumper($saved_queries) );
-	return { 
+	$cb->({ 
 		totalRecords => $totalRecords,
 		recordsReturned => scalar @$saved_queries,
 		results => $saved_queries
-	};;
+	});
 }
 
 sub get_saved_results {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	if ($args and ref($args) ne 'HASH'){
 		$self->_error('Invalid args: ' . Dumper($args));
@@ -1296,7 +1205,7 @@ sub get_saved_results {
 	
 
 	$self->log->debug( "saved_results: " . Dumper($saved_results) );
-	return $saved_results;
+	$cb->($saved_results);
 }
 
 sub _get_saved_result {
@@ -1378,7 +1287,7 @@ sub _get_saved_results {
 }
 
 sub get_previous_queries {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my $offset = 0;
 	if ( $args->{startIndex} ){
@@ -1455,15 +1364,15 @@ sub get_previous_queries {
 			}
 		}
 	}
-	return { 
+	$cb->({ 
 		totalRecords => $totalRecords,
 		recordsReturned => scalar @$queries,
 		results => [ @{$queries} ] 
-	};
+	});
 }
 
 sub get_running_archive_query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	$query = 'SELECT qid, query FROM query_log WHERE uid=? AND archive=1 AND num_results=-1';
@@ -1472,86 +1381,43 @@ sub get_running_archive_query {
 	my $row = $sth->fetchrow_hashref;
 	if ($row){
 		my $query_params = $self->json->decode($row->{query});
-		 return { qid => $row->{qid}, query => $query_params->{query_string} };
+		 $cb->({ qid => $row->{qid}, query => $query_params->{query_string} });
 	}
 	else {
-		 return {qid => 0};
+		 $cb->({qid => 0});
 	}
 }
 
 sub query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
-	my $q;
-	if (ref($args) eq 'Query'){
-		# We were given a query object natively
-		$q = $args;
+	try {
+		my $ret;
+		my $cv = AnyEvent->condvar;
+		$cv->begin(sub { $cb->($ret) });
+		QueryParser->new(conf => $self->conf, log => $self->log, user => $self->user, %$args, on_connect => sub {
+			my $qp = shift;
+			my $q = $qp->parse();
+			$ret = $q;
+			
+			$self->_peer_query($q, sub {
+				
+				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+				
+				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+			
+				$cb->($q);
+			});
+		});
 	}
-	else {
-		unless ($args and ref($args) eq 'HASH'){
-			throw(400, 'Not given query args', { query => 1 });
-		}
-		# Get our node info
-		if (not $self->node_info->{updated_at} 
-			or ($self->conf->get('node_info_cache_timeout') and ((time() - $self->node_info->{updated_at}) >= $self->conf->get('node_info_cache_timeout')))
-			or ($args->{user} and not $args->{user}->is_admin)){
-			#$self->node_info($self->_get_node_info($args->{user}));
-			eval {	
-				my $node_info = $self->info();
-				$self->log->trace('got node_info: ' . Dumper($node_info));
-				$self->node_info($node_info);
-			};
-			if ($@){
-				$self->log->error($@);
-				throw(502, $@, { http => 1 });
-			}
-		}
-		else {
-			$self->log->trace('Using cached node_info, updated: ' . (time() - $self->node_info->{updated_at}));
-		}
-		if ($args->{q}){
-			if ($args->{qid}){
-				throw(501, 'Polling not implemented', { livetail => 1 }); # remove when livetail is put back in
-				$self->log->level($ERROR) unless $self->conf->get('debug_all');
-				$q = new Query(conf => $self->conf, user => $args->{user}, q => $args->{q}, node_info => $self->node_info, qid => $args->{qid});
-			}
-			else {
-				$q = new Query(conf => $self->conf, user => $args->{user}, q => $args->{q}, node_info => $self->node_info);
-			}
-		}
-		elsif ($args->{query_string}){
-			$q = new Query(
-				conf => $self->conf, 
-				user => $args->{user},
-				node_info => $self->node_info,
-				%$args,
-			);
-		}
-		else {
-			delete $args->{user};
-			$self->log->error('Bad args: ' . Dumper($args));
-			throw(400, 'Invalid query args, no q or query_string', { query_string => 1 });
-		}
-	}
-	
-	Log::Log4perl::MDC->put('qid', $q->qid);
-	
-	foreach my $warning (@{ $q->warnings }){
-		push @{ $self->warnings }, $warning;
-	}
-	
-	$q = $self->_peer_query($q, 'self');
-	
-	# Send to connectors
-	if ($q->has_connectors){
-		$self->send_to($q);
-	}
-	
-	return $q;
+	catch {
+		my $e = shift;
+		$cb->($e);
+	};
 }
 
 sub get_log_info {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	my $user = $args->{user};
 	
 	my $decode;
@@ -1559,8 +1425,7 @@ sub get_log_info {
 		$decode = $self->json->decode(decode_base64($args->{q}));
 	};
 	if ($@){
-		$self->_error('Invalid JSON args: ' . Dumper($args) . ': ' . $@);
-		return;
+		throw(400, 'Invalid JSON args: ' . Dumper($args) . ': ' . $@);
 	}
 	
 	unless ($decode and ref($decode) eq 'HASH'){
@@ -1582,7 +1447,7 @@ sub get_log_info {
 	# Get local in case the plugin needs that
 	my $remote_ip;
 	foreach my $key (qw(srcip dstip ip)){
-		if (exists $decode->{$key} and not $self->check_local($decode->{$key})){
+		if (exists $decode->{$key} and not $self->_check_local($decode->{$key})){
 			$remote_ip = $decode->{$key};
 			$self->log->debug('remote_ip: ' . $key . ' ' . $remote_ip);
 			last;
@@ -1614,19 +1479,17 @@ sub get_log_info {
 	};
 	if ($@){
 		my $e = $@;
-		$self->_error('Error creating plugin ' . $self->conf->get('plugins/' . $decode->{class}) . ': ' . $e);
-		return;
+		throw(500, 'Error creating plugin ' . $self->conf->get('plugins/' . $decode->{class}) . ': ' . $e);
 	}
 		
 	unless ($data){
-		$self->_error('Unable to find info from args: ' . Dumper($decode));
-		return;
+		throw(404, 'Unable to find info from args: ' . Dumper($decode));
 	}
 		
-	return $data;
+	$cb->($data);
 }
 
-sub check_local {
+sub _check_local {
 	my $self = shift;
 	my $ip = shift;
 	my $ip_int = unpack('N*', inet_aton($ip));
@@ -1665,7 +1528,7 @@ sub _verify_fields_exist {
 }
 
 sub get_bulk_file {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{qid} and $args->{name} ) {
 		my ($query, $sth);
@@ -1682,20 +1545,20 @@ sub get_bulk_file {
 		throw(404, 'File ' . $file . ' not found', { bulk_file => $file }) unless -f $file;
 		open($args->{bulk_file_handle}, $file) or throw(404, $!, { bulk_file => $file });
 		
-		return { 
+		$cb->({ 
 			ret => $args->{bulk_file_handle}, 
 			mime_type => 'text/plain',
 			filename => $args->{name},
-		};
+		});
 	}
 	else {
 		$self->log->error('Invalid args: ' . Dumper($args));
-		return 'Unable to build results object from args';
+		throw(400, 'Unable to build results object from args');
 	}
 }
 
 sub format_results {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my $ret = '';
 	if ($args->{format} eq 'tsv'){
@@ -1743,11 +1606,11 @@ sub format_results {
 		# default to JSON
 		$ret .= $self->json->encode($args->{results}) . "\n";
 	}
-	return $ret;
+	$cb->($ret);
 }
 
 sub export {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{plugin} ) {
 		my $decode;
@@ -1773,28 +1636,28 @@ sub export {
 			}
 		}
 		if ($results_obj){
-			return { 
+			$cb->({ 
 				ret => $results_obj->results(), 
 				mime_type => $results_obj->mime_type(), 
 				filename => CORE::time() . $results_obj->extension,
-			};
+			});
 		}
 		
 		$self->log->error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
 			join(', ', $self->export_plugins()) . ' ' . Dumper($args));
-		return 'Unable to build results object from args';
+			throw(400, 'Unable to build results object from args');
 	}
 	else {
 		$self->log->error('Invalid args: ' . Dumper($args));
-		return 'Unable to build results object from args';
+		throw(400, 'Unable to build results object from args');
 	}
 }
 
 sub send_to {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my $q;
-	if (ref($args) eq 'Query'){
+	if (ref($args) =~ /Query/){
 		$q = $args;
 	}
 	else {
@@ -1812,14 +1675,11 @@ sub send_to {
 			$q->results(new Results(results => ( ref($args->{results}) eq 'ARRAY' ? $args->{results} : $args->{results}->{results})));
 		}
 		else {
-			$self->_error('Invalid args, no Query, args->{query}');
-			return;
+			throw(400, 'Invalid args, no Query, args->{query}');
 		}
 	}
 		
-	#$self->log->debug('q: ' . Dumper($q));
-	
-	return unless $q->has_connectors;
+	$cb->() and return unless $q->has_connectors;
 
 	for (my $i = 0; $i < $q->num_connectors; $i++){
 		my $raw = $q->connector_idx($i);
