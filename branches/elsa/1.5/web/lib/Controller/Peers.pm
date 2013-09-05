@@ -101,34 +101,6 @@ sub local_query {
 	};
 }
 
-sub query {
-	my ($self, $args, $cb) = @_;
-	
-	try {
-		my $ret;
-		my $cv = AnyEvent->condvar;
-		$cv->begin(sub { $cb->($ret) });
-		QueryParser->new(conf => $self->conf, log => $self->log, %$args, on_connect => sub {
-			my $qp = shift;
-			my $q = $qp->parse();
-			$ret = $q;
-			
-			$self->_peer_query($q, sub {
-				
-				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
-				
-				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
-			
-				$cb->($q);
-			});
-		});
-	}
-	catch {
-		my $e = shift;
-		$cb->($e);
-	};
-}
-
 sub local_info {
 	my ($self, $args, $cb) = @_;
 	
