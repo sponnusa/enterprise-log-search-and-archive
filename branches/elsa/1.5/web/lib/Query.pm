@@ -23,6 +23,7 @@ use CHI;
 
 our $Default_limit = 100;
 our $Tokenizer_regex = '[^A-Za-z0-9\\-\\.\\@\\_]';
+our $Sql_tokenizer_regex = '[^-A-Za-z0-9\\.\\@\\_]';
 
 # Required
 has 'user' => (is => 'rw', isa => 'User', required => 1);
@@ -1039,6 +1040,40 @@ sub _search_field {
 	}
 		
 	return;
+}
+
+sub _term_to_sql_term {
+	my $self = shift;
+	my $term = shift;
+	my $field_name = shift;
+	
+	my $regex = $term;
+	return if $field_name and $field_name eq 'class'; # we dont' want to highlight class integers
+	if (my @m = $regex =~ /^\(+ (\@\w+)\ ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		if ($m[0] eq '@class'){
+			return; # we dont' want to search this
+		}
+		else {
+			my @ret = @m[1..$#m];# don't return the field name
+			foreach (@ret){
+				$_ = '(^|' . $Sql_tokenizer_regex . ')(' . $_ . ')(' . $Sql_tokenizer_regex . '|$)';
+			}
+			return $ret[0];
+		}
+	}
+	elsif (@m = $regex =~ /^\( ([^|]+)? (?:[\|\s]? ([^\)]+))* \)+$/x){
+		foreach (@m){
+			$_ = '(^|' . $Sql_tokenizer_regex . ')(' . $_ . ')(' . $Sql_tokenizer_regex . '|$)';
+		}
+		return $m[0];
+	}
+	$regex =~ s/^\s{2,}/\ /;
+	$regex =~ s/\s{2,}$/\ /;
+	$regex =~ s/\s/\./g;
+	$regex =~ s/\\{2,}/\\/g;
+	$regex =~ s/[^a-zA-Z0-9\.\_\-\@]//g;
+	$regex = '(^|' . $Sql_tokenizer_regex . ')(' . $regex . ')(' . $Sql_tokenizer_regex . '|$)';
+	return $regex;
 }
 
 1;

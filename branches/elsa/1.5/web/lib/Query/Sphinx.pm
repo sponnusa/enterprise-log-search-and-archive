@@ -707,16 +707,16 @@ sub _get_index_groups {
 				if (/([^\.]+)\.\.([^\.]+)/){
 					my ($start, $end) = ($1, $2);
 					if ($start =~ /U\+(..)/){
-						$start = hex($1);
+						$start = hex($start);
 					}
 					else {
-						$start = ord($1);
+						$start = ord($start);
 					}
 					if ($end =~ /U\+(..)/){
-						$end = hex($2);
+						$end = hex($end);
 					}
 					else {
-						$end = ord($2);
+						$end = ord($end);
 					}
 					for ($start..$end){
 						$chars_indexed{ chr($_) } = 1;
