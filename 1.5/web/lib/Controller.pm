@@ -600,90 +600,77 @@ sub get_stats {
 sub get_form_params {
 	my ( $self, $user, $cb) = @_;
 	
-	eval {	
-		my $node_info = $self->info();
-		#$self->log->trace('got node_info: ' . Dumper($node_info));
-		$self->node_info($node_info);
-	};
-	if ($@){
-		$self->add_warning(500, $@, { method => 'info' });
-		$self->log->error($@);
-		return;
-	}
-	
-#	eval {	
-#		$self->node_info($self->_get_node_info($user));
-#	};
-#	if ($@){
-#		$self->add_warning($@);
-#		$self->log->error($@);
-#		return;
-#	}
+	$user ||= $self->user;
 	
 	my $form_params;
 	
-	eval {			
-		$form_params = {
-			start => $self->node_info->{indexes_min} ? epoch2iso($self->node_info->{indexes_min}) : epoch2iso($self->node_info->{archive_min}),
-			start_int => $self->node_info->{indexes_min} ? $self->node_info->{indexes_min} : $self->node_info->{archive_min},
-			display_start_int => $self->node_info->{indexes_min} ? $self->node_info->{indexes_min} : $self->node_info->{archive_min},
-			archive_start => epoch2iso($self->node_info->{archive_min}),
-			archive_start_int => $self->node_info->{archive_min},
-			archive_display_start_int => $self->node_info->{archive_min},
-			end => $self->node_info->{indexes_max} ? epoch2iso($self->node_info->{indexes_max}) : epoch2iso($self->node_info->{archive_max}),
-			end_int => $self->node_info->{indexes_max} ? $self->node_info->{indexes_max} : $self->node_info->{archive_max},
-			archive_end => epoch2iso($self->node_info->{archive_max}),
-			archive_end_int => $self->node_info->{archive_max},
-			classes => $self->node_info->{classes},
-			classes_by_id => $self->node_info->{classes_by_id},
-			fields => $self->node_info->{fields},
-			nodes => [ keys %{ $self->node_info->{nodes} } ],
-			groups => $user->groups,
-			additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
-			totals => $self->node_info->{totals},
-			preferences => $user->preferences,
-			version => $self->node_info->{version},
-		};
-		
-		# You can change the default start time displayed to web users by changing this config setting
-		if ($self->conf->get('default_start_time_offset')){
-			$form_params->{display_start_int} = ($form_params->{end_int} - (86400 * $self->conf->get('default_start_time_offset')));
-		}
-		
-		
-		if ($user->username ne 'system'){
-			# this is for a user, restrict what gets sent back
-			unless ($user->permissions->{class_id}->{0}){
-				foreach my $class_id (keys %{ $form_params->{classes} }){
-					unless ($user->permissions->{class_id}->{$class_id}){
-						delete $form_params->{classes}->{$class_id};
-					}
-				}
+	
+	try {
+		$self->_get_info(sub {
+			$self->meta_info(shift);
+			$form_params = {
+				start => $self->meta_info->{indexes_min} ? epoch2iso($self->meta_info->{indexes_min}) : epoch2iso($self->meta_info->{archive_min}),
+				start_int => $self->meta_info->{indexes_min} ? $self->meta_info->{indexes_min} : $self->meta_info->{archive_min},
+				display_start_int => $self->meta_info->{indexes_min} ? $self->meta_info->{indexes_min} : $self->meta_info->{archive_min},
+				archive_start => epoch2iso($self->meta_info->{archive_min}),
+				archive_start_int => $self->meta_info->{archive_min},
+				archive_display_start_int => $self->meta_info->{archive_min},
+				end => $self->meta_info->{indexes_max} ? epoch2iso($self->meta_info->{indexes_max}) : epoch2iso($self->meta_info->{archive_max}),
+				end_int => $self->meta_info->{indexes_max} ? $self->meta_info->{indexes_max} : $self->meta_info->{archive_max},
+				archive_end => epoch2iso($self->meta_info->{archive_max}),
+				archive_end_int => $self->meta_info->{archive_max},
+				classes => $self->meta_info->{classes},
+				classes_by_id => $self->meta_info->{classes_by_id},
+				fields => $self->meta_info->{fields},
+				nodes => [ keys %{ $self->meta_info->{nodes} } ],
+				groups => $user->groups,
+				additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
+				totals => $self->meta_info->{totals},
+				preferences => $user->preferences,
+				version => $self->meta_info->{version},
+			};
 			
-				my $possible_fields = [ @{ $form_params->{fields} } ];
-				$form_params->{fields} = [];
-				for (my $i = 0; $i < scalar @$possible_fields; $i++){
-					my $field_hash = $possible_fields->[$i];
-					my $class_id = $field_hash->{class_id};
-					if ($user->permissions->{class_id}->{$class_id}){
-						push @{ $form_params->{fields} }, $field_hash;
+			# You can change the default start time displayed to web users by changing this config setting
+			if ($self->conf->get('default_start_time_offset')){
+				$form_params->{display_start_int} = ($form_params->{end_int} - (86400 * $self->conf->get('default_start_time_offset')));
+			}
+			
+			
+			if ($user->username ne 'system'){
+				# this is for a user, restrict what gets sent back
+				unless ($user->permissions->{class_id}->{0}){
+					foreach my $class_id (keys %{ $form_params->{classes} }){
+						unless ($user->permissions->{class_id}->{$class_id}){
+							delete $form_params->{classes}->{$class_id};
+						}
+					}
+				
+					my $possible_fields = [ @{ $form_params->{fields} } ];
+					$form_params->{fields} = [];
+					for (my $i = 0; $i < scalar @$possible_fields; $i++){
+						my $field_hash = $possible_fields->[$i];
+						my $class_id = $field_hash->{class_id};
+						if ($user->permissions->{class_id}->{$class_id}){
+							push @{ $form_params->{fields} }, $field_hash;
+						}
 					}
 				}
 			}
-		}
-		
-		# Tack on the "ALL" and "NONE" special types
-		unshift @{$form_params->{fields}}, 
-			{'value' => 'ALL', 'text' => 'ALL', 'class_id' => 0 }, 
-			{'value' => 'NONE', 'text' => 'NONE', 'class_id' => 1 };
-		
-		$form_params->{schedule_actions} = $self->_get_schedule_actions($user);
-	};
-	if ($@){
-		$self->log->error('Error getting form params: ' . $@);
+			
+			# Tack on the "ALL" and "NONE" special types
+			unshift @{$form_params->{fields}}, 
+				{'value' => 'ALL', 'text' => 'ALL', 'class_id' => 0 }, 
+				{'value' => 'NONE', 'text' => 'NONE', 'class_id' => 1 };
+			
+			$form_params->{schedule_actions} = $self->_get_schedule_actions($user);	
+			$cb->($form_params);
+		});
 	}
-		
-	$cb->($form_params);
+	catch {
+		my $e = shift;
+		$self->log->error($e);
+		throw(500, 'Error getting form params');
+	};
 }
 
 sub _get_schedule_actions {
@@ -1405,8 +1392,15 @@ sub query {
 				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
 				
 				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
-			
-				$cb->($q);
+				
+				if ($q->has_connectors){
+					$self->send_to($q, sub { 
+						$cb->($q);
+					});
+				}
+				else {
+					$cb->($q);
+				}
 			});
 		});
 	}
@@ -1656,30 +1650,34 @@ sub export {
 sub send_to {
 	my ($self, $args, $cb) = @_;
 	
-	my $q;
 	if (ref($args) =~ /Query/){
-		$q = $args;
+		my $q = $args;
+		$cb->() and return unless $q->has_connectors;
+		$self->_send_to_($q, $cb);
 	}
 	else {
-		# Get our node info
-		if (not $self->node_info->{updated_at} 
-			or (time() - $self->node_info->{updated_at} >= $self->conf->get('node_info_cache_timeout'))
-			or not $args->{user}->is_admin){
-			$self->node_info($self->_get_node_info());
-		}
 		if($args->{query}){
 			$self->log->debug('args: ' . Dumper($args));
-			$q = new Query(conf => $self->conf, user => $args->{user}, query_string => $args->{query}->{query_string}, 
-				node_info => $self->node_info, connectors => $args->{connectors}, 
-				meta_params => $args->{query}->{query_meta_params}, qid => $args->{qid} ? $args->{qid} : 0);
-			$q->results(new Results(results => ( ref($args->{results}) eq 'ARRAY' ? $args->{results} : $args->{results}->{results})));
+			QueryParser->new(conf => $self->conf, user => $args->{user}, query_string => $args->{query}->{query_string}, 
+				connectors => $args->{connectors}, meta_params => $args->{query}->{query_meta_params}, 
+				qid => $args->{qid} ? $args->{qid} : 0, on_connect => sub {
+					my $qp = shift;
+					my $q = $qp->parse();
+					$cb->() and return unless $q->has_connectors;
+					$self->_send_to_($q, $cb);
+				});
+			
 		}
 		else {
-			throw(400, 'Invalid args, no Query, args->{query}');
+			throw(400, 'Invalid args, no Query');
 		}
 	}
-		
-	$cb->() and return unless $q->has_connectors;
+}
+
+sub _send_to {		
+	my $self = shift;
+	my $q = shift;
+	my $cb = shift;
 
 	for (my $i = 0; $i < $q->num_connectors; $i++){
 		my $raw = $q->connector_idx($i);
@@ -1775,12 +1773,13 @@ sub send_to {
 		unless ($num_found){
 			$self->log->error("failed to find connectors " . Dumper($q->connectors) . ', only have connectors ' .
 				join(', ', $self->connector_plugins()));
-			return 0;
+			$cb->(0);
+			return;
 		}
 	}
 	#$self->log->debug('$q->results->all_results: ' . Dumper($q->results->all_results));
 	
-	return [ $q->results->all_results ];
+	$cb->([ $q->results->all_results ]);
 }
 
 sub _check_foreign_queries {
@@ -1813,202 +1812,10 @@ sub _check_foreign_queries {
 	}
 }
 
-sub run_schedule {
-	my ($self, $args) = @_;
-	
-	unless ($args->{user} and $args->{user}->username eq 'system'){
-		throw(403, 'Only system can run the schedule', { system => 1 });
-	}
-	
-	my ($query, $sth);
-	
-	# Find the last run time from the bookmark table
-	$query = 'SELECT UNIX_TIMESTAMP(last_run) FROM schedule_bookmark';
-	$sth = $self->db->prepare($query);
-	$sth->execute();
-	my $row = $sth->fetchrow_arrayref;
-	my $last_run_bookmark = $self->conf->get('schedule_interval'); # init to interval here so we don't underflow if 0
-	if ($row){
-		$last_run_bookmark = $row->[0];
-	}
-	
-	my $form_params = $self->get_form_params($args->{user});
-	
-	# Expire schedule entries
-	$query = 'SELECT id, query, username FROM query_schedule JOIN users ON (query_schedule.uid=users.uid) WHERE end < UNIX_TIMESTAMP() AND enabled=1';
-	$sth = $self->db->prepare($query);
-	$sth->execute();
-	my @ids;
-	my $counter = 0;
-	while (my $row = $sth->fetchrow_hashref){
-		push @ids, $row->{id};
-		my $user = $self->get_user($row->{username});
-		my $decode = $self->json->decode($row->{query});
-		
-		my $headers = {
-			To => $user->email,
-			From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
-			Subject => 'ELSA alert has expired for query ' . $decode->{query_string},
-		};
-		my $body = 'The alert set for query ' . $decode->{query_string} . ' has expired and has been disabled.  ' .
-			'If you wish to continue receiving this query, please log into ELSA, enable the query, and set a new expiration date.';
-		
-		$self->send_email({headers => $headers, body => $body, user => 'system'});
-	}
-	if (scalar @ids){
-		$self->log->info('Expiring query schedule for ids ' . join(',', @ids));
-		$query = 'UPDATE query_schedule SET enabled=0 WHERE id IN (' . join(',', @ids) . ')';
-		$sth = $self->db->prepare($query);
-		$sth->execute;
-	}
-	
-	# Run schedule	
-	$query = 'SELECT t1.id AS query_schedule_id, username, t1.uid, query, frequency, start, end, connector, params' . "\n" .
-		'FROM query_schedule t1' . "\n" .
-		'JOIN users ON (t1.uid=users.uid)' . "\n" .
-		'WHERE start <= ? AND end >= ? AND enabled=1' . "\n" .
-		'AND UNIX_TIMESTAMP() - UNIX_TIMESTAMP(last_alert) > alert_threshold';  # we won't even run queries we know we won't alert on
-	
-	$sth = $self->db->prepare($query);
-	
-	my $cur_time = $form_params->{end_int};
-	$sth->execute($cur_time, $cur_time);
-	
-	my $user_info_cache = {};
-	
-	while (my $row = $sth->fetchrow_hashref){
-		my @freq_arr = split(':', $row->{frequency});
-		my $last_run;
-		my $farthest_back_to_check = $cur_time - $self->conf->get('schedule_interval');
-		my $how_far_back = $self->conf->get('schedule_interval');
-		while (not $last_run and $farthest_back_to_check > ($cur_time - (86400 * 366 * 2))){ # sanity check
-			$self->log->debug('$farthest_back_to_check:' . $farthest_back_to_check);
-			my @prev_dates = ParseRecur($row->{frequency}, 
-				ParseDate(scalar localtime($cur_time)), 
-				ParseDate(scalar localtime($farthest_back_to_check)),
-				ParseDate(scalar localtime($cur_time - 1))
-			);
-			if (scalar @prev_dates){
-				$self->log->trace('prev: ' . Dumper(\@prev_dates));
-				$last_run = UnixDate($prev_dates[$#prev_dates], '%s');
-				$self->log->trace('last_run:' . $prev_dates[$#prev_dates]);
-			}
-			else {
-				# Keep doubling the distance we'll go back to find the last date
-				$farthest_back_to_check -= $how_far_back;
-				$self->log->trace('how_far_back: ' . $how_far_back);
-				$how_far_back *= 2;
-			}
-		}
-		unless ($last_run){
-			$self->log->error('Could not find the last time we ran, aborting');
-			next;
-		}
-		# If the bookmark is earlier, use that because we could've missed runs between them
-		if ($last_run_bookmark < $last_run){
-			$self->log->info('Setting last_run to ' . $last_run_bookmark . ' because it is before ' . $last_run);
-			$last_run = $last_run_bookmark;
-		}
-		my @dates = ParseRecur($row->{frequency}, 
-			ParseDate("jan 1"), # base time to use for the recurrence period 
-			ParseDate(scalar localtime($cur_time)),
-			ParseDate(scalar localtime($cur_time + $self->conf->get('schedule_interval')))
-		);
-		$self->log->trace('dates: ' . Dumper(\@dates) . ' row: ' . Dumper($row));
-		if (scalar @dates){
-			# Adjust the query time to avoid time that is potentially unindexed by offsetting by the schedule interval
-			my $query_params = $self->json->decode($row->{query});
-			$query_params->{meta_params} = delete $query_params->{query_meta_params};
-			$query_params->{meta_params}->{start} = ($last_run - $self->conf->get('schedule_interval'));
-			$query_params->{meta_params}->{end} = ($cur_time - $self->conf->get('schedule_interval'));
-			$query_params->{schedule_id} = $row->{query_schedule_id};
-			$query_params->{connectors} = [ $row->{connector} ];
-			$query_params->{system} = 1; # since the user did not init this, it's a system query
-			$self->log->debug('query_params: ' . Dumper($query_params));
-			
-			if (!$user_info_cache->{ $row->{uid} }){
-				$user_info_cache->{ $row->{uid} } = $self->get_user($row->{username});
-				#$self->log->trace('Got user info: ' . Dumper($user_info_cache->{ $row->{uid} }));
-			}
-			else {
-				$self->log->trace('Using existing user info');
-			}
-			$query_params->{user} = $user_info_cache->{ $row->{uid} };
-			
-			# Perform query
-			eval {
-				$self->query($query_params);
-			};
-			if ($@){
-				$self->log->error('Problem running query: ' . Dumper($query_params) . "\n" . $@);
-			}
-			$counter++;
-		}
-	}
-	
-	# Verify we've received logs from hosts specified in the config file
-	if ($self->conf->get('host_checks')){
-		my $admin_email = $self->conf->get('admin_email_address');
-		if ($admin_email){
-			my %intervals;
-			foreach my $host (keys %{ $self->conf->get('host_checks') }){
-				my $interval = $self->conf->get('host_checks')->{$host};
-				$intervals{$interval} ||= [];
-				push @{ $intervals{$interval} }, $host;
-			}
-			
-			# For each unique interval, run all the hosts in a batch via groupby:host
-			foreach my $interval (keys %intervals){
-				my $query_params = { 
-					query_string => join(' ', map { 'host:' . $_ } @{ $intervals{$interval} }) . ' groupby:host', 
-					meta_params => { 
-						start => (time() - $interval - 60), # 60 second grace period for batch load
-						limit => scalar @{ $intervals{$interval} },
-					},
-					system => 1,
-					user => $args->{user},
-				};
-				$self->log->debug('query_params: ' . Dumper($query_params));
-				my $result = $self->query($query_params);
-				my %not_found = map { $_ => 1 } @{ $intervals{$interval} };
-				foreach my $row (@{ $result->results->all_results }){
-					$self->log->trace('Found needed results for ' . $row->{_groupby} . ' in interval ' . $interval);
-					delete $not_found{ $row->{_groupby} };
-				}
-				foreach my $host (keys %not_found){
-					my $errmsg = 'Did not find entries for host ' . $host . ' within interval ' . $interval;
-					$self->log->error($errmsg);
-					my $headers = {
-						To => $self->conf->get('admin_email_address'),
-						From => $self->conf->get('email/display_address') ? $self->conf->get('email/display_address') : 'system',
-						Subject => sprintf('Host inactivity alert: %s', $host),
-					};
-					$self->send_email({ headers => $headers, body => $errmsg, user => 'system' });
-				}
-			}
-		}
-		else {
-			$self->log->error('Configured to do host checks via host_checks but no admin_email_address found in config file');
-		}	
-	}
-	
-	# Update our bookmark to the current run
-	$query = 'UPDATE schedule_bookmark SET last_run=FROM_UNIXTIME(?)';
-	$sth = $self->db->prepare($query);
-	$sth->execute($cur_time);
-	unless ($sth->rows){
-		$query = 'INSERT INTO schedule_bookmark (last_run) VALUES (FROM_UNIXTIME(?))';
-		$sth = $self->db->prepare($query);
-		$sth->execute($cur_time);
-	}
-	
-	$self->expire_livetails($args);
-	
-	return $counter;
-}
+
 
 sub send_email {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	unless ($args->{user} eq 'system'){
 		throw(403, 'Insufficient permissions', { admin => 1 });
@@ -2033,11 +1840,11 @@ sub send_email {
 	}
 	if ($ret){
 		$self->log->debug('done sending email');
-		return 1;
+		$cb->(1);
 	}
 	else {
 		$self->log->error('Unable to send email: ' . $email->as_string());
-		return 0;
+		$cb->(0);
 	}
 }
 
@@ -2066,100 +1873,21 @@ sub _batch_notify {
 				$q->qid, $q->hash);
 	}
 	
-	$self->send_email({ headers => $headers, body => $body, user => 'system'});
+	$self->send_email({ headers => $headers, body => $body, user => 'system'}, sub {});
 }
 
-sub run_archive_queries {
-	my ($self, $args) = @_;
-	
-	unless ($args->{user} and $args->{user}->username eq 'system'){
-		throw(403, 'Only system can run the schedule', { system => 1 });
-	}
-	
-	$self->node_info($self->_get_node_info());
-	
-	my ($query, $sth);
-	$query = 'SELECT qid, username, query FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) WHERE ISNULL(num_results) AND archive=1';
-	$sth = $self->db->prepare($query);
-	$sth->execute;
-	
-	while (my $row = $sth->fetchrow_hashref){
-		my $user = $self->get_user($row->{username});
-		
-#		# Get our node info
-#		if (not $self->node_info->{updated_at} 
-#			or ($self->conf->get('node_info_cache_timeout') 
-#				and (time() - $self->node_info->{updated_at} >= $self->conf->get('node_info_cache_timeout')))
-#			or not $user->is_admin){
-#			$self->node_info($self->_get_node_info());
-#		}
-		
-		my $q = new Query(conf => $self->conf, user => $user, q => $row->{query}, qid => $row->{qid}, 
-			node_info => $self->node_info);
-		$q->mark_batch_start();
-		
-		
-		if ($q->archive){
-			$self->_archive_query($q);
-			next if $q->cancelled;
-		}
-		else {
-			$q->analytics(1);
-			$self->_unlimited_sphinx_query($q);
-			next if $q->cancelled;
-		}
-		
-		my $total_time = int(
-			(Time::HiRes::time() - $q->start_time) * 1000
-		);
-		
-		# Apply transforms
-		if ($q->has_transforms){	
-			$self->transform($q);
-		}
-		
-		# Send to connectors
-		if ($q->has_connectors){
-			$self->send_to($q);
-		}
-		
-		# Record the results
-		$self->log->trace('got archive results: ' . Dumper($q->results) . ' ' . $q->results->total_records);
-		my $sth2 = $self->db->prepare('UPDATE query_log SET num_results=?, milliseconds=? WHERE qid=?');
-		$sth2->execute($q->results->records_returned, (1000 * $total_time), $q->qid);
-		$sth2->finish;
-		
-		my $meta = {};
-		if ($q->has_groupby){
-			$meta->{groupby} = $q->groupby;
-		}
-		if ($q->analytics){
-			$meta->{analytics} = 1;
-		}
-		if ($q->archive){
-			$meta->{archive} = 1;
-		}
-		
-		$q->comments(($q->archive ? 'archive' : 'analytics') . ' query');
-		$self->_save_results($q->TO_JSON);
-		$self->_batch_notify($q);
-	}
-	
-	$self->_check_foreign_queries();
-}	
-
 sub cancel_query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	$query = 'UPDATE query_log SET num_results=-2 WHERE qid=? AND uid=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{qid}, $args->{user}->uid);
-	return { ok => 1 };
+	$cb->({ ok => 1 });
 }
 
 sub preference {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	throw(400, 'No user', { user => 1 }) unless $args->{user};
 	
@@ -2197,7 +1925,7 @@ sub preference {
 		throw(404, 'Invalid action', { action => $args->{action} });
 	}
 	
-	return { ok => $sth->rows };
+	$cb->({ ok => $sth->rows });
 }
 
 __PACKAGE__->meta->make_immutable;

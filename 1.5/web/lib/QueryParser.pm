@@ -18,7 +18,7 @@ use Try::Tiny;
 use Ouch qw(:trytiny);;
 use String::CRC32;
 
-our $QueryClasses = [qw(Query::Sphinx Query::External Query::SQL)];
+our $QueryClasses = [qw(Query::Sphinx Query::External Query::SQL Query::Import)];
 our $Query_time_batch_threshold = 120;
 our $Max_limit = 10000;
 our $Max_query_terms = 128;
@@ -29,6 +29,7 @@ use User;
 use Query::Sphinx;
 use Query::External;
 use Query::SQL;
+use Query::Import;
 use SyncMysql;
 
 has 'user' => (is => 'rw', isa => 'User', required => 1);
@@ -429,7 +430,7 @@ sub _parse_query {
 	
 	$self->log->debug('count_terms: ' . $self->index_term_count());
 	
-	if ($self->_has_positive_terms){
+	if ($self->_has_positive_terms or $self->has_import_search_terms){
 		# ok
 	}
 	else {
