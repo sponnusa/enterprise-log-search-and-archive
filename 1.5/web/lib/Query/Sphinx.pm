@@ -707,13 +707,13 @@ sub _get_index_groups {
 				if (/([^\.]+)\.\.([^\.]+)/){
 					my ($start, $end) = ($1, $2);
 					if ($start =~ /U\+(..)/){
-						$start = hex($start);
+						$start = hex($1);
 					}
 					else {
 						$start = ord($start);
 					}
 					if ($end =~ /U\+(..)/){
-						$end = hex($end);
+						$end = hex($1);
 					}
 					else {
 						$end = ord($end);
