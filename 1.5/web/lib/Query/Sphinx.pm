@@ -303,7 +303,18 @@ sub _get_class_ids {
 	
 	# Find the unique fields requested
 	my %fields;
-	if ($or_key){
+	if ($or_key and $self->terms->{or}->{$or_key}->{field} eq 'class'){
+		if ($self->meta_info->{classes}->{ $self->terms->{or}->{$or_key}->{value} }){
+			my $class_name = $self->terms->{or}->{$or_key}->{value};
+			my $class_id = $self->meta_info->{classes}->{ $self->terms->{or}->{$or_key}->{value} };
+			$self->log->debug('including OR class: ' . $class_id);
+			$classes{ $class_id } = $class_name;
+		}
+		else {
+			throw(400, 'Invalid class ' . $self->terms->{or}->{$or_key}->{value}, { term => $self->terms->{or}->{$or_key}->{value} });
+		}
+	}
+	elsif ($or_key){
 		$self->terms->{or}->{$or_key}->{field} and $fields{ $self->terms->{or}->{$or_key}->{field} } = $self->terms->{or}->{$or_key}->{value};
 	}
 	foreach my $boolean (qw(and not)){
@@ -354,6 +365,10 @@ sub _get_class_ids {
 			%classes = ();
 			@classes{ @intersection } = @{ $field_classes }{ @intersection };
 			$self->log->debug('classes after intersection of field ' . $field . ': ' . Dumper(\%classes));
+			# if there is no intersection return none
+			if (not scalar keys %classes){
+				return \%classes;
+			}
 		}
 		else {
 			%classes = %$field_classes;
@@ -515,8 +530,10 @@ sub _get_select_clause {
 			values => [],
 		}
 	}
+	# Find our _orderby
+	my $attr = $self->orderby ? $self->_attr($self->orderby, $class_id) : 'timestamp';
 	return {
-		clause => 'SELECT *, ' . $attr_string . ' AS attr_tests',
+		clause => 'SELECT *, ' . $attr . ' AS _orderby, ' . $attr_string . ' AS attr_tests',
 		values => [],
 	}
 }
@@ -660,9 +677,11 @@ sub _get_search_terms {
 		push @{ $ret->{searches} }, { field => '', value => $biggest, boolean => 'and' };
 	}
 	
-	unless (scalar @{ $ret->{searches} }){
+	# Final check to be sure we have positive search terms
+	unless (scalar grep { $_->{boolean} eq 'and' } @{ $ret->{searches} }){
 		throw(302, 'No search terms after checking fields and stopwords', { location => 'Query::SQL', directives => { use_sql_regex => 1 } });
 	}
+	
 	
 	return $ret;
 }

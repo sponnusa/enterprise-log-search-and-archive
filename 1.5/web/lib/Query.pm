@@ -263,44 +263,13 @@ sub set_directive {
 		$self->offset(sprintf("%d", $value));
 		throw(400, 'Invalid offset', { term => 'offset' }) unless $self->offset > -1;
 	}
-	elsif ($directive eq 'class'){
-		# special case for class
-		my $class;
-		$self->log->trace('classes: ' . Dumper($self->meta_info->{classes}));
-		if ($self->meta_info->{classes}->{ uc($value) }){
-			$class = lc($self->meta_info->{classes}->{ uc($value) });
-		}
-		elsif (uc($value) eq 'ANY'){
-			my @classes;
-			foreach my $class_name (keys %{ $self->meta_info->{classes} }){
-				next if $class_name eq 'ANY';
-				push @classes, { field => 'class', value => $class_name, op => $op };
-			}
-			$self->_parse_query_term({ '' => \@classes }, $op);
-		}
-		else {
-			throw(400, "Unknown class $value", { term => $value });
-		}
-		
-		if ($op eq '-'){
-			# We're explicitly removing this class
-			$self->classes->{excluded}->{ $class } = 1;
-		}
-		else {
-			$self->classes->{given}->{ $class } = 1;
-		}
-		$self->log->debug("Set operator $op for given class " . $value);		
-	}
 	elsif ($directive eq 'groupby'){
 		my $value = lc($value);
 		#TODO implement groupby import with new import system
 		my $field_infos = $self->get_field($value);
 		$self->log->trace('$field_infos ' . Dumper($field_infos));
 		if ($field_infos or $value eq 'node'){
-			$self->add_groupby(lc($value));
-			foreach my $class_id (keys %$field_infos){
-				$self->classes->{groupby}->{$class_id} = 1;
-			}
+			$self->groupby(lc($value));
 			$self->log->trace("Set groupby " . Dumper($self->groupby));
 		}
 	}
@@ -310,9 +279,6 @@ sub set_directive {
 		$self->log->trace('$field_infos ' . Dumper($field_infos));
 		if ($field_infos or $value eq 'node'){
 			$self->orderby($value);
-			foreach my $class_id (keys %$field_infos){
-				$self->classes->{groupby}->{$class_id} = 1;
-			}
 			$self->log->trace("Set orderby " . Dumper($self->orderby));
 		}
 	}

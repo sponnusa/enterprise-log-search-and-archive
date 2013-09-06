@@ -1382,7 +1382,7 @@ sub query {
 		my $ret;
 		my $cv = AnyEvent->condvar;
 		$cv->begin(sub { $cb->($ret) });
-		QueryParser->new(conf => $self->conf, log => $self->log, user => $self->user, %$args, on_connect => sub {
+		QueryParser->new(conf => $self->conf, log => $self->log, %$args, on_connect => sub {
 			my $qp = shift;
 			my $q = $qp->parse();
 			$ret = $q;

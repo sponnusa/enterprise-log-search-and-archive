@@ -800,10 +800,12 @@ sub _check_auth_header {
 #}
 
 sub catch_any {
-	return $_ if blessed($_);
-	$_ =~ /(.+) at \S+ line \d+\.$/;
-	my $e = new Ouch(500, $1, {});
-	$e->shortmess($_);
+	my $self = shift;
+	my $e = shift;
+	return $e if blessed($e);
+	$e =~ /(.+) at \S+ line \d+\.$/;
+	$e = new Ouch(500, $1, {});
+	$e->shortmess($1);
 	return $e;
 }
 
