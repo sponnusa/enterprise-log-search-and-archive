@@ -1247,7 +1247,7 @@ sub _filter_stopwords {
 	if (scalar keys %{ $self->post_filters->{and} }){
 		my $to_find = scalar keys %{ $self->post_filters->{and} };
 		STOPWORD_LOOP: foreach my $stopword (keys %{ $self->post_filters->{and} }){
-			my $regex = $self->parser->term_to_regex($stopword);
+			my $regex = $self->term_to_regex($stopword);
 			my $stopword_field = $self->post_filters->{and}->{$stopword};
 			foreach my $field (keys %$record){
 				if ((($stopword_field and $field eq $stopword_field) or not $stopword_field) and $record->{$field} =~ qr/$regex/i){
@@ -1262,7 +1262,7 @@ sub _filter_stopwords {
 	
 	if (scalar keys %{ $self->post_filters->{not} }){
 		foreach my $stopword (keys %{ $self->post_filters->{not} }){
-			my $regex = $self->parser->term_to_regex($stopword);
+			my $regex = $self->term_to_regex($stopword);
 			foreach my $field (keys %$record){
 				if ($record->{$field} =~ qr/$regex/i){
 					$self->log->debug('Found not stopword: ' . $stopword . ' for term ' . $record->{$field} . ' and field ' . $field);

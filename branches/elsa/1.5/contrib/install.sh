@@ -572,11 +572,13 @@ set_node_mysql(){
 	# Set SELinux settings for the auxilliary MySQL dir if necessary
 	if [ -f /usr/sbin/selinuxenabled ]; then
 		if [ -f /usr/bin/chcon ]; then
-			chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
+			chcon --reference=/var/lib/mysql -R "$DATA_DIR/elsa/mysql"
 		else
 			echo "WARNING: chcon SELinux utility not found!"
 		fi
 	fi
+	
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e "INSTALL PLUGIN archive SONAME 'ha_archive.so'";
 	
 	mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create $MYSQL_NODE_DB && mysqladmin -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH create syslog_data && 
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH -e 'GRANT ALL ON syslog.* TO "'$MYSQL_USER'"@"localhost" IDENTIFIED BY "'$MYSQL_PASS'"' &&
@@ -611,6 +613,8 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes CHANGE COLUMN locked_by locked_by INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE fields ADD UNIQUE KEY `field` (field, field_type)' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes ADD COLUMN index_schema TEXT' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes ADD COLUMN updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes ADD INDEX `updated` (updated) `updated`' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("domain", "string", "QSTRING")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_name", "string", "QSTRING")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_path", "string", "QSTRING")'
@@ -857,7 +861,7 @@ centos_get_web_packages(){
 	if [ "$USE_LOCAL_MYSQL_PACKAGES" = 0 ]; then
 		yum -yq install mysql mysql-libs mysql-devel
 	fi
-	yum -yq install curl subversion make gcc gcc-c++ httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python krb5-devel perl-Module-Install perl-libwww-perl
+	yum -yq install curl subversion make gcc gcc-c++ httpd mod_perl pam-devel setools-console expat-devel perl-Module-Build policycoreutils-python krb5-devel perl-Module-Install perl-libwww-perl perl-CPAN perl-Test-Simple perl-ExtUtils-MakeMaker
 	return $?
 }
 
@@ -907,11 +911,14 @@ build_web_perl(){
 	for RETRY in 1 2 3; do
 		# PAM requires some user input for testing, and we don't want that
 		#cpanm -n Authen::PAM Crypt::DH &&
-		#Authen::Simple::PAM 
-		cpanm http://search.cpan.org/CPAN/authors/id/D/DW/DWHEELER/Test-Pod-1.46.tar.gz
+		#Authen::Simple::PAM
+		#cpanm http://search.cpan.org/CPAN/authors/id/D/DW/DWHEELER/Test-Pod-1.46.tar.gz
 		# No test on Data::Seralizable until it gets fixed
-		cpanm -n Data::Serializable
-		cpanm Time::Local Time::HiRes Moose JSON::XS Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5 Hash::Merge::Simple Digest::SHA Archive::Extract Apache::Admin::Config Text::CSV Log::Log4perl::Appender::Socket::UNIX Plack::Middleware::XForwardedFor Try::Tiny Ouch
+		# I think this is fixed now, testing to see.
+		#cpanm -n Data::Serializable
+		# Need a specific version of Ouch to not require Perl 5.12
+		cpanm Ouch@0.0403
+		cpanm Time::Local Time::HiRes Moose JSON::XS Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5 Hash::Merge::Simple Digest::SHA Archive::Extract Apache::Admin::Config Text::CSV Log::Log4perl::Appender::Socket::UNIX Plack::Middleware::XForwardedFor Try::Tiny Data::Serializable
 		
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
@@ -1294,7 +1301,7 @@ validate_config(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "get_cpanm" "build_node_perl" "mk_node_dirs" "build_sphinx" "build_syslogng" "set_syslogng_conf" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate" "validate_config" ; do
+		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "get_cpanm" "build_node_perl" "mk_node_dirs" "build_sphinx" "build_syslogng" "set_syslogng_conf" "set_node_mysql" "validate_config" "init_elsa" "test_elsa" "set_logrotate" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then
