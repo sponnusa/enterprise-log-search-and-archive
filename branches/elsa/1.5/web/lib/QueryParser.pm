@@ -307,7 +307,7 @@ sub _choose_query_class {
 			}
 			unless ($non_stopwords){
 				$self->log->info('All terms were too common to use an index, executing against raw SQL');
-				$self->add_warning(200, 'Query terms were too common, query did not use an index', { indexed => 0 });
+				$self->add_warning(200, 'Query terms were too common, query cannot use an index', { indexed => 0 });
 				return 'Query::SQL';
 			}
 		}		

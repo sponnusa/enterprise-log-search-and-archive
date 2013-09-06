@@ -189,12 +189,12 @@ sub execute {
 					$plugin_object->query($self, sub { $cv->end });
 				}
 				catch {
-					my $e = catch_any(shift);
+					my $e = $self->catch_any(shift);
 					delete $compiled_args{user};
 					delete $compiled_args{cache};
 					delete $compiled_args{conf};
 					delete $compiled_args{log};
-					$self->log->error('Error creating plugin ' . $plugin . ' with args ' . Dumper(\%compiled_args) . ': ' . $@);
+					$self->log->error('Error creating plugin ' . $plugin . ' with args ' . Dumper(\%compiled_args));
 					$self->log->debug('e: ' . Dumper($e));
 					if (blessed($e)){
 						push @{ $self->warnings }, $e;
@@ -203,13 +203,13 @@ sub execute {
 						$self->add_warning(500, $e, { datasource => $datasource });
 					}
 				
-					next DATASOURCES_LOOP;
+					$cb->();
 				};
 			}
 		}
 		throw(404, 'datasource ' . $datasource . ' not found', { datasource => $datasource }) unless $found;
 	}
-	return $self;
+	$cb->();
 }
 
 1;
