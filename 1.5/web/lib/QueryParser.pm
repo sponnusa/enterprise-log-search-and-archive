@@ -678,6 +678,11 @@ sub _parse_query_term {
 				$self->log->trace("Set batch override.");
 				next;
 			}
+			elsif ($term_hash->{field} eq 'archive'){
+				$self->directives->{archive} = $self->meta_params->{archive} = 1;
+				$self->log->trace("Set archive.");
+				next;
+			}
 			
 			
 			my $orig_value = $term_hash->{value};

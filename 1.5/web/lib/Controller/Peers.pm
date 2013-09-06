@@ -39,10 +39,10 @@ sub local_query {
 			if ($self->conf->get('disallow_sql_search') and $qp->query_class eq 'Query::SQL'){
 				my $msg;
 				if (scalar keys %{ $qp->stopword_terms }){
-					throw(404, 'Cannot execute query, terms too common: ' . join(', ', keys %{ $qp->stopword_terms }), { terms => join(', ', keys %{ $qp->stopword_terms }) });
+					throw(413, 'Cannot execute query, terms too common: ' . join(', ', keys %{ $qp->stopword_terms }), { terms => join(', ', keys %{ $qp->stopword_terms }) });
 				}
 				else {
-					throw(401, 'Query required SQL search which is not enabled', { search_type => 'SQL' });
+					throw(405, 'Query required SQL search which is not enabled', { search_type => 'SQL' });
 				}
 			}
 			if ($extra_directives){
@@ -212,111 +212,120 @@ sub upload {
 		$syslog_db_name = $self->conf->get('syslog_db_name');
 	}
 	
-	# See if this is a Zip file
-	open(FH, $args->{upload}->path) or throw(500, 'Unable to read file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
-	my $buf;
-	read(FH, $buf, 2);
-	my $is_zipped = 0;
-	# Check for zip or gz magic
-	if ($buf eq 'PK' or $buf eq pack('C2', 0x1f, 0x8b)){
-		$self->log->trace('Detected that file upload is an archive');
-		$is_zipped = 1;
-	}
-	close(FH);
-	
-	my $file;
-	
-	if ($is_zipped){
-		my $ae = Archive::Extract->new( archive => $args->{upload}->path ) or throw(500, 'Error extracting file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
-		my $id = $args->{client_ip_address} . '_' . $args->{md5};
-		# make a working dir for these files
-		my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
-		mkdir($working_dir) or throw(500, "Unable to create working_dir $working_dir", { working_dir => $working_dir });
-		$ae->extract( to => $working_dir ) or throw(500, $ae->error, { working_dir => $working_dir });
-		my $files = $ae->files;
-		if (scalar @$files > 2){
-			$self->log->warn('Received more than 2 files in zip file, there should be at most one file and an optional programs file in a single zip file.');
-		}
-		foreach my $unzipped_file_shortname (@$files){
-			my $unzipped_file = $working_dir . '/' . $unzipped_file_shortname;
-			my $zipped_file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $unzipped_file_shortname;
-			move($unzipped_file, $zipped_file);
-			
-			if ($unzipped_file_shortname =~ /programs/){
-				$self->log->info('Loading programs file ' . $zipped_file);
-				$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs';
-				$sth = $self->db->prepare($query);
-				$sth->execute($zipped_file);
-				unlink($zipped_file);
-				next;
-			}
-			else {
-				$file = $zipped_file;
-			}
-		}
-		rmtree($working_dir);
-	}
-	else {
-		$file = $args->{upload}->path;
-		$file =~ /\/([^\/]+)$/;
-		my $shortname = $1;
-		my $destfile = $self->conf->get('buffer_dir') . '/' . $shortname;
-		move($file, $destfile) or throw(500, $!, { file => $file });
-		$self->log->debug('moved file ' . $file . ' to ' . $destfile);
-		$file = $destfile;
-	}
-	$args->{size} = -s $file;
-	
-	# Check md5
-	my $md5 = new Digest::MD5;
-	my $upload_fh = new IO::File($file);
-	$md5->addfile($upload_fh);
-	my $local_md5 = $md5->hexdigest;
-	close($upload_fh);
-	unless ($local_md5 eq $args->{md5}){
-		my $msg = 'MD5 mismatch! Calculated: ' . $local_md5 . ' client said it should be: ' . $args->{md5};
-		$self->log->error($msg);
-		unlink($file);
-		return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
-	}
-	
 	my $ret = { ok => 1 };
-	if ($args->{description} or $args->{name}){
-		# We're doing an import
-		$args->{host} = $args->{client_ip_address};
-		delete $args->{start};
-		delete $args->{end};
-		my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
-		if (not $importer->id){
-			return [ 500, [ 'Content-Type' => 'application/javascript' ], [ $self->json->encode({ error => 'Import failed' }) ] ];
+	
+	try {
+	
+		# See if this is a Zip file
+		open(FH, $args->{upload}->path) or throw(500, 'Unable to read file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
+		my $buf;
+		read(FH, $buf, 2);
+		my $is_zipped = 0;
+		# Check for zip or gz magic
+		if ($buf eq 'PK' or $buf eq pack('C2', 0x1f, 0x8b)){
+			$self->log->trace('Detected that file upload is an archive');
+			$is_zipped = 1;
 		}
-		$ret->{import_id} = $importer->id;
-	}
-	else {
-		unless ($args->{start} and $args->{end}){
-			my $msg = 'Did not receive valid start/end times';
+		close(FH);
+		
+		my $file;
+		
+		if ($is_zipped){
+			my $ae = Archive::Extract->new( archive => $args->{upload}->path ) or throw(500, 'Error extracting file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
+			my $id = $args->{client_ip_address} . '_' . $args->{md5};
+			# make a working dir for these files
+			my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
+			mkdir($working_dir) or throw(500, "Unable to create working_dir $working_dir", { working_dir => $working_dir });
+			$ae->extract( to => $working_dir ) or throw(500, $ae->error, { working_dir => $working_dir });
+			my $files = $ae->files;
+			if (scalar @$files > 2){
+				$self->log->warn('Received more than 2 files in zip file, there should be at most one file and an optional programs file in a single zip file.');
+			}
+			foreach my $unzipped_file_shortname (@$files){
+				my $unzipped_file = $working_dir . '/' . $unzipped_file_shortname;
+				my $zipped_file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $unzipped_file_shortname;
+				move($unzipped_file, $zipped_file);
+				
+				if ($unzipped_file_shortname =~ /programs/){
+					$self->log->info('Loading programs file ' . $zipped_file);
+					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs';
+					$sth = $self->db->prepare($query);
+					$sth->execute($zipped_file);
+					unlink($zipped_file);
+					next;
+				}
+				else {
+					$file = $zipped_file;
+				}
+			}
+			rmtree($working_dir);
+		}
+		else {
+			$file = $args->{upload}->path;
+			$file =~ /\/([^\/]+)$/;
+			my $shortname = $1;
+			my $destfile = $self->conf->get('buffer_dir') . '/' . $shortname;
+			move($file, $destfile) or throw(500, $!, { file => $file, destfile => $destfile });
+			$self->log->debug('moved file ' . $file . ' to ' . $destfile);
+			$file = $destfile;
+		}
+		$args->{size} = -s $file;
+		
+		# Check md5
+		my $md5 = new Digest::MD5;
+		my $upload_fh = new IO::File($file);
+		$md5->addfile($upload_fh);
+		my $local_md5 = $md5->hexdigest;
+		close($upload_fh);
+		unless ($local_md5 eq $args->{md5}){
+			my $msg = 'MD5 mismatch! Calculated: ' . $local_md5 . ' client said it should be: ' . $args->{md5};
 			$self->log->error($msg);
 			unlink($file);
 			return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
 		}
 		
-		# Record our received file in the database
-		$query = 'INSERT INTO ' . $syslog_db_name . '.buffers (filename, start, end) VALUES (?,?,?)';
-		$sth = $self->db->prepare($query);
-		$sth->execute($file, $args->{start}, $args->{end});
-		$ret->{buffers_id} = $self->db->{mysql_insertid};
-		
-		$args->{batch_time} ||= 60;
-		$args->{total_errors} ||= 0;
-		
-		# Record the upload
-		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
-		$sth = $self->db->prepare($query);
-		$sth->execute($args->{client_ip_address}, $args->{count}, $args->{size}, $args->{batch_time}, 
-			$args->{total_errors}, $args->{start}, $args->{end}, $ret->{buffers_id});
-		$ret->{upload_id} = $self->db->{mysql_insertid};
-		$sth->finish;
+		if ($args->{description} or $args->{name}){
+			# We're doing an import
+			$args->{host} = $args->{client_ip_address};
+			delete $args->{start};
+			delete $args->{end};
+			my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
+			if (not $importer->id){
+				return [ 500, [ 'Content-Type' => 'application/javascript' ], [ $self->json->encode({ error => 'Import failed' }) ] ];
+			}
+			$ret->{import_id} = $importer->id;
+		}
+		else {
+			unless ($args->{start} and $args->{end}){
+				my $msg = 'Did not receive valid start/end times';
+				$self->log->error($msg);
+				unlink($file);
+				return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+			}
+			
+			# Record our received file in the database
+			$query = 'INSERT INTO ' . $syslog_db_name . '.buffers (filename, start, end) VALUES (?,?,?)';
+			$sth = $self->db->prepare($query);
+			$sth->execute($file, $args->{start}, $args->{end});
+			$ret->{buffers_id} = $self->db->{mysql_insertid};
+			
+			$args->{batch_time} ||= 60;
+			$args->{total_errors} ||= 0;
+			
+			# Record the upload
+			$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
+			$sth = $self->db->prepare($query);
+			$sth->execute($args->{client_ip_address}, $args->{count}, $args->{size}, $args->{batch_time}, 
+				$args->{total_errors}, $args->{start}, $args->{end}, $ret->{buffers_id});
+			$ret->{upload_id} = $self->db->{mysql_insertid};
+			$sth->finish;
+		}
 	}
+	catch {
+		my $e = shift;
+		$self->add_warning(500, $e);
+		$cb->({ error => $e });
+	};
 		
 	$cb->($ret);
 }

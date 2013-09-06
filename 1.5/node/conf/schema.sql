@@ -547,6 +547,7 @@ CREATE TABLE indexes (
 	type ENUM("temporary", "permanent", "unavailable", "realtime") NOT NULL DEFAULT "temporary",
 	locked_by INT UNSIGNED,
 	index_schema TEXT,
+	updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (id, type),
 	UNIQUE KEY (first_id, last_id),
 	KEY(start),

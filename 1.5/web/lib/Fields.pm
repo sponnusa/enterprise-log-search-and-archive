@@ -7,7 +7,7 @@ use Net::DNS;
 use String::CRC32;
 use Socket qw(inet_aton inet_ntoa);
 use Try::Tiny;
-use Ouch qw(:trytiny);;
+use Ouch qw(:trytiny);
 
 our $Field_order_to_attr = {
 	0 => 'timestamp',
