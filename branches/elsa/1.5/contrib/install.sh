@@ -338,9 +338,9 @@ get_elsa(){
 }
 
 get_cpanm(){
-	if [ \! -f /usr/local/bin/cpanm ]; then
+	if [ \! -s /usr/local/bin/cpanm ]; then
 		cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
-		if [ \! -f /usr/local/bin/cpanm ]; then
+		if [ \! -s /usr/local/bin/cpanm ]; then
 			echo "Downloading from cpanmin.us failed, downloading from xrl.us"
 			curl -LO http://xrl.us/cpanm &&
 	    	chmod +x cpanm &&
@@ -348,8 +348,8 @@ get_cpanm(){
 		fi
 	fi
 	CPANM=$(which cpanm);
-	if [ \! -f "$CPANM" ]; then
-		echo "ERROR: Unable to find cpanm"
+	if [ \! -s "$CPANM" ]; then
+		echo "ERROR: Unable to install cpanm"
 		return 1;
 	fi
 	return 0
@@ -373,7 +373,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose JSON::XS Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA MooseX::Log::Log4perl Log::Log4perl::Appender::Socket::UNIX
+		cpanm Time::HiRes CGI Moose JSON::XS Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA MooseX::Log::Log4perl Log::Log4perl::Appender::Socket::UNIX Moose::Role
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
