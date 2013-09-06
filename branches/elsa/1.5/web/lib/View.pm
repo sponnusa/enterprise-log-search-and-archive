@@ -59,7 +59,7 @@ sub call {
 			$method ||= 'index';
 			$self->controller->log->debug('method: ' . $method);
 			if (exists $Modes{ $method }){
-				if ($Modes{ $method } == 1){
+				if ($Modes{ $method } == 2){
 					my $user = $self->controller->get_user($req->user);
 					if ($user){
 						$self->session->set('user', $user->freeze);
@@ -86,7 +86,7 @@ sub call {
 						$cv and $cv->send;
 					}
 				}
-				elsif ($Modes{ $method } == 2){
+				elsif ($Modes{ $method } == 1){
 					$self->$method($req, sub {
 						my $ret = shift;
 						if (not $ret){

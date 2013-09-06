@@ -12,7 +12,7 @@ use Sys::Hostname::FQDN;
 use Net::DNS;
 extends 'Query';
 
-has 'sphinx_db' => (is => 'rw', isa => 'HashRef');
+has 'data_db' => (is => 'rw', isa => 'HashRef');
 has 'post_filters' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { { and => {}, not => {} } },
 	handles => { has_postfilters => 'keys' });
 has 'schemas' => (is => 'rw', isa => 'HashRef');
@@ -230,13 +230,13 @@ sub _get_where_clause {
 	
 	if ($class_id){
 		return { 
-			clause => 'MATCH(\'' . $match_str . '\') AND attr_tests=1 AND class_id=?',
+			clause => 'MATCH(\'' . $match_str . '\') AND attr_tests=1 AND import_tests=1 AND class_id=?',
 			values => [ $class_id ]
 		}
 	}
 	else {
 		return { 
-			clause => 'MATCH(\'' . $match_str . '\') AND attr_tests=1',
+			clause => 'MATCH(\'' . $match_str . '\') AND attr_tests=1 AND import_tests=1 ',
 			values => []
 		}
 	}
@@ -523,17 +523,41 @@ sub _get_select_clause {
 	my $class_id = shift;
 	my $attr_string = shift;
 	
+	my $import_where = '1=1';
+	my $import_ranges = $self->_find_import_ranges();
+	if (scalar @$import_ranges > 100){
+		throw(400, 'Query returned too many possible import sets', { count => scalar @$import_ranges });
+	}
+	
+	if (scalar @$import_ranges){
+		my %import_wheres = ( and => [], or => [], not => [] );
+		foreach my $range (@$import_ranges){
+			push @{ $import_wheres{ $range->{boolean} } }, sprintf(' (%d<=id AND id<=%d)', @{ $range->{values} });
+		}
+		$import_where = '(1=1';
+		if (scalar @{ $import_wheres{or} }){
+			$import_where .= '(' . join(' OR ', @{ $import_wheres{or} }) . ')';
+		}
+		if (scalar @{ $import_wheres{and} }){
+			$import_where .= join('' , map { ' AND ' . $_ } @{ $import_wheres{and} });
+		}
+		if (scalar @{ $import_wheres{not} }){
+			$import_where .= join('', map { ' AND NOT ' . $_ } @{ $import_wheres{not} });
+		}
+		$import_where .= ')';
+	}
+	
 	if ($self->groupby){
 		return {
 			clause => 'SELECT id, COUNT(*) AS _count, ' . $self->_attr($self->groupby, $class_id) . ' AS _groupby, '
-			. $attr_string . ' AS attr_tests',
+			. $attr_string . ' AS attr_tests, ' . $import_where . ' AS import_tests',
 			values => [],
 		}
 	}
 	# Find our _orderby
 	my $attr = $self->orderby ? $self->_attr($self->orderby, $class_id) : 'timestamp';
 	return {
-		clause => 'SELECT *, ' . $attr . ' AS _orderby, ' . $attr_string . ' AS attr_tests',
+		clause => 'SELECT *, ' . $attr . ' AS _orderby, ' . $attr_string . ' AS attr_tests, ' . $import_where . ' AS import_tests',
 		values => [],
 	}
 }
@@ -805,7 +829,7 @@ sub execute {
 	my $self = shift;
 	my $cb = shift;
 	
-	$self->_get_sphinx_db(sub {
+	$self->_get_data_db(sub {
 		my $ok = shift;
 		if (not $ok){
 			$cb->($self->errors);
@@ -831,7 +855,7 @@ sub execute {
 		});
 		
 		unless (scalar keys %{ $self->schemas }){
-			$self->add_warning('516', 'No data for time period queried', { term => 'start' });
+			$self->add_warning(416, 'No data for time period queried', { term => 'start' });
 			$cb->();
 			return;
 		}
@@ -842,7 +866,7 @@ sub execute {
 			$self->log->trace('Querying indexes: ' . scalar @$indexes);
 			
 			unless (scalar @$indexes){
-				$self->add_warning('516', 'No data for time period queried', { term => 'start' });
+				$self->add_warning(416, 'No data for time period queried', { term => 'start' });
 				$cb->();
 				return;
 			}
@@ -911,7 +935,7 @@ sub _query {
 	$self->log->trace('Sphinx query values: ' . join(',', @values));
 	
 	my $start = time();
-	$self->sphinx_db->{sphinx}->sphinx($query_string . ';SHOW META', 0, @values, sub {
+	$self->data_db->{sphinx}->sphinx($query_string . ';SHOW META', 0, @values, sub {
 		my ($dbh, $result, $rv) = @_;
 		
 		my $sphinx_query_time = (time() - $start);
@@ -1004,7 +1028,7 @@ sub _get_rows {
 			"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 			"FROM %1\$s\n" .
 			'WHERE %1$s.id IN (' . $placeholders . ')',
-			$table, $self->sphinx_db->{db});
+			$table, $self->data_db->{db});
 		
 		if ($table =~ /import/){
 			$import_tables{$table} = $tables{$table};
@@ -1044,7 +1068,7 @@ sub _get_extra_field_values {
 	$cv->begin(sub {
 		$cb->($ret);
 	});
-	$self->sphinx_db->{dbh}->query($query, (sort keys %programs), sub { 
+	$self->data_db->{dbh}->query($query, (sort keys %programs), sub { 
 		my ($dbh, $rows, $rv) = @_;
 		if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 			my $errstr = 'got error getting extra field values ' . $rows;
@@ -1058,6 +1082,9 @@ sub _get_extra_field_values {
 		}
 		else {
 			$self->log->trace('got extra field value db rows: ' . (scalar @$rows));
+			foreach my $row (@$rows){
+				$programs{ $row->{id} } = $row->{program};
+			}
 			foreach my $id (keys %{ $ret->{results} }){
 				$ret->{results}->{$id}->{program} = $programs{ $ret->{results}->{$id}->{program_id} };
 			}
@@ -1272,19 +1299,19 @@ sub _filter_stopwords {
 		}
 	}
 	return 1;
-}
+}	
 	
 sub _get_import_rows {
 	my $self = shift;
 	my $import_tables = shift;
 	my $ret = shift;
 	my $cb = shift;
+	
 	my %import_info;
 	my @import_queries;
 	
-	
 	my $import_info_query = 'SELECT id AS import_id, name AS import_name, description AS import_description, ' .
-		'datatype AS import_type, imported AS import_date, first_id, last_id FROM ' . $self->sphinx_db->{db} 
+		'datatype AS import_type, imported AS import_date, first_id, last_id FROM ' . $self->data_db->{db} 
 		. '.imports WHERE ';
 	my @import_info_query_clauses;
 	my @import_query_values;
@@ -1299,7 +1326,7 @@ sub _get_import_rows {
 	my $cv = AnyEvent->condvar;
 	$cv->begin(sub { $cb->($ret); });
 	
-	$self->sphinx_db->{dbh}->query($import_info_query, @import_query_values, sub { 
+	$self->data_db->{dbh}->query($import_info_query, @import_query_values, sub { 
 		my ($dbh, $rows, $rv) = @_;
 		if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 			my $errstr = 'got error ' . $rows;
@@ -1356,7 +1383,7 @@ sub _get_mysql_rows {
 	
 	my $start = time();
 	
-	$self->sphinx_db->{dbh}->multi_query($table_query, @$table_values, sub { 
+	$self->data_db->{dbh}->multi_query($table_query, @$table_values, sub { 
 		my ($dbh, $rows, $rv) = @_;
 		if (not $rv or not ref($rows) or ref($rows) ne 'ARRAY'){
 			my $errstr = 'got error getting mysql rows ' . $rows;
@@ -1400,7 +1427,7 @@ sub _get_mysql_rows {
 	});
 }
 
-sub _get_sphinx_db {
+sub _get_data_db {
 	my $self = shift;
 	my $cb = shift;
 	my $conf = $self->conf->get('data_db');
@@ -1451,7 +1478,7 @@ sub _get_sphinx_db {
 	}		
 	
 	$self->log->trace('All connected in ' . (time() - $start) . ' seconds');
-	$self->sphinx_db($ret);
+	$self->data_db($ret);
 	
 	$cb->(1);
 }
