@@ -1042,4 +1042,117 @@ sub _term_to_sql_term {
 	return $regex;
 }
 
+sub _find_import_ranges {
+	my $self = shift;
+	
+	my $start = time();
+	my ($query, $sth);
+	my @id_ranges;
+	
+	my $db_name = $self->conf->get('data_db/db') ? $self->conf->get('data_db/db') : 'syslog';	
+		
+	# Handle dates specially
+	my %date_terms;
+	foreach my $term_hash ($self->parser->all_import_search_terms){
+		next unless $term_hash->{field} eq 'date';
+		$date_terms{ $term_hash->{boolean} } ||= [];
+		push @{ $date_terms{ $term_hash->{boolean} } }, $term_hash;
+	}
+	
+	if (scalar keys %date_terms){
+		$query = 'SELECT * from ' . $db_name . '.imports WHERE NOT ISNULL(first_id) AND NOT ISNULL(last_id) AND ';
+		my @clauses;
+		my @terms;
+		my @values;
+		foreach my $term_hash (@{ $date_terms{and} }){
+			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
+				push @terms, 'DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
+			}
+			else {
+				push @terms, 'imported ' . $term_hash->{op} . ' ?';
+			}
+			push @values, $term_hash->{value};
+		}
+		if (@terms){
+			push @clauses, '(' . join(' AND ', @terms) . ') ';
+		}
+		@terms = ();
+		foreach my $term_hash (@{ $date_terms{or} }){
+			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
+				push @terms, 'DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
+			}
+			else {
+				push @terms, 'imported ' . $term_hash->{op} . ' ?';
+			}
+			push @values, $term_hash->{value};
+		}
+		if (@terms){
+			push @clauses, '(' . join(' OR ', @terms) . ') ';
+		}
+		@terms = ();
+		foreach my $term_hash (@{ $date_terms{not} }){
+			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
+				push @terms, 'NOT DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
+			}
+			else {
+				push @terms, 'NOT imported ' . $term_hash->{op} . ' ?';
+			}
+			push @values, $term_hash->{value};
+		}
+		if (@terms){
+			push @clauses, '(' . join(' AND ', @terms) . ') ';
+		}
+		$query .= join(' AND ', @clauses);
+		
+		$self->log->trace('import date search query: ' . $query);
+		$self->log->trace('import date search values: ' . Dumper(\@values));
+		$sth = $self->db->prepare($query);
+		$sth->execute(@values);
+		my $counter = 0;
+		while (my $row = $sth->fetchrow_hashref){
+			push @id_ranges, { boolean => 'and', values => [ $row->{first_id}, $row->{last_id} ], import_info => $row };
+			$counter++;
+		}
+		unless ($counter){
+			$self->log->trace('No matching imports found for dates given');
+			return [];
+		}
+	}
+	
+	# Handle name/description
+	foreach my $term_hash ($self->parser->all_import_search_terms){
+		next if $term_hash->{field} eq 'date';
+		my @values;
+		if ($term_hash->{field} eq 'id'){
+			$query = 'SELECT * from ' . $db_name . '.imports WHERE NOT ISNULL(first_id) AND NOT ISNULL(last_id) AND id ' . $term_hash->{op} . ' ?';
+			@values = ($term_hash->{value});
+		}
+		else {
+			$query = 'SELECT * from ' . $db_name . '.imports WHERE NOT ISNULL(first_id) AND NOT ISNULL(last_id) AND ' . lc($term_hash->{field}) . ' RLIKE ?';
+			@values = ($self->_term_to_sql_term($term_hash->{value}, $term_hash->{field}));
+		}
+		$self->log->trace('import search query: ' . $query);
+		$self->log->trace('import search values: ' . Dumper(\@values));
+		$sth = $self->db->prepare($query);
+		$sth->execute(@values);
+		my $counter = 0;
+		
+		while (my $row = $sth->fetchrow_hashref){
+			push @id_ranges, { 
+				boolean => $term_hash->{boolean}, 
+				values => [ $row->{first_id}, $row->{last_id} ], 
+				import_info => $row,
+			};
+			$counter++;
+		}
+		if ($term_hash->{boolean} eq 'and' and not $counter){
+			$self->log->trace('No matching imports found for ' . $term_hash->{field} . ':' . $term_hash->{value});
+			return [];
+		}
+	}
+	my $taken = time() - $start;
+	$self->stats->{import_range_search} = $taken;
+	return [ @id_ranges ];
+}
+
 1;

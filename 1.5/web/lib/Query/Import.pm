@@ -12,6 +12,8 @@ use Time::HiRes qw(time);
 
 extends 'Query';
 
+our $Max_limit = 10_000; # safety to not run out of memory if asked to sift through a large import
+
 has 'data_db' => (is => 'rw', isa => 'HashRef');
 
 sub execute {
@@ -44,10 +46,10 @@ sub execute {
 	
 	# Get the tables based on our search
 	$self->_get_db(sub {
-		$self->_find_import_ranges(sub {
-			undef $timeout_watcher;
-			$cv->end;
-		});
+		my $id_ranges = $self->_find_import_ranges();
+		$self->_get_rows($id_ranges, $cb);
+		undef $timeout_watcher;
+		$cv->end;
 	});
 }
 
@@ -92,116 +94,7 @@ sub _get_db {
 	$cb->(1);
 }
 
-sub _find_import_ranges {
-	my $self = shift;
-	my $cb = shift;
-	
-	my $start = time();
-	my ($query, $sth);
-	my @id_ranges;
-		
-	# Handle dates specially
-	my %date_terms;
-	foreach my $term_hash ($self->parser->all_import_search_terms){
-		next unless $term_hash->{field} eq 'date';
-		$date_terms{ $term_hash->{boolean} } ||= [];
-		push @{ $date_terms{ $term_hash->{boolean} } }, $term_hash;
-	}
-	
-	if (scalar keys %date_terms){
-		$query = 'SELECT * from ' . $self->data_db->{db} . '.imports WHERE ';
-		my @clauses;
-		my @terms;
-		my @values;
-		foreach my $term_hash (@{ $date_terms{and} }){
-			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
-				push @terms, 'DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
-			}
-			else {
-				push @terms, 'imported ' . $term_hash->{op} . ' ?';
-			}
-			push @values, $term_hash->{value};
-		}
-		if (@terms){
-			push @clauses, '(' . join(' AND ', @terms) . ') ';
-		}
-		@terms = ();
-		foreach my $term_hash (@{ $date_terms{or} }){
-			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
-				push @terms, 'DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
-			}
-			else {
-				push @terms, 'imported ' . $term_hash->{op} . ' ?';
-			}
-			push @values, $term_hash->{value};
-		}
-		if (@terms){
-			push @clauses, '(' . join(' OR ', @terms) . ') ';
-		}
-		@terms = ();
-		foreach my $term_hash (@{ $date_terms{not} }){
-			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
-				push @terms, 'NOT DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
-			}
-			else {
-				push @terms, 'NOT imported ' . $term_hash->{op} . ' ?';
-			}
-			push @values, $term_hash->{value};
-		}
-		if (@terms){
-			push @clauses, '(' . join(' AND ', @terms) . ') ';
-		}
-		$query .= join(' AND ', @clauses);
-		
-		$self->log->trace('import date search query: ' . $query);
-		$self->log->trace('import date search values: ' . Dumper(\@values));
-		$sth = $self->db->prepare($query);
-		$sth->execute(@values);
-		my $counter = 0;
-		while (my $row = $sth->fetchrow_hashref){
-			push @id_ranges, { boolean => 'and', values => [ $row->{first_id}, $row->{last_id} ], import_info => $row };
-			$counter++;
-		}
-		unless ($counter){
-			$self->log->trace('No matching imports found for dates given');
-			$cb->([]);
-			return;
-		}
-	}
-	
-	# Handle name/description
-	foreach my $term_hash ($self->parser->all_import_search_terms){
-		next if $term_hash->{field} eq 'date';
-		my @values;
-		if ($term_hash->{field} eq 'id'){
-			$query = 'SELECT * from ' . $self->data_db->{db} . '.imports WHERE id ' . $term_hash->{op} . ' ?';
-			@values = ($term_hash->{value});
-		}
-		else {
-			$query = 'SELECT * from ' . $self->data_db->{db} . '.imports WHERE ' . lc($term_hash->{field}) . ' RLIKE ?';
-			@values = ($self->_term_to_sql_term($term_hash->{value}, $term_hash->{field}));
-		}
-		$self->log->trace('import search query: ' . $query);
-		$self->log->trace('import search values: ' . Dumper(\@values));
-		$sth = $self->db->prepare($query);
-		$sth->execute(@values);
-		my $counter = 0;
-		
-		while (my $row = $sth->fetchrow_hashref){
-			push @id_ranges, { boolean => ($term_hash->{boolean} eq '+' ? 'and' : $term_hash->{boolean} eq '-' ? 'not' : 'or'), 
-				values => [ $row->{first_id}, $row->{last_id} ], import_info => $row };
-			$counter++;
-		}
-		if ($term_hash->{op} eq '+' and not $counter){
-			$self->log->trace('No matching imports found for ' . $term_hash->{field} . ':' . $term_hash->{value});
-			$cb->([]);
-			return;
-		}
-	}
-	my $taken = time() - $start;
-	$self->stats->{import_range_search} = $taken;
-	$self->_get_rows([@id_ranges], $cb);
-}
+
 
 sub _get_rows {
 	my $self = shift;
@@ -214,12 +107,12 @@ sub _get_rows {
 	my %tables;
 	foreach my $range (@$ranges){
 		$total_records += $range->{values}->[1] - $range->{values}->[0];
-		next if $counter >= $self->limit;
+		last if $counter >= $Max_limit;
 		# Find what tables we need to query to resolve rows
 		
 		ROW_LOOP: for (my $id = $range->{values}->[0]; $id <= $range->{values}->[1]; $id++){
 			foreach my $table_hash (@{ $self->meta_info->{tables}->{tables} }){
-				last ROW_LOOP if $counter >= $self->limit;
+				last ROW_LOOP if $counter >= $Max_limit;
 				next unless $table_hash->{table_type} eq 'import';
 				if ($table_hash->{min_id} <= $id and $id <= $table_hash->{max_id}){
 					$tables{ $table_hash->{table_name} } ||= [];
@@ -277,13 +170,12 @@ sub _get_rows {
 			return;
 		}
 		elsif (not scalar @$rows){
-			$self->log->error('Did not get rows though we had Sphinx results! tables: ' . Dumper(\%tables));
+			$self->log->error('Did not get rows though we had results! tables: ' . Dumper(\%tables));
 			$cb->();
 			return; 
 		}
 		$self->log->trace('got db rows: ' . (scalar @$rows));
 		
-		my $results = {};
 		foreach my $row (@$rows){
 			$row->{node} = $self->peer_label ? $self->peer_label : '127.0.0.1';
 			$row->{node_id} = unpack('N*', inet_aton($row->{node}));
@@ -295,20 +187,125 @@ sub _get_rows {
 			}
 			# Copy import info into the row
 			foreach my $range (@$ranges){
-				if ($range->{values}->[0] <= $row->{id} and $range->{values}->[1] <= $row->{id}){
-					foreach my $import_col (@{ $Fields::Import_fields }){
-						if ($range->{import_info}->{$import_col}){
-							$row->{$import_col} = $range->{import_info}->{$import_col};
-						}
+				if ($range->{values}->[0] <= $row->{id} and $row->{id} <= $range->{values}->[1]){
+					foreach my $import_col (qw(name description)){
+						$row->{'import_' . $import_col} = $range->{import_info}->{$import_col};
 					}
+					$row->{'import_date'} = $range->{import_info}->{imported};
 					last;
 				}
+				$self->log->error('no range for id ' . $row->{id} . ', ranges: ' . Dumper($ranges));
 			}
-			$self->results->add_result($row);
 		}
 		$self->stats->{mysql_query} += (time() - $start);
-		$cb->();
+		$self->_get_extra_field_values($rows, sub {
+			my $rows = shift;
+			$self->_format_records($rows);
+			$cb->();
+		});
 	});	
-}	
+}
+
+sub _get_extra_field_values {
+	my $self = shift;
+	my $rows = shift;
+	my $cb = shift;
+	
+	my %programs;
+	foreach my $row (@$rows){
+		$programs{ $row->{program_id} } = $row->{program_id};
+	}
+	if (not scalar keys %programs){
+		$cb->($rows);
+		return;
+	}
+	
+	my $query;
+	$query = 'SELECT id, program FROM programs WHERE id IN (' . join(',', map { '?' } keys %programs) . ')';
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub {
+		$cb->($rows);
+	});
+	$self->data_db->{dbh}->query($query, (sort keys %programs), sub { 
+		my ($dbh, $program_rows, $rv) = @_;
+		if (not $rv or not ref($program_rows) or ref($program_rows) ne 'ARRAY'){
+			my $errstr = 'got error getting extra field values ' . $program_rows;
+			$self->log->error($errstr);
+			$self->add_warning(502, $errstr, { mysql => $self->peer_label });
+			$cv->end;
+			return;
+		}
+		elsif (not scalar @$program_rows){
+			$self->log->error('Did not get extra field value rows though we had values: ' . Dumper(\%programs)); 
+		}
+		else {
+			$self->log->trace('got extra field value db rows: ' . (scalar @$program_rows));
+			foreach my $row (@$program_rows){
+				$programs{ $row->{id} } = $row->{program};
+			}
+			foreach my $row (@$rows){
+				$row->{program} = $programs{ $row->{program_id} };
+			}
+		}
+		$cv->end;
+	});
+}
+
+sub _format_records {
+	my $self = shift;
+	my $rows = shift;
+	
+	my @tmp;
+	foreach my $row (@$rows){
+		$row->{datasource} = 'Import';
+		$row->{_fields} = [
+				{ field => 'host', value => $row->{host}, class => 'any' },
+				{ field => 'program', value => $row->{program}, class => 'any' },
+				{ field => 'class', value => $self->meta_info->{classes_by_id}->{ $row->{class_id} }, class => 'any' },
+			];
+		my $is_import = 0;
+		foreach my $import_col (@{ $Fields::Import_fields }){
+			if (exists $row->{$import_col}){
+				$is_import++;
+				push @{ $row->{_fields} }, { field => $import_col, value => $row->{$import_col}, class => 'any' };
+			}
+		}
+		if ($is_import){					
+			# Add node
+			push @{ $row->{_fields} }, { field => 'node', value => $row->{node}, class => 'any' };
+		}
+		# Resolve column names for fields
+		foreach my $col (qw(i0 i1 i2 i3 i4 i5 s0 s1 s2 s3 s4 s5)){
+			my $value = delete $row->{$col};
+			# Swap the generic name with the specific field name for this class
+			my $field = $self->meta_info->{fields_by_order}->{ $row->{class_id} }->{ $Fields::Field_to_order->{$col} }->{value};
+			if (defined $value and $field){
+				# See if we need to apply a conversion
+				$value = $self->resolve_value($row->{class_id}, $value, $col);
+				push @{ $row->{_fields} }, { 'field' => $field, 'value' => $value, 'class' => $self->meta_info->{classes_by_id}->{ $row->{class_id} } };
+			}
+		}
+		push @tmp, $row;
+	}
+	
+	
+	# Now that we've got our results, order by our given order by
+	if ($self->orderby_dir eq 'DESC'){
+		foreach my $row (sort { $b->{_orderby} <=> $a->{_orderby} } @tmp){
+			$self->results->add_result($row);
+			last if $self->results->records_returned >= $self->limit;
+		}
+	}
+	else {
+		foreach my $row (sort { $a->{_orderby} <=> $b->{_orderby} } @tmp){
+			$self->log->debug('adding row: ' . Dumper($row));
+			$self->results->add_result($row);
+			last if $self->results->records_returned >= $self->limit;
+		}
+	}
+	
+	$self->results->total_docs($self->results->total_docs + scalar @$rows);
+}
 
 1;
