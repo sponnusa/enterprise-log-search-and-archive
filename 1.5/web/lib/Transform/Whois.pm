@@ -159,7 +159,7 @@ sub _lookup {
 	
 	$self->log->debug( 'getting ' . $ip_url );
 	$self->cache_stats->{misses}++;
-	http_request GET => $ip_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
+	my $guard; $guard = http_request GET => $ip_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		my $whois;
 		eval {
@@ -235,6 +235,7 @@ sub _lookup {
 			
 		}
 		$self->cv->end;
+		undef $guard;
 		return;
 	}
 }

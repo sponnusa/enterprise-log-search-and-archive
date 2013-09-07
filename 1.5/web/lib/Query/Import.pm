@@ -20,6 +20,17 @@ sub execute {
 	my $self = shift;
 	my $cb = shift;
 	
+	if ($self->parser->has_import_search_terms){
+		$self->_find_import_ranges();
+		if (not $self->has_id_ranges){
+			$self->log->trace('Import terms eliminate all results');
+			$cb->();
+		}
+	}
+	else {
+		throw(400, 'No import terms found');
+	}
+	
 	my $start = time();
 	my $counter = 0;
 	my $total = 0;
@@ -46,10 +57,10 @@ sub execute {
 	
 	# Get the tables based on our search
 	$self->_get_db(sub {
-		my $id_ranges = $self->_find_import_ranges();
-		$self->_get_rows($id_ranges, $cb);
-		undef $timeout_watcher;
-		$cv->end;
+		$self->_get_rows(sub {
+			undef $timeout_watcher;
+			$cv->end;
+		});
 	});
 }
 
@@ -98,14 +109,13 @@ sub _get_db {
 
 sub _get_rows {
 	my $self = shift;
-	my $ranges = shift;
 	my $cb = shift;
 	
 	my $start = time();
 	my $total_records = 0;
 	my $counter = 0;
 	my %tables;
-	foreach my $range (@$ranges){
+	foreach my $range ($self->all_id_ranges){
 		$total_records += $range->{values}->[1] - $range->{values}->[0];
 		last if $counter >= $Max_limit;
 		# Find what tables we need to query to resolve rows
@@ -186,7 +196,7 @@ sub _get_rows {
 				$row->{_orderby} = $row->{timestamp};
 			}
 			# Copy import info into the row
-			foreach my $range (@$ranges){
+			foreach my $range ($self->all_id_ranges){
 				if ($range->{values}->[0] <= $row->{id} and $row->{id} <= $range->{values}->[1]){
 					foreach my $import_col (qw(name description)){
 						$row->{'import_' . $import_col} = $range->{import_info}->{$import_col};
@@ -194,7 +204,7 @@ sub _get_rows {
 					$row->{'import_date'} = $range->{import_info}->{imported};
 					last;
 				}
-				$self->log->error('no range for id ' . $row->{id} . ', ranges: ' . Dumper($ranges));
+				$self->log->error('no range for id ' . $row->{id} . ', ranges: ' . Dumper($self->id_ranges));
 			}
 		}
 		$self->stats->{mysql_query} += (time() - $start);
