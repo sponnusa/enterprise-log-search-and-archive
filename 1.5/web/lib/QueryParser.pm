@@ -54,6 +54,7 @@ has 'directives' => (is => 'rw', isa => 'HashRef', required => 1, default => sub
 	end => time(), 
 	limit => $Default_limit,
 	datasources => {},
+	peers => {},
 }});
 has 'custom_directives' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
 has 'terms' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { {} });
@@ -652,10 +653,10 @@ sub _parse_query_term {
 			elsif ($term_hash->{field} eq 'node'){
 				if ($term_hash->{value} =~ /^[\w\.\:]+$/){
 					if ($effective_operator eq '-'){
-						$self->peers->{excluded}->{ $term_hash->{value} } = 1;
+						$self->directives->{peers}->{excluded}->{ $term_hash->{value} } = 1;
 					}
 					else {
-						$self->peers->{given}->{ $term_hash->{value} } = 1;
+						$self->directives->{peers}->{given}->{ $term_hash->{value} } = 1;
 					}
 				}
 				next;
