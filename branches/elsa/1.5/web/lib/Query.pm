@@ -1152,7 +1152,7 @@ sub _find_import_ranges {
 	}
 	my $taken = time() - $start;
 	$self->stats->{import_range_search} = $taken;
-	return [ @id_ranges ];
+	$self->id_ranges([ @id_ranges ]);
 }
 
 1;

@@ -268,7 +268,7 @@ sub _get_class_ids {
 	
 	# If there is a groupby, verify that the classes in the groupby match the terms
 	if ($self->groupby){
-		if (defined $Fields::Field_to_order->{ $self->groupby }){
+		if (defined $Fields::Field_to_order->{ $self->groupby } or defined $Fields::Reserved_fields->{ $self->groupby }){
 			$all_classes = 1;
 		}
 		else {
@@ -285,7 +285,7 @@ sub _get_class_ids {
 	}
 	# If there is a orderby, verify that the classes in the orderby match the terms
 	elsif ($self->orderby){
-		if (defined $Fields::Field_to_order->{ $self->orderby }){
+		if (defined $Fields::Field_to_order->{ $self->orderby } or defined $Fields::Reserved_fields->{ $self->orderby }){
 			$all_classes = 1;
 		}
 		else {
@@ -524,14 +524,14 @@ sub _get_select_clause {
 	my $attr_string = shift;
 	
 	my $import_where = '1=1';
-	my $import_ranges = $self->_find_import_ranges();
-	if (scalar @$import_ranges > 100){
-		throw(400, 'Query returned too many possible import sets', { count => scalar @$import_ranges });
+	
+	if ($self->has_id_ranges > 100){
+		throw(400, 'Query returned too many possible import sets', { count => $self->has_id_ranges });
 	}
 	
-	if (scalar @$import_ranges){
+	if ($self->has_id_ranges){
 		my %import_wheres = ( and => [], or => [], not => [] );
-		foreach my $range (@$import_ranges){
+		foreach my $range ($self->all_id_ranges){
 			push @{ $import_wheres{ $range->{boolean} } }, sprintf(' (%d<=id AND id<=%d)', @{ $range->{values} });
 		}
 		$import_where = '(1=1';
@@ -828,6 +828,14 @@ sub _get_index_schema {
 sub execute {
 	my $self = shift;
 	my $cb = shift;
+	
+	if ($self->parser->has_import_search_terms){
+		$self->_find_import_ranges();
+		if (not $self->has_id_ranges){
+			$self->log->trace('Import terms eliminate all results');
+			$cb->();
+		}
+	}
 	
 	$self->_get_data_db(sub {
 		my $ok = shift;
