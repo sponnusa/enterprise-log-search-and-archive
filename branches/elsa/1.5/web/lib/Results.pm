@@ -175,6 +175,13 @@ sub keys {
 		next if ref($record->{$key});
 		push @keys, $key;
 	}
+	if (exists $record->{_fields} and ref($record->{_fields}) and ref($record->{_fields}) eq 'ARRAY'){
+		foreach my $field_hash (@{ $record->{_fields} }){
+			if (defined $field_hash->{field} and defined $field_hash->{value}){
+				push @keys, $field_hash->{field};
+			}
+		}
+	}
 	
 	return @keys;	
 }
