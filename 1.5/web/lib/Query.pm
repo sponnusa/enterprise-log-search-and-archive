@@ -711,7 +711,6 @@ sub _post_transform {
 				}
 			}
 			push @final, $row;
-			last;
 		}
 		$self->log->debug('final: ' . Dumper(\@final));
 		$self->results(Results->new(results => [ @final ]));
