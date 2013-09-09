@@ -501,7 +501,7 @@ sub _get_attr_tests {
 	foreach my $hash (@$filters){
 		my $attr = $self->_attr($hash->{field}, $class_id);
 		my $value = $self->_value($hash, $class_id);
-		push @{ $terms{ $hash->{boolean} } }, sprintf('%s=%d', $attr, $value);
+		push @{ $terms{ $hash->{boolean} } }, sprintf('%s%s%d', $attr, $hash->{op}, $value);
 	}
 	
 	my @attr_clauses;
