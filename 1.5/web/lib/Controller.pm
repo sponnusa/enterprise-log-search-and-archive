@@ -1393,6 +1393,8 @@ sub query {
 				
 				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
 				
+				$q->dedupe_warnings();
+				
 				if ($q->has_connectors){
 					$self->send_to($q, sub { 
 						$cb->($q);
