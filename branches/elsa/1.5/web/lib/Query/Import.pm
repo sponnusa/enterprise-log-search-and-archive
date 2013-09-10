@@ -59,6 +59,7 @@ sub execute {
 	$self->_get_db(sub {
 		$self->_get_rows(sub {
 			undef $timeout_watcher;
+			$self->time_taken(time - $start);
 			$cv->end;
 		});
 	});
@@ -151,9 +152,17 @@ sub _get_rows {
 			"timestamp, INET_NTOA(host_id) AS host, program_id, class_id, msg,\n" .
 			"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
 			"FROM %1\$s\n" .
-			'WHERE timestamp BETWEEN ? AND ? AND id IN (' . $placeholders . ') ', $table);
+			'WHERE id IN (' . $placeholders . ') ', $table);
 		push @table_queries, $table_query;
-		push @table_query_values, $self->start, $self->end, @{ $tables{$table} };
+		push @table_query_values, @{ $tables{$table} };
+		if (defined $self->start){
+			$table_query .= ' AND timestamp>=?';
+			push @table_query_values, $self->start;
+		}
+		if (defined $self->end){
+			$table_query .= ' AND timestamp<=?';
+			push @table_query_values, $self->end;
+		}
 	}
 	
 	if (not @table_queries){

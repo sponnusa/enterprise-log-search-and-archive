@@ -21,7 +21,7 @@ sub call {
 	
 	$self->controller->clear_warnings;
 	
-	my $method = $self->_extract_method($req->request_uri);
+	my $method = $self->extract_method($req->request_uri);
 	$method ||= 'index';
 	if ($method eq 'm'){
 		$method = 'index';

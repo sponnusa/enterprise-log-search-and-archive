@@ -197,7 +197,7 @@ sub get_saved_result {
 			$cb->( { results => $data } );
 		}
 		else {
-			$cv->($data);
+			$cb->($data);
 		}
 	}
 	catch {
@@ -622,7 +622,7 @@ sub get_form_params {
 				classes => $self->meta_info->{classes},
 				classes_by_id => $self->meta_info->{classes_by_id},
 				fields => $self->meta_info->{fields},
-				nodes => [ keys %{ $self->meta_info->{nodes} } ],
+				nodes => [ keys %{ $self->conf->get('peers') } ],
 				groups => $user->groups,
 				additional_display_columns => $self->conf->get('additional_display_columns') ? $self->conf->get('additional_display_columns') : [],
 				totals => $self->meta_info->{totals},
@@ -1380,8 +1380,8 @@ sub query {
 	
 	try {
 		my $ret;
-		my $cv = AnyEvent->condvar;
-		$cv->begin(sub { $cb->($ret) });
+		#my $cv = AnyEvent->condvar;
+		#$cv->begin(sub { $cb->($ret) });
 		QueryParser->new(conf => $self->conf, log => $self->log, %$args, on_connect => sub {
 			my $qp = shift;
 			my $q = $qp->parse();

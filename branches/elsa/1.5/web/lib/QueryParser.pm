@@ -50,8 +50,6 @@ has 'stopword_terms' => (is => 'rw', isa => 'HashRef', required => 1, default =>
 
 # What we return
 has 'directives' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { { 
-	start => 0, 
-	end => time(), 
 	limit => $Default_limit,
 	datasources => {},
 	peers => {},
@@ -223,24 +221,28 @@ sub _choose_query_class {
 	
 	# Do we have indexed data for this time period?
 	if ($self->directives->{start} and $self->directives->{start} < $self->meta_info->{indexes_min}){
-		if ($self->{directives}->{start} > $self->meta_info->{archive_min}){
+		if ($self->{directives}->{start} > $self->meta_info->{archive_min}
+			and not $self->conf->get('disallow_sql_search')){
+			$self->log->trace('Choosing Query::SQL because start was less than indexes_min');
 			return 'Query::SQL';
 		}
-		else {
-			my $msg = 'Adjusting query time to earliest index date ' . scalar localtime($self->meta_info->{indexes_min});
-			$self->log->info($msg);
-			#$self->add_warning(200, $msg);
-		}
+#		else {
+#			my $msg = 'Adjusting query time to earliest index date ' . scalar localtime($self->meta_info->{indexes_min});
+#			$self->log->info($msg);
+#			#$self->add_warning(200, $msg);
+#		}
 	}
-	elsif ($self->directives->{end} and $self->directives->{end} > $self->meta_info->{indexes_max}){
-		if ($self->{directives}->{end} < $self->meta_info->{archive_max}){
+	elsif ($self->directives->{end} and $self->directives->{end} < $self->meta_info->{indexes_min}){
+		if ($self->{directives}->{end} < $self->meta_info->{archive_max}
+			and not $self->conf->get('disallow_sql_search')){
+			$self->log->trace('Choosing Query::SQL because end was less than indexes_max');
 			return 'Query::SQL';
 		}
-		else {
-			my $msg = 'Adjusting query time to latest index date ' . scalar localtime($self->meta_info->{indexes_max});
-			$self->log->info($msg);
-			#$self->add_warning(200, $msg);
-		}
+#		else {
+#			my $msg = 'Adjusting query time to latest index date ' . scalar localtime($self->meta_info->{indexes_max});
+#			$self->log->info($msg);
+#			#$self->add_warning(200, $msg);
+#		}
 	}
 	
 #	# Find estimated query time
@@ -384,7 +386,7 @@ sub _parse_query {
 		$self->log->debug("Set limit " . $self->directives->{limit});
 	}
 	
-	if ($self->meta_params->{start}){
+	if (defined $self->meta_params->{start}){
 		my $tz_diff = $self->timezone_diff($self->meta_params->{start});
 		if ($self->meta_params->{start} =~ /^\d+(?:\.\d+)?$/){
 			$self->directives->{start} = int($self->meta_params->{start});
@@ -398,7 +400,7 @@ sub _parse_query {
 			$self->meta_params->{start} = $start;
 		}
 	}
-	if ($self->meta_params->{end}){
+	if (defined $self->meta_params->{end}){
 		my $tz_diff = $self->timezone_diff($self->meta_params->{end});
 		if ($self->meta_params->{end} =~ /^\d+(?:\.\d+)?$/){
 			$self->directives->{end} = int($self->meta_params->{end});
@@ -456,8 +458,10 @@ sub _parse_query {
 #		throw(416, 'Invalid start or end: ' . (scalar localtime($self->directives->{start})) . ' ' . (scalar localtime($self->directives->{end})), { start => $self->directives->{start}, end => $self->directives->{end} });
 #	}
 	
-	$self->log->debug('going with times start: ' . (scalar localtime($self->directives->{start})) .  ' (' . $self->directives->{start} . ') and end: ' .
-		(scalar localtime($self->directives->{end})) . ' (' . $self->directives->{end} . ')');
+	if (exists $self->directives->{start} or $self->directives->{end}){
+		$self->log->debug('going with times start: ' . (scalar localtime($self->directives->{start})) .  ' (' . $self->directives->{start} . ') and end: ' .
+			(scalar localtime($self->directives->{end})) . ' (' . $self->directives->{end} . ')');
+	}
 	
 	# Exclude our from_peer
 	if ($self->from_peer and $self->from_peer ne '_external'){
