@@ -248,7 +248,7 @@ sub upload {
 				
 				if ($unzipped_file_shortname =~ /programs/){
 					$self->log->info('Loading programs file ' . $zipped_file);
-					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs';
+					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs FIELDS ESCAPED BY \'\'';
 					$sth = $self->db->prepare($query);
 					$sth->execute($zipped_file);
 					unlink($zipped_file);

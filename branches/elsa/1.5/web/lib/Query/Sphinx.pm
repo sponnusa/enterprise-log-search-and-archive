@@ -448,8 +448,8 @@ sub _get_match_str {
 		$clauses{ $hash->{boolean} } ||= {};
 		
 		if ($hash->{field}){
-			#my $value = $self->_value($hash, $class_id);
-			my $value = $self->_search_value($hash->{value}, $group_key);
+			my $value = $self->_is_int_field($hash->{field}, $class_id) ? $self->_value($hash, $class_id) : $hash->{value};
+			$value = $self->_search_value($value, $group_key);
 			my $field = $self->_search_field($hash->{field}, $class_id);
 			$clauses{ $hash->{boolean} }->{'(@' . $field . ' ' . $value . ')'} = 1;
 		}
@@ -669,7 +669,11 @@ sub _get_search_terms {
 		# Verify this field exists in this index
 		my $field = $self->_search_field($hash->{field}, $class_id);
 		my $attr = $self->_attr($hash->{field}, $class_id);
-		if (($field and $self->_is_meta($field)) or ($attr and $self->_is_meta($attr))){
+		if ($field and $self->_index_has($index_schema, 'fields', $self->_search_field($field, $class_id))){
+			$self->log->debug($field . ' with value ' . $hash->{value} . ' is a candidate');
+			$candidates{ $hash->{value} } = $hash;
+		}
+		elsif ($field and $self->_is_meta($field) or ($attr and $self->_is_meta($attr))){
 			$self->log->debug('meta attr ' . $hash->{field} . ' not a candidate');
 		}
 		elsif ($field and $self->_index_has($index_schema, 'fields', $field)){
@@ -678,7 +682,6 @@ sub _get_search_terms {
 		}
 		elsif ($attr and $self->_index_has($index_schema, 'attrs', $attr)){
 			if ($self->_is_int_field($hash->{field}, $class_id)){
-				#my $value = $self->_value($hash, $class_id);
 				$int_candidates{ $hash->{value} } = $hash;
 				$self->log->debug('attr ' . $attr . ' with value ' . $hash->{value} . ' is an int candidate');
 			}
@@ -841,6 +844,7 @@ sub execute {
 		if (not $self->has_id_ranges){
 			$self->log->trace('Import terms eliminate all results');
 			$cb->();
+			return;
 		}
 	}
 	
@@ -867,6 +871,7 @@ sub execute {
 				}
 			}
 			$cb->();
+			return;
 		});
 		
 		unless (scalar keys %{ $self->schemas }){
@@ -885,8 +890,6 @@ sub execute {
 				$cb->();
 				return;
 			}
-			
-			
 			
 			last if $self->limit and $self->results->records_returned >= $self->limit;
 			if ($self->timeout and (time() - $start) >= ($self->timeout/1000)){

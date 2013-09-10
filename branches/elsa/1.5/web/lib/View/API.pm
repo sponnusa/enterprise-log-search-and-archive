@@ -57,7 +57,7 @@ sub call {
 		$res->body('not found');
 		return $res->finalize();
 	}
-	my ($ret, $e);
+	
 	
 	# If we don't have a nonblocking web server (Apache), we need to have an overarching blocking recv
 	my $cv;
@@ -74,18 +74,17 @@ sub call {
 				$args->{upload} = $req->uploads->{filename};
 			}
 			$self->controller->$method($args, sub {
-				$ret = shift;
+				my $ret = shift;
 				if ($ret and ref($ret) eq 'Ouch'){
-					$e = $ret;
-				}
-				if ($e){
-					$self->controller->log->error($e->trace);
-					$res->status($e->code);
-					$res->body([encode_utf8($self->controller->json->encode($e))]);
+					$self->controller->log->error($ret->trace);
+					$res->status($ret->code);
+					$res->body([encode_utf8($self->controller->json->encode($ret))]);
 				}
 				elsif (ref($ret) and ref($ret) eq 'ARRAY'){
 					# API function returned Plack-compatible response
-					return $ret;
+					$write->($ret);
+					$cv and $cv->send;
+					return;
 				}
 				elsif (ref($ret) and ref($ret) eq 'HASH' and $ret->{mime_type}){
 					$res->content_type($ret->{mime_type});
@@ -110,6 +109,7 @@ sub call {
 						}
 					}
 					elsif (ref($ret) and blessed($ret) and $ret->can('warnings') and $self->controller->has_warnings){
+						$self->controller->log->debug('ret: ' . Dumper($ret));
 						foreach my $warning ($self->controller->all_warnings){
 							push @{ $ret->warnings }, $warning;
 						}

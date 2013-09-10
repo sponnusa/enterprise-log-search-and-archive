@@ -680,7 +680,7 @@ sub _peer_query {
 		$headers->{Authorization} = $self->_get_auth_header($peer);
 		$q->peer_requests->{$peer} = http_post $url, $request_body, headers => $headers, sub {
 			my ($body, $hdr) = @_;
-			$self->log->debug('body: ' . Dumper($body));
+			#$self->log->debug('body: ' . Dumper($body));
 			unless ($hdr and $hdr->{Status} < 400){
 				my $e;
 				try {
