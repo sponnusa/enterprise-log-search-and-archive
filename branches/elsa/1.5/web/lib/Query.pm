@@ -432,8 +432,15 @@ sub dedupe_warnings {
 	
 	my @dedupe;
 	foreach my $key (keys %uniq){
+		# Remove 416's if we have data
+		if ($uniq{$key}->[0]->{code} eq 416 and $self->results->records_returned){
+			next;
+		}
 		push @dedupe, $uniq{$key}->[0];
 	}
+	
+	
+		
 	$self->warnings([@dedupe]);
 }
 
