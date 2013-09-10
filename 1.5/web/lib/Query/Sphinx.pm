@@ -799,11 +799,13 @@ sub _get_index_list {
 	}
 	
 	my @indexes;
+	my $start = defined $self->start ? $self->start : 0;
+	my $end = defined $self->end ? $self->end : time;
 	foreach my $index_name (sort $sort_fn keys %{ $indexes }){
 		# Check that the time is right
-		if (($indexes->{$index_name}->{start_int} <= $self->start and $indexes->{$index_name}->{end_int} >= $self->start)
-			or ($indexes->{$index_name}->{start_int} <= $self->end and $indexes->{$index_name}->{end_int} >= $self->end)
-			or ($indexes->{$index_name}->{start_int} >= $self->start and $indexes->{$index_name}->{end_int} <= $self->end)){
+		if (($indexes->{$index_name}->{start_int} <= $start and $indexes->{$index_name}->{end_int} >= $start)
+			or ($indexes->{$index_name}->{start_int} <= $end and $indexes->{$index_name}->{end_int} >= $end)
+			or ($indexes->{$index_name}->{start_int} >= $start and $indexes->{$index_name}->{end_int} <= $end)){
 			push @indexes, $index_name;
 		}
 	}
@@ -921,6 +923,14 @@ sub _query {
 	});
 	my @values = (@{ $query->{select}->{values} }, @{ $query->{where}->{values} });
 	my $query_string = $query->{select}->{clause} . ' FROM ' . join(',', @$indexes) . ' WHERE ' . $query->{where}->{clause};
+	if (defined $self->start){
+		$query_string .= ' AND timestamp>=?';
+		push @values, $self->start;
+	}
+	if (defined $self->end){
+		$query_string .= ' AND timestamp<=?';
+		push @values, $self->end;
+	}
 	if ($self->groupby){
 		$query_string .= ' GROUP BY ' . $query->{groupby} . ' ORDER BY _count ';
 	}

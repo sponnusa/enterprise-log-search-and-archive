@@ -122,10 +122,12 @@ sub _get_table_list {
 			$self->log->error('table not found: ' . $table_name);
 		}
 		next unless exists $tables_hash->{$table_name};
+		my $start = defined $self->start ? $self->start : 0;
+		my $end = defined $self->end ? $self->end : time;
 		# Check that the time is right
-		if (($table_hash->{start_int} <= $self->start and $table_hash->{end_int} >= $self->start)
-			or ($table_hash->{start_int} <= $self->end and $table_hash->{end_int} >= $self->end)
-			or ($table_hash->{start_int} >= $self->start and $table_hash->{end_int} <= $self->end)){
+		if (($table_hash->{start_int} <= $start and $table_hash->{end_int} >= $start)
+			or ($table_hash->{start_int} <= $end and $table_hash->{end_int} >= $end)
+			or ($table_hash->{start_int} >= $start and $table_hash->{end_int} <= $end)){
 			$tables{$table_name} = { start_int => $table_hash->{start_int}, table_name => $table_hash->{table_name} };
 		}
 	}
@@ -385,6 +387,14 @@ sub _query {
 	});
 	my @values = (@{ $query->{select}->{values} }, @{ $query->{where}->{values} });
 	my $query_string = $query->{select}->{clause} . ' FROM ' . $table . ' WHERE ' . $query->{where}->{clause};
+	if (defined $self->start){
+		$query_string .= ' AND timestamp>=?';
+		push @values, $self->start;
+	}
+	if (defined $self->end){
+		$query_string .= ' AND timestamp<=?';
+		push @values, $self->end;
+	}
 	if ($self->groupby){
 		$query_string .= ' GROUP BY ' . $query->{groupby} . ' ORDER BY _count ';
 	}

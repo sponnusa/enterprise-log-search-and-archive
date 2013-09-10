@@ -48,8 +48,8 @@ has 'system' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'batch' => (is => 'rw', isa => 'Bool', required => 1, default => 0, trigger => \&_set_batch);
 has 'limit' => (is => 'rw', isa => 'Int', required => 1, default => $Default_limit);
 has 'offset' => (is => 'rw', isa => 'Int', required => 1, default => 0);
-has 'start' => (is => 'rw', isa => 'Int', required => 1, default => 0);
-has 'end' => (is => 'rw', isa => 'Int', required => 1, default => sub { time() });
+has 'start' => (is => 'rw', isa => 'Int');
+has 'end' => (is => 'rw', isa => 'Int');
 has 'cutoff' => (is => 'rw', isa => 'Int', required => 1, default => 0);
 has 'transforms' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 	handles => { has_transforms => 'count', all_transforms => 'elements', num_transforms => 'count', next_transform => 'shift' });

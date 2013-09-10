@@ -1955,6 +1955,7 @@
 					<pattern>Reclaiming abandoned lease @IPvANY:i0:@</pattern>
 					<pattern>client @ESTRING:i0:#@@NUMBER::@: update forwarding '@ESTRING:s1:/@</pattern>
 					<pattern>DNS format error from @ESTRING:i1:#@@NUMBER:i2:@ resolving </pattern>
+					<pattern>DHCPACK on @ESTRING:i0: @to @ESTRING:s0: @(@ESTRING:s2:)@</pattern>
 				</patterns>
 				<examples>
 					<example>
@@ -1984,6 +1985,12 @@
 						<test_message program="dhcpd">client 1.1.1.1#64919: update forwarding 'test.com/IN' denied</test_message>
 						<test_value name="i0">1.1.1.1</test_value>
 						<test_value name="s1">test.com</test_value>
+					</example>
+					<example>
+						<test_message program="dhcpd">DHCPACK on 192.168.208.64 to aa:aa:aa:aa:aa:aa (JT-Mac) via 192.168.208.8</test_message>
+						<test_value name="i0">192.168.208.64</test_value>
+						<test_value name="s0">aa:aa:aa:aa:aa:aa</test_value>
+						<test_value name="s2">JT-Mac</test_value>
 					</example>
 				</examples>
 			</rule>

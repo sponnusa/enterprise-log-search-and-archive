@@ -30,7 +30,7 @@ our %Modes = (
 	stats => 1,
 	get_results => 1,
 	admin => 1,
-	transform => 2,
+	#transform => 2,
 	send_to => 1,
 );
 
@@ -59,12 +59,12 @@ sub call {
 			$method ||= 'index';
 			$self->controller->log->debug('method: ' . $method);
 			if (exists $Modes{ $method }){
-				if ($Modes{ $method } == 2){
+				if ($Modes{ $method } == 1){
 					my $user = $self->controller->get_user($req->user);
 					if ($user){
 						$self->session->set('user', $user->freeze);
 						$self->session->set('user_info', $user->TO_JSON);
-						$self->controller->$method($req, sub {
+						$self->$method($req, $user, sub {
 							$body = shift;
 							if (ref($body) and ref($body) eq 'HASH'){
 								if ($self->controller->has_warnings){
@@ -86,11 +86,12 @@ sub call {
 						$cv and $cv->send;
 					}
 				}
-				elsif ($Modes{ $method } == 1){
+				elsif ($Modes{ $method } == 2){
 					$self->$method($req, sub {
 						my $ret = shift;
 						if (not $ret){
-							$ret = { error => $self->controller->last_error };
+							$ret = { error => $self->controller->errors };
+							$body = [encode_utf8($self->controller->json->encode($ret))];
 						}
 						elsif (ref($ret) and $ret->{mime_type}){
 							$res->content_type($ret->{mime_type});
@@ -102,11 +103,56 @@ sub call {
 						else {
 							$body = [encode_utf8($self->controller->json->encode($ret))];
 						}
-						$body = [encode_utf8($self->controller->json->encode($ret))];
 						$res->body($body);
 						$write->($res->finalize());
 						$cv and $cv->send;
 					});
+				}
+			}
+			else {
+				my $user = $self->controller->get_user($req->user);
+				my $args = $req->parameters->as_hashref;
+				$self->controller->log->debug('args: ' . Dumper($args));
+				if ($user){
+					if (not $self->controller->can($method)){
+						$res->status(404);
+						$body = 'Not found';
+						$res->body($body);
+						$write->($res->finalize());
+						$cv and $cv->send;
+						return;
+					}
+					$self->session->set('user', $user->freeze);
+					$self->session->set('user_info', $user->TO_JSON);
+					$args->{user} = $user;
+					
+					$self->controller->$method($args, sub {
+						my $ret = shift;
+						if (not $ret){
+							$ret = { error => $self->controller->errors };
+							$body = [encode_utf8($self->controller->json->encode($ret))];
+						}
+						elsif (ref($ret) and $ret->{mime_type}){
+							$res->content_type($ret->{mime_type});
+							$body = $ret->{ret};
+							if ($ret->{filename}){
+								$res->header('Content-disposition', 'attachment; filename=' . $ret->{filename});
+							}
+						}
+						else {
+							$body = [encode_utf8($self->controller->json->encode($ret))];
+						}
+						$res->body($body);
+						$write->($res->finalize());
+						$cv and $cv->send;
+					});
+				}
+				else {
+					$res->status(401);
+					$body = 'Unauthorized';
+					$res->body($body);
+					$write->($res->finalize());
+					$cv and $cv->send;
 				}
 			}
 		}
@@ -125,45 +171,53 @@ sub call {
 sub index {
 	my $self = shift;
 	my $req = shift;
+	my $user = shift;
+	my $cb = shift;
 	
 	$self->title('ELSA');
 	
-	return $self->get_headers() . $self->get_index_body();
+	return $self->get_headers(sub {
+		my $headers = shift;
+		$self->get_index_body(sub {
+			my $body = shift;
+			$cb->($headers . $body);
+		});
+	});
 }
-
-
 
 sub get_results {
 	my $self = shift;
 	my $req = shift;
+	my $user = shift;
+	my $cb = shift;
 	
-	my $HTML = $self->get_headers('..');
-	
-	if ($self->session->get('user_info') and $self->session->get('user_info')->{uid}){
-		my $args = $req->query_parameters->as_hashref;
-		$args->{uid} = $self->session->get('user_info')->{uid};
-		
-		my $ret = $self->controller->get_saved_result($args);
-		if ($ret and ref($ret) eq 'HASH'){
-			my $form_params = $self->controller->get_form_params($self->controller->get_user($self->session->get('user_info')->{username}));
-			if($form_params){
-				$HTML .= '<script>YAHOO.ELSA.formParams = ' . $self->controller->json->encode($form_params) . ';</script>';
-			}
+	$self->get_headers(sub {
+		my $HTML = shift;
+		if ($self->session->get('user_info') and $self->session->get('user_info')->{uid}){
+			my $args = $req->query_parameters->as_hashref;
+			$args->{uid} = $self->session->get('user_info')->{uid};
 			
-			$HTML .= '<script>var oGivenResults = ' . $self->controller->json->encode($ret) . '</script>';
-			$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
+			my $ret = $self->controller->get_saved_result($args);
+			if ($ret and ref($ret) eq 'HASH'){
+				my $form_params = $self->controller->get_form_params($self->controller->get_user($self->session->get('user_info')->{username}));
+				if($form_params){
+					$HTML .= '<script>YAHOO.ELSA.formParams = ' . $self->controller->json->encode($form_params) . ';</script>';
+				}
+				
+				$HTML .= '<script>var oGivenResults = ' . $self->controller->json->encode($ret) . '</script>';
+				$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
+			}
+			else {
+				$self->controller->_error('Unable to get results, got: ' . Dumper($ret));
+				$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unable to get results"); });</script>';
+			}
 		}
 		else {
-			$self->controller->_error('Unable to get results, got: ' . Dumper($ret));
-			$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unable to get results"); });</script>';
+			$self->controller->_error('Unauthorized');
+			$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unauthorized"); });</script>';
 		}
-	}
-	else {
-		$self->controller->_error('Unauthorized');
-		$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unauthorized"); });</script>';
-	}
-	
-	$HTML .= <<'EOHTML'
+		
+		$HTML .= <<'EOHTML'
 </head>
 <body class=" yui-skin-sam">
 <div id="panel_root"></div>
@@ -180,20 +234,23 @@ sub get_results {
 EOHTML
 ;
 
-	return $HTML;
+		$cb->($HTML);
+	});
 }
 
 sub admin {
 	my $self = shift;
 	my $req = shift;
+	my $user = shift;
+	my $cb = shift;
 	
 	$self->title('ELSA Permissions Management');
 	
 	my $args = $req->query_parameters->as_hashref;
 	$args->{uid} = $self->session->get('user_info')->{uid};
-	my $HTML = $self->get_headers('..');
-	
-	$HTML .= <<'EOHTML'
+	$self->get_headers(sub {
+		my $HTML = shift;
+		$HTML .= <<'EOHTML'
 <script type="text/javascript" src="inc/admin.js" ></script>
 <script>YAHOO.util.Event.addListener(window, "load", YAHOO.ELSA.Admin.main)</script>
 </head>
@@ -215,20 +272,23 @@ sub admin {
 EOHTML
 ;
 	
-	return $HTML;	
+		$cb->($HTML);
+	});
 }
 
 sub stats {
 	my $self = shift;
 	my $req = shift;
+	my $user = shift;
+	my $cb = shift;
 	
 	$self->title('ELSA Stats');
 	
 	my $args = $req->query_parameters->as_hashref;
 	$args->{uid} = $self->session->get('user_info')->{uid};
-	my $HTML = $self->get_headers('..');
-	
-	$HTML .= <<'EOHTML'
+	$self->get_headers(sub {
+		my $HTML = shift;
+		$HTML .= <<'EOHTML'
 <script type="text/javascript" src="inc/stats.js" ></script>
 <script>YAHOO.util.Event.addListener(window, "load", YAHOO.ELSA.Stats.main)</script>
 </head>
@@ -249,56 +309,60 @@ sub stats {
 EOHTML
 ;
 	
-	return $HTML;	
+		$cb->($HTML);
+	});
 }
 
-sub transform {
-	my $self = shift;
-	my $req = shift;
-	my $args = $req->parameters->as_hashref;
-	
-	$self->title('ELSA Transform');
-	
-	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
-		try {
-			$self->controller->log->trace('args: ' . Dumper($args));
-			$args->{transforms} = $self->controller->json->decode(uri_unescape($args->{transforms}));
-			$self->controller->log->trace('transforms: ' . Dumper($args->{transforms}));
-			foreach my $transform (@{ $args->{transforms} }){
-				throw(400, 'subsearch not allowed', { transform => 'subsearch' }) if $transform eq 'subsearch';
-			}
-			$args->{results} = $self->controller->json->decode(uri_unescape(delete $args->{data}));
-			$self->controller->log->debug( "Decoded $args as : " . Dumper($args) );
-		}
-		catch {
-			my $e = catch_any($_);
-			$self->controller->log->error("invalid args, error: $e, args: " . Dumper($args));
-			#return { error => 'Unable to build results object from args' };
-			$e->throw;
-		}
-		
-		my $res = new Results(results => (ref($args->{results}) eq 'ARRAY' ? $args->{results} : $args->{results}->{results}));
-		$self->controller->log->debug('res: ' . Dumper($res));
-		my $q = new Query(conf => $self->controller->conf, results => $res, transforms => $args->{transforms});
-		$self->controller->transform($q);
-		my $results = $q->results->results;
-		
-		$self->controller->log->debug( "Got results: " . Dumper($results) );
-		
-		return { 
-			ret => $results, 
-			mime_type => 'application/javascript',
-		};
-	}
-	else {
-		$self->controller->log->error('Invalid args: ' . Dumper($args));
-		return { error => 'Unable to build results object from args' };
-	}
-}
+#sub transform {
+#	my $self = shift;
+#	my $req = shift;
+#	my $cb = shift;
+#	my $args = $req->parameters->as_hashref;
+#	
+#	$self->title('ELSA Transform');
+#	
+#	if ( $args and ref($args) eq 'HASH' and $args->{data} and $args->{transforms} ) {
+#		try {
+#			$self->controller->log->trace('args: ' . Dumper($args));
+#			$args->{transforms} = $self->controller->json->decode(uri_unescape($args->{transforms}));
+#			$self->controller->log->trace('transforms: ' . Dumper($args->{transforms}));
+#			foreach my $transform (@{ $args->{transforms} }){
+#				throw(400, 'subsearch not allowed', { transform => 'subsearch' }) if $transform eq 'subsearch';
+#			}
+#			$args->{results} = $self->controller->json->decode(uri_unescape(delete $args->{data}));
+#			$self->controller->log->debug( "Decoded $args as : " . Dumper($args) );
+#		}
+#		catch {
+#			my $e = catch_any($_);
+#			$self->controller->log->error("invalid args, error: $e, args: " . Dumper($args));
+#			#return { error => 'Unable to build results object from args' };
+#			$e->throw;
+#		}
+#		
+#		my $res = new Results(results => (ref($args->{results}) eq 'ARRAY' ? $args->{results} : $args->{results}->{results}));
+#		$self->controller->log->debug('res: ' . Dumper($res));
+#		my $q = new Query(conf => $self->controller->conf, results => $res, transforms => $args->{transforms});
+#		$self->controller->transform($q);
+#		my $results = $q->results->results;
+#		
+#		$self->controller->log->debug( "Got results: " . Dumper($results) );
+#		
+#		return { 
+#			ret => $results, 
+#			mime_type => 'application/javascript',
+#		};
+#	}
+#	else {
+#		$self->controller->log->error('Invalid args: ' . Dumper($args));
+#		return { error => 'Unable to build results object from args' };
+#	}
+#}
 
 sub send_to {
 	my $self = shift;
 	my $req = shift;
+	my $user = shift;
+	my $cb = shift;
 	my $args = $req->parameters->as_hashref;
 	
 	$self->title('ELSA Connector');
@@ -318,18 +382,20 @@ sub send_to {
 			return 'Unable to build results object from args';
 		}
 		
-		my $results = $self->controller->send_to($args);
-		$results = $args->{results} unless $results;
-		$self->controller->log->debug( "Got results: " . Dumper($results) );
-		
-		return { 
-			ret => $results, 
-			mime_type => 'application/javascript',
-		};
+		$self->controller->send_to($args, sub {
+			my $results = shift;
+			$results = $args->{results} unless $results;
+			$self->controller->log->debug( "Got results: " . Dumper($results) );
+			
+			$cb->({ 
+				ret => $results, 
+				mime_type => 'application/javascript',
+			});
+		});
 	}
 	else {
 		$self->controller->log->error('Invalid args: ' . Dumper($args));
-		return 'Unable to build results object from args';
+		throw(400, 'Unable to build results object from args');
 	}
 }
 

@@ -145,7 +145,6 @@ if (exists $ENV{DOCUMENT_ROOT}){
 
 builder {
 	$ENV{PATH_INFO} = $ENV{REQUEST_URI}; #mod_rewrite will mangle PATH_INFO, so we'll set this manually here in case it's being used
-	enable 'Chunked';
 	enable 'XForwardedFor';
 	enable 'NoMultipleSlashes';
 	enable 'Static', path => qr{^/?inc/}, root => $static_root;

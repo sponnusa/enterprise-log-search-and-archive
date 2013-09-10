@@ -105,7 +105,7 @@ sub call {
 		$res->header('Access-Control-Allow-Origin' => '*');
 		$self->path_to_inc('../');
 		
-		my $dashboard_name = $self->_extract_method($req->request_uri);
+		my $dashboard_name = $self->extract_method($req->request_uri);
 		$self->controller->log->debug('method: ' . $dashboard_name);
 		
 		my $user = $self->controller->get_user($req->user);

@@ -497,13 +497,16 @@ mk_node_dirs(){
 	
 	# Set apparmor settings if necessary
 	if [ -f /etc/apparmor.d/usr.sbin.mysqld ]; then
-		echo "Updating apparmor config for MySQL dir $DATA_DIR/elsa/mysql/";
-		mkdir -p /etc/apparmor.d/local
-		grep "$DATA_DIR/elsa/mysql/" /etc/apparmor.d/local/usr.sbin.mysqld;
+		grep "$DATA_DIR/elsa/mysql/" /etc/apparmor.d/usr.sbin.mysqld;
 		if [ $? -ne 0 ]; then
-			echo "$DATA_DIR/elsa/mysql/ r,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
-			echo "$DATA_DIR/elsa/mysql/** rwk,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
+			echo "Updating apparmor config for MySQL dir $DATA_DIR/elsa/mysql/";
+			echo "/usr/sbin/mysqld {"  >> /etc/apparmor.d/usr.sbin.mysqld;
+			echo "  $DATA_DIR/elsa/mysql/ r,"  >> /etc/apparmor.d/usr.sbin.mysqld;
+			echo "  $DATA_DIR/elsa/mysql/** rwk,"  >> /etc/apparmor.d/usr.sbin.mysqld;
+			echo "}"  >> /etc/apparmor.d/usr.sbin.mysqld;
 			sh /etc/init.d/apparmor reload
+		else
+			echo "Apparmor already configured for MySQL";
 		fi
 	fi
 	
