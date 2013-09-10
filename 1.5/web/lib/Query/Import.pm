@@ -25,6 +25,7 @@ sub execute {
 		if (not $self->has_id_ranges){
 			$self->log->trace('Import terms eliminate all results');
 			$cb->();
+			return;
 		}
 	}
 	else {
