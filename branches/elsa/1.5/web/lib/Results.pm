@@ -35,7 +35,7 @@ sub TO_JSON {
 	my $self = shift;
 	return { 
 		results => $self->results, 
-		totalRecords => $self->total_records, 
+		totalRecords => $self->total_records > $self->total_docs ? $self->total_records : $self->total_docs, 
 		recordsReturned => $self->records_returned,
 		approximate => $self->is_approximate,
 	};
