@@ -165,7 +165,7 @@ sub TO_JSON {
 		qid => $self->qid,
 		totalTime => $self->time_taken,
 		results => $self->results->results, 
-		totalRecords => $self->results->total_records, 
+		totalRecords => $self->results->total_records > $self->results->total_docs ? $self->results->total_records : $self->results->total_docs,
 		recordsReturned => $self->results->records_returned,	
 		groupby => $self->groupby ? [ $self->groupby ] : [], # return an array for future faceting support
 		orderby_dir => $self->orderby_dir,

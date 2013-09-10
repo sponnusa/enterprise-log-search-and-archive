@@ -460,14 +460,15 @@ sub _get_match_str {
 	
 	my @boolean_clauses;
 	
+	# The clauses need to be sorted such that terms with no field are first for Sphinx
 	if (scalar keys %{ $clauses{and} }){
-		push @boolean_clauses, '(' . join(' ', sort keys %{ $clauses{and} }) . ')';
+		push @boolean_clauses, '(' . join(' ', sort { $a =~ /^\(\@/ <=> $b =~ /^\(\@/ } keys %{ $clauses{and} }) . ')';
 	}
 	if (scalar keys %{ $clauses{or} }){
-		push @boolean_clauses, '(' . join('|', sort keys %{ $clauses{or} }) . ')';
+		push @boolean_clauses, '(' . join('|', sort { $a =~ /^\(\@/ <=> $b =~ /^\(\@/ } keys %{ $clauses{or} }) . ')';
 	}
 	if (scalar keys %{ $clauses{not} }){
-		push @boolean_clauses, '!(' . join('|', sort keys %{ $clauses{not} }) . ')';
+		push @boolean_clauses, '!(' . join('|', sort { $a =~ /^\(\@/ <=> $b =~ /^\(\@/ } keys %{ $clauses{not} }) . ')';
 	}
 	
 	return join(' ', @boolean_clauses);
@@ -501,6 +502,9 @@ sub _get_attr_tests {
 	foreach my $hash (@$filters){
 		my $attr = $self->_attr($hash->{field}, $class_id);
 		my $value = $self->_value($hash, $class_id);
+		unless (defined $attr and defined $value){
+			throw(400, 'Invalid filter ' . $hash->{field}, { term => $hash->{field} });
+		}
 		push @{ $terms{ $hash->{boolean} } }, sprintf('%s%s%d', $attr, $hash->{op}, $value);
 	}
 	
@@ -590,7 +594,8 @@ sub _get_search_terms {
 		my %hash = %{ $local_terms->{and}->{$key} };
 		my @same_fields = grep { 
 			$local_terms->{and}->{$_}->{field} eq $hash{field} 
-				and $local_terms->{and}->{$_}->{value} ne $hash{value} 
+				and $local_terms->{and}->{$_}->{value} ne $hash{value}
+				and $local_terms->{and}->{$_}->{op} eq $hash{op} 
 			} keys %{ $local_terms->{and} };
 		foreach my $same_field_key (@same_fields){
 			if ($self->_is_int_field($local_terms->{and}->{$same_field_key}->{field}, $class_id)){
