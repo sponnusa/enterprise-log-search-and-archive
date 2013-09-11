@@ -88,13 +88,9 @@ sub call {
 				}
 				elsif (ref($ret) and ref($ret) eq 'HASH' and $ret->{mime_type}){
 					$res->content_type($ret->{mime_type});
-					if (ref($ret->{ret}) and ref($ret->{ret}) eq 'HASH'){
-						if ($self->controller->has_warnings){
-							$ret->{ret}->{warnings} = $self->controller->warnings;
-						}
-					}
-					elsif (ref($ret->{ret}) and blessed($ret->{ret}) and $ret->{ret}->can('add_warning')){
-						$ret->{ret}->warnings($self->controller->warnings);
+					
+					if ($self->controller->has_warnings){
+						$ret->{ret}->{warnings} = $self->controller->warnings;
 					}
 					
 					$res->body($ret->{ret});

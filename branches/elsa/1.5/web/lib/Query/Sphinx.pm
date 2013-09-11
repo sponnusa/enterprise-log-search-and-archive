@@ -819,6 +819,10 @@ sub _get_index_list {
 		}
 	}
 	
+	if (scalar @indexes and scalar @indexes == scalar keys %$indexes){
+		@indexes = ('distributed_local');
+	}
+	
 	return \@indexes;
 }
 

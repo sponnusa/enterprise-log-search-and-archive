@@ -170,7 +170,7 @@ sub sphinx {
 	if ($@){
 		$self->log->error('Got sphinx error ' . $@);
 		undef $dbh;
-		if ($@ =~ /max_query_time/ or $@ =~ /syntax/ or $@ =~ /query error/){
+		if ($@ =~ /max_query_time/ or $@ =~ /syntax/ or $@ =~ /query error/ or $@ =~ /query words mismatch/){
 			# Fatal
 			$self->log->warn('not retrying query due to type of error');
 		}
