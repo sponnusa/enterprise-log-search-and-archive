@@ -730,7 +730,7 @@ sub _subsearch {
 	my $args = shift;
 	my $cb = shift;
 	$self->log->trace('Subsearch query: ' . join(' ', @$args));
-	my $qp = QueryParser->new(conf => $self->conf, log => $self->log, meta_info => $self->parser->info, 
+	my $qp = QueryParser->new(conf => $self->conf, log => $self->log, meta_info => $self->parser->meta_info, 
 		query_string => join(' ', @$args), transforms => $self->transforms);
 	my $q;
 	
