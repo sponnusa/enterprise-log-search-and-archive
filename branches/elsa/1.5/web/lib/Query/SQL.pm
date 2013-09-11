@@ -11,6 +11,7 @@ use Net::DNS;
 use Time::HiRes qw(time);
 
 extends 'Query';
+with 'Fields';
 
 has 'data_db' => (is => 'rw', isa => 'HashRef');
 

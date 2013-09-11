@@ -20,7 +20,7 @@ use Try::Tiny;
 use Ouch qw(:trytiny);;
 use Exporter qw(import);
 
-our @EXPORT = qw(catch_any);
+our @EXPORT = qw(catch_any epoch2iso);
 
 use CustomLog;
 use Results;

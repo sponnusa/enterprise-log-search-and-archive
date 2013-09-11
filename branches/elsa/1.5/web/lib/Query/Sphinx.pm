@@ -11,6 +11,7 @@ use String::CRC32;
 use Sys::Hostname::FQDN;
 use Net::DNS;
 extends 'Query';
+with 'Fields';
 
 has 'data_db' => (is => 'rw', isa => 'HashRef');
 has 'post_filters' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { { and => {}, not => {} } },
@@ -1231,7 +1232,7 @@ sub _format_records_groupby {
 			$total_records += $agg{$key};
 			my $unixtime = $key * $increment;
 			
-			my $client_localtime = $unixtime - $self->timezone_diff($unixtime);					
+			my $client_localtime = $unixtime - $self->parser->timezone_diff($unixtime);					
 			$self->log->trace('key: ' . $key . ', tv: ' . $increment . 
 				', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($client_localtime)));
 			push @tmp, { 

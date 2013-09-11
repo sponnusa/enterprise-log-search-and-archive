@@ -8,6 +8,9 @@ use String::CRC32;
 use Socket qw(inet_aton inet_ntoa);
 use Try::Tiny;
 use Ouch qw(:trytiny);
+use Exporter qw(import);
+
+our @EXPORT = qw(epoch2iso);
 
 our $Field_order_to_attr = {
 	0 => 'timestamp',
