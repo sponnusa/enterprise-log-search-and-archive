@@ -162,12 +162,7 @@ sub _lookup {
 	}
 	elsif ($ip_info and $ip_info->{ripe_ip}){
 		$self->cache_stats->{hits}++;
-		my $org = $self->_lookup_ip_ripe($ip_info->{ripe_ip}, $ip);
-		foreach my $key (keys %$org){
-			$ret->{$key} = $org->{$key} if defined $org->{$key};
-		}
-		$self->_update_records($ip, $ret);
-		$self->cv->end;
+		$self->_lookup_ip_ripe($ip_info->{ripe_ip}, $ip);
 		return;
 	}
 	else {
@@ -197,6 +192,7 @@ sub _lookup {
 					$self->log->trace('Getting RIPE IP with org ' . $whois->{net}->{orgRef}->{'@handle'});
 					$self->cache->set($ip_url, { ripe_ip => $whois->{net}->{orgRef}->{'@handle'} });
 					$self->_lookup_ip_ripe($whois->{net}->{orgRef}->{'@handle'}, $ip);
+					return;
 				}
 				else {
 					$ret->{name} = $whois->{net}->{name}->{'$'};
