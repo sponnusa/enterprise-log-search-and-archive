@@ -75,15 +75,15 @@ sub BUILD {
 				}
 			}
 		}
-		if (exists $record->{ $self->groupby } ){
-			if ($record->{ $self->groupby } =~ /^\d+$/){
-				$sums->{ $self->groupby } += $record->{ $self->groupby };
+		if (my $value = $self->results->value($record, $self->groupby)){
+			if ($value =~ /^\d+$/){
+				$sums->{ $self->groupby } += $value;
 			}
-			elsif ($record->{count}){
-				$sums->{ $self->groupby } += $record->{count};
+			elsif ($self->results->value($record, 'count')){
+				$sums->{ $self->groupby } += $self->results->value($record, 'count');
 			}
 			else {
-				$sums->{ $record->{ $self->groupby } }++;
+				$sums->{$value}++;
 			}
 		}
 	}
