@@ -7,6 +7,9 @@ use Ouch qw(:trytiny);
 
 extends 'Query';
 
+has 'start' => (is => 'rw', isa => 'Int', required => 1, default => 0);
+has 'end' => (is => 'rw', isa => 'Int', required => 1, default => sub { time });
+
 has 'system_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
 } });
 has 'web_datasources' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', required => 1, default => sub { {
@@ -204,12 +207,13 @@ sub execute {
 					}
 				
 					$cb->();
+					return;
 				};
 			}
 		}
 		throw(404, 'datasource ' . $datasource . ' not found', { datasource => $datasource }) unless $found;
 	}
-	$cb->();
+	#$cb->();
 }
 
 1;

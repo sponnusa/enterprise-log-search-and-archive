@@ -1,7 +1,7 @@
 package Export;
 use Moose;
-use Utils; #for epoch2iso
 use Data::Dumper;
+with 'Fields'; #for epoch2iso
 
 # Base class for Result plugins
 
