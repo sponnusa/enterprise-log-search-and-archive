@@ -105,7 +105,7 @@ around BUILDARGS => sub {
 		$Db_timeout = $params{conf}->get('db/timeout');
 	}
 	
-	$params{db} = DBI->connect(
+	$params{db} = DBI->connect_cached(
 		$params{conf}->get('meta_db/dsn'),
 		$params{conf}->get('meta_db/username'),
 		$params{conf}->get('meta_db/password'),
