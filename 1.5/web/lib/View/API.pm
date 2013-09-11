@@ -113,7 +113,7 @@ sub call {
 							$ret->dedupe_warnings();
 						}
 					}
-					$res->body([encode_utf8($self->controller->json->encode($ret))]);
+					$res->body([encode_utf8($self->controller->json->pretty(0)->encode($ret))]);
 				}
 				
 				$write->($res->finalize());
