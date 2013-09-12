@@ -733,62 +733,61 @@ sub _get_index_groups {
 	}
 	foreach my $index (@{ $self->meta_info->{indexes}->{indexes} }){
 		my $group_key = '';
-		if ($index->{schema}){
-			foreach my $key (sort keys %{ $index->{schema} }){
-				if (ref($index->{schema}->{$key}) and ref($index->{schema}->{$key}) eq 'HASH'){
-					foreach my $schema_key (sort keys %{ $index->{schema}->{$key} }){
-						$group_key .= $schema_key . ':' . $index->{schema}->{$key}->{$schema_key};
-					}
-				}
-				elsif (ref($index->{schema}->{$key}) and ref($index->{schema}->{$key}) eq 'ARRAY'){
-					foreach my $schema_key (@{ $index->{schema}->{$key} }){
-						$group_key .= $schema_key;
-					}
-				}
-				else {
-					$group_key .= $key;
+		next unless $index->{schema} and scalar keys %{ $index->{schema} };
+		foreach my $key (sort keys %{ $index->{schema} }){
+			if (ref($index->{schema}->{$key}) and ref($index->{schema}->{$key}) eq 'HASH'){
+				foreach my $schema_key (sort keys %{ $index->{schema}->{$key} }){
+					$group_key .= $schema_key . ':' . $index->{schema}->{$key}->{$schema_key};
 				}
 			}
-			$group_key = crc32($group_key);
-			
-			my $chars = $index->{schema}->{chars};
-			my @terms = split(/\s*\,\s*/, $chars);
-			my %chars_indexed;
-			foreach (@terms){
-				next if /\->/;
-				if (/([^\.]+)\.\.([^\.]+)/){
-					my ($start, $end) = ($1, $2);
-					if ($start =~ /U\+(..)/){
-						$start = hex($1);
-					}
-					else {
-						$start = ord($start);
-					}
-					if ($end =~ /U\+(..)/){
-						$end = hex($1);
-					}
-					else {
-						$end = ord($end);
-					}
-					for ($start..$end){
-						$chars_indexed{ chr($_) } = 1;
-					}
-				}
-				else {
-					if (/U\+(..)/){
-						$chars_indexed{ chr(hex($1)) } = 1;
-					}
-					else {
-						$chars_indexed{ $_ } = 1;
-					}
+			elsif (ref($index->{schema}->{$key}) and ref($index->{schema}->{$key}) eq 'ARRAY'){
+				foreach my $schema_key (@{ $index->{schema}->{$key} }){
+					$group_key .= $schema_key;
 				}
 			}
-			#$self->log->debug('chars_indexed: ' . Dumper(\%chars_indexed));
-			$index->{schema}->{chars_indexed} = { %chars_indexed };
-			
-			$schemas{$group_key} ||= {};
-			$schemas{$group_key}->{ $index->{name} } = $index;
+			else {
+				$group_key .= $key;
+			}
 		}
+		$group_key = crc32($group_key);
+		
+		my $chars = $index->{schema}->{chars};
+		my @terms = split(/\s*\,\s*/, $chars);
+		my %chars_indexed;
+		foreach (@terms){
+			next if /\->/;
+			if (/([^\.]+)\.\.([^\.]+)/){
+				my ($start, $end) = ($1, $2);
+				if ($start =~ /U\+(..)/){
+					$start = hex($1);
+				}
+				else {
+					$start = ord($start);
+				}
+				if ($end =~ /U\+(..)/){
+					$end = hex($1);
+				}
+				else {
+					$end = ord($end);
+				}
+				for ($start..$end){
+					$chars_indexed{ chr($_) } = 1;
+				}
+			}
+			else {
+				if (/U\+(..)/){
+					$chars_indexed{ chr(hex($1)) } = 1;
+				}
+				else {
+					$chars_indexed{ $_ } = 1;
+				}
+			}
+		}
+		#$self->log->debug('chars_indexed: ' . Dumper(\%chars_indexed));
+		$index->{schema}->{chars_indexed} = { %chars_indexed };
+		
+		$schemas{$group_key} ||= {};
+		$schemas{$group_key}->{ $index->{name} } = $index;
 	}
 	
 	return \%schemas;
@@ -819,7 +818,7 @@ sub _get_index_list {
 		}
 	}
 	
-	if (scalar @indexes and scalar @indexes == scalar keys %$indexes){
+	if (scalar @indexes and scalar @indexes == scalar @{ $self->meta_info->{indexes}->{indexes} }){
 		@indexes = ('distributed_local');
 	}
 	
