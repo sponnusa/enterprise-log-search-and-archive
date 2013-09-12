@@ -1452,20 +1452,22 @@ sub get_log_info {
 		
 	unless ($decode->{class} and $self->conf->get('plugins/' . $decode->{class})){
 		# Check to see if there is generic IP information for use with pcap
-		if ($self->conf->get('pcap_url')){
+		if ($self->conf->get('pcap_url') or $self->conf->get('streamdb_url') or $self->conf->get('streamdb_urls')){
 			my %ip_fields = ( srcip => 1, dstip => 1, ip => 1);
 			foreach my $field (keys %$decode){
 				if ($ip_fields{$field}){
 					my $plugin = Info::Pcap->new(conf => $self->conf, data => $decode);
 					push @$plugins, @{ $plugin->plugins };
-					return  { summary => $plugin->summary, urls => $plugin->urls, plugins => $plugins, remote_ip => $remote_ip };
+					$cb->({ summary => $plugin->summary, urls => $plugin->urls, plugins => $plugins, remote_ip => $remote_ip });
+					return;
 				}
 			}
 		}
 		
 		$self->log->debug('no plugins for class ' . $decode->{class});
 		$data =  { summary => 'No info.', urls => [], plugins => $plugins };
-		return $data;
+		$cb->($data);
+		return;
 	}
 	
 	eval {

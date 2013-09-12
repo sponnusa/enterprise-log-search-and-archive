@@ -806,7 +806,7 @@ sub _get_index_list {
 		$sort_fn = sub { $indexes->{$a}->{start_int} <=> $indexes->{$b}->{start_int} };
 	}
 	
-	my @indexes;
+	my @ret;
 	my $start = defined $self->start ? $self->start : 0;
 	my $end = defined $self->end ? $self->end : time;
 	foreach my $index_name (sort $sort_fn keys %{ $indexes }){
@@ -814,15 +814,11 @@ sub _get_index_list {
 		if (($indexes->{$index_name}->{start_int} <= $start and $indexes->{$index_name}->{end_int} >= $start)
 			or ($indexes->{$index_name}->{start_int} <= $end and $indexes->{$index_name}->{end_int} >= $end)
 			or ($indexes->{$index_name}->{start_int} >= $start and $indexes->{$index_name}->{end_int} <= $end)){
-			push @indexes, $index_name;
+			push @ret, $index_name;
 		}
 	}
 	
-	if (scalar @indexes and scalar @indexes == scalar @{ $self->meta_info->{indexes}->{indexes} }){
-		@indexes = ('distributed_local');
-	}
-	
-	return \@indexes;
+	return \@ret;
 }
 
 sub _get_index_schema {
@@ -933,6 +929,11 @@ sub _query {
 		$self->log->debug('ret: ' . Dumper($ret));
 		$cb->($ret);
 	});
+	
+	if (scalar @$indexes == scalar @{ $self->meta_info->{indexes}->{indexes} }){
+		$indexes = ['distributed_local'];
+	}
+	
 	my @values = (@{ $query->{select}->{values} }, @{ $query->{where}->{values} });
 	my $query_string = $query->{select}->{clause} . ' FROM ' . join(',', @$indexes) . ' WHERE ' . $query->{where}->{clause};
 	if (defined $self->start){

@@ -725,6 +725,9 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ANY"), (SELECT id FROM fields WHERE field="program"), 2)'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="ANY"), (SELECT id FROM fields WHERE field="class"), 3)'
 	
+	# Fix earlier typo
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'UPDATE fields_classes_map SET field_order=11 WHERE field_order=1 AND field_id=(SELECT id FROM fields WHERE field="mac_address") AND class_id=(SELECT id FROM classes WHERE class="DHCP")'
+	
 	return $?
 }
 

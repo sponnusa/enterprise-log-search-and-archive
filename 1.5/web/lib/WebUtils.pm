@@ -6,8 +6,10 @@ sub extract_method {
 	my $uri = shift;
 	$self->controller->log->debug('uri: ' . $uri);
 	
-	$uri =~ /\/([^\/\?]+)\??([^\/]*)$/;
-	return $1;
+	if ($uri =~ /\/([^\/\?]+)\??([^\/]*)$/){
+		return $1;
+	}
+	return;
 }
 
 sub get_headers {
