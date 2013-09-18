@@ -3,6 +3,8 @@ use strict;
 use Getopt::Std;
 use Time::HiRes qw(time);
 use FindBin;
+use AnyEvent;
+use Data::Dumper;
 
 use lib $FindBin::Bin . '/../node/';
 use lib $FindBin::Bin . '/lib';
@@ -65,7 +67,9 @@ eval {
 	my $controller = Controller->new(config_file => $config_file) or die('Unable to start from given config file.');
 	return unless _need_to_run($controller);
 	my $start = time();
-	$controller->get_form_params(sub {
+	my $cv = AnyEvent->condvar;
+	$cv->begin;
+	$controller->get_form_params(undef, sub {
 		my $form_params = shift;
 		my $cur_time = $form_params->{end_int};
 		my $query_params = _get_schedule($controller, $cur_time);
@@ -79,8 +83,10 @@ eval {
 		
 		# Archive queries are expected to take a long time and can run concurrently
 		$controller->log->trace("Running archive queries...");
-		_run_archive_queries($controller);
+		_run_archive_queries($controller, $cv);
 	});
+	$cv->end;
+	$cv->recv;
 };
 if ($@){
 	warn('Error: ' . $@);
@@ -102,7 +108,15 @@ sub _need_to_run {
 	$sth = $controller->db->prepare($query);
 	$sth->execute;
 	my $row = $sth->fetchrow_arrayref;
-	return $row->[0];
+	my $count = $row->[0];
+	
+	$query = 'SELECT COUNT(*) FROM query_log WHERE ISNULL(num_results) AND archive=1';
+	$sth = $controller->db->prepare($query);
+	$sth->execute;
+	$row = $sth->fetchrow_arrayref;
+	$count += $row->[0];
+	
+	return $count;
 }
 
 sub _get_schedule {
@@ -263,22 +277,24 @@ sub _run_schedule {
 					system => 1,
 				};
 				$controller->log->debug('query_params: ' . Dumper($query_params));
-				my $result = $controller->query($query_params);
-				my %not_found = map { $_ => 1 } @{ $intervals{$interval} };
-				foreach my $row (@{ $result->results->all_results }){
-					$controller->log->trace('Found needed results for ' . $row->{_groupby} . ' in interval ' . $interval);
-					delete $not_found{ $row->{_groupby} };
-				}
-				foreach my $host (keys %not_found){
-					my $errmsg = 'Did not find entries for host ' . $host . ' within interval ' . $interval;
-					$controller->log->error($errmsg);
-					my $headers = {
-						To => $controller->conf->get('admin_email_address'),
-						From => $controller->conf->get('email/display_address') ? $controller->conf->get('email/display_address') : 'system',
-						Subject => sprintf('Host inactivity alert: %s', $host),
-					};
-					$controller->send_email({ headers => $headers, body => $errmsg, user => 'system' });
-				}
+				$controller->query($query_params, sub {
+					my $q = shift;
+					my %not_found = map { $_ => 1 } @{ $intervals{$interval} };
+					foreach my $row (@{ $q->results->all_results }){
+						$controller->log->trace('Found needed results for ' . $row->{_groupby} . ' in interval ' . $interval);
+						delete $not_found{ $row->{_groupby} };
+					}
+					foreach my $host (keys %not_found){
+						my $errmsg = 'Did not find entries for host ' . $host . ' within interval ' . $interval;
+						$controller->log->error($errmsg);
+						my $headers = {
+							To => $controller->conf->get('admin_email_address'),
+							From => $controller->conf->get('email/display_address') ? $controller->conf->get('email/display_address') : 'system',
+							Subject => sprintf('Host inactivity alert: %s', $host),
+						};
+						$controller->send_email({ headers => $headers, body => $errmsg, user => 'system' });
+					}
+				});
 			}
 		}
 		else {
@@ -301,6 +317,7 @@ sub _run_schedule {
 
 sub _run_archive_queries {
 	my $controller = shift;
+	my $cv = shift;
 	
 	my ($query, $sth);
 	$query = 'SELECT qid, username, query FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) WHERE ISNULL(num_results) AND archive=1';
@@ -310,14 +327,31 @@ sub _run_archive_queries {
 	while (my $row = $sth->fetchrow_hashref){
 		my $user = $controller->get_user($row->{username});
 		#$q->mark_batch_start();
-		$controller->query({ user => $user }, sub {
+		$cv->begin;
+		$controller->local_query({ user => $user, q => $row->{query}, qid => $row->{qid} }, sub {
 			my $q = shift;
 			# Record the results
 			$controller->log->trace('got archive results: ' . Dumper($q->results) . ' ' . $q->results->total_records);
 			$controller->_save_results($q->TO_JSON);
 			$controller->_batch_notify($q);
+			
+			$query = 'UPDATE foreign_queries SET completed=UNIX_TIMESTAMP() WHERE foreign_qid=?';
+			my $upd_sth = $controller->db->prepare($query);
+			$upd_sth->execute($row->{qid});
+			$controller->log->trace('Set foreign_query ' . $row->{qid} . ' complete');
+			
+			if ($q->results->records_returned){
+				$query = 'UPDATE query_log SET milliseconds=?, num_results=IF(ISNULL(num_results), ?, num_results + ?) WHERE qid=?';
+				$upd_sth = $controller->db->prepare($query);
+				$upd_sth->execute($q->time_taken, $q->results->records_returned, $q->results->records_returned, $row->{qid});
+				$controller->log->trace('Updated num_results for qid ' . $row->{qid} 
+					. ' with ' . $q->results->records_returned . ' additional records.');
+			}
+			$upd_sth->finish;
+			
+			$cv->end;
 		});
 	}
 	
-	$controller->_check_foreign_queries();
+	#$controller->_check_foreign_queries();
 }

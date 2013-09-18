@@ -30,6 +30,7 @@ use B qw(svref_2object);
 
 use User;
 use Query;
+use QueryParser;
 use Results;
 use SyncMysql;
 #use AsyncMysql;
@@ -137,7 +138,8 @@ sub get_user_info {
 }
 
 sub get_saved_result {
-	my ($self, $args, $cb) = @_;
+	my $cb = pop(@_);
+	my ($self, $args, $auth_override) = @_;
 	
 	my $ret;
 	my $cv = AnyEvent->condvar;
@@ -171,10 +173,14 @@ sub get_saved_result {
 		my @values = ($args->{qid});
 		$query = 'SELECT t2.uid, t2.query, milliseconds FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
 			'WHERE t1.qid=?';
-		if (not $args->{hash}){
+		if (not $args->{hash} and not $auth_override){
+			unless ($args->{user}){
+				throw(401, 'Unauthorized');
+			}
 			$query .= ' AND uid=?';
 			push @values, $args->{user}->uid;
 		}
+		$self->log->debug('query: ' . $query);
 		
 		$sth = $self->db->prepare($query);
 		$sth->execute(@values);
@@ -202,6 +208,7 @@ sub get_saved_result {
 	}
 	catch {
 		my $e = shift;
+		$self->log->error($e);
 		$self->add_warning(500, $e);
 		$cb->();
 	};
@@ -600,7 +607,7 @@ sub get_stats {
 sub get_form_params {
 	my ( $self, $user, $cb) = @_;
 	
-	$user ||= $self->user;
+	$user ||= new User(username => 'system');
 	
 	my $form_params;
 	
@@ -1380,8 +1387,6 @@ sub query {
 	
 	try {
 		my $ret;
-		#my $cv = AnyEvent->condvar;
-		#$cv->begin(sub { $cb->($ret) });
 		QueryParser->new(conf => $self->conf, log => $self->log, %$args, on_connect => sub {
 			my $qp = shift;
 			my $q = $qp->parse();
@@ -1403,6 +1408,88 @@ sub query {
 				else {
 					$cb->($q);
 				}
+			});
+		});
+	}
+	catch {
+		my $e = shift;
+		$cb->($e);
+	};
+}
+
+sub local_query {
+	my ($self, $args, $cb) = @_;
+	
+	# We may need to recursively redirect from one class to another, so the execution is wrapped in this sub
+	my $run_query;
+	$run_query = sub {
+		my $qp = shift;
+		my $cb = pop(@_);
+		my $class = shift;
+		my $extra_directives = shift;
+		my $q = $qp->parse($class);
+		
+		Log::Log4perl::MDC->put('qid', $q->qid);
+		
+		try {
+			if ($self->conf->get('disallow_sql_search') and $qp->query_class eq 'Query::SQL'){
+				my $msg;
+				if (scalar keys %{ $qp->stopword_terms }){
+					throw(413, 'Cannot execute query, terms too common: ' . join(', ', keys %{ $qp->stopword_terms }), { terms => join(', ', keys %{ $qp->stopword_terms }) });
+				}
+				else {
+					throw(405, 'Query required SQL search which is not enabled', { search_type => 'SQL' });
+				}
+			}
+			if ($extra_directives){
+				# These directives were added by another class, not the user
+				$self->log->trace('Extra directives: ' . Dumper($extra_directives));
+				foreach my $directive (keys %$extra_directives){
+					$q->$directive($extra_directives->{$directive});
+				}
+			}
+			my $estimated_query_time = $q->estimate_query_time();
+			$self->log->trace('Query estimate: ' . Dumper($estimated_query_time));
+			
+			$q->execute(sub { $cb->($q) });
+		}
+		catch {
+			my $e = shift;
+			if (caught(302, $e)){
+				my $redirected_class = $e->data->{location};
+				my $directives = $e->data->{directives};
+				throw(500, 'Redirected, but no class given', { term => $class }) unless $redirected_class;
+				if ($class and $redirected_class and $redirected_class eq $class){
+					throw(500, 'Class ' . $class . ' was the same as ' . $redirected_class . ', infinite loop.', { term => $class });
+				}
+				$self->log->info("Redirecting to $redirected_class");
+				$run_query->($qp, $redirected_class, $directives, $cb);
+			}
+			else {
+				die($e);
+			}
+		};
+	};
+	
+	try {
+		QueryParser->new(conf => $self->conf, log => $self->log, %$args, on_connect => sub {
+			my $qp = shift;
+			$run_query->($qp, sub {
+				my $q = shift;
+				foreach my $warning ($self->all_warnings){
+					push @{ $q->warnings }, $warning;
+				}
+				
+				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+			
+				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+		
+				# Apply transforms
+				$q->transform_results(sub { 
+					$q->dedupe_warnings();
+					$cb->($q);
+				});
+				
 			});
 		});
 	}
@@ -1793,6 +1880,7 @@ sub _check_foreign_queries {
 	my ($query, $sth);
 	
 	$query = 'SELECT DISTINCT qid FROM foreign_queries WHERE ISNULL(completed)';
+	$query = 'UPDATE foreign_queries SET completed=1 WHERE foreign_qid=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute;
 	my @incomplete;
@@ -1802,21 +1890,22 @@ sub _check_foreign_queries {
 	
 	foreach my $row (@incomplete){
 		eval {
-			if (my $result = $self->get_saved_result($row)){
-				next unless $result->{results};
-				$self->log->info('Foreign query ' . $row->{qid} . ' completed: ' . Dumper($result));
-				my $q = new Query(conf => $self->conf, qid => $row->{qid}, node_info => $self->node_info);
-				$q->results(new Results(results => $result->{results}));
-				$self->_batch_notify($q);
-			}
+			
+#			if (my $result = $self->get_saved_result($row)){
+#				next unless $result->{results};
+#				$self->log->info('Foreign query ' . $row->{qid} . ' completed: ' . Dumper($result));
+#				QueryParser->new(conf => $self->conf, qid => $row->{qid}, meta_info => $self->meta_info, q => $row->{query}, sub {
+#					my $q = shift;
+#					$q->results(new Results(results => $result->{results}));
+#					$self->_batch_notify($q);
+#				});
+#			}
 		};
 		if ($@){
 			$self->log->error('Error getting result for qid ' . $row->{qid} . ': ' . $@);
 		}
 	}
 }
-
-
 
 sub send_email {
 	my ($self, $args, $cb) = @_;
