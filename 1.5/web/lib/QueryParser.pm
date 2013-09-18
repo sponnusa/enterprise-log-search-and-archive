@@ -19,7 +19,6 @@ use Ouch qw(:trytiny);;
 use String::CRC32;
 
 our $QueryClasses = [qw(Query::Sphinx Query::External Query::SQL Query::Import)];
-our $Query_time_batch_threshold = 120;
 our $Max_limit = 10000;
 our $Max_query_terms = 128;
 our $Default_limit = 100;
@@ -244,19 +243,6 @@ sub _choose_query_class {
 #			#$self->add_warning(200, $msg);
 #		}
 	}
-	
-#	# Find estimated query time
-#	my $estimated_query_time = $self->_estimate_query_time;
-#	$self->log->trace('Found estimated query time ' . $estimated_query_time . ' seconds.');
-#	
-#	if ($self->conf->get('query_time_batch_threshold')){
-#		$Query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
-#	}
-#	
-#	if ($estimated_query_time > $Query_time_batch_threshold){
-#		$self->directives->{batch} = 'Batching because estimated query time is ' . int($estimated_query_time) . ' seconds.';
-#		$self->log->info($self->directives->{batch});
-#	}
 	
 	# Batch if we're allowing a huge number of results
 	if (not ($self->directives->{groupby}) and ($self->directives->{limit} == 0 or $self->directives->{limit} > $Results::Unbatched_results_limit)){

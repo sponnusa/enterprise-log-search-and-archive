@@ -41,6 +41,7 @@ sub estimate_query_time {
 	my $total_search = 0;
 	my $rows_to_search = 0;
 	my $num_indexes = 0;
+	#my $total_hits = 0;
 	
 	foreach my $group_key (keys %{ $self->schemas }){
 		my $indexes = $self->_get_index_list($self->schemas->{$group_key});
@@ -50,6 +51,7 @@ sub estimate_query_time {
 
 		foreach my $index_name (@$indexes){
 			$rows_to_search += $self->schemas->{$group_key}->{$index_name}->{records};
+			#$total_hits += $self->_get_keyword_hits($index_name, $queries);
 		}
 		
 		next unless scalar @$indexes;
@@ -71,34 +73,31 @@ sub estimate_query_time {
 	$self->estimated($ret);
 	
 	return $ret;
-	
-	# Do we have any stopwords?
-	$query_time += ((scalar keys %{ $self->parser->stopword_terms }) * 10);
-	
-	# How many terms?
-	$query_time += ($self->parser->index_term_count * 3);
-	
-#	# Do a query with a cutoff=1 to find the total number of docs to be filtered through and apply an estimate
-#	my ($save_cutoff, $save_limit) = ($self->directives->{cutoff}, $self->directives->{limit});
-#	$q->cutoff(1);
-#	$q->limit(1);
-#	$self->_query($q);
+}
+
+#sub _get_keyword_hits {
+#	my $self = shift;
+#	my $index = shift;
+#	my $queries = shift;
 #	
-#	my $sphinx_filter_rows_per_second = 500_000; # guestimate of how many found hits/sec/node sphinx will filter
-#	if ($self->conf->get('sphinx_filter_rows_per_second')){
-#		$sphinx_filter_rows_per_second = $self->conf->get('sphinx_filter_rows_per_second');
+#	my $total_hits = 0;
+#	my %terms;
+#	foreach my $query (@$queries){
+#		my $where = $query->{where_clause};
+#		my @match_terms = $where =~ /MATCH\(([^\)]+)/;
+#		foreach (@match_terms){
+#			next if /^\@/;
+#			$terms{$_} = 1;
+#		}
 #	}
 #	
-#	$self->log->trace('total_docs: ' . $q->results->total_docs);
-#	$query_time = ($q->results->total_docs / $sphinx_filter_rows_per_second / (scalar keys %{ $q->node_info->{nodes} }));
+#	my ($query, $sth);
 #	
-#	# Reset to original vals
-#	$q->cutoff($save_cutoff);
-#	$q->limit($save_limit);
-	
-	
-	return $query_time;
-}
+#	$query = "CALL KEYWORDS('', '$index', 1)";
+#	$sth = $self->data_db->{sphinx} 
+#	
+#	return $total_hits;	
+#}
 
 sub _normalize_quoted_value {
 	my $self = shift;

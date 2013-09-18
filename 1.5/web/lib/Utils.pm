@@ -635,6 +635,8 @@ sub _peer_query {
 	
 	$self->log->trace('Executing global query on peers ' . join(', ', @peers));
 	
+	my %batches;
+	
 	my $cv = AnyEvent->condvar;
 	$cv->begin(sub {
 		$self->log->debug('stats: ' . Dumper($q->stats));
@@ -643,26 +645,75 @@ sub _peer_query {
 		
 		$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
 		
-#		if (scalar keys %batches){
-#			$query = 'INSERT INTO foreign_queries (qid, peer, foreign_qid) VALUES (?,?,?)';
-#			$sth = $self->db->prepare($query);
-#			foreach my $peer (sort keys %batches){
-#				$sth->execute($q->qid, $peer, $batches{$peer});
-#			}
-#			$self->log->trace('Updated query to have foreign_qids ' . Dumper(\%batches));
-#		}
+		if (scalar keys %batches){
+			$query = 'INSERT INTO foreign_queries (qid, peer, foreign_qid) VALUES (?,?,?)';
+			$sth = $self->db->prepare($query);
+			foreach my $peer (sort keys %batches){
+				$sth->execute($q->qid, $peer, $batches{$peer});
+			}
+			$self->log->trace('Updated query to have foreign_qids ' . Dumper(\%batches));
+		}
 		
 		$cb->($q);
 	});
 	
 	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded', 'User-Agent' => $self->user_agent_name };
-	my %batches;
 	foreach my $peer (@peers){
 		my $peer_label = $peer;
-		if (($peer eq '127.0.0.1' or $peer eq 'localhost') and $q->peer_label){
-			$peer_label = $q->peer_label;
-		}
 		$cv->begin;
+		
+		if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
+			if ($q->peer_label){
+				$peer_label = $q->peer_label;
+			}
+			my $start = time();
+			$self->local_query({ query_string => $q->query_string, query_meta_params => $q->meta_params }, sub {
+				my $ret_q = shift;
+				
+				if ($ret_q and $ret_q->has_errors){
+					$self->log->error('Localhost got errors: ' . join(', ', @{ $ret_q->errors }));
+					$q->add_warning(502, 'Peer ' . $peer_label . ' encountered an error.', { http => $peer });
+					$cv->end;
+					return;
+				}
+				if ($ret_q->results->records_returned and not $q->results->records_returned){
+					$q->results($ret_q->results);
+				}
+				elsif ($ret_q->results->records_returned){
+					$self->log->debug('query returned ' . $ret_q->results->records_returned . ' records, merging ' . Dumper($q->results) . ' with ' . Dumper($ret_q->results));
+					$q->results->merge($ret_q, $q);
+				}
+				elsif ($ret_q->batch_message){
+					my $current_message = $q->batch_message;
+					$current_message .= $peer . ': ' . $ret_q->batch_message;
+					$q->batch_message($current_message);
+					$q->batch(1);
+					#$batches{$peer} = $ret_q->qid;
+				}
+				
+				# Mark approximate if our peer results were
+				if ($ret_q->results->is_approximate and not $q->results->is_approximate){
+					$q->results->is_approximate($ret_q->results->is_approximate);
+				}
+				
+				if ($ret_q->has_warnings){
+					foreach my $warning ($ret_q->all_warnings){ 
+						push @{ $q->warnings }, $warning;
+					}
+				}
+				if ($ret_q->groupby){
+					$q->groupby($ret_q->groupby);
+				}
+				my $stats = $ret_q->stats;
+				$stats ||= {};
+				$stats->{total_request_time} = (time() - $start);
+				$q->stats->{peers} ||= {};
+				$q->stats->{peers}->{$peer} = { %$stats };
+				$cv->end;
+			});
+			next;
+		}
+		
 		my $peer_conf = $self->conf->get('peers/' . $peer);
 		my $url = $peer_conf->{url} . 'API/';
 		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'query';
@@ -730,7 +781,6 @@ sub _peer_query {
 						push @{ $q->warnings }, $warning;
 					}
 				}
-				#$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
 				if ($is_groupby){
 					$q->groupby($raw_results->{groupby}->[0]);
 				}

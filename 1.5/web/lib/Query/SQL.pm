@@ -181,7 +181,7 @@ sub estimate_query_time {
 	
 	$query_time = $total_rows / $archive_query_rows_per_second;
 	
-	return $query_time;
+	return { estimated_time => $query_time };
 }
 
 sub execute {

@@ -21,6 +21,8 @@ use QueryParser;
 
 use Import;
 
+our $Query_time_batch_threshold = 120;
+
 sub local_query {
 	my ($self, $args, $cb) = @_;
 	
@@ -52,9 +54,21 @@ sub local_query {
 					$q->$directive($extra_directives->{$directive});
 				}
 			}
-			my $estimate = $q->estimate_query_time();
-			$self->log->trace('Query estimate: ' . Dumper($estimate));
-			$q->execute(sub { $cb->($q) });
+			my $estimate_hash = $q->estimate_query_time();
+			$self->log->trace('Query estimate: ' . Dumper($estimate_hash));
+			
+			if ($self->conf->get('query_time_batch_threshold')){
+				$Query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
+			}
+			
+			if ($estimate_hash->{estimated_time} > $Query_time_batch_threshold){
+				$q->batch_message('Batching because estimated query time is ' . int($estimate_hash->{estimated_time}) . ' seconds.');
+				$self->log->info($q->batch_message);
+				$q->execute_batch(sub { $cb->($q) });
+			}
+			else {
+				$q->execute(sub { $cb->($q) });
+			}
 		}
 		catch {
 			my $e = shift;
@@ -83,15 +97,21 @@ sub local_query {
 					push @{ $q->warnings }, $warning;
 				}
 				
-				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+				if (not $q->batch){
+					$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
 				
-				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+					$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
 			
-				# Apply transforms
-				$q->transform_results(sub { 
-					$q->dedupe_warnings();
+					# Apply transforms
+					$q->transform_results(sub { 
+						$q->dedupe_warnings();
+						$cb->($q);
+					});
+				}
+				else {
+					$self->log->info("Query " . $q->qid . " batched");
 					$cb->($q);
-				});
+				}
 			});
 		});
 	}
@@ -333,7 +353,7 @@ sub upload {
 sub local_result {
 	my ($self, $args, $cb) = @_;
 	
-	$self->get_saved_result($args, $cb);
+	$self->get_saved_result($args, 1, $cb);
 }
 
 sub result {
@@ -358,12 +378,20 @@ sub result {
 	my $cv = AnyEvent->condvar;
 	$cv->begin(sub { 
 		$stats{overall} = (time() - $overall_start);
-		$self->log->debug('stats: ' . Dumper(\%stats));
 		$self->log->debug('merging: ' . Dumper(\%results));
 		my $overall_final = merge values %results;
+		$self->log->debug('stats: ' . Dumper(\%stats));
 		$cb->($overall_final); 
 	});
 	
+	$cv->begin;
+	$self->local_result($args, sub {
+		my $raw_results = shift;
+		if ($raw_results){
+			$results{'127.0.0.1'} = $raw_results;
+		}
+		$cv->end;
+	});
 	
 	foreach my $peer (sort keys %peers){
 		$cv->begin;

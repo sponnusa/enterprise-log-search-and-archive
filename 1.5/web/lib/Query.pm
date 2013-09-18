@@ -220,6 +220,7 @@ sub _set_time_taken {
 	  		. 'WHERE qid=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute( $self->results->records_returned, $new_val, $self->qid );
+	$self->log->trace('Set time taken for query ' . $self->qid . ' to ' . $new_val);
 	
 	return $sth->rows;
 }
@@ -508,7 +509,25 @@ sub permitted_classes {
 sub execute {
 	my $self = shift;
 	my $cb = shift;
-	$cb->($self->results);
+	$cb->();
+}
+
+sub execute_batch {
+	my $self = shift;
+	my $cb = shift;
+	
+	$self->batch(1); # trigger updates MySQL to set archive=1
+	
+	$cb->();
+}
+
+sub _set_batch {
+	my ( $self, $new_val, $old_val ) = @_;
+	my ($query, $sth);
+	$query = 'UPDATE query_log SET archive=? WHERE qid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($new_val, $self->qid);
+	return $sth->rows;
 }
 
 sub transform_results {

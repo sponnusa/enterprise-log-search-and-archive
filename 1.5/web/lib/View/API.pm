@@ -105,7 +105,6 @@ sub call {
 						}
 					}
 					elsif (ref($ret) and blessed($ret) and $ret->can('warnings') and $self->controller->has_warnings){
-						$self->controller->log->debug('ret: ' . Dumper($ret));
 						foreach my $warning ($self->controller->all_warnings){
 							push @{ $ret->warnings }, $warning;
 						}
@@ -123,8 +122,8 @@ sub call {
 		}
 		catch {
 			my $e = shift;
-			$self->controller->log->error($e->trace);
-			$res->status($e->code);
+			ref($e) ? $self->controller->log->error($e->trace) : $self->controller->log->error($e);
+			ref($e) ? $res->status($e->code) : $res->status(500);
 			$res->body([encode_utf8($self->controller->json->encode($e))]);
 			$write->($res->finalize());
 		};
