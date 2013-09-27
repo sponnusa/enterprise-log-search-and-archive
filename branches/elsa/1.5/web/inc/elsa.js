@@ -2422,7 +2422,7 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			aEl.href = '#';
 			this.tab.get('contentEl').appendChild(aEl);
 			var oEl = new YAHOO.util.Element(aEl);
-			oEl.on('click', YAHOO.ELSA.cancelQuery, [this.results.batch], this);
+			oEl.on('click', YAHOO.ELSA.cancelQuery, [this.qid], this);
 		}
 		else if (this.results.groupby && this.results.groupby.length){
 			oLabelEl.innerHTML += ' [Grouped by ' + this.results.groupby.join(',') + ']';

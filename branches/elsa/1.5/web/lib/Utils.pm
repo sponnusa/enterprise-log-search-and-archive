@@ -638,13 +638,7 @@ sub _peer_query {
 	my %batches;
 	
 	my $cv = AnyEvent->condvar;
-	$cv->begin(sub {
-		$self->log->debug('stats: ' . Dumper($q->stats));
-	
-		$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
-		
-		$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
-		
+	$cv->begin(sub {		
 		if (scalar keys %batches){
 			$query = 'INSERT INTO foreign_queries (qid, peer, foreign_qid) VALUES (?,?,?)';
 			$sth = $self->db->prepare($query);
@@ -667,45 +661,13 @@ sub _peer_query {
 				$peer_label = $q->peer_label;
 			}
 			my $start = time();
-			$self->local_query({ query_string => $q->query_string, query_meta_params => $q->meta_params }, sub {
+			$self->local_query_preparsed($q, sub {
 				my $ret_q = shift;
 				
-				if ($ret_q and $ret_q->has_errors){
-					$self->log->error('Localhost got errors: ' . join(', ', @{ $ret_q->errors }));
-					$q->add_warning(502, 'Peer ' . $peer_label . ' encountered an error.', { http => $peer });
-					$cv->end;
-					return;
+				my $stats = {};
+				foreach my $key (keys %{ $ret_q->stats }){
+					$stats->{$key} = $ret_q->stats->{$key};
 				}
-				if ($ret_q->results->records_returned and not $q->results->records_returned){
-					$q->results($ret_q->results);
-				}
-				elsif ($ret_q->results->records_returned){
-					$self->log->debug('query returned ' . $ret_q->results->records_returned . ' records, merging ' . Dumper($q->results) . ' with ' . Dumper($ret_q->results));
-					$q->results->merge($ret_q, $q);
-				}
-				elsif ($ret_q->batch_message){
-					my $current_message = $q->batch_message;
-					$current_message .= $peer . ': ' . $ret_q->batch_message;
-					$q->batch_message($current_message);
-					$q->batch(1);
-					#$batches{$peer} = $ret_q->qid;
-				}
-				
-				# Mark approximate if our peer results were
-				if ($ret_q->results->is_approximate and not $q->results->is_approximate){
-					$q->results->is_approximate($ret_q->results->is_approximate);
-				}
-				
-				if ($ret_q->has_warnings){
-					foreach my $warning ($ret_q->all_warnings){ 
-						push @{ $q->warnings }, $warning;
-					}
-				}
-				if ($ret_q->groupby){
-					$q->groupby($ret_q->groupby);
-				}
-				my $stats = $ret_q->stats;
-				$stats ||= {};
 				$stats->{total_request_time} = (time() - $start);
 				$q->stats->{peers} ||= {};
 				$q->stats->{peers}->{$peer} = { %$stats };
@@ -715,8 +677,9 @@ sub _peer_query {
 		}
 		
 		my $peer_conf = $self->conf->get('peers/' . $peer);
-		my $url = $peer_conf->{url} . 'API/';
-		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'query';
+		my $url = $peer_conf->{url} . 'API/query';
+		#my $url = $peer_conf->{url} . 'API/';
+		#$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'query';
 		my $request_body = 'permissions=' . uri_escape($self->json->encode($q->user->permissions))
 			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $q->meta_params }))
 			. '&peer_label=' . $peer_label;

@@ -147,7 +147,7 @@ centos_get_node_packages(){
 		yum -yq install mysql-server mysql-libs mysql-devel
 	fi
 	
-	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel perl-Module-Build perl-Module-Install
+	yum -yq install flex bison ntpdate perl perl-devel curl make subversion gcc gcc-c++ pkg-config pkgconfig pcre-devel libcap-devel libnet-devel openssl-devel libopenssl-devel glib2-devel perl-Module-Build perl-Module-Install perl-CPAN perl-Test-Simple perl-ExtUtils-MakeMaker
 	
 	return $?
 }
@@ -338,9 +338,9 @@ get_elsa(){
 }
 
 get_cpanm(){
-	if [ \! -s /usr/local/bin/cpanm ]; then
+	if [ \! -f /usr/local/bin/cpanm ]; then
 		cd $TMP_DIR && curl --insecure -L http://cpanmin.us | perl - App::cpanminus
-		if [ \! -s /usr/local/bin/cpanm ]; then
+		if [ \! -f /usr/local/bin/cpanm ]; then
 			echo "Downloading from cpanmin.us failed, downloading from xrl.us"
 			curl -LO http://xrl.us/cpanm &&
 	    	chmod +x cpanm &&
@@ -348,8 +348,8 @@ get_cpanm(){
 		fi
 	fi
 	CPANM=$(which cpanm);
-	if [ \! -s "$CPANM" ]; then
-		echo "ERROR: Unable to install cpanm"
+	if [ \! -f "$CPANM" ]; then
+		echo "ERROR: Unable to find cpanm"
 		return 1;
 	fi
 	return 0
@@ -373,7 +373,7 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		cpanm Time::HiRes CGI Moose JSON::XS Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA MooseX::Log::Log4perl Log::Log4perl::Appender::Socket::UNIX Moose::Role
+		cpanm Time::HiRes CGI Moose JSON::XS Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA MooseX::Log::Log4perl Log::Log4perl::Appender::Socket::UNIX
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
 			break;
@@ -601,7 +601,7 @@ update_node_mysql(){
 	# Set SELinux settings for the auxilliary MySQL dir if necessary
 	if [ -f /usr/sbin/selinuxenabled ]; then
 		if [ -f /usr/bin/chcon ]; then
-			chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
+			chcon --reference=/var/lib/mysql -R "$DATA_DIR/elsa/mysql"
 		else
 			echo "WARNING: chcon SELinux utility not found!"
 		fi
@@ -989,7 +989,8 @@ update_web_mysql(){
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP COLUMN action_id" > /dev/null 2>&1 &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN connector VARCHAR(255)" > /dev/null 2>&1 &&
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN params VARCHAR(8000)" > /dev/null 2>&1
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_log ADD KEY(archive)" > /dev/null 2>&1
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_log ADD KEY `archive` (archive)" > /dev/null 2>&1
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_log ADD COLUMN pid SMALLINT UNSIGNED" > /dev/null 2>&1
 	
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "
 CREATE TABLE IF NOT EXISTS dashboards (
@@ -1186,7 +1187,8 @@ centos_set_apache(){
 	chown -R $WEB_USER "$DATA_DIR/elsa/log"
 	if [ -f /usr/sbin/selinuxenabled ]; then
 		echo "Enabling SELINUX policies for Apache..."
-		chcon --reference=/var/log/httpd -R $DATA_DIR
+		chcon --reference=/var/log/httpd -R "$DATA_DIR/elsa/log"
+		chcon --reference=/tmp -R "$DATA_DIR/elsa/tmp"
 		setsebool -P httpd_can_network_connect on
 		setsebool -P httpd_can_network_connect_db on
 		semanage fcontext -a -t httpd_log_t "$DATA_DIR(/.*)?" &&
@@ -1307,7 +1309,7 @@ validate_config(){
 
 if [ "$INSTALL" = "node" ]; then
 	if [ "$OP" = "ALL" ]; then
-		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "get_cpanm" "build_node_perl" "mk_node_dirs" "build_sphinx" "build_syslogng" "set_syslogng_conf" "set_node_mysql" "validate_config" "init_elsa" "test_elsa" "set_logrotate" ; do
+		for FUNCTION in "check_node_installed" $DISTRO"_get_node_packages" "set_date" "check_svn_proxy" "get_elsa" "get_cpanm" "build_node_perl" "mk_node_dirs" "build_sphinx" "build_syslogng" "set_syslogng_conf" "set_node_mysql" "init_elsa" "test_elsa" "set_logrotate" "validate_config" ; do
 			exec_func $FUNCTION
 		done
 	elif [ "$OP" = "update" ]; then

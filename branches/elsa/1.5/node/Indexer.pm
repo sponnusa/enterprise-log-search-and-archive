@@ -596,7 +596,7 @@ sub _oversize_log_rotate {
 		if( $2 eq '%' ) {
 			my $limit_percent = $1;
 			my ($total, $available, $percentage_used) = $self->_current_disk_space_available();
-			$self->log->trace('Total disk space used: ' . $total);
+			$self->log->trace('Total disk space: ' . $total);
 			$log_size_limit = $total * .01 * $limit_percent;
 		} 
 		elsif( $2 eq 'T' ) {

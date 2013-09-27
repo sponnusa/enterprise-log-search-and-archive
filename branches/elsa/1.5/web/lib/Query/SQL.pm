@@ -229,7 +229,9 @@ sub execute {
 				my $query = $self->_build_query();
 				foreach my $table (@$tables){
 					last if $self->limit and $self->results->records_returned >= $self->limit;
+					last if $self->check_cancelled;
 					if ($self->timeout and (time() - $start) >= ($self->timeout/1000)){
+						$self->add_warning(503, 'Query timed out', { timeout => $self->timeout });
 						$self->results->is_approximate(1);
 						last;
 					}

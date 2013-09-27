@@ -27,6 +27,7 @@ use AnyEvent::HTTP;
 use Try::Tiny;
 use Ouch qw(:trytiny);;
 use B qw(svref_2object);
+use Hash::Merge::Simple qw(merge);
 
 use User;
 use Query;
@@ -37,6 +38,7 @@ use SyncMysql;
 #use AsyncDB;
 
 our $Scheduled_query_cols = { map { $_ => 1 } (qw(id username query frequency start end connector params enabled last_alert alert_threshold)) };
+our $Query_time_batch_threshold = 120;
 
 has 'ldap' => (is => 'rw', isa => 'Object', required => 0);
 has 'last_error' => (is => 'rw', isa => 'Str', required => 1, default => '');
@@ -139,41 +141,149 @@ sub get_user_info {
 
 sub get_saved_result {
 	my $cb = pop(@_);
-	my ($self, $args, $auth_override) = @_;
+	my ($self, $args) = @_;
+	
+	$self->result($args, $cb);
+}
+
+sub result {
+	my $cb = pop(@_);
+	my ($self, $args) = @_;
+	
+	if ($args->{user} and not $args->{hash}){
+		unless ($args->{user}){
+			throw(401, 'Unauthorized');
+		}
+	}
+	
+	my ($query, $sth);
+	my $overall_start = time();
+	
+	# Execute search on every peer that has a foreign qid
+	$query = 'SELECT * FROM foreign_queries WHERE qid=?';
+	$sth = $self->db->prepare($query);
+	$sth->execute($args->{qid});
+	my %peers;
+	while (my $row = $sth->fetchrow_hashref){
+		$peers{ $row->{peer} } = $row->{foreign_qid};
+	}
+	
+	$self->log->trace('Foreign query results on peers ' . Dumper(\%peers));
+	
+	my %results;
+	my %stats;
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { 
+		
+		$self->log->debug('stats: ' . Dumper(\%stats));
+		
+		my $complete = 0;
+		foreach my $peer (keys %results){
+			if ($results{$peer}){
+				$complete++;
+			}
+		}
+		if ($complete == scalar keys %results){
+			$stats{overall} = (time() - $overall_start);
+			$self->log->debug('merging: ' . Dumper(\%results));
+			my $overall_final = merge values %results;
+			$cb->($overall_final);
+		}
+		else {
+			$cb->({ incomplete => { %results } });
+		}
+	});
+	
+	$self->local_result($args, sub {
+		my $raw_results = shift;
+		if ($raw_results){
+			$results{'127.0.0.1'} = $raw_results;
+		}
+		else {
+			$results{'127.0.0.1'} = 0;
+		}
+		$self->log->debug('local_results: ' . Dumper(\%results));
+	});
+	
+	foreach my $peer (sort keys %peers){
+		$cv->begin;
+		my $peer_conf = $self->conf->get('peers/' . $peer);
+		my $url = $peer_conf->{url} . 'API/result?qid=' . int($peers{$peer});
+		$self->log->trace('Sending request to URL ' . $url);
+		my $start = time();
+		my $headers = { 
+			Authorization => $self->_get_auth_header($peer),
+		};
+		$results{$peer} = http_get $url, headers => $headers, sub {
+			my ($body, $hdr) = @_;
+			$self->log->debug('got results body from peer ' . $peer . ': ' . Dumper($body));
+			try {
+				my $raw_results = $self->json->decode($body);
+				if ($raw_results and not $raw_results->{error} and not $raw_results->{incomplete}){
+					my $num_results = $raw_results->{totalRecords} ? $raw_results->{totalRecords} : $raw_results->{recordsReturned};
+					# Update any entries necessary
+					$query = 'SELECT * FROM foreign_queries WHERE ISNULL(completed) AND qid=? AND peer=?';
+					$sth = $self->db->prepare($query);
+					$sth->execute($args->{qid}, $peer);
+					if (my $row = $sth->fetchrow_hashref){
+						$query = 'UPDATE foreign_queries SET completed=UNIX_TIMESTAMP() WHERE qid=? AND peer=?';
+						$sth = $self->db->prepare($query);
+						$sth->execute($args->{qid}, $peer);
+						$self->log->trace('Set foreign_query ' . $args->{qid} . ' on peer ' . $peer . ' complete');
+						
+						if ($num_results){
+							$query = 'UPDATE query_log SET num_results=num_results + ? WHERE qid=?';
+							$sth = $self->db->prepare($query);
+							$sth->execute($num_results, $args->{qid});
+							$self->log->trace('Updated num_results for qid ' . $args->{qid} 
+								. ' with ' . $num_results . ' additional records.');
+						}
+					}
+					$results{$peer} = { %$raw_results }; #undef's the guard
+				}
+				else {
+					$results{$peer} = 0;
+				}
+				$stats{$peer}->{total_request_time} = (time() - $start);
+			}
+			catch {
+				my $e = catch_any(shift);
+				$self->log->error($e->message . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
+				$self->add_warning(502, 'peer ' . $peer . ': ' . $e->message, { peer => $peer });
+				delete $results{$peer};
+			};
+			$cv->end;
+		};
+	}
+	$cv->end;
+}
+
+sub local_result {
+	my $cb = pop(@_);
+	my ($self, $args) = @_;
 	
 	my $ret;
-	my $cv = AnyEvent->condvar;
-	$cv->begin(sub { $cb->($ret) });
 	
 	try {
 		unless ($args and ref($args) eq 'HASH' and $args->{qid}){
 			$self->add_warning(500, 'Invalid args: ' . Dumper($args));
-			$cv->end;
+			$cb->();
 			return;
 		}
 		
 		# Authenticate the hash if given (so that the uid doesn't have to match)
 		if ($args->{hash} and $args->{hash} ne $self->_get_hash($args->{qid})){
 			$self->add_warning(401, q{You are not authorized to view another user's saved queries});
-			$cv->end;
+			$cb->();
 			return;
 		}
 		
 		my ($query, $sth);
 		
-		# Check to see if this is a foreign query (has results elsewhere)
-		$query = 'SELECT COUNT(*) FROM foreign_queries WHERE qid=?';
-		$sth = $self->db->prepare($query);
-		$sth->execute($args->{qid});
-		if ($sth->fetchrow_arrayref->[0]){
-			$self->_get_foreign_saved_result($args, sub { my $ret = shift; $cb->($ret); $cv->end });
-			return;
-		}
-		
 		my @values = ($args->{qid});
 		$query = 'SELECT t2.uid, t2.query, milliseconds FROM saved_results t1 JOIN query_log t2 ON (t1.qid=t2.qid)' . "\n" .
 			'WHERE t1.qid=?';
-		if (not $args->{hash} and not $auth_override){
+		if ($args->{user} and not $args->{hash}){
 			unless ($args->{user}){
 				throw(401, 'Unauthorized');
 			}
@@ -188,7 +298,6 @@ sub get_saved_result {
 		unless ($row){
 			$self->add_warning(404, 'No saved results for qid ' . $args->{qid} . ' found.');
 			$cb->();
-			$cv->end;
 			return;
 		}
 		
@@ -212,7 +321,6 @@ sub get_saved_result {
 		$self->add_warning(500, $e);
 		$cb->();
 	};
-	$cv->end;
 }
 
 sub _get_foreign_saved_result {
@@ -1394,9 +1502,11 @@ sub query {
 			
 			$self->_peer_query($q, sub {
 				
-				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+				if (not $q->batch){
+					$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
 				
-				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+					$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+				}
 				
 				$q->dedupe_warnings();
 				
@@ -1418,7 +1528,8 @@ sub query {
 }
 
 sub local_query {
-	my ($self, $args, $cb) = @_;
+	my $cb = pop(@_);
+	my ($self, $args, $from_cron) = @_;
 	
 	# We may need to recursively redirect from one class to another, so the execution is wrapped in this sub
 	my $run_query;
@@ -1427,7 +1538,7 @@ sub local_query {
 		my $cb = pop(@_);
 		my $class = shift;
 		my $extra_directives = shift;
-		my $q = $qp->parse($class);
+		my $q = $qp->parse($class, $args->{qid});
 		
 		Log::Log4perl::MDC->put('qid', $q->qid);
 		
@@ -1448,10 +1559,29 @@ sub local_query {
 					$q->$directive($extra_directives->{$directive});
 				}
 			}
-			my $estimated_query_time = $q->estimate_query_time();
-			$self->log->trace('Query estimate: ' . Dumper($estimated_query_time));
 			
-			$q->execute(sub { $cb->($q) });
+			if ($from_cron){
+				$q->mark_batch_start();
+				$q->timeout(0);
+				$q->execute(sub { $cb->($q) });
+			}
+			else {
+				my $estimate_hash = $q->estimate_query_time();
+				$self->log->trace('Query estimate: ' . Dumper($estimate_hash));
+				
+				if ($self->conf->get('query_time_batch_threshold')){
+					$Query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
+				}
+				
+				if ($estimate_hash->{estimated_time} > $Query_time_batch_threshold){
+					$q->batch_message('Batching because estimated query time is ' . int($estimate_hash->{estimated_time}) . ' seconds.');
+					$self->log->info($q->batch_message);
+					$q->execute_batch(sub { $cb->($q) });
+				}
+				else {
+					$q->execute(sub { $cb->($q) });
+				}
+			}
 		}
 		catch {
 			my $e = shift;
@@ -1480,8 +1610,115 @@ sub local_query {
 					push @{ $q->warnings }, $warning;
 				}
 				
-				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+				if (not $q->batch){
+					$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+				
+					$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
 			
+					# Apply transforms
+					$q->transform_results(sub { 
+						$q->dedupe_warnings();
+						$cb->($q);
+					});
+				}
+				else {
+					$self->log->info("Query " . $q->qid . " batched");
+					$cb->($q);
+				}
+			});
+		});
+	}
+	catch {
+		my $e = shift;
+		$cb->($e);
+	};
+}
+
+sub local_query_preparsed {
+	my ($self, $q, $cb) = @_;
+	
+	# We may need to recursively redirect from one class to another, so the execution is wrapped in this sub
+	my $run_query;
+	$run_query = sub {
+		my $q = shift;
+		my $cb = pop(@_);
+		my $class = shift;
+		my $extra_directives = shift;
+		if ($class){
+			$self->log->trace('Converting ' . $q->qid . ' from class ' . ref($q) . ' to ' . $class);
+			$q = $q->parser->parse($class, $q->qid);
+		}
+		
+		Log::Log4perl::MDC->put('qid', $q->qid);
+		
+		try {
+			if ($self->conf->get('disallow_sql_search') and $q->parser->query_class eq 'Query::SQL'){
+				my $msg;
+				if (scalar keys %{ $q->parser->stopword_terms }){
+					throw(413, 'Cannot execute query, terms too common: ' . join(', ', keys %{ $q->parser->stopword_terms }), { terms => join(', ', keys %{ $q->parser->stopword_terms }) });
+				}
+				else {
+					throw(405, 'Query required SQL search which is not enabled', { search_type => 'SQL' });
+				}
+			}
+			if ($extra_directives){
+				# These directives were added by another class, not the user
+				$self->log->trace('Extra directives: ' . Dumper($extra_directives));
+				foreach my $directive (keys %$extra_directives){
+					$q->$directive($extra_directives->{$directive});
+				}
+			}
+			my $estimate_hash = $q->estimate_query_time();
+			$self->log->trace('Query estimate: ' . Dumper($estimate_hash));
+			#
+			
+			if ($self->conf->get('query_time_batch_threshold')){
+				$Query_time_batch_threshold = $self->conf->get('query_time_batch_threshold');
+			}
+			
+			if ($estimate_hash->{estimated_time} > $Query_time_batch_threshold){
+				$q->batch_message('Batching because estimated query time is ' . int($estimate_hash->{estimated_time}) . ' seconds.');
+				$self->log->info($q->batch_message);
+				$q->execute_batch(sub { $cb->($q) });
+			}
+			else {
+				$q->execute(sub { $cb->($q) });
+			}
+			
+			#$q->execute(sub { $cb->($q) });
+		}
+		catch {
+			my $e = shift;
+			if (caught(302, $e)){
+				my $redirected_class = $e->data->{location};
+				my $directives = $e->data->{directives};
+				throw(500, 'Redirected, but no class given', { term => $class }) unless $redirected_class;
+				if ($class and $redirected_class and $redirected_class eq $class){
+					throw(500, 'Class ' . $class . ' was the same as ' . $redirected_class . ', infinite loop.', { term => $class });
+				}
+				$self->log->info("Redirecting to $redirected_class");
+				$run_query->($q, $redirected_class, $directives, $cb);
+			}
+			else {
+				die($e);
+			}
+		};
+	};
+	
+	try {
+		$run_query->($q, sub {
+			my $q = shift;
+			foreach my $warning ($self->all_warnings){
+				push @{ $q->warnings }, $warning;
+			}
+			
+			if ($q->batch){
+				$q->dedupe_warnings();
+				$cb->($q);
+			}
+			else {
+				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+		
 				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
 		
 				# Apply transforms
@@ -1489,8 +1726,7 @@ sub local_query {
 					$q->dedupe_warnings();
 					$cb->($q);
 				});
-				
-			});
+			}
 		});
 	}
 	catch {
@@ -1875,12 +2111,12 @@ sub _send_to {
 
 sub _check_foreign_queries {
 	my $self = shift;
+	my $cb = shift;
 	
 	$self->log->trace('Checking foreign queries');
 	my ($query, $sth);
 	
 	$query = 'SELECT DISTINCT qid FROM foreign_queries WHERE ISNULL(completed)';
-	$query = 'UPDATE foreign_queries SET completed=1 WHERE foreign_qid=?';
 	$sth = $self->db->prepare($query);
 	$sth->execute;
 	my @incomplete;
@@ -1888,23 +2124,28 @@ sub _check_foreign_queries {
 		push @incomplete, $row;
 	}
 	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub{ $cb->(); });
 	foreach my $row (@incomplete){
+		$cv->begin;
 		eval {
-			
-#			if (my $result = $self->get_saved_result($row)){
-#				next unless $result->{results};
-#				$self->log->info('Foreign query ' . $row->{qid} . ' completed: ' . Dumper($result));
-#				QueryParser->new(conf => $self->conf, qid => $row->{qid}, meta_info => $self->meta_info, q => $row->{query}, sub {
-#					my $q = shift;
-#					$q->results(new Results(results => $result->{results}));
-#					$self->_batch_notify($q);
-#				});
-#			}
+			$self->result({ qid => $row->{qid} }, sub {
+				my $result = shift;
+				if ($result and not $result->{incomplete}){
+					# overwrite the foreign_qid with our local qid
+					$result->{qid} = $row->{qid};
+					$self->_save_results($result);
+					$self->_batch_notify($result);
+				}
+				$cv->end;
+			});
 		};
 		if ($@){
 			$self->log->error('Error getting result for qid ' . $row->{qid} . ': ' . $@);
+			$cv->end;
 		}
 	}
+	$cv->end;
 }
 
 sub send_email {
@@ -1973,10 +2214,91 @@ sub cancel_query {
 	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
-	$query = 'UPDATE query_log SET num_results=-2 WHERE qid=? AND uid=?';
+	if ($args->{user}){
+		$query = 'UPDATE query_log SET num_results=-2 WHERE qid=? AND uid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{qid}, $args->{user}->uid);
+	}
+	else {
+		$query = 'UPDATE query_log SET num_results=-2 WHERE qid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{qid});
+	}
+	
+	# Recursively cancel queries run on our behalf from other nodes
+	$self->log->trace('Cancelling foreign queries');
+	
+	$query = 'SELECT peer, foreign_qid FROM foreign_queries WHERE qid=?';
 	$sth = $self->db->prepare($query);
-	$sth->execute($args->{qid}, $args->{user}->uid);
-	$cb->({ ok => 1 });
+	$sth->execute($args->{qid});
+	
+	my %peers;
+	while (my $row = $sth->fetchrow_hashref){
+		$peers{ $row->{peer} } = $row->{foreign_qid};
+	}
+	$self->log->debug('peers: ' . Dumper(\%peers));
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub {
+		$query = 'DELETE FROM foreign_queries WHERE qid=?';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{qid});		
+		$cb->({ ok => ((scalar keys %peers) + 1) });
+	});
+	
+	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded', 'User-Agent' => $self->user_agent_name };
+	foreach my $peer (sort keys %peers){
+		my $peer_label = $peer;
+		$cv->begin;
+		
+		my $peer_conf = $self->conf->get('peers/' . $peer);
+		my $url = $peer_conf->{url} . 'API/cancel_query';
+		my $request_body = 'qid=' . $peers{$peer};
+		$self->log->trace('Sending request to URL ' . $url . ' with body ' . $request_body);
+		my $start = time();
+		
+		if ($peer_conf->{headers}){
+			foreach my $header_name (keys %{ $peer_conf->{headers} }){
+				$headers->{$header_name} = $peer_conf->{headers}->{$header_name};
+			}
+		}
+		$headers->{Authorization} = $self->_get_auth_header($peer);
+		$peers{$peer} = http_post $url, $request_body, headers => $headers, sub {
+			my ($body, $hdr) = @_;
+			#$self->log->debug('body: ' . Dumper($body));
+			unless ($hdr and $hdr->{Status} < 400){
+				my $e;
+				try {
+					my $raw = $self->json->decode($body);
+					$e = bless($raw, 'Ouch') if $raw->{code} and $raw->{message};
+				};
+				$e ||= new Ouch(500, 'Internal error');
+				$self->log->error('Peer ' . $peer_label . ' got error: ' . $e->trace);
+				$self->add_warning($e->code, $e->message, $e->data);
+				delete $peers{$peer};
+				$cv->end;
+				return;
+			}
+			eval {
+				my $raw_results = $self->json->decode($body);
+				if ($raw_results and ref($raw_results) and $raw_results->{error}){
+					$self->log->error('Peer ' . $peer_label . ' got error: ' . $raw_results->{error});
+					$self->add_warning(502, 'Peer ' . $peer_label . ' encountered an error.', { http => $peer });
+					return;
+				}
+				else {
+					$self->log->info('Cancelled query on peer ' . $peer);
+				}
+			};
+			if ($@){
+				$self->log->error($@ . 'url: ' . $url . "\nbody: " . $request_body);
+				$self->add_warning(502, 'Invalid results back from peer ' . $peer_label, { http => $peer });
+			}	
+			delete $peers{$peer};
+			$cv->end;
+		};
+	}
+	$cv->end;
 }
 
 sub preference {
