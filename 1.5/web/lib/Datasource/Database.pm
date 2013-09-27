@@ -30,6 +30,7 @@ has 'timestamp_column' => (is => 'rw', isa => 'Str');
 has 'timestamp_is_int' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'query_object' => (is => 'rw', isa => 'Object');
 has 'gmt_offset' => (is => 'rw', isa => 'Int');
+has 'window_offset' => (is => 'rw', isa => 'Int');
 
 our %Numeric_types = ( int => 1, ip_int => 1, float => 1 );
 our %Mixed_types = ( proto => 1 );

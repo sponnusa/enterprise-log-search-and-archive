@@ -124,8 +124,14 @@ sub call {
 			my $e = shift;
 			ref($e) ? $self->controller->log->error($e->trace) : $self->controller->log->error($e);
 			ref($e) ? $res->status($e->code) : $res->status(500);
-			$res->body([encode_utf8($self->controller->json->encode($e))]);
+			eval {
+				$res->body([encode_utf8($self->controller->json->encode($e))]);
+			};
+			if ($@){
+				$res->body([{ error => 'Internal error' }]);
+			}
 			$write->($res->finalize());
+			$cv and $cv->send;
 		};
 		$cv and $cv->recv;
 	};

@@ -165,7 +165,7 @@ sub TO_JSON {
 		qid => $self->qid,
 		totalTime => $self->time_taken,
 		results => $self->results->results, 
-		totalRecords => $self->results->total_records > $self->results->total_docs ? $self->results->total_records : $self->results->total_docs,
+		totalRecords => ($self->results->total_records > $self->results->total_docs) ? $self->results->total_records : $self->results->total_docs,
 		recordsReturned => $self->results->records_returned,	
 		groupby => $self->groupby ? [ $self->groupby ] : [], # return an array for future faceting support
 		orderby_dir => $self->orderby_dir,
@@ -363,21 +363,10 @@ sub mark_batch_start {
 	my $self = shift;
 	# Record that we're starting so no one else starts it
 	my ($query, $sth);
-	$sth = $self->db->prepare('UPDATE query_log SET num_results=-1 WHERE qid=?');
-	$sth->execute($self->qid);
+	$sth = $self->db->prepare('UPDATE query_log SET num_results=-1, archive=? WHERE qid=?');
+	$sth->execute($$, $self->qid);
 	return $sth->rows;
 }
-
-sub mark_livetail_start {
-	my $self = shift;
-	# Record that we're starting so no one else starts it
-	$self->log->trace('marked livetail start');
-	my ($query, $sth);
-	$sth = $self->db->prepare('UPDATE query_log SET num_results=-3 WHERE qid=?');
-	$sth->execute($self->qid);
-	return $sth->rows;
-}
-
 
 sub convert_to_archive {
 	my $self = shift;
@@ -554,22 +543,14 @@ sub transform_results {
 		}
 	}
 	
-#	# Check to see if we've already done this 
-#	foreach my $record ($self->results->all_results){
-#		if (exists $record->{transforms}){
-#			foreach my $found_transform (keys %{ $record->{transforms} }){
-#				if (lc($transform) eq lc($found_transform)){
-#					$self->log->trace('Already performed transform ' . $transform);
-#					$self->transform_results($cb);
-#					return;
-#				}
-#			}
-#		}
-#	}
-	
 	if ($transform eq 'subsearch'){
 		$self->_subsearch(\@transform_args, sub {
 			my $q = shift;
+			unless ($q){
+				$self->log->debug('No query object to tranform');
+				$cb->();
+				return;
+			}
 			$self->log->debug('got subsearch results: ' . Dumper($q->TO_JSON));
 			$self->results($q->results);
 			foreach my $warning ($q->all_warnings){
@@ -748,9 +729,30 @@ sub _subsearch {
 	my $self = shift;
 	my $args = shift;
 	my $cb = shift;
-	$self->log->trace('Subsearch query: ' . join(' ', @$args));
+	
+	$self->log->debug('args: ' . Dumper($args));
+	
+	my $subsearch_query_string = shift @$args;
+	my $subsearch_field = shift @$args;
+	
+	#$self->log->debug('all terms: ' . Dumper($self->results->all_results));
+	
+	# Get the unique values from our current results
+	my @terms;
+	foreach my $record ($self->results->all_results){
+		my $term = $record->{_groupby};
+		if ($subsearch_field){
+			push @terms, $subsearch_field . ':' . $term;
+		}
+		else {
+			push @terms, $term;
+		}
+	}
+	
+	$subsearch_query_string = join(' ', @$args) . ' ' . join(' OR ', @terms);
+	$self->log->trace('Subsearch query: ' . $subsearch_query_string);
 	my $qp = QueryParser->new(conf => $self->conf, log => $self->log, meta_info => $self->parser->meta_info, 
-		query_string => join(' ', @$args), transforms => $self->transforms);
+		query_string => $subsearch_query_string, transforms => $self->transforms);
 	my $q;
 	
 	try {
@@ -873,7 +875,7 @@ sub _value {
 	}
 	elsif ($attr eq 'program_id'){
 		$self->log->trace("Converting $hash->{value} to program_id");
-		return crc32($hash->{value});
+		return crc32(lc($hash->{value}));
 	}
 	elsif ($attr =~ /^attr_s\d+$/){
 		# String attributes need to be crc'd

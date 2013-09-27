@@ -16,6 +16,8 @@ use User;
 my %opts;
 getopts('c:n:', \%opts);
 
+my $Max_concurrent_archive_queries = 2;
+
 my $config_file;
 if ($opts{c}){
 	$config_file = $opts{c};
@@ -111,6 +113,12 @@ sub _need_to_run {
 	my $count = $row->[0];
 	
 	$query = 'SELECT COUNT(*) FROM query_log WHERE ISNULL(num_results) AND archive=1';
+	$sth = $controller->db->prepare($query);
+	$sth->execute;
+	$row = $sth->fetchrow_arrayref;
+	$count += $row->[0];
+	
+	$query = 'SELECT COUNT(*) FROM foreign_queries WHERE ISNULL(completed)';
 	$sth = $controller->db->prepare($query);
 	$sth->execute;
 	$row = $sth->fetchrow_arrayref;
@@ -320,38 +328,64 @@ sub _run_archive_queries {
 	my $cv = shift;
 	
 	my ($query, $sth);
-	$query = 'SELECT qid, username, query FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) WHERE ISNULL(num_results) AND archive=1';
+	
+	# Expire any failed archive queries
+	$query = 'SELECT qid, pid FROM query_log WHERE archive=1 AND NOT ISNULL(pid) AND num_results=-1';
 	$sth = $controller->db->prepare($query);
-	$sth->execute;
+	$sth->execute();
+	my @running;
+	while (my $row = $sth->fetchrow_hashref){
+		push @running, $row;
+	}
+	
+	
+	foreach my $row (@running){
+		if (not $indexer->_find_pid($row->{pid})){
+			$controller->log->error('Found dead pid ' . $row->{pid} . ' for archive query ' . $row->{qid} . ', abandoning');
+			
+			# Mark this done
+			$query = 'UPDATE query_log SET num_results=0 WHERE qid=?';
+			$sth = $controller->db->prepare($query);
+			$sth->execute($row->{qid});
+			
+			# Make sure we don't try to keep updating foreign query results either
+			$query = 'UPDATE foreign_queries SET completed=UNIX_TIMESTAMP() WHERE qid=?';
+			$sth = $controller->db->prepare($query);
+			$sth->execute($row->{qid});
+		}
+	}
+	
+	# Only run one query per user, and only if that user isn't already running a query
+	$query = 'SELECT MIN(qid) AS qid, username, query, t1.uid FROM query_log t1 JOIN users t2 ON (t1.uid=t2.uid) ' .
+		'WHERE ISNULL(num_results) AND archive=1 AND t1.uid NOT IN (SELECT DISTINCT uid FROM query_log WHERE num_results=-1) ' . 
+		'GROUP BY username ORDER BY qid ASC LIMIT ?';
+	$sth = $controller->db->prepare($query);
+	$sth->execute($Max_concurrent_archive_queries);
 	
 	while (my $row = $sth->fetchrow_hashref){
 		my $user = $controller->get_user($row->{username});
-		#$q->mark_batch_start();
 		$cv->begin;
-		$controller->local_query({ user => $user, q => $row->{query}, qid => $row->{qid} }, sub {
+		$controller->local_query({ user => $user, q => $row->{query}, qid => $row->{qid} }, 1, sub {
 			my $q = shift;
 			# Record the results
-			$controller->log->trace('got archive results: ' . Dumper($q->results) . ' ' . $q->results->total_records);
+			$controller->log->trace('got archive results: ' . $q->results->total_records);
 			$controller->_save_results($q->TO_JSON);
 			$controller->_batch_notify($q);
-			
-			$query = 'UPDATE foreign_queries SET completed=UNIX_TIMESTAMP() WHERE foreign_qid=?';
+
+			$query = 'UPDATE query_log SET milliseconds=?, num_results=IF(ISNULL(num_results), ?, num_results + ?) WHERE qid=?';
 			my $upd_sth = $controller->db->prepare($query);
-			$upd_sth->execute($row->{qid});
-			$controller->log->trace('Set foreign_query ' . $row->{qid} . ' complete');
-			
-			if ($q->results->records_returned){
-				$query = 'UPDATE query_log SET milliseconds=?, num_results=IF(ISNULL(num_results), ?, num_results + ?) WHERE qid=?';
-				$upd_sth = $controller->db->prepare($query);
-				$upd_sth->execute($q->time_taken, $q->results->records_returned, $q->results->records_returned, $row->{qid});
-				$controller->log->trace('Updated num_results for qid ' . $row->{qid} 
-					. ' with ' . $q->results->records_returned . ' additional records.');
-			}
+			$upd_sth->execute($q->time_taken, $q->results->records_returned, $q->results->records_returned, $row->{qid});
+			$controller->log->trace('Updated num_results for qid ' . $row->{qid} 
+				. ' with ' . $q->results->records_returned . ' additional records.');
 			$upd_sth->finish;
 			
-			$cv->end;
+			# Check foreign queries
+			$controller->result({ qid => $row->{qid} }, 1, sub {
+				$cv->end;
+			});
 		});
 	}
 	
-	#$controller->_check_foreign_queries();
+	$cv->begin;
+	$controller->_check_foreign_queries(sub { $cv->end });
 }

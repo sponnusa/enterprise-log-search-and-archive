@@ -176,6 +176,7 @@ sub BUILD {
 sub parse {
 	my $self = shift;
 	my $given_query_class = shift;
+	my $given_qid = shift;
 	
 	# Parse first to see if limit gets set which could incidate a batch job
 	$self->_parse_query();
@@ -193,7 +194,8 @@ sub parse {
 	$self->stats->{get_info} = $self->meta_info->{took};
 	
 	$self->log->trace('Creating new query of class ' . $self->query_class);
-	my $q = $self->query_class->new(
+	
+	my %args = (
 		user => $self->user,
 		conf => $self->conf,
 		log => $self->log,
@@ -211,6 +213,10 @@ sub parse {
 		connectors => $self->connectors,
 		warnings => $self->warnings,
 	);
+	if ($given_qid){
+		$args{qid} = $given_qid;
+	}
+	my $q = $self->query_class->new(%args);
 	
 	return $q;
 }
@@ -451,8 +457,12 @@ sub _parse_query {
 	
 	# Exclude our from_peer
 	if ($self->from_peer and $self->from_peer ne '_external'){
-		$self->log->debug('Not executing query on ' . $self->from_peer . ' which is my from_peer to avoid a loop.');
 		$self->directives->{peers}->{excluded}->{ $self->from_peer } = 1;
+	}
+	
+	# Default groupby to DESC order
+	if ($self->directives->{groupby} and not $self->directives->{orderby_dir}){
+		$self->directives->{orderby_dir} = 'DESC';
 	}
 	
 	return 1;
@@ -637,6 +647,12 @@ sub _parse_query_term {
 			elsif ($term_hash->{field} eq 'orderby_dir'){
 				if (uc($term_hash->{value}) eq 'DESC'){
 					$self->directives->{orderby_dir} = 'DESC';
+				}
+				elsif (uc($term_hash->{value}) eq 'ASC'){
+					$self->directives->{orderby_dir} = 'ASC';
+				}
+				else {
+					throw(400, 'Invalid orderby_dir', { term => $term_hash->{value} });
 				}
 				next;
 			}

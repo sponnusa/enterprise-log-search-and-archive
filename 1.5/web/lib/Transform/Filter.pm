@@ -26,6 +26,12 @@ sub BUILDARGS {
 		$params{regex} = qr/$params{args}->[1]/i if defined $params{args}->[1];
 	}
 	
+	# Catch all in case only regex is given
+	unless ($params{regex}){
+		$params{field} = qr'.';
+		$params{regex} = qr/$params{args}->[0]/i;
+	}
+	
 	return \%params;
 }
 
@@ -85,8 +91,12 @@ sub _check {
 	my $value = shift;
 	
 	if ($self->operator){
-		my $test = $value . ' ' . $self->operator . ' ' . $self->regex;
-		if (eval($test)){
+		if (($self->operator eq '==' and int($value) == int($self->regex))
+			or ($self->operator eq '!=' and int($value) != int($self->regex))
+			or ($self->operator eq '>' and int($value) > int($self->regex))
+			or ($self->operator eq '>=' and int($value) >= int($self->regex))
+			or ($self->operator eq '<' and int($value) < int($self->regex))
+			or ($self->operator eq '<=' and int($value) <= int($self->regex))){
 			$record->{transforms}->{'__DELETE__'} = 1;
 			return 1;
 		}
