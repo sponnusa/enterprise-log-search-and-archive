@@ -203,7 +203,8 @@ sub upload {
 			my $msg = 'MD5 mismatch! Calculated: ' . $local_md5 . ' client said it should be: ' . $args->{md5};
 			$self->log->error($msg);
 			unlink($file);
-			return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+			#return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+			throw(400, $msg);
 		}
 		
 		if ($args->{description} or $args->{name}){
@@ -213,16 +214,20 @@ sub upload {
 			delete $args->{end};
 			my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
 			if (not $importer->id){
-				return [ 500, [ 'Content-Type' => 'application/javascript' ], [ $self->json->encode({ error => 'Import failed' }) ] ];
+				#return [ 500, [ 'Content-Type' => 'application/javascript' ], [ $self->json->encode({ error => 'Import failed' }) ] ];
+				throw(500, 'Import failed');
 			}
 			$ret->{import_id} = $importer->id;
+			$self->log->info('Deleting successfully imported file ' . $file);
+			unlink($file) if -f $file;
 		}
 		else {
 			unless ($args->{start} and $args->{end}){
 				my $msg = 'Did not receive valid start/end times';
 				$self->log->error($msg);
 				unlink($file);
-				return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+				#return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+				throw(400, $msg);
 			}
 			
 			# Record our received file in the database
