@@ -329,7 +329,11 @@ sub _get_where_clause {
 					if ($self->_is_meta($hash->{field})){
 						$field = $self->_attr($hash->{field}, $class_id);
 					}
-					if ($self->_is_int_field($hash->{field}, $class_id)){
+					if ($field eq 'class_id'){
+						push @field_clauses, '(class_id=?)';
+						push @values, $class_id;
+					}
+					elsif ($self->_is_int_field($hash->{field}, $class_id)){
 						push @field_clauses, '(class_id=? AND ' . $field . '=?)';
 						push @values, $class_id, $self->_value($hash, $class_id);
 					}
