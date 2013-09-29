@@ -114,6 +114,8 @@ sub _get_table_list {
 	return [] unless scalar keys %$tables_hash;
 	
 	my %tables;
+	my $start = defined $self->start ? $self->start : 0;
+	my $end = defined $self->end ? $self->end : time;
 	foreach my $table_hash (@{ $self->meta_info->{tables}->{tables} }){
 		my $table_name = $table_hash->{table_name};
 		if ($table_name =~ /\./){
@@ -123,8 +125,7 @@ sub _get_table_list {
 			$self->log->error('table not found: ' . $table_name);
 		}
 		next unless exists $tables_hash->{$table_name};
-		my $start = defined $self->start ? $self->start : 0;
-		my $end = defined $self->end ? $self->end : time;
+		
 		# Check that the time is right
 		if (($table_hash->{start_int} <= $start and $table_hash->{end_int} >= $start)
 			or ($table_hash->{start_int} <= $end and $table_hash->{end_int} >= $end)
@@ -133,7 +134,7 @@ sub _get_table_list {
 		}
 	}
 	
-	# Sort the indexes by time
+	# Sort the tables by time
 	my $sort_fn;
 	if ($self->orderby_dir eq 'DESC'){
 		$sort_fn = sub { $tables{$b}->{start_int} <=> $tables{$a}->{start_int} };
@@ -168,10 +169,18 @@ sub estimate_query_time {
 	my $self = shift;
 	
 	my $query_time = 0;
-	
 	my $total_rows = 0;
+	my $start = defined $self->start ? $self->start : 0;
+	my $end = defined $self->end ? $self->end : time;
+	
 	foreach my $table_hash (@{ $self->meta_info->{tables}->{tables} }){
-		$total_rows += $table_hash->{records};
+		# Check that the time is right
+		if (($table_hash->{start_int} <= $start and $table_hash->{end_int} >= $start)
+			or ($table_hash->{start_int} <= $end and $table_hash->{end_int} >= $end)
+			or ($table_hash->{start_int} >= $start and $table_hash->{end_int} <= $end)){
+			$total_rows += $table_hash->{records};
+		}
+		
 	}
 	
 	my $archive_query_rows_per_second = 300_000; # guestimate
@@ -331,7 +340,7 @@ sub _get_where_clause {
 					}
 					if ($field eq 'class_id'){
 						push @field_clauses, '(class_id=?)';
-						push @values, $class_id;
+						push @values, $self->_value($hash, $class_id);
 					}
 					elsif ($self->_is_int_field($hash->{field}, $class_id)){
 						push @field_clauses, '(class_id=? AND ' . $field . '=?)';
