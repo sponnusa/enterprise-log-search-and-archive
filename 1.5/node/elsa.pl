@@ -478,15 +478,6 @@ sub _forward {
 			eval {
 				my $md5_start = time();
 				
-				# Calculate the MD5
-				my $md5 = new Digest::MD5;
-				my $tempfile = new IO::File($args->{file}) or die($!);
-				$md5->addfile($tempfile);
-				$args->{md5} = $md5->hexdigest;
-				close($tempfile);
-				my $md5_time_taken = time() - $md5_start;
-				$Log->trace('Calculated md5 ' . $args->{md5} . ' in ' . $md5_time_taken . ' seconds.');
-				
 				# Write the new programs to a file
 				my ($program_fh, $program_filename);
 				if (scalar keys %{ $reader->to_add }){
@@ -514,6 +505,16 @@ sub _forward {
 				unless( $zip->writeToFileNamed($compressed_filename) == Archive::Zip::AZ_OK()){
 					die('Unable to create compressed file ' . $compressed_filename);
 				}
+				
+				# Calculate the MD5
+				my $md5 = new Digest::MD5;
+				my $tempfile = new IO::File($compressed_filename) or die($!);
+				$md5->addfile($tempfile);
+				$args->{md5} = $md5->hexdigest;
+				close($tempfile);
+				my $md5_time_taken = time() - $md5_start;
+				$Log->trace('Calculated zip file md5 ' . $args->{md5} . ' in ' . $md5_time_taken . ' seconds.');
+				
 				my $taken = Time::HiRes::time() - $start;
 				$args->{compression_time} = $taken;
 				my $new_size = -s $compressed_filename;

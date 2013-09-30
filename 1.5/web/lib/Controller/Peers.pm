@@ -150,6 +150,19 @@ sub upload {
 		}
 		close(FH);
 		
+		# Check md5
+		my $md5 = new Digest::MD5;
+		my $upload_fh = new IO::File($args->{upload}->path);
+		$md5->addfile($upload_fh);
+		my $local_md5 = $md5->hexdigest;
+		close($upload_fh);
+		unless ($local_md5 eq $args->{md5}){
+			my $msg = 'MD5 mismatch! Calculated: ' . $local_md5 . ' client said it should be: ' . $args->{md5};
+			$self->log->error($msg);
+			unlink($args->{upload}->path);
+			throw(400, $msg);
+		}
+		
 		my $file;
 		
 		if ($is_zipped){
@@ -160,25 +173,35 @@ sub upload {
 			mkdir($working_dir) or throw(500, "Unable to create working_dir $working_dir", { working_dir => $working_dir });
 			$ae->extract( to => $working_dir ) or throw(500, $ae->error, { working_dir => $working_dir });
 			my $files = $ae->files;
-			if (scalar @$files > 2){
-				$self->log->warn('Received more than 2 files in zip file, there should be at most one file and an optional programs file in a single zip file.');
-			}
+			$self->log->debug('Files enclosed: ' . join(',', @$files));
 			foreach my $unzipped_file_shortname (@$files){
 				my $unzipped_file = $working_dir . '/' . $unzipped_file_shortname;
-				my $zipped_file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $unzipped_file_shortname;
-				move($unzipped_file, $zipped_file);
+				$self->log->debug('unzipped_file: ' . $unzipped_file . ', existence: ' . (-f $unzipped_file));
+				my $copy_shortname = $unzipped_file_shortname;
+				$copy_shortname =~ s/\///g;
+				my $working_file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $copy_shortname;
+				move($unzipped_file, $working_file);
 				
 				if ($unzipped_file_shortname =~ /programs/){
-					$self->log->info('Loading programs file ' . $zipped_file);
+					$self->log->info('Loading programs file ' . $working_file);
 					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs FIELDS ESCAPED BY \'\'';
 					$sth = $self->db->prepare($query);
-					$sth->execute($zipped_file);
-					unlink($zipped_file);
+					$sth->execute($working_file);
+					unlink($working_file);
+					next;
+				}
+				elsif ($unzipped_file_shortname =~ /host_stats/){
+					$self->log->info('Loading host_stats file ' . $working_file);
+					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.host_stats FIELDS ESCAPED BY \'\'';
+					$sth = $self->db->prepare($query);
+					$sth->execute($working_file);
+					unlink($working_file);
 					next;
 				}
 				else {
-					$file = $zipped_file;
+					$file = $working_file;
 				}
+				$self->_process_upload($args, $file, $ret);
 			}
 			rmtree($working_dir);
 		}
@@ -190,62 +213,7 @@ sub upload {
 			move($file, $destfile) or throw(500, $!, { file => $file, destfile => $destfile });
 			$self->log->debug('moved file ' . $file . ' to ' . $destfile);
 			$file = $destfile;
-		}
-		$args->{size} = -s $file;
-		
-		# Check md5
-		my $md5 = new Digest::MD5;
-		my $upload_fh = new IO::File($file);
-		$md5->addfile($upload_fh);
-		my $local_md5 = $md5->hexdigest;
-		close($upload_fh);
-		unless ($local_md5 eq $args->{md5}){
-			my $msg = 'MD5 mismatch! Calculated: ' . $local_md5 . ' client said it should be: ' . $args->{md5};
-			$self->log->error($msg);
-			unlink($file);
-			#return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
-			throw(400, $msg);
-		}
-		
-		if ($args->{description} or $args->{name}){
-			# We're doing an import
-			$args->{host} = $args->{client_ip_address};
-			delete $args->{start};
-			delete $args->{end};
-			my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
-			if (not $importer->id){
-				#return [ 500, [ 'Content-Type' => 'application/javascript' ], [ $self->json->encode({ error => 'Import failed' }) ] ];
-				throw(500, 'Import failed');
-			}
-			$ret->{import_id} = $importer->id;
-			$self->log->info('Deleting successfully imported file ' . $file);
-			unlink($file) if -f $file;
-		}
-		else {
-			unless ($args->{start} and $args->{end}){
-				my $msg = 'Did not receive valid start/end times';
-				$self->log->error($msg);
-				unlink($file);
-				#return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
-				throw(400, $msg);
-			}
-			
-			# Record our received file in the database
-			$query = 'INSERT INTO ' . $syslog_db_name . '.buffers (filename, start, end) VALUES (?,?,?)';
-			$sth = $self->db->prepare($query);
-			$sth->execute($file, $args->{start}, $args->{end});
-			$ret->{buffers_id} = $self->db->{mysql_insertid};
-			
-			$args->{batch_time} ||= 60;
-			$args->{total_errors} ||= 0;
-			
-			# Record the upload
-			$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
-			$sth = $self->db->prepare($query);
-			$sth->execute($args->{client_ip_address}, $args->{count}, $args->{size}, $args->{batch_time}, 
-				$args->{total_errors}, $args->{start}, $args->{end}, $ret->{buffers_id});
-			$ret->{upload_id} = $self->db->{mysql_insertid};
-			$sth->finish;
+			$self->_process_upload($args, $file, $ret);
 		}
 	}
 	catch {
@@ -255,6 +223,64 @@ sub upload {
 	};
 		
 	$cb->($ret);
+}	
+		
+sub _process_upload {
+	my $self = shift;
+	my $args = shift;
+	my $file = shift;
+	my $ret = shift;
+	
+	$self->log->debug("working on file $file, with existence: " . (-f $file));
+	
+	my ($query, $sth);
+	my $syslog_db_name = 'syslog';
+	if ($self->conf->get('syslog_db_name')){
+		$syslog_db_name = $self->conf->get('syslog_db_name');
+	}
+	
+	my $size = -s $file;
+	
+	if ($args->{description} or $args->{name}){
+		# We're doing an import
+		$args->{host} = $args->{client_ip_address};
+		delete $args->{start};
+		delete $args->{end};
+		my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
+		if (not $importer->id){
+			#return [ 500, [ 'Content-Type' => 'application/javascript' ], [ $self->json->encode({ error => 'Import failed' }) ] ];
+			throw(500, 'Import failed');
+		}
+		$ret->{import_id} = $importer->id;
+		$self->log->info('Deleting successfully imported file ' . $file);
+		unlink($file) if -f $file;
+	}
+	else {
+		unless ($args->{start} and $args->{end}){
+			my $msg = 'Did not receive valid start/end times';
+			$self->log->error($msg);
+			unlink($file);
+			#return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
+			throw(400, $msg);
+		}
+		
+		# Record our received file in the database
+		$query = 'INSERT INTO ' . $syslog_db_name . '.buffers (filename, start, end) VALUES (?,?,?)';
+		$sth = $self->db->prepare($query);
+		$sth->execute($file, $args->{start}, $args->{end});
+		$ret->{buffers_id} = $self->db->{mysql_insertid};
+		
+		$args->{batch_time} ||= 60;
+		$args->{total_errors} ||= 0;
+		
+		# Record the upload
+		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
+		$sth = $self->db->prepare($query);
+		$sth->execute($args->{client_ip_address}, $args->{count}, $size, $args->{batch_time}, 
+			$args->{total_errors}, $args->{start}, $args->{end}, $ret->{buffers_id});
+		$ret->{upload_id} = $self->db->{mysql_insertid};
+		$sth->finish;
+	}
 }
 
 sub info {

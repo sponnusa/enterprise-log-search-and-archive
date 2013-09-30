@@ -1576,6 +1576,7 @@ sub local_query {
 				if ($estimate_hash->{estimated_time} > $Query_time_batch_threshold){
 					$q->batch_message('Batching because estimated query time is ' . int($estimate_hash->{estimated_time}) . ' seconds.');
 					$self->log->info($q->batch_message);
+					$q->batch(1);
 					$q->execute_batch(sub { $cb->($q) });
 				}
 				else {
@@ -1679,13 +1680,12 @@ sub local_query_preparsed {
 			if ($estimate_hash->{estimated_time} > $Query_time_batch_threshold){
 				$q->batch_message('Batching because estimated query time is ' . int($estimate_hash->{estimated_time}) . ' seconds.');
 				$self->log->info($q->batch_message);
+				$q->batch(1);
 				$q->execute_batch(sub { $cb->($q) });
 			}
 			else {
 				$q->execute(sub { $cb->($q) });
 			}
-			
-			#$q->execute(sub { $cb->($q) });
 		}
 		catch {
 			my $e = shift;
@@ -1719,7 +1719,7 @@ sub local_query_preparsed {
 			else {
 				$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
 		
-				$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+				#$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
 		
 				# Apply transforms
 				$q->transform_results(sub { 
