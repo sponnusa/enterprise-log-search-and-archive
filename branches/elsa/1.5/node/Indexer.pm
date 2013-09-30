@@ -2775,7 +2775,9 @@ sub add_programs {
 
 sub record_host_stats {
 	my $self = shift;
-	#my $index = shift;
+	
+	return if $self->conf->get('stats/external');
+	
 	my $overall_start = Time::HiRes::time();
 		
 	my ($query, $sth);
@@ -2845,6 +2847,15 @@ sub record_host_stats {
 	$sth->execute($load_file);
 	
 	$self->log->trace("Finished in " . (Time::HiRes::time() - $overall_start) . " with $total records counted");
+}
+
+sub _aggregate_stats {
+	my $self = shift;
+	
+	my ($query, $sth);
+	
+	$query = 'SELECT ';
+	
 }
 
 sub _current_disk_space_available {
