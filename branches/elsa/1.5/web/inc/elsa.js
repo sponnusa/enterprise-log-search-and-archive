@@ -2380,6 +2380,11 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		
 		logger.log('got results:', p_oResults);
 		try {
+			if (p_oResults.code){
+				YAHOO.ELSA.Error(p_oResults.message);
+				return;
+			}
+			
 			this.results = p_oResults;
 			var oElClose = new YAHOO.util.Element(YAHOO.util.Dom.get('close_box_' + this.id));
 			oElClose.removeClass('loading');
@@ -2390,7 +2395,12 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 				this.qid = this.results.qid;
 			}
 			else {
-				YAHOO.ELSA.Error('no qid found in results');
+				if (this.results.code){
+					YAHOO.ELSA.Error(this.results.message);
+				}
+				else {
+					YAHOO.ELSA.Error('no qid found in results');
+				}
 			}
 		
 			if (!p_bIsReload){

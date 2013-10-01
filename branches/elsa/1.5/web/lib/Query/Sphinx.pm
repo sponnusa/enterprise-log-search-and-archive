@@ -319,21 +319,23 @@ sub _get_class_ids {
 	}
 	foreach my $boolean (qw(and not)){
 		foreach my $key (keys %{ $self->terms->{$boolean} }){
-			$self->terms->{$boolean}->{$key}->{field} and $fields{ $self->terms->{$boolean}->{$key}->{field} } = $self->terms->{$boolean}->{$key}->{value};
+			my $field = $self->terms->{$boolean}->{$key}->{field};
+			next unless $field;
+			my $value = $self->terms->{$boolean}->{$key}->{value};
+			if ($field eq 'class'){
+				if ($boolean eq 'and'){
+					return { $self->meta_info->{classes}->{$value} => $value };
+				}
+			}
+			else {
+				$fields{$field} = $value;
+			}
 		}
 	}
 	
 	# Foreach field, find classes
 	foreach my $field (keys %fields){
-		if ($field eq 'class'){
-			if ($self->meta_info->{classes}->{ $fields{$field} }){
-				return { $self->meta_info->{classes}->{ $fields{$field} } => $fields{$field} };
-			}
-			else {
-				throw(400, 'Invalid class ' . $fields{$field}, { term => $fields{$field} });
-			}
-		}
-		elsif ($self->_is_meta($field)){
+		if ($self->_is_meta($field)){
 			next;
 		}
 		my $field_classes = $self->_classes_for_field($field);
