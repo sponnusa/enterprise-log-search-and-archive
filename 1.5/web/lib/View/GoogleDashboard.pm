@@ -10,6 +10,9 @@ use JSON;
 use Plack::Middleware::Auth::Basic;
 use Date::Manip;
 use Socket;
+use AnyEvent;
+use Try::Tiny;
+use Ouch qw(:trytiny);
 
 our $Default_width = 1000;
 
@@ -99,136 +102,146 @@ sub call {
 	my $res = $req->new_response(200); # new Plack::Response
 	my $ret = [];
 	
-	eval {
-	    $self->session(Plack::Session->new($env));
-		$res->content_type('text/html');
-		$res->header('Access-Control-Allow-Origin' => '*');
-		$self->path_to_inc('../');
+	# If we don't have a nonblocking web server (Apache), we need to have an overarching blocking recv
+	my $cv;
+	if (not $env->{'psgi.nonblocking'}){
+		$cv = AnyEvent->condvar;
+	}
+	
+	return sub {
+		my $write = shift;
 		
-		my $dashboard_name = $self->extract_method($req->request_uri);
-		$self->controller->log->debug('method: ' . $dashboard_name);
-		
-		my $user = $self->controller->get_user($req->user);
-		if ($user){
-			$self->session->set('user', $user->freeze);
-			$self->session->set('user_info', $user->TO_JSON);
-		}
-		
-		$args->{alias} = $dashboard_name;
-		
-		if ($req->request_uri =~ /[\?\&]edit[=]?/){
-			$args->{edit} = 1;
-			$self->controller->log->trace('edit mode');
-		}
-		
-		#$self->controller->log->debug('dashboard args: ' . Dumper($args));
-		if (exists $args->{start}){
-			$args->{start_time} = UnixDate(ParseDate($args->{start}), '%s');
-			$self->controller->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
-		}
-		else {
-			$args->{start_time} = (time() - (86400*7));
-		}
-		if (exists $args->{end}){
-			$args->{end_time} = UnixDate(ParseDate($args->{end}), '%s');
-			$self->controller->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
-		}
-		else {
-			$args->{end_time} = time;
-		}
-		
-		my $time_units = {
-			seconds => { groupby => 'timestamp', multiplier => 1 },
-			minutes => { groupby => 'minute', multiplier => 60 },
-			hours => { groupby => 'hour', multiplier => 3600 },
-			days => { groupby => 'day', multiplier => 86400 },
-			months => { groupby => 'month', multiplier => 2592000 },
-			years => { groupby => 'year', multiplier => 946080000 },
-		};
-		
-		$args->{groupby} = 'hour';
-		
-		foreach my $arg (keys %$args){
-			if (exists $time_units->{ $arg }){
-				$args->{groupby} = $time_units->{ $arg }->{groupby};
-				if ($args->{$arg}){
-					if ($args->{start}){
-						$args->{end_time} = ($args->{start_time} + ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
-						$self->controller->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+		try {
+		    $self->session(Plack::Session->new($env));
+			$res->content_type('text/html');
+			$res->header('Access-Control-Allow-Origin' => '*');
+			$self->path_to_inc('../');
+			
+			my $dashboard_name = $self->extract_method($req->request_uri);
+			$self->controller->log->debug('method: ' . $dashboard_name);
+			
+			my $user = $self->controller->get_user($req->user);
+			if ($user){
+				$self->session->set('user', $user->freeze);
+				$self->session->set('user_info', $user->TO_JSON);
+			}
+			
+			$args->{alias} = $dashboard_name;
+			
+			if ($req->request_uri =~ /[\?\&]edit[=]?/){
+				$args->{edit} = 1;
+				$self->controller->log->trace('edit mode');
+			}
+			
+			#$self->controller->log->debug('dashboard args: ' . Dumper($args));
+			if (exists $args->{start}){
+				$args->{start_time} = UnixDate(ParseDate($args->{start}), '%s');
+				$self->controller->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+			}
+			else {
+				$args->{start_time} = (time() - (86400*7));
+			}
+			if (exists $args->{end}){
+				$args->{end_time} = UnixDate(ParseDate($args->{end}), '%s');
+				$self->controller->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+			}
+			else {
+				$args->{end_time} = time;
+			}
+			
+			my $time_units = {
+				seconds => { groupby => 'timestamp', multiplier => 1 },
+				minutes => { groupby => 'minute', multiplier => 60 },
+				hours => { groupby => 'hour', multiplier => 3600 },
+				days => { groupby => 'day', multiplier => 86400 },
+				months => { groupby => 'month', multiplier => 2592000 },
+				years => { groupby => 'year', multiplier => 946080000 },
+			};
+			
+			$args->{groupby} = 'hour';
+			
+			foreach my $arg (keys %$args){
+				if (exists $time_units->{ $arg }){
+					$args->{groupby} = $time_units->{ $arg }->{groupby};
+					if ($args->{$arg}){
+						if ($args->{start}){
+							$args->{end_time} = ($args->{start_time} + ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
+							$self->controller->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+						}
+						else {
+							$args->{start_time} = ($args->{end_time} - ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
+							$self->controller->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+						}
 					}
-					else {
-						$args->{start_time} = ($args->{end_time} - ($time_units->{ $arg }->{multiplier} * int($args->{$arg})));
-						$self->controller->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
-					}
+					last;
 				}
-				last;
 			}
-		}
-		foreach my $plural_unit (keys %$time_units){
-			if ($time_units->{$plural_unit}->{groupby} eq $args->{groupby}){
-				$args->{limit} = ($args->{end_time} - $args->{start_time}) / $time_units->{$plural_unit}->{multiplier};
+			foreach my $plural_unit (keys %$time_units){
+				if ($time_units->{$plural_unit}->{groupby} eq $args->{groupby}){
+					$args->{limit} = ($args->{end_time} - $args->{start_time}) / $time_units->{$plural_unit}->{multiplier};
+				}
 			}
-		}
-	
-	
-		$self->controller->freshen_db;
-		my ($query, $sth);
 		
-		$args->{user} = $user;
-		$args->{dashboard_name} = $dashboard_name;
-		if ($self->controller->conf->get('dashboard_width')){
-			$args->{width} = $self->controller->conf->get('dashboard_width');
-		}
-		else {
-			$args->{width} = $Default_width;
-		}
 		
-		if(exists $self->system_dashboards->{ $args->{alias} }){
-			unless ($args->{user}->is_admin){
-				$res->status(401);
-				die('Unauthorized');
+			$self->controller->freshen_db;
+			my ($query, $sth);
+			
+			$args->{user} = $user;
+			$args->{dashboard_name} = $dashboard_name;
+			if ($self->controller->conf->get('dashboard_width')){
+				$args->{width} = $self->controller->conf->get('dashboard_width');
 			}
-#			foreach my $chart (@{ $self->system_dashboards->{ $args->{alias} }->{charts} }){
-#				$chart->{query_meta_params}->{start} = $self->start_time;
-#				$chart->{query_meta_params}->{end} = $self->end_time;
-#				$chart->{query_meta_params}->{groupby} = [$self->groupby] unless $query->{query} =~ /\sgroupby[:=]/ or $query->{query} =~ /sum\([^\)]+\)$/;
-#			}
-			$args->{id} = 1;
-			$args->{title} = $self->system_dashboards->{ $args->{alias} }->{title};
-			$args->{_system_dashboard} = $self->_generate_system_dashboard($args->{alias});
-		}
-		else {
-			$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
-			$sth = $self->controller->db->prepare($query);
-			$sth->execute($dashboard_name);
-			my $row = $sth->fetchrow_hashref;
-			die('dashboard ' . $dashboard_name . ' not found or not authorized') unless $row;
-			$args->{id} = $row->{dashboard_id};
-			$args->{title} = $row->{dashboard_title};
-			$self->title($args->{title});
-			$args->{alias} = $row->{alias};
-			$args->{auth_required} = $row->{auth_required};
-			unless ($self->controller->_is_permitted($args)){
-				$res->status(401);
-				die('Unauthorized');
+			else {
+				$args->{width} = $Default_width;
 			}
+			
+			if(exists $self->system_dashboards->{ $args->{alias} }){
+				unless ($args->{user}->is_admin){
+					$res->status(401);
+					$res->body('Unauthorized');
+					$cv and $cv->send;
+					return;
+				}
+				$args->{id} = 1;
+				$args->{title} = $self->system_dashboards->{ $args->{alias} }->{title};
+				$args->{_system_dashboard} = $self->_generate_system_dashboard($args->{alias});
+			}
+			else {
+				$query = 'SELECT dashboard_id, dashboard_title, alias, auth_required FROM v_dashboards WHERE alias=? ORDER BY x,y';
+				$sth = $self->controller->db->prepare($query);
+				$sth->execute($dashboard_name);
+				my $row = $sth->fetchrow_hashref;
+				die('dashboard ' . $dashboard_name . ' not found or not authorized') unless $row;
+				$args->{id} = $row->{dashboard_id};
+				$args->{title} = $row->{dashboard_title};
+				$self->title($args->{title});
+				$args->{alias} = $row->{alias};
+				$args->{auth_required} = $row->{auth_required};
+				unless ($self->controller->_is_permitted($args)){
+					$res->status(401);
+					die('Unauthorized');
+				}
+			}
+				
+			$ret = $self->controller->_get_rows($args);
+			
+			delete $args->{user};
+			$self->controller->log->debug('data: ' . Dumper($ret));
+			$res->body([$self->index($req, $args, $ret, sub {
+				my $body = shift;
+				$res->body($body);
+				$write->($res->finalize());
+				$cv and $cv->send;
+			})]);
 		}
-		
-		$ret = $self->controller->_get_rows($args);
-		
-		delete $args->{user};
+		catch {
+			my $e = shift;
+			$self->controller->log->error($e);
+			$res->body([encode_utf8($self->controller->json->encode({error => $e}))]);
+			$write->($res->finalize());
+			$cv and $cv->send;
+		}
 	};
-	if ($@){
-		my $e = $@;
-		$self->controller->log->error($e);
-		$res->body([encode_utf8($self->controller->json->encode({error => $e}))]);
-	}
-	else {
-		$self->controller->log->debug('data: ' . Dumper($ret));
-		$res->body([$self->index($req, $args, $ret)]);
-	}
-		
-	$res->finalize();
 }
 
 sub index {
@@ -236,7 +249,12 @@ sub index {
 	my $req = shift;
 	my $args = shift;
 	my $queries = shift;
-	return $self->_get_headers() . $self->_get_index_body($args, $queries);
+	my $cb = shift;
+	my $ret;
+	$self->get_headers(sub {
+		my $headers = shift;
+		$cb->($headers . $self->_get_index_body($args, $queries));
+	});
 }
 
 sub _get_index_body {

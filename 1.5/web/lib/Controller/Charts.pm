@@ -10,17 +10,18 @@ use Utils;
 
 sub _handle_errors {
 	my $self = shift;
+	my $cb = pop(@_);
 	my $msg_prefix = shift;
 	if (my $e = catch_any(shift)){
 		my $errstr = $msg_prefix . ': ' . $e->message;
 		$self->log->error($errstr);
 		$self->db->rollback;
-		die($e);
+		$cb->($e);
 	}
 }
 
 sub get_dashboards {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	my ($query, $sth);
 	
 	my $ret = [];
@@ -32,15 +33,15 @@ sub get_dashboards {
 		push @$ret, $row;
 	}
 	
-	return { 
+	$cb->({ 
 		totalRecords => scalar @$ret,
 		recordsReturned => scalar @$ret,
 		results => $ret
-	};
+	});
 }
 
 sub add_dashboard {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	my $dashboard_id;
@@ -75,17 +76,18 @@ sub add_dashboard {
 				$chart->{user} = $args->{user};
 				$chart->{chart_type} = delete $chart->{type};
 				$chart->{dashboard_id} = $dashboard_id;
-				my $ret = $self->add($chart, 1);
+				my $ret = $self->_add($chart, 1);
 			}
 		}
 		
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error creating dashboard', $_);
+		$self->_handle_errors('Error creating dashboard', $_, $cb);
+		return;
 	};
 	
-	return { dashboard_id => $dashboard_id };
+	$cb->({ dashboard_id => $dashboard_id });
 }
 
 sub _import_dashboard {
@@ -104,7 +106,7 @@ sub _import_dashboard {
 }
 
 sub del_dashboard {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	my ($query, $sth);
 	
 	my $ok;
@@ -128,13 +130,14 @@ sub del_dashboard {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error deleting dashboard', $_);
+		$self->_handle_errors('Error deleting dashboard', $_, $cb);
+		return;
 	};
-	return { ok => $ok };
+	$cb->({ ok => $ok });
 }
 
 sub update_dashboard {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	$self->log->debug('args', Dumper($args));
 	my ($query, $sth);
@@ -182,14 +185,15 @@ sub update_dashboard {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error updating dashboard', $_);
+		$self->_handle_errors('Error updating dashboard', $_, $cb);
+		return;
 	};
 	
-	return { ok => $sth->rows };
+	$cb->({ ok => $sth->rows });
 }
 
 sub export_dashboard {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	my ($query, $sth);
 	
 	$args->{id} = delete $args->{data};
@@ -235,12 +239,13 @@ sub export_dashboard {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error exporting dashboard', $_);
+		$self->_handle_errors('Error exporting dashboard', $_, $cb);
+		return;
 	};
-	return $ret;
+	$cb->($ret);
 }
 
-sub add {
+sub _add {
 	my ($self, $args, $no_xa) = @_;
 	$self->log->debug('args ' . Dumper($args));
 	
@@ -319,14 +324,29 @@ sub add {
 		$self->db->commit unless $no_xa;
 	}
 	catch {
-		$self->_handle_errors('Error creating chart', $_);
+		throw(500, 'Error creating chart: ' . $_);
 	};
 	
 	return $ret;
 }
 
+sub add {
+	my ($self, $args, $cb) = @_;
+	$self->log->debug('args ' . Dumper($args));
+	
+	my $ret;
+	try {
+		$ret = $self->_add($args);
+	}
+	catch {
+		$self->_handle_errors('Error creating chart', $_);
+	};
+	
+	$cb->($ret);
+}
+
 sub del {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	my $rows;
@@ -421,14 +441,15 @@ sub del {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error deleting chart', $_);
+		$self->_handle_errors('Error deleting chart', $_, $cb);
+		return;
 	};
 	
-	return { ok => $rows };
+	$cb->({ ok => $rows });
 }
 
 sub move {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	#$self->log->trace('move args: ' . Dumper($args));
 	my ($query, $sth);
@@ -543,9 +564,10 @@ sub move {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error moving chart', $_);
+		$self->_handle_errors('Error moving chart', $_, $cb);
+		return;
 	};
-	return $self->_get_rows($args);
+	$cb->($self->_get_rows($args));
 }
 
 sub _is_permitted {
@@ -690,7 +712,7 @@ sub _get_rows {
 }
 
 sub add_query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	my $query_id;
@@ -707,7 +729,7 @@ sub add_query {
 			$self->db->rollback();
 			$args->{queries} = [ { label => $args->{label}, query => $args->{query} } ];
 			$args->{chart_type} = 'ColumnChart';
-			return $self->add($args);
+			return $self->_add($args);
 		}
 		else {
 			# Verify this chart belongs to this user
@@ -733,14 +755,15 @@ sub add_query {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error creating query', $_);
+		$self->_handle_errors('Error creating query', $_, $cb);
+		return;
 	};
 	
-	return { query_id => $query_id, label => $args->{label}, query => $args->{query} };
+	$cb->({ query_id => $query_id, label => $args->{label}, query => $args->{query} });
 }
 
 sub del_query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	my $ok;
@@ -762,14 +785,15 @@ sub del_query {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error deleting query', $_);
+		$self->_handle_errors('Error deleting query', $_, $cb);
+		return;
 	};
 	
-	return { ok => $ok };
+	$cb->({ ok => $ok });
 }
 
 sub update_query {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	my ($query, $sth);
 	my $query_id;
@@ -798,14 +822,15 @@ sub update_query {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error updating query', $_);
+		$self->_handle_errors('Error updating query', $_, $cb);
+		return;
 	};
 	
-	return { ok => $sth->rows };
+	$cb->({ ok => $sth->rows });
 }
 
 sub update {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	
 	$self->log->debug('args', Dumper($args));
 	my ($query, $sth);
@@ -842,14 +867,15 @@ sub update {
 		$self->db->commit;
 	}
 	catch {
-		$self->_handle_errors('Error updating chart', $_);
+		$self->_handle_errors('Error updating chart', $_, $cb);
+		return;
 	};
 	
-	return { ok => $sth->rows };
+	$cb->({ ok => $sth->rows });
 }
 
 sub get {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	my ($query, $sth);
 	
 	if ($args->{dashboard_id}){
@@ -881,16 +907,16 @@ sub get {
 			push @queries, $row;
 		}
 	}
-	return { 
+	$cb->({ 
 		totalRecords => scalar @charts,
 		recordsReturned => scalar @charts,
 		charts => \@charts,
 		queries => \@queries,
-	};
+	});
 }
 
 sub get_all {
-	my ($self, $args) = @_;
+	my ($self, $args, $cb) = @_;
 	my ($query, $sth);
 	
 	$query = 'SELECT DISTINCT dashboard_id, alias, chart_id, chart_type, x, y, chart_options FROM v_dashboards WHERE uid=?';
@@ -902,11 +928,11 @@ sub get_all {
 		push @charts, $row;
 	}
 		
-	return { 
+	$cb->({ 
 		totalRecords => scalar @charts,
 		recordsReturned => scalar @charts,
 		results => \@charts,
-	};
+	});
 }
 
 __PACKAGE__->meta->make_immutable;

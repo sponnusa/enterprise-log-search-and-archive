@@ -8,7 +8,7 @@ use Scalar::Util;
 use AnyEvent;
 use Digest::SHA qw(sha512_hex);
 use Try::Tiny;
-use Ouch qw(:trytiny);;
+use Ouch qw(:trytiny);
 
 use Utils;
 

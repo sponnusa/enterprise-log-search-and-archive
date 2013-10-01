@@ -663,6 +663,12 @@ sub _peer_query {
 			my $start = time();
 			$self->local_query_preparsed($q, sub {
 				my $ret_q = shift;
+				unless ($ret_q and ref($ret_q) and $ret_q->can('stats')){
+					if ($ret_q and ref($ret_q) eq 'Ouch'){
+						throw($ret_q->code, $ret_q->message, $ret_q->data);
+					}
+					throw(500, 'Invalid query result');
+				}
 				
 				if ($ret_q->results->records_returned and not $q->results->records_returned){
 					$q->results($ret_q->results);
