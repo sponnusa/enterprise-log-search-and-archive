@@ -279,7 +279,7 @@ sub _get_class_ids {
 				}
 			}
 			unless (scalar keys %classes){
-				throw(401, 'No authorized classes for groupby field ' . $self->groupby, { term => $self->groupby });
+				throw(400, 'Field ' . $self->groupby . ' not a valid groupby value', { term => $self->groupby });
 			}
 		}
 	}
@@ -296,7 +296,7 @@ sub _get_class_ids {
 				}
 			}
 			unless (scalar keys %classes){
-				throw(401, 'No authorized classes for orderby field ' . $self->orderby, { term => $self->orderby });
+				throw(400, 'Field ' . $self->orderby . ' not a valid orderby value', { term => $self->orderby });
 			}
 		}
 	}
@@ -473,7 +473,19 @@ sub _get_match_str {
 		push @boolean_clauses, '!(' . join('|', sort { $a =~ /^\(\@/ <=> $b =~ /^\(\@/ } keys %{ $clauses{not} }) . ')';
 	}
 	
-	return join(' ', @boolean_clauses);
+	my $match_str = join(' ', @boolean_clauses);
+	
+	$match_str =~ s/'/\\'/g;
+	
+	# Verify we'll still have something to search on
+	my $chars_indexed = (values %{ $self->schemas->{$group_key} })[0]->{schema}->{chars_indexed};
+	$chars_indexed = join('', keys %$chars_indexed);
+	my $re = qr/[$chars_indexed]/i;
+	unless ($match_str =~ $re){
+		throw(400, 'Query did not contain any indexed characters.', { match_str => $match_str });
+	}
+	
+	return $match_str;
 }
 
 
@@ -507,7 +519,15 @@ sub _get_attr_tests {
 		unless (defined $attr and defined $value){
 			throw(400, 'Invalid filter ' . $hash->{field}, { term => $hash->{field} });
 		}
-		push @{ $terms{ $hash->{boolean} } }, sprintf('%s%s%d', $attr, $hash->{op}, $value);
+		# Need to take special care on a negated range
+		if ($hash->{op} =~ /[<>]/){
+			$terms{'range_' . $hash->{boolean}} ||= {};
+			$terms{'range_' . $hash->{boolean}}->{$attr} ||= [];
+			push @{ $terms{'range_' . $hash->{boolean}}->{$attr} }, { value => $value, op => $hash->{op}, term => sprintf('%s%s%d', $attr, $hash->{op}, $value) };
+		}
+		else {
+			push @{ $terms{ $hash->{boolean} } }, sprintf('%s%s%d', $attr, $hash->{op}, $value);
+		}
 	}
 	
 	my @attr_clauses;
@@ -519,6 +539,30 @@ sub _get_attr_tests {
 	}
 	if ($terms{not} and scalar @{ $terms{not} }){
 		push @attr_clauses, 'NOT (' . join(' OR ', @{ $terms{not} }) . ')';
+	}
+	foreach my $boolean (qw(and or not)){
+		my $range_op = 'range_' . $boolean;
+		if ($terms{$range_op} and scalar keys %{ $terms{$range_op} }){
+			foreach my $attr (sort keys %{ $terms{$range_op} }){
+				# need to pair up negated ranges with NOT (a AND B) OR NOT (c and d)
+				my @sorted_terms = sort { $a->{value} <=> $b->{value} } @{ $terms{$range_op}->{$attr} };
+				$self->log->debug('begin sorted: ' . Dumper(\@sorted_terms));
+				# First check if there is an odd number, requiring an artifical floor or ceiling
+				if (scalar @sorted_terms % 2 == 1){
+					if ($sorted_terms[0]->{op} =~ /</){
+						unshift @sorted_terms, { value => 0, op => '>=', term => sprintf('%s%s%d', $attr, '>=', 0) };
+					}
+					else {
+						push @sorted_terms, { value => 2**32, op => '<=', term => sprintf('%s%s%d', $attr, '<=', 2**32) };
+					}
+				}
+				$self->log->debug('end sorted: ' . Dumper(\@sorted_terms));
+				for (my $i = 0; $i < @sorted_terms; $i += 2){
+					push @attr_clauses, ($boolean eq 'not' ? 'NOT' : '') . ' (' . $sorted_terms[$i]->{term} . ' AND ' . $sorted_terms[$i + 1]->{term} . ')';
+				}
+			}
+			$self->log->debug('attr_clauses: ' . Dumper(\@attr_clauses));
+		}
 	}
 	
 	return scalar @attr_clauses ? join(' AND ', @attr_clauses) : 1;
@@ -624,19 +668,23 @@ sub _get_search_terms {
 				next;
 			}
 			
-			# Is this a stopword?
-			elsif ($self->_is_stopword($index_schema, $hash{value})){
-				# Will need to tack it on the post filter list
-				$self->post_filters->{ $hash{boolean} }->{ $hash{value} } = $hash{field};
-				next;
-			}
-			
 			# Is it quoted and the op isn't ~ ?
 			elsif ($hash{field} and $hash{op} ne '~' and $hash{quote}){
 				# Make it a filter
 				push @{ $ret->{filters} }, { %hash };
 				next;
 			}
+			
+			# Is this a stopword?
+			elsif ($self->_is_stopword($index_schema, $hash{value})){
+				if ($self->groupby){
+					throw(400, 'Query term ' . $hash{value} . ' is too common and cannot be used in a groupby', { term => $hash{value} });
+				}
+				# Will need to tack it on the post filter list
+				$self->post_filters->{ $hash{boolean} }->{ $hash{value} } = $hash{field};
+				next;
+			}
+			
 			# Default to search term
 			if (not $hash{field} or ($hash{field} and $self->_search_field($hash{field}, $class_id) 
 				and $self->_index_has($index_schema, 'fields', $self->_search_field($hash{field}, $class_id)) ) ){
@@ -881,15 +929,15 @@ sub execute {
 			return;
 		}
 		
+		my $indexes_queried = 0;
 		foreach my $group_key (keys %{ $self->schemas }){
 			my $indexes = $self->_get_index_list($self->schemas->{$group_key});
 			
 			$self->log->trace('Querying indexes: ' . scalar @$indexes);
+			$indexes_queried += scalar @$indexes;
 			
 			unless (scalar @$indexes){
-				$self->add_warning(416, 'No data for time period queried', { term => 'start' });
-				$cb->();
-				return;
+				next;
 			}
 			
 			last if $self->limit and $self->results->records_returned >= $self->limit;
@@ -912,6 +960,12 @@ sub execute {
 				});
 			}
 			
+		}
+		
+		unless ($indexes_queried){
+			$self->add_warning(416, 'No data for time period queried', { term => 'start' });
+			$cb->();
+			return;
 		}
 		
 		$cv->end;

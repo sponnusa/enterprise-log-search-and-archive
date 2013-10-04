@@ -6,7 +6,7 @@ use Log::Log4perl::Level;
 use AnyEvent::HTTP;
 use URI::Escape qw(uri_escape);
 use File::Copy;
-use Archive::Extract;
+use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 use Digest::MD5;
 use IO::File;
 use Time::HiRes qw(time);
@@ -166,44 +166,11 @@ sub upload {
 		my $file;
 		
 		if ($is_zipped){
-			my $ae = Archive::Extract->new( archive => $args->{upload}->path ) or throw(500, 'Error extracting file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
 			my $id = $args->{client_ip_address} . '_' . $args->{md5};
-			# make a working dir for these files
-			my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
-			mkdir($working_dir) or throw(500, "Unable to create working_dir $working_dir", { working_dir => $working_dir });
-			$ae->extract( to => $working_dir ) or throw(500, $ae->error, { working_dir => $working_dir });
-			my $files = $ae->files;
-			$self->log->debug('Files enclosed: ' . join(',', @$files));
-			foreach my $unzipped_file_shortname (@$files){
-				my $unzipped_file = $working_dir . '/' . $unzipped_file_shortname;
-				$self->log->debug('unzipped_file: ' . $unzipped_file . ', existence: ' . (-f $unzipped_file));
-				my $copy_shortname = $unzipped_file_shortname;
-				$copy_shortname =~ s/\///g;
-				my $working_file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $copy_shortname;
-				move($unzipped_file, $working_file);
-				
-				if ($unzipped_file_shortname =~ /programs/){
-					$self->log->info('Loading programs file ' . $working_file);
-					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs FIELDS ESCAPED BY \'\'';
-					$sth = $self->db->prepare($query);
-					$sth->execute($working_file);
-					unlink($working_file);
-					next;
-				}
-				elsif ($unzipped_file_shortname =~ /host_stats/){
-					$self->log->info('Loading host_stats file ' . $working_file);
-					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.host_stats FIELDS ESCAPED BY \'\'';
-					$sth = $self->db->prepare($query);
-					$sth->execute($working_file);
-					unlink($working_file);
-					next;
-				}
-				else {
-					$file = $working_file;
-				}
-				$self->_process_upload($args, $file, $ret);
-			}
-			rmtree($working_dir);
+			$file = $self->conf->get('buffer_dir') . '/' . $id;
+			gunzip $args->{upload}->path => $file
+				or throw(500, 'Error extracting file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
+			unlink($args->{upload}->path);
 		}
 		else {
 			$file = $args->{upload}->path;
@@ -213,8 +180,28 @@ sub upload {
 			move($file, $destfile) or throw(500, $!, { file => $file, destfile => $destfile });
 			$self->log->debug('moved file ' . $file . ' to ' . $destfile);
 			$file = $destfile;
-			$self->_process_upload($args, $file, $ret);
 		}
+		
+		if ($args->{program_file}){
+			$self->log->info('Loading programs file ' . $file);
+			$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs FIELDS ESCAPED BY \'\'';
+			$sth = $self->db->prepare($query);
+			$sth->execute($file);
+			unlink($file);
+			$cb->($ret);
+			return;
+		}
+		elsif ($args->{stats_file}){
+			$self->log->info('Loading host_stats file ' . $file);
+			$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.host_stats FIELDS ESCAPED BY \'\'';
+			$sth = $self->db->prepare($query);
+			$sth->execute($file);
+			unlink($file);
+			$cb->($ret);
+			return;
+		}
+		
+		$self->_process_upload($args, $file, $ret);
 	}
 	catch {
 		my $e = shift;

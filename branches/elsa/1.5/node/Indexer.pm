@@ -1336,6 +1336,7 @@ sub load_records {
 		$query = 'DELETE FROM buffers WHERE filename=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{file});
+		unlink($args->{file});
 		return 0;
 	}
 	my $load_time = time() - $load_start;

@@ -19,7 +19,6 @@ sub BUILDARGS {
 
 sub BUILD {
 	my $self = shift;
-	$self->log->trace('data: ' . Dumper($self->data));
 	
 	my $sums = {};
 	foreach my $record ($self->results->all_results){
@@ -61,13 +60,7 @@ sub BUILD {
 		push @$ret, { _groupby => $key, intval => $sums->{$key}, _count => $sums->{$key} };
 	}
 	
-	# Sort
-	$ret = [ sort { $b->{intval} <=> $a->{intval} } @$ret ];
-	
-	$self->data($ret);
-	$self->log->debug('data: ' . Dumper($self->data));
-	
-	$self->on_transform->($self->results);
+	$self->on_transform->(Results::Groupby->new(results => { $self->groupby => [ sort { $b->{intval} <=> $a->{intval} } @$ret ] }));
 	
 	return $self;
 }

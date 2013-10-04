@@ -43,13 +43,18 @@ sub BUILD {
 	# First find all the unique lookups we'll need
 	foreach my $record ($self->results->all_results){
 		foreach my $key ($self->results->keys($record)){
+			my $display_key = $key;
+			if ($key eq '_groupby'){
+				$display_key = ($self->results->all_groupbys)[0];
+			}
 			my $value = $self->results->value($record, $key);
 			if ($value =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 				$self->lookups->{$value} ||= [];
-				push @{ $self->lookups->{$value} }, { key => $key, record => $record };
+				push @{ $self->lookups->{$value} }, { key => $display_key, record => $record };
 			}
 		}
 	}
+	$self->log->debug('lookups: ' . Dumper($self->lookups));
 	
 	$self->cv(AnyEvent->condvar); 
 	$self->cv->begin(sub {
@@ -93,6 +98,8 @@ sub _update_records {
 	
 	foreach my $to_update (@{ $self->lookups->{$subject} }){
 		$to_update->{record}->{transforms}->{$Name}->{ $to_update->{key} } = $value;
+		$self->log->debug('$to_update: ' . Dumper($to_update));
+		$self->log->debug('record is now: ' . Dumper($to_update->{record}));
 	}
 }
 sub _lookup {

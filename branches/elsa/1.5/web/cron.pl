@@ -372,9 +372,9 @@ sub _run_archive_queries {
 			$controller->_save_results($q->TO_JSON);
 			$controller->_batch_notify($q);
 
-			$query = 'UPDATE query_log SET milliseconds=?, num_results=IF(ISNULL(num_results), ?, num_results + ?) WHERE qid=?';
+			$query = 'UPDATE query_log SET milliseconds=? WHERE qid=?';
 			my $upd_sth = $controller->db->prepare($query);
-			$upd_sth->execute($q->time_taken, $q->results->records_returned, $q->results->records_returned, $row->{qid});
+			$upd_sth->execute($q->time_taken, $row->{qid});
 			$controller->log->trace('Updated num_results for qid ' . $row->{qid} 
 				. ' with ' . $q->results->records_returned . ' additional records.');
 			$upd_sth->finish;
