@@ -1493,8 +1493,8 @@ sub get_running_archive_query {
 sub query {
 	my ($self, $args, $cb) = @_;
 	
+	my $ret;
 	try {
-		my $ret;
 		QueryParser->new(conf => $self->conf, log => $self->log, %$args, on_connect => sub {
 			my $qp = shift;
 			my $q = $qp->parse();
@@ -1523,7 +1523,13 @@ sub query {
 	}
 	catch {
 		my $e = shift;
-		$cb->($e);
+#		if ($ret and ref($ret) and $ret->can('qid') and $ret->qid){
+#			$ret->add_warning($e);
+#			$cb->($ret);
+#		}
+#		else {
+			$cb->($e);
+#		}
 	};
 }
 
@@ -1980,7 +1986,7 @@ sub send_to {
 	if (ref($args) =~ /Query/){
 		my $q = $args;
 		$cb->() and return unless $q->has_connectors;
-		$self->_send_to_($q, $cb);
+		$self->_send_to($q, $cb);
 	}
 	else {
 		if($args->{query}){
@@ -1991,7 +1997,7 @@ sub send_to {
 					my $qp = shift;
 					my $q = $qp->parse();
 					$cb->() and return unless $q->has_connectors;
-					$self->_send_to_($q, $cb);
+					$self->_send_to($q, $cb);
 				});
 			
 		}

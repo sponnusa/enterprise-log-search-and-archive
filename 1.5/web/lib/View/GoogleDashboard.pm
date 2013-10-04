@@ -351,11 +351,11 @@ sub _generate_system_dashboard {
 	if ($self->system_dashboards->{$dashboard}->{node_charts}){
 		foreach my $chart (@{ $self->system_dashboards->{$dashboard}->{node_charts} }){
 			my $clone = { %$chart };
-			foreach my $node (keys %{ $self->controller->conf->get('nodes') }){
+			foreach my $peer (keys %{ $self->controller->conf->get('peers') }){
 				$clone->{chart_id} = $id_counter;
 				$clone->{query_id} = $id_counter;
-				$clone->{query} = sprintf($chart->{query}, unpack('N*', inet_aton($node)));
-				$clone->{label} = sprintf($chart->{label}, $node);
+				$clone->{query} = sprintf($chart->{query}, unpack('N*', inet_aton($peer)));
+				$clone->{label} = sprintf($chart->{label}, $peer);
 				push @{ $ret->{charts} }, { %$clone };
 				$id_counter++;
 			}

@@ -157,7 +157,7 @@ sub execute {
 			foreach my $alias (@{ $self->system_datasources->{$datasource} } ){
 				$self->datasources->{$alias} = 1;
 			}
-			return $self->execute($self);
+			return $self->execute($cb);
 		}
 		
 		# Check to see if this is a group (kind of a datasource macro)
@@ -169,7 +169,7 @@ sub execute {
 						$self->datasources->{$datasource_config_reference} = 1;
 					}
 					# Now that we've resolved the group into its subcomponents, we recurse to run those 
-					return $self->execute($self);
+					return $self->execute($cb);
 				}
 			}
 		}

@@ -673,7 +673,7 @@ sub _peer_query {
 				if ($ret_q->results->records_returned and not $q->results->records_returned){
 					$q->results($ret_q->results);
 				}
-				elsif ($ret_q->results->records_returned){
+				elsif ($ret_q->results->records_returned and $q ne $ret_q){
 					$self->log->debug('query returned ' . $ret_q->results->records_returned . ' records, merging ' . Dumper($q->results) . ' with ' . Dumper($ret_q->results));
 					$q->results->merge($ret_q->results, $q);
 				}
@@ -682,7 +682,7 @@ sub _peer_query {
 					$current_message .= $peer . ': ' . $ret_q->batch_message;
 					$q->batch_message($current_message);
 					$q->batch(1);
-					$batches{$peer} = $ret_q->qid;
+					#$batches{$peer} = $ret_q->qid;
 					
 					# Mark approximate if our peer results were
 					if ($ret_q->results->is_approximate and not $q->results->results->is_approximate){

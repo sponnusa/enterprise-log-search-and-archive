@@ -556,6 +556,12 @@ sub transform_results {
 			foreach my $warning ($q->all_warnings){
 				$self->add_warning($warning);
 			}
+			if ($q->groupby){
+				$self->groupby($q->groupby);
+			}
+			else {
+				$self->groupby('');
+			}
 			$q->transform_results($cb);
 		});
 	}
@@ -636,7 +642,7 @@ sub _post_transform {
 								}
 							}
 							$self->log->debug('add_on_str: ' . $add_on_str);
-							$row = { '_count' => $row->{_count}, '_groupby' => ($row->{ $self->groupby } . ' ' . $add_on_str) };
+							$row->{_groupby} = ($row->{ $self->groupby } . ' ' . $add_on_str);
 						}
 						# If it's an array, we want to concatenate all fields together.
 						elsif (ref($row->{transforms}->{$transform}->{$field}) eq 'ARRAY'){
@@ -645,7 +651,7 @@ sub _post_transform {
 								$arr_add_on_str .= ' ' . $field . '=' .  $value;
 							}
 							if ($arr_add_on_str ne ''){
-								$row = { '_count' => $row->{_count}, '_groupby' => ($row->{ $self->groupby } . ' ' . $arr_add_on_str) };
+								$row->{_groupby} = ($row->{ $self->groupby } . ' ' . $arr_add_on_str);
 							}
 						}
 					}
@@ -749,7 +755,7 @@ sub _subsearch {
 		}
 	}
 	
-	$subsearch_query_string = join(' ', @$args) . ' ' . join(' OR ', @terms);
+	$subsearch_query_string .= ' ' . join(' OR ', @terms);
 	$self->log->trace('Subsearch query: ' . $subsearch_query_string);
 	my $qp = QueryParser->new(conf => $self->conf, log => $self->log, meta_info => $self->parser->meta_info, 
 		query_string => $subsearch_query_string, transforms => $self->transforms);
@@ -1092,12 +1098,9 @@ sub _find_import_ranges {
 		my @terms;
 		my @values;
 		foreach my $term_hash (@{ $date_terms{and} }){
-			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
-				push @terms, 'DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
-			}
-			else {
-				push @terms, 'imported ' . $term_hash->{op} . ' ?';
-			}
+			my $epoch = UnixDate(ParseDate($term_hash->{value}), '%s');
+			throw(400, 'Invalid import date', { term => $term_hash->{value} }) unless $epoch;
+			push @terms, 'imported ' . $term_hash->{op} . ' FROM_UNIXTIME(?)';
 			push @values, $term_hash->{value};
 		}
 		if (@terms){
@@ -1105,12 +1108,9 @@ sub _find_import_ranges {
 		}
 		@terms = ();
 		foreach my $term_hash (@{ $date_terms{or} }){
-			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
-				push @terms, 'DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
-			}
-			else {
-				push @terms, 'imported ' . $term_hash->{op} . ' ?';
-			}
+			my $epoch = UnixDate(ParseDate($term_hash->{value}), '%s');
+			throw(400, 'Invalid import date', { term => $term_hash->{value} }) unless $epoch;
+			push @terms, 'imported ' . $term_hash->{op} . ' FROM_UNIXTIME(?)';
 			push @values, $term_hash->{value};
 		}
 		if (@terms){
@@ -1118,12 +1118,9 @@ sub _find_import_ranges {
 		}
 		@terms = ();
 		foreach my $term_hash (@{ $date_terms{not} }){
-			if ($term_hash->{value} =~ /^\d{4}\-\d{2}\-\d{2}$/){
-				push @terms, 'NOT DATE_FORMAT(imported, "%Y-%m-%d") ' . $term_hash->{op} . ' ?';
-			}
-			else {
-				push @terms, 'NOT imported ' . $term_hash->{op} . ' ?';
-			}
+			my $epoch = UnixDate(ParseDate($term_hash->{value}), '%s');
+			throw(400, 'Invalid import date', { term => $term_hash->{value} }) unless $epoch;
+			push @terms, 'NOT imported ' . $term_hash->{op} . ' FROM_UNIXTIME(?)';
 			push @values, $term_hash->{value};
 		}
 		if (@terms){

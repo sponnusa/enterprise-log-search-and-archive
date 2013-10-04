@@ -277,36 +277,6 @@ sub _choose_query_class {
 		return 'Query::SQL';
 	}
 	else {
-		# Do we have stopwords, and if so, do we have any terms that aren't stopwords?
-		if (scalar keys %{ $self->stopword_terms }){
-			$self->log->trace('Query uses stopwords: ' . join(',', sort keys %{ $self->stopword_terms }));
-			# Does the query use a groupby?
-			if ($self->directives->{groupby}){
-				throw(400, 'Query terms ' . join(',', keys %{ $self->stopword_terms }) . ' are too common and cannot be used in a groupby', 
-					{ terms => join(',', keys %{ $self->stopword_terms }) });
-			}
-			
-			# Are all terms stopwords?
-			my $non_stopwords = 0;
-			foreach my $boolean (qw(and or)){
-				foreach my $key (keys %{ $self->terms->{$boolean} }){
-					if ($self->is_stopword($self->terms->{$boolean}->{$key}->{value})){
-						if ($boolean eq 'or'){
-							throw(400, 'Query term ' . $self->terms->{or}->{$key}->{value} . ' is too common', { term => $self->terms->{or}->{$key}->{value} });
-						}
-					}
-					else {
-						$non_stopwords++;
-					}
-				}
-			}
-			unless ($non_stopwords){
-				$self->log->info('All terms were too common to use an index, executing against raw SQL');
-				$self->add_warning(200, 'Query terms were too common, query cannot use an index', { indexed => 0 });
-				return 'Query::SQL';
-			}
-		}		
-		
 		return 'Query::Sphinx';
 	}
 			
@@ -536,9 +506,6 @@ sub _parse_query_term {
 			# Make field lowercase
 			$term_hash->{field} = lc($term_hash->{field});
 			
-			# Escape any digit-dash-word combos (except for host or program)
-			#$term_hash->{value} =~ s/(\d+)\-/$1\\\\\-/g unless ($self->archive or $term_hash->{field} eq 'program' or $term_hash->{field} eq 'host');
-						
 			if ($term_hash->{field} eq 'start'){
 				# special case for start/end
 				if ($term_hash->{value} =~ /^\d+$/){
@@ -574,74 +541,22 @@ sub _parse_query_term {
 				throw(400, 'Invalid offset', { term => 'offset' }) unless $self->directives->{offset} > -1;
 				next;
 			}
-			elsif ($term_hash->{field} eq 'class'){
-				# special case for class
-				my $class;
-				$self->log->trace('classes: ' . Dumper($self->meta_info->{classes}));
-				if ($self->meta_info->{classes}->{ uc($term_hash->{value}) }){
-					$class = lc($self->meta_info->{classes}->{ uc($term_hash->{value}) });
-				}
-				elsif (uc($term_hash->{value}) eq 'ANY'){
-					my @classes;
-					foreach my $class_name (keys %{ $self->meta_info->{classes} }){
-						next if $class_name eq 'ANY';
-						push @classes, { field => 'class', value => $class_name, op => $term_hash->{op} };
-					}
-					$self->_parse_query_term({ '' => \@classes }, $effective_operator);
-					next;
-				}
-				else {
-					throw(400, "Unknown class $term_hash->{value}", { term => $term_hash->{value} });
-				}
-				
-				if ($effective_operator eq '-'){
-					# We're explicitly removing this class
-					$self->classes->{excluded}->{ $class } = 1;
-				}
-				else {
-					$self->classes->{given}->{ $class } = 1;
-				}
-				$self->log->debug("Set operator $effective_operator for given class " . $term_hash->{value});		
-				#next;
-			}
 			elsif ($term_hash->{field} eq 'groupby'){
+				if (defined $self->directives->{groupby}){
+					throw(400, 'Only one groupby can be requested', { term => $term_hash->{value} });
+				}
 				my $value = lc($term_hash->{value});
-				#TODO implement groupby import with new import system
-#				if ($value =~ /^import\_/){
-#					die('Invalid groupby ' . $value) unless grep { $_ eq $value } @$Fields::Import_fields;
-#					$self->import_groupby($value);
-#					$self->log->trace('Setting groupby to host on behalf of an import groupby ' . $self->import_groupby);
-#					$value = 'host';
-#				}
-				my $field_infos = $self->get_field($value);
-				$self->log->trace('$field_infos ' . Dumper($field_infos));
-				
 				if (grep { $_ eq $value } @$Fields::Import_fields){
 					throw(400, 'Cannot group by an import meta tag', { term => $value });
 				}
-				elsif (not scalar keys %$field_infos and $value ne 'node'){
-					throw(404, 'Field ' . $value . ' not a valid groupby value', { term => $value });
-				}
-				else {
-					$self->directives->{groupby} = lc($value);
-					foreach my $class_id (keys %$field_infos){
-						$self->classes->{groupby}->{$class_id} = 1;
-					}
-					$self->log->trace("Set groupby " . Dumper($self->directives->{groupby}));
-				}
+				$self->directives->{groupby} = lc($value);
+				$self->log->trace("Set groupby " . Dumper($self->directives->{groupby}));
 				next;
 			}
 			elsif ($term_hash->{field} eq 'orderby'){
 				my $value = lc($term_hash->{value});
-				my $field_infos = $self->get_field($value);
-				$self->log->trace('$field_infos ' . Dumper($field_infos));
-				if ($field_infos or $value eq 'node'){
-					$self->directives->{orderby} = $value;
-					foreach my $class_id (keys %$field_infos){
-						$self->classes->{groupby}->{$class_id} = 1;
-					}
-					$self->log->trace("Set orderby " . Dumper($self->directives->{orderby}));
-				}
+				$self->directives->{orderby} = $value;
+				$self->log->trace("Set orderby " . Dumper($self->directives->{orderby}));
 				next;
 			}
 			elsif ($term_hash->{field} eq 'orderby_dir'){
@@ -677,8 +592,6 @@ sub _parse_query_term {
 				delete $self->directives->{datasources}->{sphinx}; # no longer using our normal datasource
 				$self->directives->{datasources}->{ $term_hash->{value} } = 1;
 				$self->log->trace("Set datasources " . Dumper($self->directives->{datasources}));
-				# Stop parsing immediately as the rest will be done by the datasource itself
-				#return 1;
 			}
 			elsif ($term_hash->{field} eq 'nobatch'){
 				$self->meta_params->{nobatch} = 1;
@@ -745,7 +658,13 @@ sub _parse_query_term {
 					next;
 				}
 				
-				$self->terms->{$boolean}->{ $term_hash->{field} . ':' . $term_hash->{value} } = $term_hash;
+				# Range operators can have the same boolean and key and value as long as their operator is different
+				my $op = ':';
+				if ($term_hash->{op} =~ /[<>]/){
+					$op .= $term_hash->{op};
+				}
+				
+				$self->terms->{$boolean}->{ $term_hash->{field} . $op . ':' . $term_hash->{value} } = $term_hash;
 				
 				# Mark down any program translations
 				if (lc($term_hash->{field}) eq 'program'){
