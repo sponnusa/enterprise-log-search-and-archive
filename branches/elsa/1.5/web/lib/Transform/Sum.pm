@@ -76,14 +76,10 @@ sub BUILD {
 			}
 		}
 		if (my $value = $self->results->value($record, $self->groupby)){
-			$self->log->debug('value: ' . $value);
 			if ($value =~ /^\d+$/){
-				$self->log->debug('adding ' . $sums->{ $self->groupby } . ' with ' . $value);
 				$sums->{ $self->groupby } += $value;
-				$self->log->debug('value now ' . $sums->{ $self->groupby });
 			}
 			elsif ($self->results->value($record, 'count')){
-				$self->log->debug('count: ' . $self->results->value($record, 'count'));
 				$sums->{ $self->groupby } += $self->results->value($record, 'count');
 			}
 			else {

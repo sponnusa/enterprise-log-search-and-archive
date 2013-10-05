@@ -527,7 +527,6 @@ sub _forward {
 						next if ($is_ops and not exists $dest_hash->{ops}) or (not $is_ops and exists $dest_hash->{ops});
 						my $package = $Forwarders{ $dest_hash->{method} };
 						if ($package){
-							$Log->debug('Forwarding via packagek ' . $package);
 							$forwarder = $package->new(log => $Log, conf => $Config_json, %{ $dest_hash });
 						}
 						else {
