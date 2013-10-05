@@ -101,6 +101,24 @@ sub BUILD {
 	
 	my ($query, $sth);
 	
+	if ($self->has_transforms){
+		foreach my $raw_transform ($self->all_transforms){
+			$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
+			my $transform = lc($1);
+			my $found = 0;
+			$self->log->debug('checking transform ' . $transform);
+			foreach my $plugin ($self->transform_plugins()){
+				$self->log->debug('checking $plugin ' . $plugin);
+				if ($plugin =~ /\:\:$transform(?:\:\:|$)/i){
+					$found = 1;
+					last;
+				}
+			}
+			$self->log->debug('throwing');
+			throw(400, 'Transform ' . $transform . ' not found', { transform => $transform}) unless $found;
+		}
+	}
+	
 	# Map directives to their properties
 	foreach my $prop (keys %{ $self->parser->directives }){
 		$self->$prop($self->parser->directives->{$prop});

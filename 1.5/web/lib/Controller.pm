@@ -1523,13 +1523,29 @@ sub query {
 	}
 	catch {
 		my $e = shift;
-#		if ($ret and ref($ret) and $ret->can('qid') and $ret->qid){
-#			$ret->add_warning($e);
-#			$cb->($ret);
-#		}
-#		else {
-			$cb->($e);
-#		}
+		if ($ret and ref($ret) and $ret->can('qid') and $ret->qid){
+			$ret->add_warning($e);
+			$cb->($ret);
+		}
+		else {
+			# return dummy
+			$ret = {
+				qid => 1,
+				totalTime => 0,
+				results => [], 
+				orderby_dir => 'DESC',
+				totalRecords => 0,
+				recordsReturned => 0,	
+				query_string => '',
+				query_meta_params => {},
+				highlights => {},
+				stats => {},
+				approximate => 0,
+				percentage_complete => 0,
+				errors => [ $e->message ],
+			};
+			$cb->($ret);
+		}
 	};
 }
 
@@ -1654,6 +1670,20 @@ sub local_query_preparsed {
 		if ($class){
 			$self->log->trace('Converting ' . $q->qid . ' from class ' . ref($q) . ' to ' . $class);
 			$q = $q->parser->parse($class, $q->qid);
+		}
+		
+		# Check connectors and transforms to be sure this will work
+		if ($q->has_connectors){
+			foreach my $connector ($q->all_connectors){
+				my $found = 0;
+				foreach my $plugin ($self->connector_plugins()){
+					if ($plugin =~ /\:\:$connector(?:\:\:|$)/i){
+						$found = 1;
+						last;
+					}
+				}
+				throw(400, 'Connector ' . $connector . ' not found', { connector => $connector}) unless $found;
+			}
 		}
 		
 		Log::Log4perl::MDC->put('qid', $q->qid);
