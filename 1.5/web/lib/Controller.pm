@@ -1523,29 +1523,31 @@ sub query {
 	}
 	catch {
 		my $e = shift;
-		if ($ret and ref($ret) and $ret->can('qid') and $ret->qid){
-			$ret->add_warning($e);
-			$cb->($ret);
-		}
-		else {
-			# return dummy
-			$ret = {
-				qid => 1,
-				totalTime => 0,
-				results => [], 
-				orderby_dir => 'DESC',
-				totalRecords => 0,
-				recordsReturned => 0,	
-				query_string => '',
-				query_meta_params => {},
-				highlights => {},
-				stats => {},
-				approximate => 0,
-				percentage_complete => 0,
-				errors => [ $e->message ],
-			};
-			$cb->($ret);
-		}
+		$cb->($e);
+#		if ($ret and ref($ret) and $ret->can('qid') and $ret->qid){
+#			$ret->add_warning($e);
+#			$cb->($ret);
+#		}
+#		else {
+#			# return dummy
+#			$ret = {
+#				qid => 1,
+#				totalTime => 0,
+#				results => [], 
+#				orderby_dir => 'DESC',
+#				totalRecords => 0,
+#				recordsReturned => 0,	
+#				query_string => '',
+#				query_meta_params => {},
+#				highlights => {},
+#				stats => {},
+#				approximate => 0,
+#				percentage_complete => 0,
+#				errors => [ $e->message ],
+#			};
+#			$cb->($ret);
+#			
+#		}
 	};
 }
 
