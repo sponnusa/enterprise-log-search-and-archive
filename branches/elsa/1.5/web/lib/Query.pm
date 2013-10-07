@@ -105,16 +105,14 @@ sub BUILD {
 		foreach my $raw_transform ($self->all_transforms){
 			$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
 			my $transform = lc($1);
+			next if $transform eq 'subsearch';
 			my $found = 0;
-			$self->log->debug('checking transform ' . $transform);
 			foreach my $plugin ($self->transform_plugins()){
-				$self->log->debug('checking $plugin ' . $plugin);
 				if ($plugin =~ /\:\:$transform(?:\:\:|$)/i){
 					$found = 1;
 					last;
 				}
 			}
-			$self->log->debug('throwing');
 			throw(400, 'Transform ' . $transform . ' not found', { transform => $transform}) unless $found;
 		}
 	}
