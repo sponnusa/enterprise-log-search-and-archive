@@ -293,6 +293,20 @@ sub records_returned {
 	return $count;
 }
 
+sub delete_record {
+	my $self = shift;
+	my $given_record = shift;
+	foreach my $groupby ($self->all_groupbys){
+		for (my $i = 0; $i < @{ $self->results->{$groupby} }; $i++){
+			if ($self->results->{$groupby}->[$i]->{_groupby} eq $given_record->{_groupby}){
+				splice(@{ $self->results->{$groupby} }, $i, 1);
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
 sub add_result {
 	my $self = shift;
 	my $groupby = shift;
