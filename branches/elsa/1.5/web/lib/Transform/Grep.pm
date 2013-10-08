@@ -17,18 +17,28 @@ sub BUILDARGS {
 	my $class = shift;
 	##my $params = $class->SUPER::BUILDARGS(@_);
 	my %params = @_;
-	$params{field} = qr/$params{args}->[0]/i if defined $params{args}->[0];
-	if (defined $params{args}->[1] and defined $params{args}->[2] and $Valid_operators->{ $params{args}->[2] }){
-		$params{regex} = $params{args}->[1];
-		$params{operator} = $params{args}->[2];
-	}
-	else {
-		$params{regex} = qr/$params{args}->[1]/i if defined $params{args}->[1];
+	
+	if (scalar @{ $params{args} } > 1){
+		# The usual parser may misinterpret commas, we need to reparse our args
+		my $reparsed = join(',', @{ $params{args} });
+		my $rest;
+		($params{field}, $rest) = split(/,/, $reparsed, 2);
+		$params{field} = qr/$params{field}/;
+		foreach my $op (keys %$Valid_operators){
+			if ($rest =~ /\,($op)$/){
+				$params{operator} = $1;
+				chop($rest); chop($rest);
+				last;
+			}
+		}
+		$params{regex} = $rest;
 	}
 	
 	# Catch all in case only regex is given
 	unless ($params{regex}){
 		$params{field} = qr'.';
+		# Unescape double backslashes to properly allow for control chars
+		$params{args}->[0] =~ s/\\\\/\\/g;
 		$params{regex} = qr/$params{args}->[0]/i;
 	}
 	
