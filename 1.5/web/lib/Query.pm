@@ -560,6 +560,10 @@ sub transform_results {
 	}
 	
 	if ($transform eq 'subsearch'){
+		if (not $self->results->records_returned){
+			$self->transform_results($cb);
+			return;
+		}
 		$self->_subsearch(\@transform_args, sub {
 			my $q = shift;
 			unless ($q){
@@ -632,7 +636,6 @@ sub transform_results {
 			$self->transform_results($cb);
 		}
 	}
-	
 }
 
 sub _post_transform {
@@ -802,7 +805,7 @@ sub _subsearch {
 	catch {
 		my $e = shift;
 		$self->add_warning(500, $e);
-		$cb->();
+		$cb->($self);
 	};
 }
 
