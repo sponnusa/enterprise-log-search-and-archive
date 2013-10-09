@@ -1056,6 +1056,9 @@ sub _search_field {
 	if ($field_hashes->{$class_id}){
 		return $Fields::Field_order_to_field->{ $field_hashes->{$class_id}->{field_order} };
 	}
+	elsif ($field_hashes->{0}){
+		return $Fields::Field_order_to_field->{ $field_hashes->{0}->{field_order} };
+	}
 		
 	return;
 }
