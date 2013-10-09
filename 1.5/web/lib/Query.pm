@@ -1118,9 +1118,10 @@ sub _find_import_ranges {
 		my @values;
 		foreach my $term_hash (@{ $date_terms{and} }){
 			my $epoch = UnixDate(ParseDate($term_hash->{value}), '%s');
+			$epoch = $epoch + $self->parser->timezone_diff($epoch);	
 			throw(400, 'Invalid import date', { term => $term_hash->{value} }) unless $epoch;
-			push @terms, 'imported ' . $term_hash->{op} . ' FROM_UNIXTIME(?)';
-			push @values, $term_hash->{value};
+			push @terms, 'UNIX_TIMESTAMP(imported) ' . $term_hash->{op} . ' ?';
+			push @values, $epoch;
 		}
 		if (@terms){
 			push @clauses, '(' . join(' AND ', @terms) . ') ';
@@ -1128,9 +1129,10 @@ sub _find_import_ranges {
 		@terms = ();
 		foreach my $term_hash (@{ $date_terms{or} }){
 			my $epoch = UnixDate(ParseDate($term_hash->{value}), '%s');
+			$epoch = $epoch + $self->parser->timezone_diff($epoch);	
 			throw(400, 'Invalid import date', { term => $term_hash->{value} }) unless $epoch;
-			push @terms, 'imported ' . $term_hash->{op} . ' FROM_UNIXTIME(?)';
-			push @values, $term_hash->{value};
+			push @terms, 'UNIX_TIMESTAMP(imported) ' . $term_hash->{op} . ' ?';
+			push @values, $epoch;
 		}
 		if (@terms){
 			push @clauses, '(' . join(' OR ', @terms) . ') ';
@@ -1138,9 +1140,10 @@ sub _find_import_ranges {
 		@terms = ();
 		foreach my $term_hash (@{ $date_terms{not} }){
 			my $epoch = UnixDate(ParseDate($term_hash->{value}), '%s');
+			$epoch = $epoch + $self->parser->timezone_diff($epoch);	
 			throw(400, 'Invalid import date', { term => $term_hash->{value} }) unless $epoch;
-			push @terms, 'NOT imported ' . $term_hash->{op} . ' FROM_UNIXTIME(?)';
-			push @values, $term_hash->{value};
+			push @terms, 'NOT UNIX_TIMESTAMP(imported) ' . $term_hash->{op} . ' ?';
+			push @values, $epoch;
 		}
 		if (@terms){
 			push @clauses, '(' . join(' AND ', @terms) . ') ';
