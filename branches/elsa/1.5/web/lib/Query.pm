@@ -755,6 +755,10 @@ sub _subsearch {
 	my $args = shift;
 	my $cb = shift;
 	
+	if (not $self->groupby){
+		throw(400, 'Subsearch requires preceding query to be a groupby', { term => 'subsearch' });
+	}
+	
 	$self->log->debug('args: ' . Dumper($args));
 	
 	my $subsearch_query_string = shift @$args;

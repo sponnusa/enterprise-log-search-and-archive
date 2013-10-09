@@ -148,14 +148,39 @@ sub _get_rows {
 	my @table_query_values;
 	foreach my $table (sort keys %tables){
 		my $placeholders = join(',', map { '?' } @{ $tables{$table} });
-		
-		my $table_query = sprintf("SELECT id,\n" .
-			"timestamp, INET_NTOA(host_id) AS host, program_id, class_id, msg,\n" .
-			"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
-			"FROM %1\$s\n" .
-			'WHERE id IN (' . $placeholders . ') ', $table);
-		push @table_queries, $table_query;
 		push @table_query_values, @{ $tables{$table} };
+		my $table_query;
+		
+		if ($self->groupby){
+			my $groupby_select_clause = '';
+		
+			my $field_hashes = $self->get_field($self->groupby);
+			unless (scalar keys %$field_hashes){
+				throw(400, 'Field ' . $self->groupby . ' not a valid groupby value', { term => $self->groupby });
+			}
+			foreach my $class_id (keys %$field_hashes){
+				$groupby_select_clause .= 'IF(class_id=' . $class_id . ',' . $Fields::Field_order_to_field->{ $field_hashes->{$class_id}->{field_order} } . ',';
+			}
+			$groupby_select_clause .= 0;
+			foreach my $class_id (keys %$field_hashes){
+				$groupby_select_clause .= ')';
+			}
+			$groupby_select_clause .= ' AS _groupby';
+			
+			$table_query = sprintf("SELECT COUNT(*) AS _count, $groupby_select_clause, id,\n" .
+				"timestamp, INET_NTOA(host_id) AS host, program_id, class_id, msg,\n" .
+				"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+				"FROM %1\$s\n" .
+				'WHERE id IN (' . $placeholders . ') ', $table);
+		}
+		else {
+			$table_query = sprintf("SELECT id,\n" .
+				"timestamp, INET_NTOA(host_id) AS host, program_id, class_id, msg,\n" .
+				"i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5\n" .
+				"FROM %1\$s\n" .
+				'WHERE id IN (' . $placeholders . ') ', $table);
+		}
+		
 		if (defined $self->start){
 			$table_query .= ' AND timestamp>=?';
 			push @table_query_values, $self->start;
@@ -164,6 +189,12 @@ sub _get_rows {
 			$table_query .= ' AND timestamp<=?';
 			push @table_query_values, $self->end;
 		}
+		
+		if ($self->groupby){
+			$table_query .= "\nGROUP BY _groupby";
+		}
+		
+		push @table_queries, $table_query;
 	}
 	
 	if (not @table_queries){
@@ -196,33 +227,44 @@ sub _get_rows {
 		}
 		$self->log->trace('got db rows: ' . (scalar @$rows));
 		
-		foreach my $row (@$rows){
-			$row->{node} = $self->peer_label ? $self->peer_label : '127.0.0.1';
-			$row->{node_id} = unpack('N*', inet_aton($row->{node}));
-			if ($self->orderby){
-				$row->{_orderby} = $row->{ $self->orderby };
-			}
-			else {
-				$row->{_orderby} = $row->{timestamp};
-			}
-			# Copy import info into the row
-			foreach my $range ($self->all_id_ranges){
-				if ($range->{values}->[0] <= $row->{id} and $row->{id} <= $range->{values}->[1]){
-					foreach my $import_col (qw(name description)){
-						$row->{'import_' . $import_col} = $range->{import_info}->{$import_col};
-					}
-					$row->{'import_date'} = $range->{import_info}->{imported};
-					last;
-				}
-				$self->log->error('no range for id ' . $row->{id} . ', ranges: ' . Dumper($self->id_ranges));
-			}
+		if ($self->groupby){
+			$self->stats->{mysql_query} += (time() - $start);
+			$self->_get_extra_field_values($rows, sub {
+				my $rows = shift;
+				$self->_format_records_groupby($rows);
+				$cb->();
+			});
 		}
-		$self->stats->{mysql_query} += (time() - $start);
-		$self->_get_extra_field_values($rows, sub {
-			my $rows = shift;
-			$self->_format_records($rows);
-			$cb->();
-		});
+		else {
+			foreach my $row (@$rows){
+				$row->{node} = $self->peer_label ? $self->peer_label : '127.0.0.1';
+				$row->{node_id} = unpack('N*', inet_aton($row->{node}));
+				if ($self->orderby){
+					$row->{_orderby} = $row->{ $self->orderby };
+				}
+				else {
+					$row->{_orderby} = $row->{timestamp};
+				}
+				# Copy import info into the row
+				foreach my $range ($self->all_id_ranges){
+					if ($range->{values}->[0] <= $row->{id} and $row->{id} <= $range->{values}->[1]){
+						foreach my $import_col (qw(name description)){
+							$row->{'import_' . $import_col} = $range->{import_info}->{$import_col};
+						}
+						$row->{'import_date'} = $range->{import_info}->{imported};
+						last;
+					}
+					$self->log->error('no range for id ' . $row->{id} . ', ranges: ' . Dumper($self->id_ranges));
+				}
+			}
+		
+			$self->stats->{mysql_query} += (time() - $start);
+			$self->_get_extra_field_values($rows, sub {
+				my $rows = shift;
+				$self->_format_records($rows);
+				$cb->();
+			});
+		}
 	});	
 }
 
@@ -326,6 +368,96 @@ sub _format_records {
 	}
 	
 	$self->results->total_docs($self->results->total_docs + scalar @$rows);
+}
+
+sub _format_records_groupby {
+	my $self = shift;
+	my $rows = shift;
+	
+	my %agg;
+	my $total_records = 0;
+	
+	# One-off for grouping by node
+	if ($self->groupby eq 'node'){
+		my $node_label = $self->peer_label ? $self->peer_label : '127.0.0.1';
+		$agg{$node_label} = scalar @$rows;
+		next;
+	}
+	foreach my $row (@$rows){
+		my $key;
+		if (exists $Fields::Time_values->{ $self->groupby }){
+			# We will resolve later
+			$key = $row->{'_groupby'};
+		}
+		elsif ($self->groupby eq 'program'){
+			$key = $row->{program};
+		}
+		elsif ($self->groupby eq 'class'){
+			$key = $self->meta_info->{classes_by_id}->{ $row->{class_id} };
+		}
+		elsif (defined $Fields::Field_to_order->{ $self->groupby }){
+			# Resolve normally
+			$key = $self->resolve_value($row->{class_id}, $row->{'_groupby'}, $self->groupby);
+		}
+		else {
+			# Resolve with the mysql row
+			my $field_order = $self->get_field($self->groupby)->{ $row->{class_id} }->{field_order};
+			$key = $row->{ $Fields::Field_order_to_field->{$field_order} };
+			$key = $self->resolve_value($row->{class_id}, $key, $Fields::Field_order_to_field->{$field_order});
+			$self->log->trace('field_order: ' . $field_order . ' key ' . $key);
+		}
+		$agg{ $key } += $row->{'_count'};	
+	}
+	
+	if (exists $Fields::Time_values->{ $self->groupby }){
+		# Sort these in ascending label order
+		my @tmp;
+		my $increment = $Fields::Time_values->{ $self->groupby };
+		my $use_gmt = $increment >= 86400 ? 1 : 0;
+		foreach my $key (sort { $a <=> $b } keys %agg){
+			$total_records += $agg{$key};
+			my $unixtime = $key * $increment;
+			
+			my $client_localtime = $unixtime - $self->parser->timezone_diff($unixtime);					
+			$self->log->trace('key: ' . $key . ', tv: ' . $increment . 
+				', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($client_localtime)));
+			push @tmp, { 
+				intval => $unixtime, 
+				'_groupby' => epoch2iso($client_localtime, $use_gmt),
+				'_count' => $agg{$key}
+			};
+		}
+		
+		# Fill in zeroes for missing data so the graph looks right
+		my @zero_filled;
+		
+		$self->log->trace('using increment ' . $increment . ' for time value ' . $self->groupby);
+		OUTER: for (my $i = 0; $i < @tmp; $i++){
+			push @zero_filled, $tmp[$i];
+			if (exists $tmp[$i+1]){
+				for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
+					push @zero_filled, { 
+						'_groupby' => epoch2iso($j, $use_gmt),
+						intval => $j,
+						'_count' => 0
+					};
+					last OUTER if scalar @zero_filled >= $self->limit;
+				}
+			}
+		}
+		$self->results->add_results({ $self->groupby => [ @zero_filled ] });
+	}
+	else { 
+		# Sort these in descending value order
+		my @tmp;
+		foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
+			$total_records += $agg{$key};
+			push @tmp, { intval => $agg{$key}, '_groupby' => $key, '_count' => $agg{$key} };
+			last if scalar @tmp >= $self->limit;
+		}
+		$self->results->add_results({ $self->groupby => [ @tmp ] });
+		$self->log->debug('@tmp: ' . Dumper(\@tmp));
+	}
 }
 
 1;
