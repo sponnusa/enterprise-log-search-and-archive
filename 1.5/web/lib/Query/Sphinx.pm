@@ -719,6 +719,8 @@ sub _get_search_terms {
 		# Verify this field exists in this index
 		my $field = $self->_search_field($hash->{field}, $class_id);
 		my $attr = $self->_attr($hash->{field}, $class_id);
+		$self->log->debug('attr: ' . $attr . ', field: ' . $field . ', search_field returns: ' . $self->_search_field($field, $class_id) .
+			' search_field on attr returns: ' . $self->_search_field($attr, $class_id));
 		if ($field and $self->_index_has($index_schema, 'fields', $self->_search_field($field, $class_id))){
 			$self->log->debug($field . ' with value ' . $hash->{value} . ' is a candidate');
 			$candidates{ $hash->{value} } = $hash;
