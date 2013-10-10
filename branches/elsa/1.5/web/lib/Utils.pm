@@ -149,6 +149,8 @@ sub _dbh_error_handler {
 
 sub freshen_db {
 	my $self = shift;
+	
+	$self->db->disconnect;
 	$self->db(
 		DBI->connect(
 			$self->conf->get('meta_db/dsn'),
