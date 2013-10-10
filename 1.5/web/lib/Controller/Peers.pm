@@ -144,7 +144,10 @@ sub upload {
 		read(FH, $buf, 2);
 		my $is_zipped = 0;
 		# Check for zip or gz magic
-		if ($buf eq 'PK' or $buf eq pack('C2', 0x1f, 0x8b)){
+		if ($buf eq 'PK'){
+			throw(400, 'Use separate .gz files, not a single .zip file for upload', { format => 'zip' });
+		}
+		elsif($buf eq pack('C2', 0x1f, 0x8b)){
 			$self->log->trace('Detected that file upload is an archive');
 			$is_zipped = 1;
 		}
@@ -182,14 +185,20 @@ sub upload {
 			$file = $destfile;
 		}
 		
+		# Sanity check the first 1k of the file to make sure we have no nulls (indicative of a mistakenly uploaded tarball)
+		open(FH, $file) or throw(500, $!, { file => $file});
+		read(FH, $buf, 1024);
+		close(FH);
+		if ($buf =~ /\0/){
+			throw(400, 'File contains nulls, invalid.', { file => $file });
+		}
+		
 		if ($args->{program_file}){
 			$self->log->info('Loading programs file ' . $file);
 			$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs FIELDS ESCAPED BY \'\'';
 			$sth = $self->db->prepare($query);
 			$sth->execute($file);
 			unlink($file);
-			$cb->($ret);
-			return;
 		}
 		elsif ($args->{stats_file}){
 			$self->log->info('Loading host_stats file ' . $file);
@@ -197,8 +206,6 @@ sub upload {
 			$sth = $self->db->prepare($query);
 			$sth->execute($file);
 			unlink($file);
-			$cb->($ret);
-			return;
 		}
 		
 		$self->_process_upload($args, $file, $ret);
@@ -206,9 +213,10 @@ sub upload {
 	catch {
 		my $e = shift;
 		$self->add_warning(500, $e);
-		$cb->({ error => $e });
+		$self->log->error($e);
+		$ret = $e;
 	};
-		
+	
 	$cb->($ret);
 }	
 		
@@ -235,7 +243,6 @@ sub _process_upload {
 		delete $args->{end};
 		my $importer = new Import(log => $self->log, conf => $self->conf, db => $self->db, infile => $file, %$args);
 		if (not $importer->id){
-			#return [ 500, [ 'Content-Type' => 'application/javascript' ], [ $self->json->encode({ error => 'Import failed' }) ] ];
 			throw(500, 'Import failed');
 		}
 		$ret->{import_id} = $importer->id;
@@ -247,7 +254,6 @@ sub _process_upload {
 			my $msg = 'Did not receive valid start/end times';
 			$self->log->error($msg);
 			unlink($file);
-			#return [ 400, [ 'Content-Type' => 'text/plain' ], [ $msg ] ];
 			throw(400, $msg);
 		}
 		
