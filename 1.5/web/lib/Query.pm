@@ -789,28 +789,20 @@ sub _subsearch {
 	}
 	catch {
 		my $e = shift;
-		$self->add_warning(400, 'Failed to parse subsearch query', { query_string => join(' ', @$args) });
-		$cb->();
-		return;
+		throw(400, 'Failed to parse subsearch query', { query_string => join(' ', @$args) });
 	};
 	
-	try {
-		$q->execute(sub {
-			$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
-			$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
-		
-			# Apply transforms
-			$q->transform_results(sub { 
-				$q->dedupe_warnings();
-				$cb->($q);
-			});
+	$q->execute(sub {
+		$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+		$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+	
+		# Apply transforms
+		$q->transform_results(sub { 
+			$q->dedupe_warnings();
+			$cb->($q);
 		});
-	}
-	catch {
-		my $e = shift;
-		$self->add_warning(500, $e);
-		$cb->($self);
-	};
+	});
+
 }
 
 sub estimate_query_time {
