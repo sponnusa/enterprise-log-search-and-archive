@@ -71,7 +71,7 @@ sub BUILD {
 			foreach my $key (qw(srcip dstip)){
 				if ($record->{transforms}->{$Name}->{$key} and $record->{transforms}->{$Name}->{$key}->{is_local}){
 					my $deleted = delete $record->{transforms}->{$Name}->{$key};
-					$record->{transforms}->{$Name}->{$key}->{customer} = $deleted->{customer};
+					$record->{transforms}->{$Name}->{$key} = { customer => $deleted->{customer}, ip => $deleted->{ip} };
 					last;
 				}
 			}
