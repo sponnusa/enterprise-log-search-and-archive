@@ -97,7 +97,20 @@ sub _update_records {
 	return unless exists $self->lookups->{$subject};
 	
 	foreach my $to_update (@{ $self->lookups->{$subject} }){
-		$to_update->{record}->{transforms}->{$Name}->{ $to_update->{key} } = $value;
+		if (exists $to_update->{record}->{transforms}->{$Name}->{ $to_update->{key} }){
+			if (ref($value) and ref($value) eq 'HASH'){
+				foreach my $key (keys %$value){
+					$to_update->{record}->{transforms}->{$Name}->{ $to_update->{key} }->{$key} = $value->{$key};
+				}
+			}
+			else {
+				$self->log->error('Value to update was not a hash');
+				$to_update->{record}->{transforms}->{$Name}->{ $to_update->{key} } = $value;
+			}
+		}
+		else {
+			$to_update->{record}->{transforms}->{$Name}->{ $to_update->{key} } = $value;
+		}
 		$self->log->debug('$to_update: ' . Dumper($to_update));
 		$self->log->debug('record is now: ' . Dumper($to_update->{record}));
 	}
@@ -106,7 +119,7 @@ sub _lookup {
 	my $self = shift;
 	my $ip = shift;
 	
-	my $ret = {};
+	my $ret = { ip => $ip };
 	$self->log->trace('Looking up ip ' . $ip);
 	$self->cv->begin;
 	
@@ -226,6 +239,7 @@ sub _lookup {
 						$self->cv->end;
 					}
 					else {
+						$self->_update_records($ip, $ret);
 						$self->_lookup_org($org_url, $ip);
 					}
 				}
