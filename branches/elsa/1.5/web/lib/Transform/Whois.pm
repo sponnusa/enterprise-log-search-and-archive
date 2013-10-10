@@ -211,6 +211,7 @@ sub _lookup {
 					or $whois->{net}->{orgRef}->{'@handle'} eq 'LACNIC'){
 					$self->log->trace('Getting RIPE IP with org ' . $whois->{net}->{orgRef}->{'@handle'});
 					$self->cache->set($ip_url, { ripe_ip => $whois->{net}->{orgRef}->{'@handle'} });
+					$self->_update_records($ip, $ret); # set ip for the record
 					$self->_lookup_ip_ripe($whois->{net}->{orgRef}->{'@handle'}, $ip);
 					return;
 				}
