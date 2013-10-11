@@ -34,7 +34,7 @@ if (lc($controller->conf->get('auth/method')) eq 'ldap' and $controller->conf->g
 		binddn      => $controller->conf->get('ldap/bindDN'),
 		bindpw      => $controller->conf->get('ldap/bindpw'),
 		basedn        => $controller->conf->get('ldap/base'),
-		filter => '(&(objectClass=organizationalPerson)(objectClass=user)(sAMAccountName=%s))',
+		filter => $controller->conf->get('ldap/filter') ? $controller->conf->get('ldap/filter') : '(&(objectClass=organizationalPerson)(objectClass=user)(sAMAccountName=%s))',
 		log => $controller->log,
 	);
 }
