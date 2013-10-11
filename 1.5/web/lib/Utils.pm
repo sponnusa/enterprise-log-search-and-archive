@@ -568,46 +568,6 @@ sub _get_db {
 	$cb->($db);
 }
 
-#sub old_get_nodes {
-#	my $self = shift;
-#	my $user = shift;
-#	my %nodes;
-#	my $node_conf = $self->conf->get('nodes');
-#	
-#	my $mysql_port = 3306;
-#	my $db_name = 'syslog';
-#	foreach my $node (keys %$node_conf){
-#		next unless $user->is_permitted('node_id', unpack('N*', inet_aton($node)));
-#		if ($node_conf->{$node}->{port}){
-#			$mysql_port = $node_conf->{$node}->{port};
-#		}
-#		
-#		if ($node_conf->{$node}->{db}){
-#			$db_name = $node_conf->{$node}->{db};
-#		}
-#		eval {
-#			$nodes{$node} = { db => $db_name };
-#			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
-#				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
-#				$node_conf->{$node}->{username}, 
-#				$node_conf->{$node}->{password}, 
-#				{
-#					mysql_connect_timeout => $self->db_timeout,
-#					PrintError => 0,
-#					mysql_multi_statements => 1,
-#				}
-#			]);
-#		};
-#		if ($@){
-#			$self->log->error($@);
-#			$self->add_warning($@);
-#			delete $nodes{$node};
-#		}
-#	}
-#		
-#	return \%nodes;
-#}
-
 sub _peer_query {
 	my ($self, $q, $cb) = @_;
 	my ($query, $sth);
@@ -670,6 +630,13 @@ sub _peer_query {
 						throw($ret_q->code, $ret_q->message, $ret_q->data);
 					}
 					throw(500, 'Invalid query result');
+				}
+				
+				if ($ret_q->groupby){
+					$q->groupby($ret_q->groupby);
+				}
+				else {
+					$q->groupby('');
 				}
 				
 				if ($ret_q->results->records_returned and not $q->results->records_returned){
@@ -774,6 +741,9 @@ sub _peer_query {
 				}
 				if ($is_groupby){
 					$q->groupby($raw_results->{groupby}->[0]);
+				}
+				else {
+					$q->groupby('');
 				}
 				my $stats = $raw_results->{stats};
 				$stats ||= {};
