@@ -593,6 +593,7 @@ sub _oversize_log_rotate {
 	my ($query, $sth);
 	my $log_size_limit = $self->conf->get('log_size_limit');
 	if ($log_size_limit =~ /(\d+)([%GMT])$/){
+		$log_size_limit = $1;
 		if( $2 eq '%' ) {
 			my $limit_percent = $1;
 			my ($total, $available, $percentage_used) = $self->_current_disk_space_available();
@@ -1309,8 +1310,6 @@ sub load_records {
 	# Create table
 	my $full_table = $self->_create_table($args);
 	my ($db, $table) = split(/\./, $full_table);
-	
-	
 	
 	# Update the database to show that this child is working on it
 	$query = 'UPDATE buffers SET pid=? WHERE filename=?';
@@ -2855,7 +2854,17 @@ sub _aggregate_stats {
 	
 	my ($query, $sth);
 	
-	$query = 'SELECT ';
+	my @time_units = (
+		[3600, 60], #hour
+		[86400, 3600], #day
+		[604800, 86400], #week
+		[2592000, 604800], #month
+		[7776000,2592000], #quarter
+		[31536000, 7776000] #year
+	);
+	
+	$query = 'INSERT INTO host_stats SELECT host_id, class_id, SUM(count), (timestamp - (timestamp % 60)) AS timestamp ' .
+		'FROM host_stats WHERE timestamp > ((timestamp - (timestamp % 60)) - ((2*?)-?))';
 	
 }
 
