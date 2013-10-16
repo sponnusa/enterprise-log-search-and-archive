@@ -207,8 +207,9 @@ sub upload {
 			$sth->execute($file);
 			unlink($file);
 		}
-		
-		$self->_process_upload($args, $file, $ret);
+		else {
+			$self->_process_upload($args, $file, $ret);
+		}
 	}
 	catch {
 		my $e = shift;
