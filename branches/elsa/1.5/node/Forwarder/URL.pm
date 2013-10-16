@@ -57,6 +57,7 @@ sub forward {
 			[
 				program_file => $args->{program_file},
 				filename => [ $args->{file} ],
+				md5 => $args->{md5},
 			],
 			'Content_Type' => 'form-data',
 			'Authorization' => $self->_get_auth_header());
