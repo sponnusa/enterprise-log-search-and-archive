@@ -51,24 +51,36 @@ sub forward {
 	my $self = shift;
 	my $args = shift;
 	
-	my $req = HTTP::Request::Common::POST($self->url,
-		[
-			md5 => $args->{md5},
-			count => $args->{batch_counter},
-			size => $args->{file_size},
-			start => $args->{start},
-			end => $args->{end},
-			compressed => $args->{compressed} ? 1 : 0,
-			batch_time => $args->{batch_time},
-			total_errors => $args->{total_errors},
-			filename => [ $args->{file} ],
-			format => $args->{format},
-			name => $args->{name},
-			description => $args->{description},
-			program => $args->{program},
-		],
-		'Content_Type' => 'form-data',
-		'Authorization' => $self->_get_auth_header());
+	my $req;
+	if ($args->{program_file}){
+		$req = HTTP::Request::Common::POST($self->url,
+			[
+				program_file => $args->{program_file},
+				filename => [ $args->{file} ],
+			],
+			'Content_Type' => 'form-data',
+			'Authorization' => $self->_get_auth_header());
+	}
+	else {
+		$req = HTTP::Request::Common::POST($self->url,
+			[
+				md5 => $args->{md5},
+				count => $args->{batch_counter},
+				size => $args->{file_size},
+				start => $args->{start},
+				end => $args->{end},
+				compressed => $args->{compressed} ? 1 : 0,
+				batch_time => $args->{batch_time},
+				total_errors => $args->{total_errors},
+				filename => [ $args->{file} ],
+				format => $args->{format},
+				name => $args->{name},
+				description => $args->{description},
+				program => $args->{program},
+			],
+			'Content_Type' => 'form-data',
+			'Authorization' => $self->_get_auth_header());
+	}
 	
 	my $res = $self->ua->request($req);
 	if ($res->is_success){
