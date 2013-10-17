@@ -1996,4 +1996,30 @@
 			</rule>
 		</rules>
 	</ruleset>
+	<ruleset name="FIREEYE" id='10003'>
+        <pattern>fenotify</pattern>
+		<rules>
+			<rule provider="ELSA" class='42' id='42'>
+				<patterns>
+					<pattern>@ESTRING::cnchost=@@ESTRING:i0:,@alertType=@ESTRING:s0:,@shost=@ESTRING:s1:,@dst=@ESTRING:i1:,@@ESTRING::sname=@@ESTRING:s2:,@fileHash=@ESTRING:s3:,@@ESTRING::occurred=@@ESTRING:i2:,@@ESTRING::cncport=@@ESTRING:i3:,@src=@ESTRING:i4:,@dpt=@ESTRING:i5:,@</pattern>
+				</patterns>
+				<examples>
+					<example>
+						<test_message program="fenotify">CSV:0:FireEye:Web MPS:7.0.0.138133:IM:infection-match,osinfo=,sev=minr,malware_type=,alertid=16232,app=,spt=2791,locations=,smac=c4:7d:4f:ef:e0:03,header=,cnchost=127.0.0.1,alertType=infection-match,shost=thegibson.domain.com,dst=127.0.0.1,original_name=,application=,sid=504606,malware-note=,objurl=,mwurl=,profile=,dmac=00:0a:42:f4:94:00,product=Web MPS,sname=Local.Infection,fileHash=351f1dc4e958975661f02c86a485431e,dvchost=,occurred=2013-01-14T16:58:18Z,release=7.0.0.138133,link=,cncport=80,src=10.10.10.10,dpt=80,anomaly=,dvc=,channel=,action=notified,os=,stype=bot-command,</test_message>
+						<test_value name="s0">infection-match</test_value>
+						<test_value name="s1">thegibson.domain.com</test_value>
+						<test_value name="s2">Local.Infection</test_value>
+						<test_value name="s3">351f1dc4e958975661f02c86a485431e</test_value>
+						<test_value name="s4">bot-command</test_value>
+						<test_value name="i0">127.0.0.1</test_value>
+						<test_value name="i1">127.0.0.1</test_value>
+						<test_value name="i2">2013-01-14T16:58:18Z</test_value>
+						<test_value name="i3">80</test_value>
+						<test_value name="i4">10.10.10.10</test_value>
+						<test_value name="i5">80</test_value>
+					</example>
+				</examples>
+			</rule>
+		</rules>
+	</ruleset>
 </patterndb>
