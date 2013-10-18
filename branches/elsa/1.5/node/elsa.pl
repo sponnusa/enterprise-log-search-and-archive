@@ -143,13 +143,13 @@ if ($Opts{f}){
 	exit;
 }
 
-unless ($Opts{n}){
+unless ($Opts{n} or $Conf->{forwarding}->{forward_only}){
 	print "Validating directory...\n";
 	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 	$indexer->initial_validate_directory();
 }
 
-if ($Opts{l}){
+if ($Opts{l} and not $Conf->{forwarding}->{forward_only}){
 	print "Loading existing buffers\n";
 	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 	$indexer->load_buffers();

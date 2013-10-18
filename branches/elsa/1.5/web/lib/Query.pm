@@ -560,10 +560,6 @@ sub transform_results {
 	}
 	
 	if ($transform eq 'subsearch'){
-		if (not $self->results->records_returned){
-			$self->transform_results($cb);
-			return;
-		}
 		$self->_subsearch(\@transform_args, sub {
 			my $q = shift;
 			unless ($q){
@@ -786,14 +782,38 @@ sub _subsearch {
 	
 	try {
 		$q = $qp->parse();
+		
+		# Now that we've parsed the query, we can set groupby accordingly
+		if ($q->groupby){
+			$self->groupby($q->groupby);
+		}
+		else {
+			$self->groupby('');
+		}
+		
+		$q->start($self->start) if $self->start;
+		$q->end($self->end) if $self->end;
 	}
 	catch {
 		my $e = shift;
+		$self->log->error('Error parsing subquery: ' . $e);
 		throw(400, 'Failed to parse subsearch query', { query_string => join(' ', @$args) });
 	};
 	
-	$q->execute(sub {
-		$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+	if ($self->results->records_returned){
+		$q->execute(sub {
+			$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
+			$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
+		
+			# Apply transforms
+			$q->transform_results(sub { 
+				$q->dedupe_warnings();
+				$cb->($q);
+			});
+		});
+	}
+	else {
+		$self->log->info(sprintf("Query " . $q->qid . " did not run due to lack of results in preceding search"));
 		$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000));
 	
 		# Apply transforms
@@ -801,8 +821,7 @@ sub _subsearch {
 			$q->dedupe_warnings();
 			$cb->($q);
 		});
-	});
-
+	}
 }
 
 sub estimate_query_time {

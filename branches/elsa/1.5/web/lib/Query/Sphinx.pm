@@ -987,9 +987,9 @@ sub _query {
 		$cb->($ret);
 	});
 	
-	if (scalar @$indexes == scalar @{ $self->meta_info->{indexes}->{indexes} }){
-		$indexes = ['distributed_local'];
-	}
+	#if (scalar @$indexes == scalar @{ $self->meta_info->{indexes}->{indexes} }){
+	#	$indexes = ['distributed_local'];
+	#}
 	
 	my @values = (@{ $query->{select}->{values} }, @{ $query->{where}->{values} });
 	my $query_string = $query->{select}->{clause} . ' FROM ' . join(',', @$indexes) . ' WHERE ' . $query->{where}->{clause};
