@@ -475,7 +475,7 @@ sub _query {
 			}
 			$ret->{msg} = join(' ', @msg);
 			$q->results->add_result($ret);
-			last if scalar $q->results->total_records >= $q->limit;
+			last if $q->limit and scalar $q->results->total_records >= $q->limit;
 		}
 	}
 			

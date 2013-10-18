@@ -13,6 +13,8 @@ use Utils;
 
 our $Name = 'Whois';
 our $Timeout = 3; # We're going to need to fail quickly
+our %Proxy;
+
 # Whois transform plugin
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 has 'cache' => (is => 'rw', isa => 'Object', required => 1);
@@ -85,6 +87,10 @@ sub BUILD {
 		$self->on_error->($e);
 		$self->on_transform->($self->results);
 	};
+	
+	if ($self->conf->get('proxy') and $self->conf->get('proxy') =~ /(http[s]?):\/\/([^:]+):(\d+)/){
+		%Proxy = (proxy => [ $2, $3, $1 ]);
+	}
 	
 	return $self;
 }
@@ -191,7 +197,8 @@ sub _lookup {
 	
 	$self->log->debug( 'getting ' . $ip_url );
 	$self->cache_stats->{misses}++;
-	http_request GET => $ip_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
+	
+	http_request GET => $ip_url, timeout => $Timeout, %Proxy, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		my $whois;
 		eval {
@@ -309,7 +316,7 @@ sub _lookup_ip_ripe {
 	
 	$self->log->trace('Getting ' . $ripe_url);
 	$self->cache_stats->{misses}++;
-	http_request GET => $ripe_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
+	http_request GET => $ripe_url, timeout => $Timeout, %Proxy, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		my $whois;
 		eval {
@@ -388,7 +395,7 @@ sub _lookup_org {
 	}
 	
 	$self->log->trace( 'getting ' . $org_url );
-	http_request GET => $org_url, timeout => $Timeout, headers => { Accept => 'application/json' }, sub {
+	http_request GET => $org_url, timeout => $Timeout, %Proxy, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
 		$self->log->trace('got body: ' . Dumper($body) . 'hdr: ' . Dumper($hdr));
 		try {
