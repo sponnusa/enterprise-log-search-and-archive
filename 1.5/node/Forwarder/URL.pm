@@ -25,6 +25,7 @@ sub BUILDARGS {
 	}
 	
 	$params{ua} = new LWP::UserAgent(agent => 'ELSA Log Relay/0.1', timeout => 10);
+	$ENV{http_proxy} = $ENV{https_proxy} = $params{conf}->get('proxy') if $params{conf}->get('proxy');
 	$params{ua}->env_proxy();
 	
 	my $timeout = $params{timeout} ? $params{timeout} : 60;
