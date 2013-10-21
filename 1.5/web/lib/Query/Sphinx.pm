@@ -722,8 +722,14 @@ sub _get_search_terms {
 		$self->log->debug('attr: ' . $attr . ', field: ' . $field . ', search_field returns: ' . $self->_search_field($field, $class_id) .
 			' search_field on attr returns: ' . $self->_search_field($attr, $class_id));
 		if ($field and $self->_index_has($index_schema, 'fields', $self->_search_field($field, $class_id))){
-			$self->log->debug($field . ' with value ' . $hash->{value} . ' is a candidate');
-			$candidates{ $hash->{value} } = $hash;
+			if ($self->_is_int_field($hash->{field}, $class_id)){
+				$int_candidates{ $hash->{value} } = $hash;
+				$self->log->debug('attr ' . $attr . ' with value ' . $hash->{value} . ' is an int candidate');
+			}
+			else {
+				$self->log->debug($field . ' with value ' . $hash->{value} . ' is a candidate');
+				$candidates{ $hash->{value} } = $hash;
+			}
 		}
 		elsif ($field and $self->_is_meta($field) or ($attr and $self->_is_meta($attr))){
 			$self->log->debug('meta attr ' . $hash->{field} . ' not a candidate');
@@ -754,9 +760,8 @@ sub _get_search_terms {
 		push @{ $ret->{searches} }, $candidates{$longest};
 	}
 	elsif (scalar keys %int_candidates){
-		# Use an attribute as an anyfield query, pick the highest number
-		#my $biggest = (sort { int($b) <=> int($a) } keys %int_candidates)[0];
-		my $biggest = (sort { length($b) <=> length($a) } keys %int_candidates)[0];
+		# Use an attribute as an anyfield query, pick the highest number after resolving to a value
+		my $biggest = (sort { $self->_value($int_candidates{$b}, $class_id) <=> $self->_value($int_candidates{$a}, $class_id) } keys %int_candidates)[0];
 		$self->log->debug('biggest value: ' . $biggest);
 		push @{ $ret->{searches} }, { field => '', value => $biggest, boolean => 'and' };
 	}
