@@ -763,7 +763,12 @@ sub _get_search_terms {
 		# Use an attribute as an anyfield query, pick the highest number after resolving to a value
 		my $biggest = (sort { $self->_value($int_candidates{$b}, $class_id) <=> $self->_value($int_candidates{$a}, $class_id) } keys %int_candidates)[0];
 		$self->log->debug('biggest value: ' . $biggest);
-		push @{ $ret->{searches} }, { field => '', value => $biggest, boolean => 'and' };
+		if ($self->_is_meta($int_candidates{$biggest}->{field})){
+			push @{ $ret->{searches} }, { field => '', value => $self->_value($int_candidates{$biggest}, $class_id), boolean => 'and' };
+		}
+		else {
+			push @{ $ret->{searches} }, { field => '', value => $biggest, boolean => 'and' };
+		}
 	}
 	
 	# Final check to be sure we have positive search terms
