@@ -263,7 +263,7 @@ sub _get_info {
 					$ret->{indexes} = {
 						indexes => $rows,
 						min => $rows->[0]->{start_int} < $overall_start ? $rows->[0]->{start_int} : 0,
-						max => $rows->[$#$rows]->{end_int} < $overall_start ? $rows->[0]->{end_int} : $overall_start,
+						max => $rows->[$#$rows]->{end_int} < $overall_start ? $rows->[$#$rows]->{end_int} : $overall_start,
 						start_max => $rows->[$#$rows]->{start_int} < $overall_start ? $rows->[0]->{start_int} : 0,
 					};
 				}
