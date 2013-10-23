@@ -567,7 +567,7 @@ sub move {
 		$self->_handle_errors('Error moving chart', $_, $cb);
 		return;
 	};
-	$cb->($self->_get_rows($args));
+	$cb->({ rows => $self->_get_rows($args) });
 }
 
 sub _is_permitted {
