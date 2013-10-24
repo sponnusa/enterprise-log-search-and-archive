@@ -1152,7 +1152,7 @@ YAHOO.ELSA.Results = function(){
 		//logger.log('p_oRecord.getData()', p_oRecord.getData());
 		try {
 			var oA = document.createElement('a');
-			oA.href = '#';
+			oA.href = '#_' + oSelf.id + '_' + p_oRecord.getId();
 			oA.id = 'button_' + oSelf.id + '_' + p_oRecord.getId();
 			oA.name = 'button_' + p_oRecord.getId();
 			oA.innerHTML = 'Info';
