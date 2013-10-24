@@ -386,7 +386,7 @@ sub _parse_query {
 	my $num_added_terms = 0;
 	my $num_removed_terms = 0;
 	
-	$num_removed_terms += $self->_check_for_stopwords();
+#	$num_removed_terms += $self->_check_for_stopwords();
 	
 	# This will error out if anything is not permitted
 	$self->_check_permissions();
@@ -854,31 +854,31 @@ sub timezone_diff {
 	}
 }
 
-sub _check_for_stopwords {
-	my $self = shift;
-	
-	my $num_removed_terms = 0;
-	my $stopwords = $self->conf->get('stopwords');
-	# Check all field terms to see if they are a stopword and warn if necessary
-	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
-		$self->log->debug('checking terms against ' . (scalar keys %$stopwords) . ' stopwords');
-		foreach my $boolean (keys %{ $self->terms }){
-			foreach my $key (keys %{ $self->terms->{$boolean} }){
-				my $term = $self->terms->{$boolean}->{$key}->{value};
-				if ($self->is_stopword($term)){
-					if ($boolean eq 'or'){
-						throw(400, 'Query term ' . $self->terms->{or}->{$key}->{value} . ' is too common', { term => $self->terms->{or}->{$key}->{value} });
-					}
-					$self->log->trace('Found stopword: ' . $term);
-					$self->stopword_terms->{$term} = 1;
-					$num_removed_terms++;
-				}
-			}
-		}
-	}
-	
-	return $num_removed_terms;
-}
+#sub _check_for_stopwords {
+#	my $self = shift;
+#	
+#	my $num_removed_terms = 0;
+#	my $stopwords = $self->conf->get('stopwords');
+#	# Check all field terms to see if they are a stopword and warn if necessary
+#	if ($stopwords and ref($stopwords) and ref($stopwords) eq 'HASH'){
+#		$self->log->debug('checking terms against ' . (scalar keys %$stopwords) . ' stopwords');
+#		foreach my $boolean (keys %{ $self->terms }){
+#			foreach my $key (keys %{ $self->terms->{$boolean} }){
+#				my $term = $self->terms->{$boolean}->{$key}->{value};
+#				if ($self->is_stopword($term)){
+#					if ($boolean eq 'or'){
+#						throw(400, 'Query term ' . $self->terms->{or}->{$key}->{value} . ' is too common', { term => $self->terms->{or}->{$key}->{value} });
+#					}
+#					$self->log->trace('Found stopword: ' . $term);
+#					$self->stopword_terms->{$term} = 1;
+#					$num_removed_terms++;
+#				}
+#			}
+#		}
+#	}
+#	
+#	return $num_removed_terms;
+#}
 
 sub _check_permissions {
 	my $self = shift;
