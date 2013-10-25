@@ -327,8 +327,12 @@ sub initial_validate_directory {
 	my @files;
 	while (my $short_file = readdir(DIR)){
 		my $file = $self->conf->get('buffer_dir') . '/' . $short_file;
-		#next if $file =~ /\./;
-		next if $file =~ /host_stats.tsv/ or $file =~ /\.zip$/;
+		if ($short_file =~ /ops\_/){
+			$self->log->info('Deleting stale ops log ' . $file);
+			unlink $file;
+			next;
+		}
+		next if $short_file =~ /host_stats.tsv/ or $short_file =~ /\.zip$/;
 		# Strip any double slashes
 		$file =~ s/\/{2,}/\//g;
 		push @files, $file;

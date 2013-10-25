@@ -261,7 +261,7 @@ sub _process_batch {
 	
 	# Reset the miss cache
 	$args->{cache_add} = {};
-	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . Time::HiRes::time();
+	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . ($is_ops ? 'ops_' : '') . Time::HiRes::time();
 	
 #	my $tail_watcher = _fork_livetail_manager($tempfile_name) unless $Opts{o} or $args->{offline_processing};
 	
