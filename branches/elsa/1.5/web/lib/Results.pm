@@ -343,6 +343,7 @@ sub merge {
 	
 	# Increment our counters
 	$self->total_records( $self->total_records + $results_obj->total_records);
+	$self->total_docs( $self->total_docs + $results_obj->total_docs);
 	
 	# Add the actual results
 	$self->add_results($results_obj->results);
