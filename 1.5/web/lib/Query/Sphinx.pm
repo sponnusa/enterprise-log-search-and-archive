@@ -1027,7 +1027,7 @@ sub _query {
 		$query_string .= ' ASC';
 	}
 	$query_string .= ' LIMIT ?,?';
-	push @values, ($self->offset, $self->limit);
+	push @values, (0, $self->limit); # offset is enforced at the aggregation step
 	
 	$self->log->trace('Sphinx query: ' . $query_string);
 	$self->log->trace('Sphinx query values: ' . join(',', @values));
