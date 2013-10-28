@@ -1510,6 +1510,18 @@ sub query {
 				
 				$q->dedupe_warnings();
 				
+				# Apply offset
+				if ($q->offset and not $args->{peer_label}){ # do not apply offset if we were called recursively, on parent should offset
+					my $counter = 0;
+					foreach my $record ($q->results->all_results){
+						$counter++;
+						$q->results->delete_record($record);
+						if ($counter >= $q->offset){
+							last;
+						}
+					}
+				}
+				
 				if ($q->has_connectors){
 					$self->send_to($q, sub { 
 						$cb->($q);
