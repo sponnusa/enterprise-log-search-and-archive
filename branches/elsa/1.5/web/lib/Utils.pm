@@ -713,7 +713,7 @@ sub _peer_query {
 				my $is_groupby = $raw_results->{groupby} and scalar @{ $raw_results->{groupby} } ? 1 : 0;
 				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
 				my $results_obj = $results_package->new(results => $raw_results->{results}, 
-					total_records => $raw_results->{totalRecords}, is_approximate => $raw_results->{approximate});
+					total_records => $raw_results->{totalRecords}, total_docs => $raw_results->{totalRecords}, is_approximate => $raw_results->{approximate});
 				if ($results_obj->records_returned and not $q->results->records_returned){
 					$q->results($results_obj);
 				}
