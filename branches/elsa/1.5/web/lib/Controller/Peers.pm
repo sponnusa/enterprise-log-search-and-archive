@@ -14,6 +14,7 @@ use Hash::Merge::Simple qw(merge);
 use File::Path;
 use Try::Tiny;
 use Ouch qw(:trytiny);
+use Archive::Extract;
 
 use lib qw(../);
 use Utils;
@@ -145,7 +146,9 @@ sub upload {
 		my $is_zipped = 0;
 		# Check for zip or gz magic
 		if ($buf eq 'PK'){
-			throw(400, 'Use separate .gz files, not a single .zip file for upload', { format => 'zip' });
+			$is_zipped = 2;
+			#unlink($args->{upload}->path)
+			#throw(400, 'Use separate .gz files, not a single .zip file for upload', { format => 'zip' });
 		}
 		elsif($buf eq pack('C2', 0x1f, 0x8b)){
 			$self->log->trace('Detected that file upload is an archive');
@@ -168,7 +171,46 @@ sub upload {
 		
 		my $file;
 		
-		if ($is_zipped){
+		if ($is_zipped == 2){
+			my $ae = Archive::Extract->new( archive => $args->{upload}->path ) or throw(500, 'Error extracting file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
+			my $id = $self->bucket . '_' . $args->{md5};
+			# make a working dir for these files
+			my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
+			if (not mkdir($working_dir)){
+				my $errmsg = $!;
+				if ($errmsg eq 'File exists'){
+					$self->log->warn('Dir ' . $working_dir . ' already existed');
+					rmtree($working_dir);
+					mkdir($working_dir) or throw(500, "Unable to create working_dir $working_dir: $!", { working_dir => $working_dir });
+				}
+				else {
+					throw(500, "Unable to create working_dir $working_dir: $errmsg", { working_dir => $working_dir });
+				}
+			}
+			$ae->extract( to => $working_dir ) or throw(500, $ae->error, { working_dir => $working_dir });
+			my $files = $ae->files;
+			if (scalar @$files > 2){
+				$self->log->warn('Received more than 2 files in zip file, there should be at most one file and an optional programs file in a single zip file.');
+			}
+			foreach my $unzipped_file_shortname (@$files){
+				my $unzipped_file = $working_dir . '/' . $unzipped_file_shortname;
+				$file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $unzipped_file_shortname;
+				move($unzipped_file, $file);
+	
+				if ($unzipped_file_shortname =~ /programs/){
+					$self->log->info('Loading programs file ' . $file);
+					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE programs';
+					$sth = $self->db->prepare($query);
+					$sth->execute($file);
+					unlink($file);
+					next;
+				}
+			}
+			rmtree($working_dir);
+			$self->log->trace('Deleting original zip file ' . $args->{upload}->path);
+			unlink($args->{upload}->path);
+		}
+		elsif ($is_zipped){
 			my $id = $args->{client_ip_address} . '_' . $args->{md5};
 			$file = $self->conf->get('buffer_dir') . '/' . $id;
 			gunzip $args->{upload}->path => $file
