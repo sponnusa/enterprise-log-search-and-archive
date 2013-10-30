@@ -162,7 +162,7 @@ sub upload {
 		$md5->addfile($upload_fh);
 		my $local_md5 = $md5->hexdigest;
 		close($upload_fh);
-		unless ($local_md5 eq $args->{md5}){
+		if ($is_zipped != 2 and $local_md5 ne $args->{md5}){
 			my $msg = 'MD5 mismatch! Calculated: ' . $local_md5 . ' client said it should be: ' . $args->{md5};
 			$self->log->error($msg);
 			unlink($args->{upload}->path);
@@ -172,8 +172,8 @@ sub upload {
 		my $file;
 		
 		if ($is_zipped == 2){
+			my $id = $args->{client_ip_address} . '_' . time;
 			my $ae = Archive::Extract->new( archive => $args->{upload}->path ) or throw(500, 'Error extracting file ' . $args->{upload}->path . ': ' . $!, { file => $args->{upload}->path });
-			my $id = $self->bucket . '_' . $args->{md5};
 			# make a working dir for these files
 			my $working_dir = $self->conf->get('buffer_dir') . '/' . $id;
 			if (not mkdir($working_dir)){
@@ -205,6 +205,19 @@ sub upload {
 					unlink($file);
 					next;
 				}
+				
+				# Check md5
+				my $md5 = new Digest::MD5;
+				my $upload_fh = new IO::File($file);
+				$md5->addfile($upload_fh);
+				my $local_md5 = $md5->hexdigest;
+				if ($local_md5 ne $args->{md5}){
+					my $msg = 'MD5 mismatch! Calculated: ' . $local_md5 . ' client said it should be: ' . $args->{md5};
+					$self->log->error($msg);
+					unlink($args->{upload}->path);
+					throw(400, $msg);
+				}
+				$upload_fh->close;
 			}
 			rmtree($working_dir);
 			$self->log->trace('Deleting original zip file ' . $args->{upload}->path);
