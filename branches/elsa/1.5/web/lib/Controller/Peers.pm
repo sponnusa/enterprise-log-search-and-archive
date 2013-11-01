@@ -199,7 +199,7 @@ sub upload {
 	
 				if ($unzipped_file_shortname =~ /programs/){
 					$self->log->info('Loading programs file ' . $file);
-					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE programs';
+					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs';
 					$sth = $self->db->prepare($query);
 					$sth->execute($file);
 					unlink($file);
