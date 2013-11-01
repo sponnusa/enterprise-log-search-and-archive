@@ -194,17 +194,18 @@ sub upload {
 			}
 			foreach my $unzipped_file_shortname (@$files){
 				my $unzipped_file = $working_dir . '/' . $unzipped_file_shortname;
-				$file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $unzipped_file_shortname;
-				move($unzipped_file, $file);
+				my $new_file = $self->conf->get('buffer_dir') . '/' . $id . '_' . $unzipped_file_shortname;
+				move($unzipped_file, $new_file);
 	
 				if ($unzipped_file_shortname =~ /programs/){
-					$self->log->info('Loading programs file ' . $file);
+					$self->log->info('Loading programs file ' . $new_file);
 					$query = 'LOAD DATA LOCAL INFILE ? INTO TABLE ' . $syslog_db_name . '.programs';
 					$sth = $self->db->prepare($query);
-					$sth->execute($file);
-					unlink($file);
+					$sth->execute($new_file);
+					unlink($new_file);
 					next;
 				}
+				$file = $new_file;
 				
 				# Check md5
 				my $md5 = new Digest::MD5;
