@@ -32,6 +32,10 @@ has 'lookups' => (is => 'rw', isa => 'HashRef', required => 1, default => sub { 
 sub BUILD {
 	my $self = shift;
 	
+	if ($self->conf->get('proxy') and $self->conf->get('proxy') =~ /(http[s]?):\/\/([^:]+):(\d+)/){
+		%Proxy = (proxy => [ $2, $3, $1 ]);
+	}
+	
 	my $keys = {};
 	if (scalar @{ $self->args }){
 		foreach my $arg (@{ $self->args }){
@@ -88,10 +92,6 @@ sub BUILD {
 		$self->on_error->($e);
 		$self->on_transform->($self->results);
 	};
-	
-	if ($self->conf->get('proxy') and $self->conf->get('proxy') =~ /(http[s]?):\/\/([^:]+):(\d+)/){
-		%Proxy = (proxy => [ $2, $3, $1 ]);
-	}
 	
 	return $self;
 }
