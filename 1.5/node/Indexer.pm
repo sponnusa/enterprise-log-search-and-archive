@@ -939,7 +939,7 @@ sub load_buffers {
 	$sth->execute();
 	my @pids;
 	while (my $row = $sth->fetchrow_hashref){
-		next if $row->{pid} eq $$ or not $row->{pid};
+		next if not $row->{pid} or $row->{pid} eq $$;
 		push @pids, $row->{pid};
 	}
 	if (scalar @pids > 0){
@@ -963,7 +963,7 @@ sub load_buffers {
 	$sth->execute();
 	@pids = ();
 	while (my $row = $sth->fetchrow_hashref){
-		next if $row->{pid} eq $$ or not $row->{pid};
+		next if not $row->{pid} or $row->{pid} eq $$;
 		push @pids, $row->{pid};
 	}
 	if (scalar @pids > 1){
