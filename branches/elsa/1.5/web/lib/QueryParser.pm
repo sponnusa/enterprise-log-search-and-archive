@@ -499,7 +499,7 @@ sub _parse_query_term {
 			
 			if ($term_hash->{value} =~ /^\$(\w+)/){
 				$self->log->debug('got macro ' . $1);
-				$self->_parse_query_string($self->_resolve_macro($1), $effective_operator);
+				$self->_parse_query_string($self->_resolve_macro($1), ''); # macro needs a clean slate for its operator
 				next;
 			}
 			
