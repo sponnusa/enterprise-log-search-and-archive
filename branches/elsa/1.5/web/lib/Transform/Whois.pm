@@ -49,7 +49,7 @@ sub BUILD {
 	# First find all the unique lookups we'll need
 	foreach my $record ($self->results->all_results){
 		foreach my $key ($self->results->keys($record)){
-			next unless exists $keys->{$key};
+			next unless $key eq '_groupby' or exists $keys->{$key};
 			my $display_key = $key;
 			if ($key eq '_groupby'){
 				$display_key = ($self->results->all_groupbys)[0];
