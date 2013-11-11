@@ -301,21 +301,25 @@ sub _get_class_ids {
 		}
 	}
 	
-	# Find the unique fields requested
-	my %fields;
-	if ($or_key and $self->terms->{or}->{$or_key}->{field} eq 'class'){
-		if ($self->meta_info->{classes}->{ $self->terms->{or}->{$or_key}->{value} }){
-			my $class_name = $self->terms->{or}->{$or_key}->{value};
-			my $class_id = $self->meta_info->{classes}->{ $self->terms->{or}->{$or_key}->{value} };
-			$self->log->debug('including OR class: ' . $class_id);
-			$classes{ $class_id } = $class_name;
-		}
-		else {
-			throw(400, 'Invalid class ' . $self->terms->{or}->{$or_key}->{value}, { term => $self->terms->{or}->{$or_key}->{value} });
+	# Find any OR classes
+	foreach my $key (keys %{ $self->terms->{or} }){
+		if ($self->terms->{or}->{$key}->{field} eq 'class'){
+			if ($self->meta_info->{classes}->{ $self->terms->{or}->{$key}->{value} }){
+				my $class_name = $self->terms->{or}->{$key}->{value};
+				my $class_id = $self->meta_info->{classes}->{ $self->terms->{or}->{$key}->{value} };
+				$self->log->debug('including OR class: ' . $class_id);
+				$classes{ $class_id } = $class_name;
+			}
+			else {
+				throw(400, 'Invalid class ' . $self->terms->{or}->{$or_key}->{value}, { term => $self->terms->{or}->{$or_key}->{value} });
+			}
 		}
 	}
-	elsif ($or_key){
-		$self->terms->{or}->{$or_key}->{field} and $fields{ $self->terms->{or}->{$or_key}->{field} } = $self->terms->{or}->{$or_key}->{value};
+	
+	# Find the unique fields requested
+	my %fields;
+	if ($or_key and $self->terms->{or}->{$or_key}->{field}){
+		 $fields{ $self->terms->{or}->{$or_key}->{field} } = $self->terms->{or}->{$or_key}->{value};
 	}
 	foreach my $boolean (qw(and not)){
 		foreach my $key (keys %{ $self->terms->{$boolean} }){
