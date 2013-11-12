@@ -1511,7 +1511,7 @@ sub query {
 				$q->dedupe_warnings();
 				
 				# Apply offset
-				if ($q->offset and $args->{from_peer} eq '_external'){ # do not apply offset if we were called recursively, on parent should offset
+				if ($q->offset and not $args->{peer_label}){ # do not apply offset if we were called recursively, only parent should offset
 					my $counter = 0;
 					foreach my $record ($q->results->all_results){
 						$counter++;
