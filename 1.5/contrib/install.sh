@@ -373,6 +373,8 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
+		# Installing specific version of Module::Build to deal with bug with Sys::Info
+		cpanm Module::Build@0.4008
 		# Installing specific version of Test::Simple@0.98 until this is resolved: https://rt.cpan.org/Public/Bug/Display.html?id=89473
 		cpanm Test::Simple@0.98
 		cpanm Time::HiRes CGI Moose JSON::XS Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA MooseX::Log::Log4perl Log::Log4perl::Appender::Socket::UNIX
@@ -925,6 +927,9 @@ build_web_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
+		# Installing specific version of Module::Build to deal with bug with Sys::Info
+		cpanm Module::Build@0.4008
+		
 		# Need a specific version of Ouch to not require Perl 5.12
 		cpanm Ouch@0.0403
 		
