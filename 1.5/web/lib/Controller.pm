@@ -1034,7 +1034,7 @@ sub schedule_query {
 	$sth = $self->db->prepare($query);
 	my $days = $schedule_query_params->{days};
 	unless ($days){
-		$days = 2^32;
+		$days = 2**32;
 	}
 	my $alert_threshold = 0;
 	my $time_unit_map = {
