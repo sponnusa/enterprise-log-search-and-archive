@@ -53,6 +53,18 @@ INSERT INTO classes (id, class, parent_id) VALUES(39, "CISCO_WARN", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(40, "DHCP", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(41, "BRO_FILE", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(42, "FIREEYE", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(43, "BRO_FTP", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(44, "BRO_WEIRD", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(45, "BRO_TUNNEL", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(46, "BRO_SOFTWARE", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(47, "BRO_SSH", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(48, "BRO_SYSLOG", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(49, "BRO_IRC", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(50, "BRO_KNOWN_CERTS", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(51, "BRO_KNOWN_HOSTS", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(52, "BRO_KNOWN_SERVICES", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(53, "BRO_CAPTURE_LOSS", 0);
+
 INSERT INTO classes (id, class) VALUES(98, "ELSA_UNPARSED");
 INSERT INTO classes (id, class) VALUES(99, "ELSA_OPS");
 
@@ -187,6 +199,26 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("mac_address", "str
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("cncip", "int", "IPv4");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("cncport", "int", "NUMBER");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("virusname", "string", "qstring");
+
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("username", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("password", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("command", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("arg", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("version_major", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("version_minor", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("direction", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("client", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("bro_syslog_facility", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("bro_syslog_severity", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("bro_syslog_message", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("common_name", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("organizational_unit", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("organization", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("email_address", "string", "QSTRING");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("gaps", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("acks", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("percent_loss", "string", "QSTRING");
+
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -524,6 +556,86 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FIREEYE"), (SELECT id FROM fields WHERE field="hostname"), 12);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FIREEYE"), (SELECT id FROM fields WHERE field="virusname"), 13);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="FIREEYE"), (SELECT id FROM fields WHERE field="sourcetype"), 14);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="eventid"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="username"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="password"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="command"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FTP"), (SELECT id FROM fields WHERE field="arg"), 15);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_WEIRD"), (SELECT id FROM fields WHERE field="eventid"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_WEIRD"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_WEIRD"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_WEIRD"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_WEIRD"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_WEIRD"), (SELECT id FROM fields WHERE field="name"), 14);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_TUNNEL"), (SELECT id FROM fields WHERE field="eventid"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_TUNNEL"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_TUNNEL"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_TUNNEL"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_TUNNEL"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_TUNNEL"), (SELECT id FROM fields WHERE field="name"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_TUNNEL"), (SELECT id FROM fields WHERE field="desc"), 13);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SOFTWARE"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SOFTWARE"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SOFTWARE"), (SELECT id FROM fields WHERE field="type"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SOFTWARE"), (SELECT id FROM fields WHERE field="name"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SOFTWARE"), (SELECT id FROM fields WHERE field="version_major"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SOFTWARE"), (SELECT id FROM fields WHERE field="version_minor"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SOFTWARE"), (SELECT id FROM fields WHERE field="product"), 13);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="eventid"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="status"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="direction"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="client"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="server"), 15);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SSH"), (SELECT id FROM fields WHERE field="conn_bytes"), 9);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="eventid"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="proto"), 9);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="bro_syslog_facility"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="bro_syslog_severity"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SYSLOG"), (SELECT id FROM fields WHERE field="bro_syslog_message"), 14);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_IRC"), (SELECT id FROM fields WHERE field="eventid"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_IRC"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_IRC"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_IRC"), (SELECT id FROM fields WHERE field="dstip"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_IRC"), (SELECT id FROM fields WHERE field="dstport"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_IRC"), (SELECT id FROM fields WHERE field="desc"), 12);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_CERTS"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_CERTS"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_CERTS"), (SELECT id FROM fields WHERE field="common_name"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_CERTS"), (SELECT id FROM fields WHERE field="organizational_unit"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_CERTS"), (SELECT id FROM fields WHERE field="organization"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_CERTS"), (SELECT id FROM fields WHERE field="email_address"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_HOSTS"), (SELECT id FROM fields WHERE field="srcip"), 5);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_SERVICES"), (SELECT id FROM fields WHERE field="srcip"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_SERVICES"), (SELECT id FROM fields WHERE field="srcport"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_SERVICES"), (SELECT id FROM fields WHERE field="proto"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_KNOWN_SERVICES"), (SELECT id FROM fields WHERE field="service"), 11);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CAPTURE_LOSS"), (SELECT id FROM fields WHERE field="interface"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CAPTURE_LOSS"), (SELECT id FROM fields WHERE field="gaps"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CAPTURE_LOSS"), (SELECT id FROM fields WHERE field="acks"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_CAPTURE_LOSS"), (SELECT id FROM fields WHERE field="percent_loss"), 12);
+
 
 CREATE TABLE table_types (
 	id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
