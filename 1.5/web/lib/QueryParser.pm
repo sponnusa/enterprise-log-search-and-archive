@@ -145,6 +145,11 @@ sub BUILD {
 		$self->implicit_plus(0);
 	}
 	
+	# Override defaults with config for order of results
+	if ($self->conf->get('default_sort_descending')){
+		$self->directives->{orderby_dir} = 'DESC';
+	}
+	
 	# Set a defaults if available in preferences
 	if ($self->user->preferences and $self->user->preferences->{tree}->{default_settings} and
 		$self->user->preferences->{tree}){
@@ -159,6 +164,17 @@ sub BUILD {
 		if ($prefs->{default_or}){
 			$self->implicit_plus(0);
 		}
+	}
+	
+	# Allow some directives to be sent in meta_params (so preferences can propagate from a parent peer)
+	if ($self->meta_params->{orderby_dir}){
+		$self->directives->{orderby_dir} = $self->meta_params->{orderby_dir};
+	}
+	if ($self->meta_params->{timeout}){
+		$self->directives->{timeout} = $self->meta_params->{timeout};
+	}
+	if ($self->meta_params->{default_or}){
+		$self->implicit_plus(0);
 	}
 	
 	unless ($self->meta_info){

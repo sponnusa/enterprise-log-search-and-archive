@@ -673,10 +673,18 @@ sub _peer_query {
 		
 		my $peer_conf = $self->conf->get('peers/' . $peer);
 		my $url = $peer_conf->{url} . 'API/query';
-		#my $url = $peer_conf->{url} . 'API/';
-		#$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'query';
+		
+		# Propagate some specific directives provided in prefs through to children via meta_params
+		my $meta_params = $q->meta_params;
+		my $prefs = $q->user->preferences->{tree}->{default_settings};
+		foreach my $pref (qw(orderby_dir timeout default_or)){
+			if (exists $prefs->{$pref}){
+				$meta_params->{$pref} = $prefs->{$pref};
+			}
+		}
+		
 		my $request_body = 'permissions=' . uri_escape($self->json->encode($q->user->permissions))
-			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $q->meta_params }))
+			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $meta_params }))
 			. '&peer_label=' . $peer_label;
 		$self->log->trace('Sending request to URL ' . $url . ' with body ' . $request_body);
 		my $start = time();
