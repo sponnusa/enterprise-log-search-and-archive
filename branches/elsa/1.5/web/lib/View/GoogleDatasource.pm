@@ -172,6 +172,7 @@ sub call {
 			$write->($res->finalize());
 			$cv and $cv->send;
 		};
+		$cv and $cv->recv;
 	};
 }
 
