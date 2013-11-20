@@ -211,6 +211,25 @@ sub value {
 	}
 }
 
+sub delete_key {
+	my $self = shift;
+	my $record = shift;
+	my $key = shift;
+	
+	if (exists $record->{$key}){
+		delete $record->{$key};
+		return 1;
+	}
+	else {
+		for (my $i = 0; $i < @{ $record->{_fields} }; $i++){
+			if ($record->{_fields}->[$i]->{field} eq $key){
+				splice(@{ $record->{_fields} }, $i, 1);
+				return 1;
+			}
+		}
+	}
+}
+
 sub _create_bulk_file {
 	my ($self,$name) = @_;
 	
