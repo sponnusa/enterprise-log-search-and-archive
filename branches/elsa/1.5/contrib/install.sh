@@ -374,8 +374,6 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		# Installing specific version of Module::Build to deal with bug with Sys::Info
-		cpanm Module::Build@0.4008
 		# Installing specific version of Test::Simple@0.98 until this is resolved: https://rt.cpan.org/Public/Bug/Display.html?id=89473
 		cpanm Test::Simple@0.98
 		
@@ -932,9 +930,6 @@ build_web_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		# Installing specific version of Module::Build to deal with bug with Sys::Info
-		cpanm Module::Build@0.4008
-		
 		# Broken test in DBD::mysql
 		cpanm -n DBD::mysql
 		
