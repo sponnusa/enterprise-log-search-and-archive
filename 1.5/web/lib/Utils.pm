@@ -676,10 +676,12 @@ sub _peer_query {
 		
 		# Propagate some specific directives provided in prefs through to children via meta_params
 		my $meta_params = $q->meta_params;
-		my $prefs = $q->user->preferences->{tree}->{default_settings};
-		foreach my $pref (qw(orderby_dir timeout default_or)){
-			if (exists $prefs->{$pref}){
-				$meta_params->{$pref} = $prefs->{$pref};
+		if ($q->user and $q->user->preferences and $q->user->preferences->{tree}){
+			my $prefs = $q->user->preferences->{tree}->{default_settings};
+			foreach my $pref (qw(orderby_dir timeout default_or)){
+				if (exists $prefs->{$pref}){
+					$meta_params->{$pref} = $prefs->{$pref};
+				}
 			}
 		}
 		
