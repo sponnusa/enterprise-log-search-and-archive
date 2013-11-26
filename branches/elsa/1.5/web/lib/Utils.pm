@@ -595,6 +595,19 @@ sub _peer_query {
 		push @peers, $peer;
 	}
 	
+	# Make sure our localhost is first to avoid a read timeout with the way that the parallel async HTTP connections are queued.
+	#  Otherwise, an initial connect is sent to each remote node, but no HTTP protocol information is sent until
+	#  the localhost has completed its query since none of the localhost code uses anything async.
+	#  This can violate the 5 second Plack read timeout if the local query takes longer than 5 seconds to execute.
+	for (my $i = 0; $i < @peers; $i++){
+		if ($peers[$i] eq '127.0.0.1' or $peers[$i] eq 'localhost'){
+			my $tmp = $peers[0];
+			$peers[0] = $peers[$i];
+			$peers[$i] = $tmp;
+			last;
+		}
+	}
+	
 	$self->log->trace('Executing global query on peers ' . join(', ', @peers));
 	
 	my %batches;
