@@ -46,6 +46,7 @@ sub BUILD {
 						longitude => $geo_rec->longitude,
 						state => $geo_rec->region,
 						city => $geo_rec->city,
+						country => $geo_rec->country_name,
 					};
 					foreach my $rec_key (keys %{ $record->{transforms}->{$Name}->{$key} }){
 						delete $record->{transforms}->{$Name}->{$key}->{$rec_key} unless defined $record->{transforms}->{$Name}->{$key}->{$rec_key};

@@ -119,7 +119,10 @@ sub call {
 							foreach my $row (@{ $ret->results->results->{$groupby} }){
 								my $cc = $row->{_groupby};
 								$self->controller->log->debug('row: ' . Dumper($row));
-								if ($row->{_groupby} =~ /cc=(\w{2})/i){
+								if ($row->{_groupby} =~ /country=([^=]+)(\s\w+=|$)/i){
+									$cc = $1;
+								}
+								elsif ($row->{_groupby} =~ /cc=(\w{2})/i){
 									$cc = $1;
 								}
 								$datatable->add_rows([ { v => $cc }, { v => $row->{_count} } ]);
