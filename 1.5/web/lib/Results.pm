@@ -372,13 +372,15 @@ sub merge {
 	my %results;
 	foreach my $groupby ($self->all_groupbys){
 		my %agg;
+		my %intvals;
 		foreach my $row (@{ $self->results->{$groupby} }){
 			$agg{ $row->{_groupby} } += $row->{_count};
+			$intvals{ $row->{_groupby} } = $row->{intval};
 		}
 		my @tmp;
 		foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
 			$total_records += $agg{$key};
-			push @tmp, { intval => $agg{$key}, '_groupby' => $key, '_count' => $agg{$key} };
+			push @tmp, { intval => $intvals{$key}, '_groupby' => $key, '_count' => $agg{$key} };
 			last if $q and scalar @tmp >= $q->limit;
 		}
 		$results{$groupby} = [ @tmp ];
