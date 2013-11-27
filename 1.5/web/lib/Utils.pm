@@ -429,7 +429,7 @@ sub _get_info {
 		# Resolve class names into class_id's for excluded classes
 		my $given_excluded_classes = $self->conf->get('excluded_classes') ? $self->conf->get('excluded_classes') : {};
 		my $excluded_classes = {};
-		foreach my $class_id (keys %{ $ret->{classes} }){
+		foreach my $class_id (keys %{ $ret->{classes_by_id} }){
 			if ($given_excluded_classes->{ lc($ret->{classes_by_id}->{$class_id}) } or
 				$given_excluded_classes->{ uc($ret->{classes_by_id}->{$class_id}) }){
 				$excluded_classes->{$class_id} = 1;
