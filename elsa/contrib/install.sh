@@ -42,7 +42,8 @@ MYSQL_ROOT_PASS=""
 
 # These should be fine
 #SPHINX_VER="2.0.5-release"
-SPHINX_VER="2.1.1-beta"
+#SPHINX_VER="2.1.1-beta"
+SPHINX_VER="2.1.3-release"
 EVENTLOG_VER="0.2.12"
 SYSLOG_VER="3.2.4"
 GEOIP_DIR="/usr/share/GeoIP/"
@@ -317,7 +318,7 @@ get_elsa(){
 	if [ $? -ne 0 ]; then 
 		SVN_TRUST_SERVER_CERT=""
 	fi
-	svn -r $VERSION --non-interactive $SVN_TRUST_SERVER_CERT --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" &&
+	svn -r $VERSION --non-interactive $SVN_TRUST_SERVER_CERT --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/branches/elsa/1.5" elsa &&
 	mkdir -p "$BASE_DIR/elsa/node/tmp/locks" && 
 	touch "$BASE_DIR/elsa/node/tmp/locks/directory"
 	touch "$BASE_DIR/elsa/node/tmp/locks/query"
@@ -373,6 +374,12 @@ build_node_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
+		# Installing specific version of Test::Simple@0.98 until this is resolved: https://rt.cpan.org/Public/Bug/Display.html?id=89473
+		cpanm Test::Simple@0.98
+		
+		# Broken test in DBD::mysql
+		cpanm -n DBD::mysql
+		
 		cpanm Time::HiRes CGI Moose JSON::XS Config::JSON String::CRC32 Log::Log4perl DBD::mysql Date::Manip Sys::Info MooseX::Traits DateTime::Format::Strptime Storable JSON Net::OpenSSH Module::Pluggable File::Copy LWP::UserAgent Plack Digest::MD5 Archive::Zip Apache::Admin::Config Digest::SHA MooseX::Log::Log4perl Log::Log4perl::Appender::Socket::UNIX
 		RETVAL=$?
 		if [ "$RETVAL" = 0 ]; then
@@ -427,8 +434,6 @@ disable_service(){
 build_sphinx(){
 	# Get and build sphinx on nodes
 	cd $TMP_DIR &&
-	#svn --non-interactive --trust-server-cert --force export "https://sphinxsearch.googlecode.com/svn/trunk/" sphinx-svn &&
-	#cd sphinx-svn &&
 	curl http://sphinxsearch.com/files/sphinx-$SPHINX_VER.tar.gz > sphinx-$SPHINX_VER.tar.gz &&
 	tar xzvf sphinx-$SPHINX_VER.tar.gz &&
 	cd sphinx-$SPHINX_VER &&
@@ -498,7 +503,15 @@ mk_node_dirs(){
 	UPDATE_OK=$?
 	
 	# Set apparmor settings if necessary
-	if [ -f /etc/apparmor.d/usr.sbin.mysqld ]; then
+	if [ -d /etc/apparmor.d/local ]; then
+		echo "Updating local apparmor config for MySQL dir $DATA_DIR/elsa/mysql/";
+		grep "$DATA_DIR/elsa/mysql/" /etc/apparmor.d/local/usr.sbin.mysqld;
+		if [ $? -ne 0 ]; then
+			echo "$DATA_DIR/elsa/mysql/ r,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
+			echo "$DATA_DIR/elsa/mysql/** rwk,"  >> /etc/apparmor.d/local/usr.sbin.mysqld;
+			sh /etc/init.d/apparmor reload
+		fi
+	elif [ -f /etc/apparmor.d/usr.sbin.mysqld ]; then
 		grep "$DATA_DIR/elsa/mysql/" /etc/apparmor.d/usr.sbin.mysqld;
 		if [ $? -ne 0 ]; then
 			echo "Updating apparmor config for MySQL dir $DATA_DIR/elsa/mysql/";
@@ -603,7 +616,7 @@ update_node_mysql(){
 	# Set SELinux settings for the auxilliary MySQL dir if necessary
 	if [ -f /usr/sbin/selinuxenabled ]; then
 		if [ -f /usr/bin/chcon ]; then
-			chcon --reference=/var/lib/mysql/test -R "$DATA_DIR/elsa/mysql"
+			chcon --reference=/var/lib/mysql -R "$DATA_DIR/elsa/mysql"
 		else
 			echo "WARNING: chcon SELinux utility not found!"
 		fi
@@ -618,6 +631,8 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes CHANGE COLUMN locked_by locked_by INT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE fields ADD UNIQUE KEY `field` (field, field_type)' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes ADD COLUMN index_schema TEXT' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes ADD COLUMN updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE indexes ADD INDEX `updated` (updated) `updated`' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("domain", "string", "QSTRING")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_name", "string", "QSTRING")'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields (field, field_type, pattern_type) VALUES ("share_path", "string", "QSTRING")'
@@ -650,8 +665,8 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE IF NOT EXISTS uploads (id INT NOT NULL PRIMARY KEY AUTO_INCREMENT, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, client_ip INT UNSIGNED NOT NULL, count INT UNSIGNED NOT NULL, size BIGINT UNSIGNED NOT NULL, batch_time SMALLINT UNSIGNED NOT NULL, errors SMALLINT UNSIGNED NOT NULL, start INT UNSIGNED NOT NULL, end INT UNSIGNED NOT NULL, buffers_id INT UNSIGNED NOT NULL) ENGINE=InnoDB'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD COLUMN first_id BIGINT UNSIGNED' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD COLUMN last_id BIGINT UNSIGNED' > /dev/null 2>&1
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD KEY(first_id)' > /dev/null 2>&1
-	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD KEY(last_id)' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD KEY `first_id` (first_id)' > /dev/null 2>&1
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE imports ADD KEY `last_id` (last_id)' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'DROP TABLE failed_buffers' > /dev/null 2>&1
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'CREATE TABLE failed_buffers (hash CHAR(32) NOT NULL PRIMARY KEY, dest VARCHAR(8000) NOT NULL, timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, args TEXT, pid INT UNSIGNED) ENGINE=InnoDB'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO classes (id, class, parent_id) VALUES(36, "VPN", 0)'
@@ -915,15 +930,15 @@ build_web_perl(){
 	RETVAL=0
 	# Now cpanm is available to install the rest
 	for RETRY in 1 2 3; do
-		# PAM requires some user input for testing, and we don't want that
-		#cpanm -n Authen::PAM Crypt::DH &&
-		#Authen::Simple::PAM
-		#cpanm http://search.cpan.org/CPAN/authors/id/D/DW/DWHEELER/Test-Pod-1.46.tar.gz
-		# No test on Data::Seralizable until it gets fixed
-		# I think this is fixed now, testing to see.
-		#cpanm -n Data::Serializable
+		# Broken test in DBD::mysql
+		cpanm -n DBD::mysql
+		
 		# Need a specific version of Ouch to not require Perl 5.12
 		cpanm Ouch@0.0403
+		
+		# Installing specific version of Test::Simple@0.98 until this is resolved: https://rt.cpan.org/Public/Bug/Display.html?id=89473
+		cpanm Test::Simple@0.98
+		
 		cpanm Time::Local Time::HiRes Moose JSON::XS Config::JSON Plack::Builder Plack::Util Plack::App::File Date::Manip Digest::SHA1 MIME::Base64 URI::Escape Socket Net::DNS Sys::Hostname::FQDN String::CRC32 CHI CHI::Driver::RawMemory Search::QueryParser AnyEvent::DBI DBD::mysql EV Sys::Info Sys::MemInfo MooseX::Traits Authen::Simple Authen::Simple::DBI Authen::Simple::LDAP Net::LDAP::Express Net::LDAP::FilterBuilder Plack::Middleware::CrossOrigin URI::Escape Module::Pluggable Module::Install PDF::API2::Simple XML::Writer Parse::Snort Spreadsheet::WriteExcel IO::String Mail::Internet Plack::Middleware::Static Log::Log4perl Email::LocalDelivery Plack::Session Sys::Info CHI::Driver::DBI Plack::Builder::Conditionals AnyEvent::HTTP URL::Encode MooseX::ClassAttribute MooseX::Log::Log4perl Authen::Simple::DBI Plack::Middleware::NoMultipleSlashes MooseX::Storage MooseX::Clone Data::Google::Visualization::DataSource Data::Google::Visualization::DataTable DateTime File::Slurp URI::Encode Search::QueryParser::SQL Module::Load::Conditional Authen::Simple::Kerberos Digest::MD5 Hash::Merge::Simple Digest::SHA Archive::Extract Apache::Admin::Config Text::CSV Log::Log4perl::Appender::Socket::UNIX Plack::Middleware::XForwardedFor Try::Tiny Data::Serializable
 		
 		RETVAL=$?
@@ -984,12 +999,13 @@ set_web_mysql(){
 
 update_web_mysql(){
 	echo "Updating web MySQL, please ignore any errors for this section..."
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP COLUMN action_params" > /dev/null 2>&1 &&
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP FOREIGN KEY `query_schedule_ibfk_2`" > /dev/null 2>&1 &&
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule DROP COLUMN action_id" > /dev/null 2>&1 &&
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN connector VARCHAR(255)" > /dev/null 2>&1 &&
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_schedule ADD COLUMN params VARCHAR(8000)" > /dev/null 2>&1
-	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "ALTER TABLE query_log ADD KEY(archive)" > /dev/null 2>&1
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e 'ALTER TABLE query_schedule DROP COLUMN action_params' > /dev/null 2>&1 &&
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e 'ALTER TABLE query_schedule DROP FOREIGN KEY `query_schedule_ibfk_2`' > /dev/null 2>&1 &&
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e 'ALTER TABLE query_schedule DROP COLUMN action_id' > /dev/null 2>&1 &&
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e 'ALTER TABLE query_schedule ADD COLUMN connector VARCHAR(255)' > /dev/null 2>&1 &&
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e 'ALTER TABLE query_schedule ADD COLUMN params VARCHAR(8000)' > /dev/null 2>&1
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e 'ALTER TABLE query_log ADD KEY `archive` (archive)' > /dev/null 2>&1
+	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e 'ALTER TABLE query_log ADD COLUMN pid SMALLINT UNSIGNED' > /dev/null 2>&1
 	
 	mysql "-h$MYSQL_HOST" "-P$MYSQL_PORT" "-u$MYSQL_USER" "-p$MYSQL_PASS" $MYSQL_DB -e "
 CREATE TABLE IF NOT EXISTS dashboards (
@@ -1186,7 +1202,8 @@ centos_set_apache(){
 	chown -R $WEB_USER "$DATA_DIR/elsa/log"
 	if [ -f /usr/sbin/selinuxenabled ]; then
 		echo "Enabling SELINUX policies for Apache..."
-		chcon --reference=/var/log/httpd -R $DATA_DIR
+		chcon --reference=/var/log/httpd -R "$DATA_DIR/elsa/log"
+		chcon --reference=/tmp -R "$DATA_DIR/elsa/tmp"
 		setsebool -P httpd_can_network_connect on
 		setsebool -P httpd_can_network_connect_db on
 		semanage fcontext -a -t httpd_log_t "$DATA_DIR(/.*)?" &&

@@ -69,7 +69,7 @@ sub _query {
 	$self->cv->begin;
 	
 	if ($query =~ /\d+\.\d+\.\d+\.\d+/){
-		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rdata/ip/%s?limit=%d', $query, $Limit);
+		my $url = sprintf('https://api.dnsdb.info/lookup/rdata/ip/%s?limit=%d', $query, $Limit);
 		
 		my $info = $self->cache->get($url);
 		if ($info and ref($info) eq 'HASH' and scalar keys %$info){
@@ -104,7 +104,7 @@ sub _query {
 		};
 	}
 	else {
-		my $url = sprintf('https://dnsdb-api.isc.org/lookup/rrset/name/%s?limit=%d', $query, $Limit);
+		my $url = sprintf('https://api.dnsdb.info/lookup/rrset/name/%s?limit=%d', $query, $Limit);
 		
 		my $info = $self->cache->get($url);
 		if ($info){

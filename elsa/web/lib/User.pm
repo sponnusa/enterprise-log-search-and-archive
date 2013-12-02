@@ -584,7 +584,10 @@ sub is_permitted {
 	}
 	# Handle field permissions
 	elsif ($class_id){
-		if (exists $self->permissions->{fields}->{$class_id}){	
+		if ($self->permissions->{class_id}->{0}){
+			return 1;
+		}
+		elsif (exists $self->permissions->{fields}->{$class_id}){	
 			foreach my $hash (@{ $self->permissions->{fields}->{$class_id} }){
 				foreach my $type (qw(attr field)){
 					if ($attr eq $hash->{$type}->[0] and $attr_id eq $hash->{$type}->[1]){

@@ -10,6 +10,15 @@ sub BUILD {
 			push @{ $self->urls }, sprintf($template, $self->data->{site});
 		}
 	}
+	# New-style arbitrary field/url pairs expecting { "field": "myfield", "template": "http://somewhere/%s" }
+	my $conf = $self->conf->get('info/url/templates');
+	if ($conf){
+		foreach my $hash (@{ $conf }){
+			next unless $self->data->{ $hash->{field} };
+			my $value = $self->data->{ $hash->{field} };
+			push @{ $self->urls }, sprintf($hash->{template}, $value);
+		}
+	}
 }
 
 1;

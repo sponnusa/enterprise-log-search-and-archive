@@ -7,47 +7,47 @@ use Plack::Builder::Conditionals;
 use FindBin;
 use lib $FindBin::Bin;
 
-use API;
-use API::Charts;
-use API::Peers;
-use Web;
-use Web::Query;
-use Web::API;
-use Web::GoogleDatasource;
-use Web::GoogleDashboard;
-use Web::Mobile;
+use Controller;
+use Controller::Charts;
+use Controller::Peers;
+use View;
+#use Web::Query;
+use View::API;
+use View::GoogleDatasource;
+use View::GoogleDashboard;
+use View::Mobile;
 
 my $config_file = '/etc/elsa_web.conf';
 if ($ENV{ELSA_CONF}){
 	$config_file = $ENV{ELSA_CONF};
 }
 
-my $api = API->new(config_file => $config_file) or die('Unable to start from given config file.');
-my $charts_api = API::Charts->new(config_file => $config_file) or die('Unable to start from given config file.');
-my $peers_api = API::Peers->new(config_file => $config_file) or die('Unable to start from given config file.');
+my $controller = Controller->new(config_file => $config_file) or die('Unable to start from given config file.');
+my $charts_controller = Controller::Charts->new(config_file => $config_file) or die('Unable to start from given config file.');
+my $peers_controller = Controller::Peers->new(config_file => $config_file) or die('Unable to start from given config file.');
 
 my $auth;
-if (lc($api->conf->get('auth/method')) eq 'ldap' and $api->conf->get('ldap')){
+if (lc($controller->conf->get('auth/method')) eq 'ldap' and $controller->conf->get('ldap')){
 	require Authen::Simple::LDAP;
 	$auth = Authen::Simple::LDAP->new(
-		host        => $api->conf->get('ldap/host'),
-		binddn      => $api->conf->get('ldap/bindDN'),
-		bindpw      => $api->conf->get('ldap/bindpw'),
-		basedn        => $api->conf->get('ldap/base'),
-		filter => '(&(objectClass=organizationalPerson)(objectClass=user)(sAMAccountName=%s))',
-		log => $api->log,
+		host        => $controller->conf->get('ldap/host'),
+		binddn      => $controller->conf->get('ldap/bindDN'),
+		bindpw      => $controller->conf->get('ldap/bindpw'),
+		basedn        => $controller->conf->get('ldap/base'),
+		filter => $controller->conf->get('ldap/filter') ? $controller->conf->get('ldap/filter') : '(&(objectClass=organizationalPerson)(objectClass=user)(sAMAccountName=%s))',
+		log => $controller->log,
 	);
 }
-elsif ($api->conf->get('auth/method') eq 'local_ssh'){
+elsif ($controller->conf->get('auth/method') eq 'local_ssh'){
 	require Authen::Simple::SSH;
 	$auth = Authen::Simple::SSH->new(
 		host => 'localhost'
 	);
 }
-elsif ($api->conf->get('auth/method') eq 'local'){
-	$api->log->logdie('Auth method "local" is no longer implemented, halting.');
+elsif ($controller->conf->get('auth/method') eq 'local'){
+	$controller->log->logdie('Auth method "local" is no longer implemented, halting.');
 }
-elsif ($api->conf->get('auth/method') eq 'none'){
+elsif ($controller->conf->get('auth/method') eq 'none'){
 	# Inline a null authenticator
 	package Authen::Simple::Null;
 	use base qw(Authen::Simple::Adapter);
@@ -58,9 +58,9 @@ elsif ($api->conf->get('auth/method') eq 'none'){
 		optional => 1}});
 	sub check { my $self = shift; $self->log->debug('Authenticating: ', join(', ', @_)); return 1; }
 	package main;
-	$auth = Authen::Simple::Null->new(log => $api->log);
+	$auth = Authen::Simple::Null->new(log => $controller->log);
 }
-elsif ($api->conf->get('auth/method') eq 'db'){
+elsif ($controller->conf->get('auth/method') eq 'db'){
 	package Authen::Simple::ELSADB;
 	use base qw(Authen::Simple::DBI);
 	
@@ -85,14 +85,14 @@ elsif ($api->conf->get('auth/method') eq 'db'){
     
 	package main;
 	$auth = Authen::Simple::ELSADB->new(
-		dsn => $api->conf->get('auth_db/dsn') ? $api->conf->get('auth_db/dsn') : $api->conf->get('meta_db/dsn'),
-		username =>	$api->conf->get('auth_db/username') ? $api->conf->get('auth_db/username') : $api->conf->get('meta_db/username'),
-		password => defined $api->conf->get('auth_db/password') ? $api->conf->get('auth_db/password') : $api->conf->get('meta_db/password'),
-		log => $api->log,
-		statement => $api->conf->get('auth_db/auth_statement') ? $api->conf->get('auth_db/auth_statement') : 'SELECT uid FROM users WHERE username=? AND password=PASSWORD(?)',
+		dsn => $controller->conf->get('auth_db/dsn') ? $controller->conf->get('auth_db/dsn') : $controller->conf->get('meta_db/dsn'),
+		username =>	$controller->conf->get('auth_db/username') ? $controller->conf->get('auth_db/username') : $controller->conf->get('meta_db/username'),
+		password => defined $controller->conf->get('auth_db/password') ? $controller->conf->get('auth_db/password') : $controller->conf->get('meta_db/password'),
+		log => $controller->log,
+		statement => $controller->conf->get('auth_db/auth_statement') ? $controller->conf->get('auth_db/auth_statement') : 'SELECT uid FROM users WHERE username=? AND password=PASSWORD(?)',
 	);
 }
-elsif ($api->conf->get('auth/method') eq 'security_onion'){
+elsif ($controller->conf->get('auth/method') eq 'security_onion'){
 	# Inline a Security Onion authenticator
 	package Authen::Simple::SecurityOnion;
 	use base qw(Authen::Simple::DBI);
@@ -120,18 +120,18 @@ elsif ($api->conf->get('auth/method') eq 'security_onion'){
 
 	package main;
 	$auth = Authen::Simple::SecurityOnion->new(
-		dsn => $api->conf->get('auth_db/dsn') ? $api->conf->get('auth_db/dsn') : $api->conf->get('meta_db/dsn'),
-		username =>	$api->conf->get('auth_db/username') ? $api->conf->get('auth_db/username') : $api->conf->get('meta_db/username'),
-		password => defined $api->conf->get('auth_db/password') ? $api->conf->get('auth_db/password') : $api->conf->get('meta_db/password'),
-		log => $api->log,
+		dsn => $controller->conf->get('auth_db/dsn') ? $controller->conf->get('auth_db/dsn') : $controller->conf->get('meta_db/dsn'),
+		username =>	$controller->conf->get('auth_db/username') ? $controller->conf->get('auth_db/username') : $controller->conf->get('meta_db/username'),
+		password => defined $controller->conf->get('auth_db/password') ? $controller->conf->get('auth_db/password') : $controller->conf->get('meta_db/password'),
+		log => $controller->log,
 		statement => ' ', #hardcoded in module above
 	);
 }
-elsif (lc($api->conf->get('auth/method')) eq 'kerberos' and $api->conf->get('kerberos')){
+elsif (lc($controller->conf->get('auth/method')) eq 'kerberos' and $controller->conf->get('kerberos')){
 	require Authen::Simple::Kerberos;
 	$auth = Authen::Simple::Kerberos->new(
-		realm => $api->conf->get('kerberos/realm'),
-		log => $api->log,
+		realm => $controller->conf->get('kerberos/realm'),
+		log => $controller->log,
 	);
 }
 else {
@@ -150,23 +150,23 @@ builder {
 	enable 'Static', path => qr{^/?inc/}, root => $static_root;
 	enable 'CrossOrigin', origins => '*', methods => '*', headers => '*';
 	enable match_if all( path('!', qr!^/API/!) ), 'Session', store => 'File';
-	unless ($api->conf->get('auth/method') eq 'none'){
-		enable match_if all( path('!', '/favicon.ico'), path('!', qr!^/inc/!), path('!', qr!^/transform!), path('!', qr!^/API/!) ), 'Auth::Basic', authenticator => $auth, realm => $api->conf->get('auth/realm');
+	unless ($controller->conf->get('auth/method') eq 'none'){
+		enable match_if all( path('!', '/favicon.ico'), path('!', qr!^/inc/!), path('!', qr!^/transform!), path('!', qr!^/API/!) ), 'Auth::Basic', authenticator => $auth, realm => $controller->conf->get('auth/realm');
 	}
 	
 	
-	if ($api->conf->get('api_only')){
-		mount '/API' => Web::API->new(api => $peers_api)->to_app;
+	if ($controller->conf->get('api_only')){
+		mount '/API' => View::API->new(controller => $peers_controller)->to_app;
 	}
 	else {
-		mount '/API' => Web::API->new(api => $peers_api)->to_app;
+		mount '/API' => View::API->new(controller => $peers_controller)->to_app;
 		mount '/favicon.ico' => sub { return [ 200, [ 'Content-Type' => 'text/plain' ], [ '' ] ]; };
-		mount '/Query' => Web::Query->new(api => $api)->to_app;
-		mount '/datasource' => Web::GoogleDatasource->new(api => $charts_api)->to_app;
-		mount '/dashboard' => Web::GoogleDashboard->new(api => $charts_api)->to_app;
-		mount '/Charts' => Web::Query->new(api => $charts_api)->to_app;
-		mount '/m' => Web::Mobile->new(api => $api)->to_app;
-		mount '/' => Web->new(api => $api)->to_app;
+		mount '/Query' => View->new(controller => $controller)->to_app;
+		mount '/datasource' => View::GoogleDatasource->new(controller => $charts_controller)->to_app;
+		mount '/dashboard' => View::GoogleDashboard->new(controller => $charts_controller)->to_app;
+		mount '/Charts' => View->new(controller => $charts_controller)->to_app;
+		mount '/m' => View::Mobile->new(controller => $controller)->to_app;
+		mount '/' => View->new(controller => $controller)->to_app;
 	}
 };
 

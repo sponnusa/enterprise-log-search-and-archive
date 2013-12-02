@@ -1152,7 +1152,7 @@ YAHOO.ELSA.Results = function(){
 		//logger.log('p_oRecord.getData()', p_oRecord.getData());
 		try {
 			var oA = document.createElement('a');
-			oA.href = '#';
+			oA.href = '#_' + oSelf.id + '_' + p_oRecord.getId();
 			oA.id = 'button_' + oSelf.id + '_' + p_oRecord.getId();
 			oA.name = 'button_' + p_oRecord.getId();
 			oA.innerHTML = 'Info';
@@ -2380,6 +2380,11 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 		
 		logger.log('got results:', p_oResults);
 		try {
+			if (p_oResults.code){
+				YAHOO.ELSA.Error(p_oResults.message);
+				return;
+			}
+			
 			this.results = p_oResults;
 			var oElClose = new YAHOO.util.Element(YAHOO.util.Dom.get('close_box_' + this.id));
 			oElClose.removeClass('loading');
@@ -2390,7 +2395,12 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 				this.qid = this.results.qid;
 			}
 			else {
-				YAHOO.ELSA.Error('no qid found in results');
+				if (this.results.code){
+					YAHOO.ELSA.Error(this.results.message);
+				}
+				else {
+					YAHOO.ELSA.Error('no qid found in results');
+				}
 			}
 		
 			if (!p_bIsReload){
@@ -2422,7 +2432,7 @@ YAHOO.ELSA.Results.Tabbed = function(p_oTabView, p_sQueryString, p_sTabLabel){
 			aEl.href = '#';
 			this.tab.get('contentEl').appendChild(aEl);
 			var oEl = new YAHOO.util.Element(aEl);
-			oEl.on('click', YAHOO.ELSA.cancelQuery, [this.results.batch], this);
+			oEl.on('click', YAHOO.ELSA.cancelQuery, [this.qid], this);
 		}
 		else if (this.results.groupby && this.results.groupby.length){
 			oLabelEl.innerHTML += ' [Grouped by ' + this.results.groupby.join(',') + ']';

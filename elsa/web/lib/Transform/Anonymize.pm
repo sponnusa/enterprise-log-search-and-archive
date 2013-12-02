@@ -20,22 +20,24 @@ sub BUILDARGS {
 sub BUILD {
 	my $self = shift;
 	
-	DATUM_LOOP: foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = { __REPLACE__ => {} };
-		$self->_anonymize_msg($datum);
+	DATUM_LOOP: foreach my $record ($self->results->all_results){
+		$record->{transforms}->{$Name} = { __REPLACE__ => {} };
+		$self->_anonymize_msg($record);
 	}
 	
-	$self->log->debug('data: ' . Dumper($self->data));
+	$self->log->debug('data: ' . Dumper($self->results));
+	
+	$self->on_transform->($self->results);
 	
 	return $self;
 }
 
 sub _anonymize_msg {
 	my $self = shift;
-	my $datum = shift;
+	my $record = shift;
 	my @matches;
-	foreach my $key (keys %$datum){
-		push @matches, ($datum->{$key} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g);
+	foreach my $key ($self->results->keys($record)){
+		push @matches, ($self->results->value($record, $key) =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g);
 	}
 	foreach my $ip (@matches){
 		$self->log->debug('checking ' . $ip);
@@ -48,22 +50,23 @@ sub _anonymize_msg {
 	
 	foreach my $ip (keys %{ $self->lookup_table }){
 		my $replacement = $self->lookup_table->{$ip};
-		$datum->{msg} =~ s/$ip/$replacement/g;
-		$datum->{transforms}->{$Name}->{__REPLACE__}->{msg} = 1;
-		$self->_anonymize_ip($datum, $ip);
+		my $msg = $self->results->value($record, 'msg');
+		$msg =~ s/$ip/$replacement/g;
+		$self->results->value($record, 'msg', $msg);
+		$record->{transforms}->{$Name}->{__REPLACE__}->{msg} = 1;
+		$self->_anonymize_ip($record, $ip);
 	}
 }
 
 sub _anonymize_ip {
 	my $self = shift;
-	my $datum = shift;
+	my $record = shift;
 	my $ip = shift;
 	
-	foreach my $key (keys %$datum){
-		next if ref($datum->{$key});
-		if ($datum->{$key} eq $ip){
-			$datum->{$key} = $self->lookup_table->{$ip};
-			$datum->{transforms}->{$Name}->{__REPLACE__}->{$key} = 1;
+	foreach my $key ($self->results->keys($record)){
+		if ($self->results->value($record, $key) eq $ip){
+			$self->results->value($record, $key, $self->lookup_table->{$ip});
+			$record->{transforms}->{$Name}->{__REPLACE__}->{$key} = 1;
 		}
 	}
 }

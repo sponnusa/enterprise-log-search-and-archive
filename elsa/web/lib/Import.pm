@@ -96,7 +96,7 @@ sub BUILD {
 					$priority = $plugin->heuristic($self->infile);
 				}
 			}
-			return unless $priority;
+			next unless $priority;
 			if ($priority > $best{priority}){
 				$best{priority} = $priority;
 				$best{plugin} = $plugin;

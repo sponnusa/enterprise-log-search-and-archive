@@ -39,7 +39,7 @@ sub process {
 	$sth->execute($program_id, $program);
 	
 	#my $date = strftime('%b %d %H:%M:%S', localtime(time()));
-	my $date = strftime('%Y-%m-%dT%H:%M:%S.000Z', localtime(time()));
+	my $date = strftime('%Y-%m-%dT%H:%M:%S.000Z', gmtime(time()));
 	
 	my $outfile_location = $self->conf->get('buffer_dir') . '/../import';
 	my $outfile = new IO::File("> $outfile_location") or die("Cannot open $outfile_location");

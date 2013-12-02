@@ -1,6 +1,6 @@
-package Web::Mobile;
+package View::Mobile;
 use Moose;
-extends 'Web';
+extends 'View';
 with 'Fields';
 use Data::Dumper;
 use Plack::Request;
@@ -19,14 +19,14 @@ sub call {
 	$res->content_type('text/html');
 	$res->header('Access-Control-Allow-Origin' => '*');
 	
-	$self->api->clear_warnings;
+	$self->controller->clear_warnings;
 	
-	my $method = $self->_extract_method($req->request_uri);
+	my $method = $self->extract_method($req->request_uri);
 	$method ||= 'index';
 	if ($method eq 'm'){
 		$method = 'index';
 	}
-	$self->api->log->debug('method: ' . $method);
+	$self->controller->log->debug('method: ' . $method);
 	
 	# Make sure private methods can't be run from the web
 	if ($method =~ /^\_/){
@@ -37,10 +37,10 @@ sub call {
 	
 	my $args = $req->parameters->as_hashref;
 	if ($self->session->get('user')){
-		$args->{user} = $self->api->get_stored_user($self->session->get('user'));
+		$args->{user} = $self->controller->get_stored_user($self->session->get('user'));
 	}
 	else {
-		$args->{user} = $self->api->get_user($req->user);
+		$args->{user} = $self->controller->get_user($req->user);
 	}
 	unless ($self->can($method)){
 		$res->status(404);
@@ -101,10 +101,10 @@ sub _get_index_body {
 		$edit = 'YAHOO.ELSA.editCharts = true;';
 	}
 	
-	$self->api->log->debug('args: ' . Dumper($args));	
+	$self->controller->log->debug('args: ' . Dumper($args));	
 	my $dir = $self->path_to_inc;
 	
-	my $start = epoch2iso(time() - (86400 * $self->api->conf->get('default_start_time_offset')));
+	my $start = epoch2iso(time() - (86400 * $self->controller->conf->get('default_start_time_offset')));
 	my $end = epoch2iso(time);
 	
 	my $HTML =<<"EOHTML"
@@ -153,14 +153,14 @@ sub query {
 	
 	if (exists $args->{start}){
 		$args->{start} = UnixDate(ParseDate(delete $args->{start}), '%s');
-		$self->api->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
+		$self->controller->log->trace('set start_time to ' . (scalar localtime($args->{start_time})));
 	}
 	else {
-		$args->{start} = (time() - (86400 * $self->api->conf->get('default_start_time_offset')));
+		$args->{start} = (time() - (86400 * $self->controller->conf->get('default_start_time_offset')));
 	}
 	if (exists $args->{end}){
 		$args->{end} = UnixDate(ParseDate(delete $args->{end}), '%s');
-		$self->api->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
+		$self->controller->log->trace('set end_time to ' . (scalar localtime($args->{end_time})));
 	}
 	else {
 		$args->{end} = time;
@@ -168,15 +168,15 @@ sub query {
 	
 	my $ret;
 	eval {
-		$self->api->freshen_db;
-		$ret = $self->api->query($args);
+		$self->controller->freshen_db;
+		$ret = $self->controller->query($args);
 		unless ($ret){
-			$ret = { error => $self->api->last_error };
+			$ret = { error => $self->controller->last_error };
 		}
 	};
 	if ($@){
 		my $e = $@;
-		$self->api->log->error($e);
+		$self->controller->log->error($e);
 	}
 		
 	my $HTML = <<"EOHTML"

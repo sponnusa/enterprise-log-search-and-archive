@@ -21,6 +21,7 @@ use IO::File;
 use Digest::MD5;
 use Time::HiRes;
 use File::Copy;
+use IO::Compress::Gzip qw(gzip $GzipError);
 
 use Indexer;
 use Reader;
@@ -142,13 +143,13 @@ if ($Opts{f}){
 	exit;
 }
 
-unless ($Opts{n}){
+unless ($Opts{n} or $Conf->{forwarding}->{forward_only}){
 	print "Validating directory...\n";
 	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 	$indexer->initial_validate_directory();
 }
 
-if ($Opts{l}){
+if ($Opts{l} and not $Conf->{forwarding}->{forward_only}){
 	print "Loading existing buffers\n";
 	my $indexer = new Indexer(log => $Log, conf => $Config_json, class_info => $Class_info);
 	$indexer->load_buffers();
@@ -260,7 +261,7 @@ sub _process_batch {
 	
 	# Reset the miss cache
 	$args->{cache_add} = {};
-	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . Time::HiRes::time();
+	my $tempfile_name = $Conf->{buffer_dir} . '/' . ($args->{offline_processing} ? 'import_' : '') . ($is_ops ? 'ops_' : '') . Time::HiRes::time();
 	
 #	my $tail_watcher = _fork_livetail_manager($tempfile_name) unless $Opts{o} or $args->{offline_processing};
 	
@@ -462,7 +463,7 @@ sub _forward {
 	
 	# Are we forwarding events?
 	if ($Conf->{forwarding}){
-		require Archive::Zip;
+#		require Archive::Zip;
 		my $pid = fork();
 		if ($pid){
 			# Parent
@@ -477,101 +478,82 @@ sub _forward {
 			$Dbh = _db_connect($Conf) or die 'connection failed ' . $! . ' ' . $DBI::errstr;
 			eval {
 				my $md5_start = time();
+				my @files_to_forward;
 				
-				# Calculate the MD5
-				my $md5 = new Digest::MD5;
-				my $tempfile = new IO::File($args->{file}) or die($!);
-				$md5->addfile($tempfile);
-				$args->{md5} = $md5->hexdigest;
-				close($tempfile);
-				my $md5_time_taken = time() - $md5_start;
-				$Log->trace('Calculated md5 ' . $args->{md5} . ' in ' . $md5_time_taken . ' seconds.');
+				$args->{compressed} = 1;
 				
 				# Write the new programs to a file
-				my ($program_fh, $program_filename);
 				if (scalar keys %{ $reader->to_add }){
+					my ($program_fh, $program_filename);
 					$program_filename = $Conf->{buffer_dir} . '/programs_' . time();
 					sysopen($program_fh, $program_filename, O_RDWR|O_CREAT);
 					foreach my $program (keys %{ $reader->to_add }){
 						$program_fh->print(join("\t", $reader->to_add->{$program}->{id}, $program) . "\n");
 					}
 					close($program_fh);
+					
+					gzip $program_filename => "$program_filename.gz" or die($GzipError);
+					push @files_to_forward, { file => "$program_filename.gz", program_file => "$program_filename.gz", original_file => $program_filename };
 				}
 				
-				$args->{compressed} = 1;
-				my $zip = Archive::Zip->new();
-				$args->{file} =~ /\/([^\/]+$)/;
-				my $shortfile = $1;
-				my $compressed_filename = $args->{file} . '.zip';
+				my $compressed_filename = $args->{file} . '.gz';
 				my $start = Time::HiRes::time();
-				$zip->addFile($args->{file}, $shortfile);
-				
-				if ($program_filename){
-					$program_filename =~ /\/([^\/]+$)/;
-					$shortfile = $1;
-					$zip->addFile($program_filename, $shortfile);
-				}
-				unless( $zip->writeToFileNamed($compressed_filename) == Archive::Zip::AZ_OK()){
-					die('Unable to create compressed file ' . $compressed_filename);
-				}
-				my $taken = Time::HiRes::time() - $start;
-				$args->{compression_time} = $taken;
-				my $new_size = -s $compressed_filename;
-				$Log->trace('Compressed file to ' . $compressed_filename . ' in ' . $taken . ' at a rate of ' 
-					. ($new_size/$taken) . ' bytes/sec and ratio of ' . (-s $args->{file} / $new_size)) if $taken;
-				my $original_file = $args->{file};
+				gzip $args->{file} => $compressed_filename or die($GzipError);
+				$Log->debug('file size for $compressed_filename ' . $compressed_filename . ': ' . (-s $compressed_filename));
+				$args->{original_file} = $args->{file};
 				$args->{file} = $compressed_filename;
+				push @files_to_forward, $args;
 				
-			
-				# Move the buffer file and new program file to remote location
-				my $forwarding_errors = 0;
-				foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
-					my $forwarder;
-					next if ($is_ops and not exists $dest_hash->{ops}) or (not $is_ops and exists $dest_hash->{ops});
-					my $package = $Forwarders{ $dest_hash->{method} };
-					if ($package){
-						$forwarder = $package->new(log => $Log, conf => $Config_json, %{ $dest_hash });
-					}
-					else {
-						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
-						next;
+				$Log->debug('files_to_forward: ' . Dumper(\@files_to_forward));
+				
+				foreach my $file_args (@files_to_forward){
+					$Log->debug('file size for compressed file ' . $file_args->{file} . ': ' . (-s $file_args->{file}));
+					# Calculate the MD5
+					my $md5 = new Digest::MD5;
+					my $check_fh = new IO::File($file_args->{file}) or die($file_args->{file} . ': ' . $!);
+					$md5->addfile($check_fh);
+					$file_args->{md5} = $md5->hexdigest;
+					close($check_fh);
+					my $md5_time_taken = time() - $md5_start;
+					$Log->trace('Calculated gz file md5 ' . $file_args->{md5} . ' in ' . $md5_time_taken . ' seconds.');
+					
+					my $original_file = delete $file_args->{original_file};
+					
+					# Move the buffer file and new program file to remote location
+					my $forwarding_errors = 0;
+					foreach my $dest_hash (@{ $Conf->{forwarding}->{destinations} }){	
+						my $forwarder;
+						$Log->debug('is ops: ' . $is_ops);
+						next if ($is_ops and not exists $dest_hash->{ops}) or (not $is_ops and exists $dest_hash->{ops});
+						my $package = $Forwarders{ $dest_hash->{method} };
+						if ($package){
+							$forwarder = $package->new(log => $Log, conf => $Config_json, %{ $dest_hash });
+						}
+						else {
+							$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
+							next;
+						}
+						my $ok = $forwarder->forward($file_args);
+						$Log->debug('ok: ' . $ok);
+						unless ($ok){
+							$forwarding_errors++;
+							$query = 'INSERT IGNORE INTO failed_buffers (hash, dest, args) VALUES (MD5(?),?,?)';
+							$sth = $Dbh->prepare($query);
+							$sth->execute(encode_json($file_args), encode_json($dest_hash), encode_json($file_args));
+						}
 					}
 					
-#					if ($dest_hash->{method} eq 'cp'){
-#						require Forwarder::Copy;
-#						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
-#					}
-#					elsif ($dest_hash->{method} eq 'scp'){
-#						require Forwarder::SSH;
-#						$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
-#					}
-#					elsif ($dest_hash->{method} eq 'url'){
-#						require Forwarder::URL;
-#						$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
-#					}
-#					else {
-#						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
-#					}
-					my $ok = $forwarder->forward($args);
-					unless ($ok){
-						$forwarding_errors++;
-						$query = 'INSERT IGNORE INTO failed_buffers (hash, dest, args) VALUES (MD5(?),?,?)';
-						$sth = $Dbh->prepare($query);
-						$sth->execute(encode_json($args), encode_json($dest_hash), encode_json($args));
+					if ($forwarding_errors){
+						#move($compressed_filename, $compressed_filename . '_FORWARDING_FAILED');
 					}
-				}
-				
-				if ($forwarding_errors){
-					#move($compressed_filename, $compressed_filename . '_FORWARDING_FAILED');
-				}
-				else {
-					# Delete our forward zip file
-					unlink($compressed_filename);	
-				}
-				unlink($program_filename) if $program_filename;
-				
-				if ($Conf->{forwarding}->{forward_only} or $is_ops){
-					unlink($original_file);
+					else {
+						# Delete our forward zip file
+						unlink($file_args->{file});	
+					}
+					
+					if ($file_args->{program_file} or $Conf->{forwarding}->{forward_only} or $is_ops){
+						unlink($original_file);
+					}
 				}
 			
 				# Retry any fails from this or any other session
@@ -602,19 +584,6 @@ sub _forward {
 							if ($matched == scalar @$identifiers){
 								$found = 1;
 							}
-#							if ($dest_hash->{method} eq 'cp' and $dest_hash->{dir} eq $config_dest_hash->{dir}){
-#								$found = 1;
-#								last;
-#							}
-#							elsif ($dest_hash->{method} eq 'scp' and $dest_hash->{dir} eq $config_dest_hash->{dir} 
-#									and $dest_hash->{host} eq $config_dest_hash->{host}){								
-#								$found = 1;
-#								last;
-#							}
-#							elsif ($dest_hash->{method} eq 'url' and $dest_hash->{url} eq $config_dest_hash->{url}){
-#								$found = 1;
-#								last;
-#							}
 						}
 					}
 					if (not $found){
@@ -634,21 +603,7 @@ sub _forward {
 						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
 						next;
 					}
-#					if ($dest_hash->{method} eq 'cp'){
-#						require Forwarder::Copy;
-#						$forwarder = new Forwarder::Copy(log => $Log, conf => $Config_json, dir => $dest_hash->{dir});
-#					}
-#					elsif ($dest_hash->{method} eq 'scp'){
-#						require Forwarder::SSH;
-#						$forwarder = new Forwarder::SSH(log => $Log, conf => $Config_json, %{ $dest_hash });
-#					}
-#					elsif ($dest_hash->{method} eq 'url'){
-#						require Forwarder::URL;
-#						$forwarder = new Forwarder::URL(log => $Log, conf => $Config_json, %{ $dest_hash });
-#					}
-#					else {
-#						$Log->error('Invalid or no forward method given, unable to forward logs, args: ' . Dumper($dest_hash));
-#					}
+
 					my $ok = $forwarder->forward($file_args);
 					if ($ok){
 						$query = 'DELETE FROM failed_buffers WHERE hash=?';

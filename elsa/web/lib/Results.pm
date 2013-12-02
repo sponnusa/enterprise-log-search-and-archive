@@ -18,6 +18,7 @@ has 'bulk_file' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', handles 
 has 'bulk_dir' => (is => 'rw', isa => 'Str', required => 1, default => $Bulk_dir);
 has 'json' => (is => 'rw', isa => 'JSON', required => 1, default => sub { return JSON->new->allow_nonref->allow_blessed->pretty(0) });
 has 'is_approximate' => (is => 'rw', isa => 'Int', required => 1, default => 0);
+has 'percentage_complete' => (is => 'rw', isa => 'Num', required => 1, default => 0);
 
 sub BUILDARGS {
 	my $class = shift;
@@ -34,10 +35,22 @@ sub TO_JSON {
 	my $self = shift;
 	return { 
 		results => $self->results, 
-		totalRecords => $self->total_records, 
+		totalRecords => $self->total_records > $self->total_docs ? $self->total_records : $self->total_docs, 
 		recordsReturned => $self->records_returned,
 		approximate => $self->is_approximate,
 	};
+}
+
+sub delete_record {
+	my $self = shift;
+	my $given_record = shift;
+	for (my $i = 0; $i < @{ $self->results }; $i++){
+		if ($self->results->[$i]->{id} eq $given_record->{id}){
+			splice(@{ $self->results }, $i, 1);
+			return 1;
+		}
+	}
+	return 0;
 }
 
 sub remove_transforms {
@@ -85,6 +98,7 @@ sub merge {
 	
 	# Increment our counters
 	$self->total_records( $self->total_records + $results_obj->total_records);
+	$self->total_docs( $self->total_docs + $results_obj->total_docs);
 	
 	# Add the actual results
 	foreach ($results_obj->all_results){
@@ -150,6 +164,69 @@ sub get_results {
 			$counter++;
 		}
 		return \@ret;
+	}
+}
+
+sub keys {
+	my $self = shift;
+	my $record = shift;
+	
+	my @keys;
+	foreach my $key (keys %$record){
+		next if ref($record->{$key});
+		push @keys, $key;
+	}
+	if (exists $record->{_fields} and ref($record->{_fields}) and ref($record->{_fields}) eq 'ARRAY'){
+		foreach my $field_hash (@{ $record->{_fields} }){
+			if (defined $field_hash->{field} and defined $field_hash->{value}){
+				push @keys, $field_hash->{field};
+			}
+		}
+	}
+	
+	return @keys;	
+}
+
+sub value {
+	my $self = shift;
+	my $record = shift;
+	my $key = shift;
+	my $value = shift;
+	
+	if (exists $record->{$key}){
+		if (defined $value){
+			$record->{$key} = $value;
+		}
+		return $record->{$key};
+	}
+	else {
+		foreach my $field_hash (@{ $record->{_fields} }){
+			if ($field_hash->{field} eq $key){
+				if (defined $value){
+					$field_hash->{value} = $value;
+				}
+				return $field_hash->{value};
+			}
+		}
+	}
+}
+
+sub delete_key {
+	my $self = shift;
+	my $record = shift;
+	my $key = shift;
+	
+	if (exists $record->{$key}){
+		delete $record->{$key};
+		return 1;
+	}
+	else {
+		for (my $i = 0; $i < @{ $record->{_fields} }; $i++){
+			if ($record->{_fields}->[$i]->{field} eq $key){
+				splice(@{ $record->{_fields} }, $i, 1);
+				return 1;
+			}
+		}
 	}
 }
 
@@ -236,6 +313,20 @@ sub records_returned {
 	return $count;
 }
 
+sub delete_record {
+	my $self = shift;
+	my $given_record = shift;
+	foreach my $groupby ($self->all_groupbys){
+		for (my $i = 0; $i < @{ $self->results->{$groupby} }; $i++){
+			if ($self->results->{$groupby}->[$i]->{_groupby} eq $given_record->{_groupby}){
+				splice(@{ $self->results->{$groupby} }, $i, 1);
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
 sub add_result {
 	my $self = shift;
 	my $groupby = shift;
@@ -271,6 +362,7 @@ sub merge {
 	
 	# Increment our counters
 	$self->total_records( $self->total_records + $results_obj->total_records);
+	$self->total_docs( $self->total_docs + $results_obj->total_docs);
 	
 	# Add the actual results
 	$self->add_results($results_obj->results);
@@ -280,13 +372,15 @@ sub merge {
 	my %results;
 	foreach my $groupby ($self->all_groupbys){
 		my %agg;
+		my %intvals;
 		foreach my $row (@{ $self->results->{$groupby} }){
 			$agg{ $row->{_groupby} } += $row->{_count};
+			$intvals{ $row->{_groupby} } = $row->{intval};
 		}
 		my @tmp;
 		foreach my $key (sort { $agg{$b} <=> $agg{$a} } keys %agg){
 			$total_records += $agg{$key};
-			push @tmp, { intval => $agg{$key}, '_groupby' => $key, '_count' => $agg{$key} };
+			push @tmp, { intval => $intvals{$key}, '_groupby' => $key, '_count' => $agg{$key} };
 			last if $q and scalar @tmp >= $q->limit;
 		}
 		$results{$groupby} = [ @tmp ];
@@ -308,7 +402,12 @@ sub all_results {
 			push @$ret, $_;
 		}
 	}
-	return $ret;
+	if (wantarray){
+		return @$ret;
+	}
+	else {
+		return $ret;
+	}
 }
 
 1;
