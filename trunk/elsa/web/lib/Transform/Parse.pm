@@ -33,19 +33,23 @@ sub BUILD {
 		$pattern->{pattern} =~ s/\\\\/\\/g;
 	}
 	
-	DATUM_LOOP: foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = {};
+	DATUM_LOOP: foreach my $record ($self->results->all_results){
+		$record->{transforms}->{$Name} = {};
 		
 		foreach my $pattern (@$patterns){
-			if (my @matches = $datum->{ $pattern->{field} } =~ qr/$pattern->{pattern}/){
+			if (my @matches = $self->results->value($record, $pattern->{field}) =~ qr/$pattern->{pattern}/){
 				for (my $i = 0; $i < @{ $pattern->{extractions} }; $i++){
-					$datum->{transforms}->{$Name}->{ $pattern->{field} }->{ $pattern->{extractions}->[$i] } = $matches[$i];
+					if (defined $matches[$i]){
+						$record->{transforms}->{$Name}->{ $pattern->{field} }->{ $pattern->{extractions}->[$i] } = $matches[$i];
+					}
 				}
 			}
 		}
 	}
 	
-	$self->log->debug('data: ' . Dumper($self->data));
+	$self->log->debug('results: ' . Dumper($self->results));
+	
+	$self->on_transform->($self->results);
 	
 	return $self;
 }
