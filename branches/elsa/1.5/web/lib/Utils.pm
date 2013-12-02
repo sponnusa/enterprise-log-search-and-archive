@@ -357,13 +357,13 @@ sub _get_info {
 			"JOIN %1\$s.classes t3 ON (t2.class_id=t3.id)\n", $db->{db});
 		$cv->begin;
 		$self->log->trace($query);
+		my @fields;
 		$db->{dbh}->query($query, sub {
 			my ($dbh, $rows, $rv) = @_;
 			
 			if ($rv and $rows){
-				$ret->{fields} = [];
 				foreach my $row (@$rows){
-					push @{ $ret->{fields} }, {
+					push @fields, {
 						fqdn_field => $row->{fqdn_field},
 						class => $row->{class}, 
 						value => $row->{field}, 
@@ -447,7 +447,7 @@ sub _get_info {
 		}
 		
 		# Find unique fields
-		FIELD_LOOP: foreach my $field_hash (@{ $ret->{fields} }){
+		FIELD_LOOP: foreach my $field_hash (@fields){
 			next if $excluded_classes->{ $field_hash->{class_id} };
 			foreach my $already_have_hash (@{ $ret->{fields} }){
 				if ($field_hash->{fqdn_field} eq $already_have_hash->{fqdn_field}){
