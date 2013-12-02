@@ -43,6 +43,7 @@ CREATE TABLE query_log (
 	num_results int,
 	milliseconds int UNSIGNED,
 	archive BOOLEAN NOT NULL DEFAULT 0,
+	pid SMALLINT UNSIGNED,
 	FOREIGN KEY (uid) REFERENCES users (uid) ON UPDATE CASCADE,
 	KEY (timestamp),
 	KEY (archive)

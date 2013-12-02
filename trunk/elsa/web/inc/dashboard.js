@@ -595,7 +595,7 @@ YAHOO.ELSA.Dashboard.prototype.moveChart = function(p_oEvent, p_a){
 			return;
 		}
 		
-		oSelf.rows = p_oReturn;
+		oSelf.rows = p_oReturn.rows;
 		oSelf.redraw();
 		
 //		if (p_sDirection == 'left'){

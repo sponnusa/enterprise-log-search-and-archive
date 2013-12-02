@@ -11,7 +11,8 @@ use Search::QueryParser::SQL;
 use Date::Manip;
 use Socket;
 use Try::Tiny;
-use Ouch qw(:trytiny);;
+use Ouch qw(:trytiny);
+use AnyEvent;
 extends 'Datasource';
 with 'Fields';
 
@@ -29,6 +30,7 @@ has 'timestamp_column' => (is => 'rw', isa => 'Str');
 has 'timestamp_is_int' => (is => 'rw', isa => 'Bool', required => 1, default => 0);
 has 'query_object' => (is => 'rw', isa => 'Object');
 has 'gmt_offset' => (is => 'rw', isa => 'Int');
+has 'window_offset' => (is => 'rw', isa => 'Int');
 
 our %Numeric_types = ( int => 1, ip_int => 1, float => 1 );
 our %Mixed_types = ( proto => 1 );
@@ -102,8 +104,8 @@ sub BUILD {
 		else {
 		 	$cols{$field} = { name => $field, callback => sub { 
 		 		my ($col, $op, $val) = @_;
-		 		$self->query_object->set_directive($col, $val, $op);
 		 		$self->log->debug('set_directive: ' . join(',', $col, $op, $val));
+		 		$self->query_object->set_directive($col, $val, $op);
 		 		return undef;
 		 		}
 	 		};
@@ -120,7 +122,11 @@ sub BUILD {
 sub _query {
 	my $self = shift;
 	my $q = shift;
+	my $cb = shift;
 	$self->query_object($q);
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub { $cb->() });
 	
 	my ($query, $sth);
 	
@@ -167,7 +173,7 @@ sub _query {
 		}
 	};
 	
-	if ($q->has_groupby){
+	if ($q->groupby){
 		# Check to see if there is a numeric count field
 		my $count_field;
 		foreach my $field (@{ $self->fields }){
@@ -176,31 +182,31 @@ sub _query {
 			}
 		}
 		
-		if ($self->timestamp_is_int and $time_select_conversions->{int}->{ $q->groupby->[0] }){
+		if ($self->timestamp_is_int and $time_select_conversions->{int}->{ $q->groupby }){
 			if ($count_field){
-				push @select, 'SUM(' . $count_field . ') AS `_count`', $time_select_conversions->{int}->{ $q->groupby->[0] } . ' AS `_groupby`';
+				push @select, 'SUM(' . $count_field . ') AS `_count`', $time_select_conversions->{int}->{ $q->groupby } . ' AS `_groupby`';
 			}
 			else {
-				push @select, 'COUNT(*) AS `_count`', $time_select_conversions->{int}->{ $q->groupby->[0] } . ' AS `_groupby`';
+				push @select, 'COUNT(*) AS `_count`', $time_select_conversions->{int}->{ $q->groupby } . ' AS `_groupby`';
 			}
 			$groupby = 'GROUP BY _groupby';
 		}
-		elsif ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
+		elsif ($time_select_conversions->{iso}->{ $q->groupby }){
 			if ($count_field){
-				push @select, 'SUM(' . $count_field . ') AS `_count`', $time_select_conversions->{iso}->{ $q->groupby->[0] } . ' AS `_groupby`';
+				push @select, 'SUM(' . $count_field . ') AS `_count`', $time_select_conversions->{iso}->{ $q->groupby } . ' AS `_groupby`';
 			}
 			else {
-				push @select, 'COUNT(*) AS `_count`', $time_select_conversions->{iso}->{ $q->groupby->[0] } . ' AS `_groupby`';
+				push @select, 'COUNT(*) AS `_count`', $time_select_conversions->{iso}->{ $q->groupby } . ' AS `_groupby`';
 			}
 			$groupby = 'GROUP BY _groupby';
 		}
-		elsif ($q->groupby->[0] eq 'node'){
+		elsif ($q->groupby eq 'node'){
 			#TODO Need to break this query into subqueries if grouped by node
 			throw(501, 'not supported', { directive => 'groupby' });
 		}
 		else {
 			foreach my $field (@{ $self->fields }){
-				if ($field->{alias} eq $q->groupby->[0] or $field->{name} eq $q->groupby->[0]){
+				if ($field->{alias} eq $q->groupby or $field->{name} eq $q->groupby){
 					if ($count_field){
 						push @select, 'SUM(' . $count_field . ') AS _count', $field->{name} . ' AS _groupby';
 					}
@@ -212,7 +218,7 @@ sub _query {
 							push @select, 'COUNT(*) AS _count', $field->{name} . ' AS _groupby';
 						}
 					}
-					$groupby = 'GROUP BY ' . join(',', @{ $q->groupby });
+					$groupby = 'GROUP BY ' . $q->groupby;
 					last;
 				}
 			}
@@ -236,28 +242,30 @@ sub _query {
 		$end = epoch2iso($q->end);
 	}
 	
-	if ($q->has_groupby and $time_select_conversions->{iso}->{ $q->groupby->[0] }){
-		foreach my $row (@{ $self->fields }){
-			if ($row->{alias}){
-				if ($row->{alias} eq 'timestamp'){
-					if ($where and $where ne ' '){
-						$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+	if ($q->groupby){
+		if ($time_select_conversions->{iso}->{ $q->groupby }){
+			foreach my $row (@{ $self->fields }){
+				if ($row->{alias}){
+					if ($row->{alias} eq 'timestamp'){
+						if ($where and $where ne ' '){
+							$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+						}
+						else {
+							$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+						}
+						push @$placeholders, $start, $end;
+						last;
 					}
-					else {
-						$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+					elsif ($row->{alias} eq 'timestamp_int'){
+						if ($where and $where ne ' '){
+							$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+						}
+						else {
+							$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
+						}
+						push @$placeholders, $start_int, $end_int;
+						last;
 					}
-					push @$placeholders, $start, $end;
-					last;
-				}
-				elsif ($row->{alias} eq 'timestamp_int'){
-					if ($where and $where ne ' '){
-						$where = '(' . $where . ') AND ' . $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-					}
-					else {
-						$where = $row->{name} . '>=? AND ' . $row->{name} . '<=? ';
-					}
-					push @$placeholders, $start_int, $end_int;
-					last;
 				}
 			}
 		}
@@ -297,8 +305,8 @@ sub _query {
 	}
 
 	my $orderby;
-	if ($q->has_groupby){
-		if ($time_select_conversions->{iso}->{ $q->groupby->[0] }){
+	if ($q->groupby){
+		if ($time_select_conversions->{iso}->{ $q->groupby }){
 			$orderby = '_groupby ASC';
 		}
 		else {
@@ -324,113 +332,113 @@ sub _query {
 		$self->log->debug('row: ' . Dumper($row));
 		push @rows, $row;
 	}
-	if ($q->has_groupby){
+	if ($q->groupby){
 		my %results;
 		my $total_records = 0;
 		my $records_returned = 0;
 		my @tmp;
-		foreach my $groupby ($q->all_groupbys){
-			if (exists $Fields::Time_values->{ $groupby }){
-				# Sort these in ascending label order
-				my $increment = $Fields::Time_values->{ $groupby };
-				my $use_gmt = $increment >= 86400 ? 1 : 0;
-				my %agg; 
-				foreach my $row (@rows){
-					my $unixtime = $row->{_groupby};
-					my $value = $unixtime * $increment;
-										
-					$self->log->trace('$value: ' . epoch2iso($value, 1) . ', increment: ' . $increment . 
-						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($value)));
-					$row->{intval} = $value;
-					$agg{ $row->{intval} } += $row->{_count};
-				}
-				
-				foreach my $key (sort { $a <=> $b } keys %agg){
-					push @tmp, { 
-						intval => $key, 
-						_groupby => epoch2iso($key, $use_gmt), 
-						_count => $agg{$key}
-					};
-				}	
-				
-				# Fill in zeroes for missing data so the graph looks right
-				my @zero_filled;
-				
-				$self->log->trace('using increment ' . $increment . ' for time value ' . $groupby);
-				OUTER: for (my $i = 0; $i < @tmp; $i++){
-					push @zero_filled, $tmp[$i];
-					if (exists $tmp[$i+1]){
-						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
-							#$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
-							push @zero_filled, { 
-								_groupby => epoch2iso($j, $use_gmt),
-								intval => $j,
-								_count => 0
-							};
-							last OUTER if scalar @zero_filled > $q->limit;
-						}
+		
+		if (exists $Fields::Time_values->{ $q->groupby }){
+			# Sort these in ascending label order
+			my $increment = $Fields::Time_values->{ $q->groupby };
+			my $use_gmt = $increment >= 86400 ? 1 : 0;
+			my %agg; 
+			foreach my $row (@rows){
+				my $unixtime = $row->{_groupby};
+				my $value = $unixtime * $increment;
+									
+				$self->log->trace('$value: ' . epoch2iso($value, 1) . ', increment: ' . $increment . 
+					', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($value)));
+				$row->{intval} = $value;
+				$agg{ $row->{intval} } += $row->{_count};
+			}
+			
+			foreach my $key (sort { $a <=> $b } keys %agg){
+				push @tmp, { 
+					intval => $key, 
+					_groupby => epoch2iso($key, $use_gmt), 
+					_count => $agg{$key}
+				};
+			}	
+			
+			# Fill in zeroes for missing data so the graph looks right
+			my @zero_filled;
+			
+			$self->log->trace('using increment ' . $increment . ' for time value ' . $q->groupby);
+			OUTER: for (my $i = 0; $i < @tmp; $i++){
+				push @zero_filled, $tmp[$i];
+				if (exists $tmp[$i+1]){
+					for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
+						#$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
+						push @zero_filled, { 
+							_groupby => epoch2iso($j, $use_gmt),
+							intval => $j,
+							_count => 0
+						};
+						last OUTER if scalar @zero_filled > $q->limit;
 					}
 				}
-				$results{$groupby} = [ @zero_filled ];
 			}
-			elsif (UnixDate($rows[0]->{_groupby}, '%s') > UnixDate('2000-01-01 00:00:00', '%s') 
-				and UnixDate($rows[0]->{_groupby}, '%s') < UnixDate('2020-01-01 00:00:00', '%s')){
-				# Sort these in ascending label order
-				my $increment = 86400 * 30;
-				my $use_gmt = $increment >= 86400 ? 1 : 0;
-				my %agg; 
-				foreach my $row (@rows){
-					my $unixtime = UnixDate($row->{_groupby}, '%s');
-					my $value = $unixtime - ($unixtime % $increment);
-										
-					$self->log->trace('key: ' . epoch2iso($value, $use_gmt) . ', tv: ' . $increment . 
-						', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($value)));
-					$row->{intval} = $value;
-					$agg{ $row->{intval} } += $row->{_count};
-				}
-				
-				foreach my $key (sort { $a <=> $b } keys %agg){
-					push @tmp, { 
-						intval => $key, 
-						_groupby => epoch2iso($key, 1), #$self->resolve_value(0, $key, $groupby), 
-						_count => $agg{$key}
-					};
-				}	
-				
-				# Fill in zeroes for missing data so the graph looks right
-				my @zero_filled;
-				
-				$self->log->trace('using increment ' . $increment . ' for time value ' . $groupby);
-				OUTER: for (my $i = 0; $i < @tmp; $i++){
-					push @zero_filled, $tmp[$i];
-					if (exists $tmp[$i+1]){
-						$self->log->debug('$tmp[$i]->{intval} ' . $tmp[$i]->{intval});
-						$self->log->debug('$tmp[$i+1]->{intval} ' . $tmp[$i+1]->{intval});
-						for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
-							$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
-							push @zero_filled, { 
-								_groupby => epoch2iso($j, 1),
-								intval => $j,
-								_count => 0
-							};
-							last OUTER if scalar @zero_filled > $q->limit;
-						}
-					}
-				}
-				$results{$groupby} = [ @zero_filled ];
-			}
-			else { 
-				# Sort these in descending value order
-				foreach my $row (sort { $b->{_count} <=> $a->{_count} } @rows){
-					$total_records += $row->{_count};
-					$row->{intval} = $row->{_count};
-					push @tmp, $row;
-					last if scalar @tmp > $q->limit;
-				}
-				$results{$groupby} = [ @tmp ];
-			}
-			$records_returned += scalar @tmp;
+			$results{$q->groupby} = [ @zero_filled ];
 		}
+		elsif (UnixDate($rows[0]->{_groupby}, '%s') > UnixDate('2000-01-01 00:00:00', '%s') 
+			and UnixDate($rows[0]->{_groupby}, '%s') < UnixDate('2020-01-01 00:00:00', '%s')){
+			# Sort these in ascending label order
+			my $increment = 86400 * 30;
+			my $use_gmt = $increment >= 86400 ? 1 : 0;
+			my %agg; 
+			foreach my $row (@rows){
+				my $unixtime = UnixDate($row->{_groupby}, '%s');
+				my $value = $unixtime - ($unixtime % $increment);
+									
+				$self->log->trace('key: ' . epoch2iso($value, $use_gmt) . ', tv: ' . $increment . 
+					', unixtime: ' . $unixtime . ', localtime: ' . (scalar localtime($value)));
+				$row->{intval} = $value;
+				$agg{ $row->{intval} } += $row->{_count};
+			}
+			
+			foreach my $key (sort { $a <=> $b } keys %agg){
+				push @tmp, { 
+					intval => $key, 
+					_groupby => epoch2iso($key, 1), #$self->resolve_value(0, $key, $groupby), 
+					_count => $agg{$key}
+				};
+			}	
+			
+			# Fill in zeroes for missing data so the graph looks right
+			my @zero_filled;
+			
+			$self->log->trace('using increment ' . $increment . ' for time value ' . $q->groupby);
+			OUTER: for (my $i = 0; $i < @tmp; $i++){
+				push @zero_filled, $tmp[$i];
+				if (exists $tmp[$i+1]){
+					$self->log->debug('$tmp[$i]->{intval} ' . $tmp[$i]->{intval});
+					$self->log->debug('$tmp[$i+1]->{intval} ' . $tmp[$i+1]->{intval});
+					for (my $j = $tmp[$i]->{intval} + $increment; $j < $tmp[$i+1]->{intval}; $j += $increment){
+						$self->log->trace('i: ' . $tmp[$i]->{intval} . ', j: ' . ($tmp[$i]->{intval} + $increment) . ', next: ' . $tmp[$i+1]->{intval});
+						push @zero_filled, { 
+							_groupby => epoch2iso($j, 1),
+							intval => $j,
+							_count => 0
+						};
+						last OUTER if scalar @zero_filled > $q->limit;
+					}
+				}
+			}
+			$results{$q->groupby} = [ @zero_filled ];
+		}
+		else { 
+			# Sort these in descending value order
+			foreach my $row (sort { $b->{_count} <=> $a->{_count} } @rows){
+				$total_records += $row->{_count};
+				$row->{intval} = $row->{_count};
+				push @tmp, $row;
+				last if scalar @tmp > $q->limit;
+			}
+			$results{$q->groupby} = [ @tmp ];
+		}
+		$records_returned += scalar @tmp;
+		
 		if (ref($q->results) eq 'Results::Groupby'){
 			$q->results->add_results(\%results);
 		}
@@ -467,7 +475,7 @@ sub _query {
 			}
 			$ret->{msg} = join(' ', @msg);
 			$q->results->add_result($ret);
-			last if scalar $q->results->total_records >= $q->limit;
+			last if $q->limit and scalar $q->results->total_records >= $q->limit;
 		}
 	}
 			
@@ -476,7 +484,7 @@ sub _query {
 	$self->log->debug('completed query in ' . $q->time_taken . ' with ' . $q->results->total_records . ' rows');
 	$self->log->debug('results: ' . Dumper($q->results));
 	
-	return 1;
+	$cv->end;
 }
 
  

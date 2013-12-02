@@ -889,15 +889,5 @@ YAHOO.ELSA.main = function () {
 	YAHOO.ELSA.tabView.subscribe('activeTabChange', setActiveQuery);
 	
 	YAHOO.util.Event.addListener('query_submit', 'click', submitQuery);
-	
-	// Check for query_string given in URI
-	oRegExp = new RegExp('\\Wquery_string=([^&]+)');
-	oMatches = oRegExp.exec(location.search);
-	if (oMatches){
-		var oGivenQueryString = decodeURIComponent(oMatches[1]);
-		YAHOO.util.Dom.get('q').value = oGivenQueryString;
-		YAHOO.ELSA.currentQuery.queryString = oGivenQueryString;
-		submitQuery();
-	}
 };
 

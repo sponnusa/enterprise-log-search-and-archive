@@ -20,14 +20,15 @@ sub BUILDARGS {
 sub BUILD {
 	my $self = shift;
 	
-	DATUM_LOOP: foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = {};
-		KEY_LOOP: foreach my $key (keys %$datum){
+	DATUM_LOOP: foreach my $record ($self->results->all_results){
+		$record->{transforms}->{$Name} = {};
+		KEY_LOOP: foreach my $key ($self->results->keys($record)){
 			next if $key eq 'host';
-			if (my @matches = $datum->{$key} =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g){
+			my $value = $self->results->value($record, $key);
+			if (my @matches = $value =~ /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g){
 				foreach my $ip (@matches){
 					if ($self->_is_local($ip)){
-						$datum->{transforms}->{$Name}->{$key}->{local} = $ip;
+						$record->{transforms}->{$Name}->{$key}->{local} = $ip;
 						next KEY_LOOP;
 					}
 				}
@@ -35,7 +36,9 @@ sub BUILD {
 		}
 	}
 	
-	$self->log->debug('data: ' . Dumper($self->data));
+	$self->log->debug('results: ' . Dumper($self->results));
+	
+	$self->on_transform->($self->results);
 	
 	return $self;
 }

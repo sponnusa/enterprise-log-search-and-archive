@@ -22,37 +22,41 @@ sub BUILD {
 		$cc_only = 1;
 	}
 	
-	foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = {};
-		
-		foreach my $key (keys %{ $datum }){
-			if ($datum->{$key} =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
+	foreach my $record ($self->results->all_results){
+		$record->{transforms}->{$Name} = {};
+		foreach my $key ($self->results->keys($record)){
+			my $value = $self->results->value($record, $key);
+			if ($key eq 'hostname'){
+				$record->{transforms}->{$Name}->{$key} = $geoip->record_by_name($value);
+			}
+			elsif ($value =~ /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/){
 				if ($cc_only){
-					my $record = $geoip->country_code_by_addr($datum->{$key});
-					next unless $record;
-					$datum->{transforms}->{$Name}->{$key} = {
-						cc => $record
+					my $cc = $geoip->country_code_by_addr($value);
+					next unless $cc;
+					$record->{transforms}->{$Name}->{$key} = {
+						cc => $cc
 					}
 				}
 				else {
-					my $record = $geoip->record_by_addr($datum->{$key});
-					next unless $record;
-					$datum->{transforms}->{$Name}->{$key} = {
-						cc => $record->country_code,
-						latitude => $record->latitude,
-						longitude => $record->longitude,
-						state => $record->region,
-						city => $record->city,
+					my $geo_rec = $geoip->record_by_addr($value);
+					next unless $geo_rec;
+					$record->{transforms}->{$Name}->{$key} = {
+						cc => $geo_rec->country_code,
+						latitude => $geo_rec->latitude,
+						longitude => $geo_rec->longitude,
+						state => $geo_rec->region,
+						city => $geo_rec->city,
+						country => $geo_rec->country_name,
+					};
+					foreach my $rec_key (keys %{ $record->{transforms}->{$Name}->{$key} }){
+						delete $record->{transforms}->{$Name}->{$key}->{$rec_key} unless defined $record->{transforms}->{$Name}->{$key}->{$rec_key};
 					}
 				}
 			}
 		}
-		foreach my $key (keys %{ $datum }){
-			if ($key eq 'hostname'){
-				$datum->{transforms}->{$Name}->{$key} = $geoip->record_by_name($datum->{$key});
-			}
-		}
 	}
+	
+	$self->on_transform->($self->results);
 	
 	return $self;
 }

@@ -327,8 +327,12 @@ sub initial_validate_directory {
 	my @files;
 	while (my $short_file = readdir(DIR)){
 		my $file = $self->conf->get('buffer_dir') . '/' . $short_file;
-		#next if $file =~ /\./;
-		next if $file =~ /host_stats.tsv/ or $file =~ /\.zip$/;
+		if ($short_file =~ /ops\_/){
+			$self->log->info('Deleting stale ops log ' . $file);
+			unlink $file;
+			next;
+		}
+		next if $short_file =~ /host_stats.tsv/ or $short_file =~ /\.zip$/;
 		# Strip any double slashes
 		$file =~ s/\/{2,}/\//g;
 		push @files, $file;
@@ -593,10 +597,11 @@ sub _oversize_log_rotate {
 	my ($query, $sth);
 	my $log_size_limit = $self->conf->get('log_size_limit');
 	if ($log_size_limit =~ /(\d+)([%GMT])$/){
+		$log_size_limit = $1;
 		if( $2 eq '%' ) {
 			my $limit_percent = $1;
 			my ($total, $available, $percentage_used) = $self->_current_disk_space_available();
-			$self->log->trace('Total disk space used: ' . $total);
+			$self->log->trace('Total disk space: ' . $total);
 			$log_size_limit = $total * .01 * $limit_percent;
 		} 
 		elsif( $2 eq 'T' ) {
@@ -934,7 +939,7 @@ sub load_buffers {
 	$sth->execute();
 	my @pids;
 	while (my $row = $sth->fetchrow_hashref){
-		next if $row->{pid} eq $$ or not $row->{pid};
+		next if not $row->{pid} or $row->{pid} eq $$;
 		push @pids, $row->{pid};
 	}
 	if (scalar @pids > 0){
@@ -958,7 +963,7 @@ sub load_buffers {
 	$sth->execute();
 	@pids = ();
 	while (my $row = $sth->fetchrow_hashref){
-		next if $row->{pid} eq $$ or not $row->{pid};
+		next if not $row->{pid} or $row->{pid} eq $$;
 		push @pids, $row->{pid};
 	}
 	if (scalar @pids > 1){
@@ -1310,8 +1315,6 @@ sub load_records {
 	my $full_table = $self->_create_table($args);
 	my ($db, $table) = split(/\./, $full_table);
 	
-	
-	
 	# Update the database to show that this child is working on it
 	$query = 'UPDATE buffers SET pid=? WHERE filename=?';
 	$sth = $self->db->prepare($query);
@@ -1325,7 +1328,7 @@ sub load_records {
 	
 	my $load_start = time();
 	# CONCURRRENT allows the table to be open for reading whilst the LOAD DATA occurs so that queries won't stack up
-	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE %s ' .
+	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE %s FIELDS ESCAPED BY \'\' ' .
 		'(id, @timevar, host_id, program_id, class_id, msg, i0, i1, i2, i3, i4, i5, s0, s1, s2, s3, s4, s5) ' .
 		'SET timestamp = IF(@timevar > 10000, @timevar, UNIX_TIMESTAMP(@timevar))', $full_table);
 	$sth = $self->db->prepare($query);
@@ -1336,6 +1339,7 @@ sub load_records {
 		$query = 'DELETE FROM buffers WHERE filename=?';
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{file});
+		unlink($args->{file});
 		return 0;
 	}
 	my $load_time = time() - $load_start;
@@ -1448,7 +1452,7 @@ sub archive_records {
 	}
 	
 	my $load_start = time();
-	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE %s', $full_table);
+	$query = sprintf('LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE %s FIELDS ESCAPED BY \'\'', $full_table);
 	$sth = $self->db->prepare($query);
 	$sth->execute($args->{file});
 	my $records = $sth->rows();
@@ -2775,7 +2779,9 @@ sub add_programs {
 
 sub record_host_stats {
 	my $self = shift;
-	#my $index = shift;
+	
+	return if $self->conf->get('stats/external');
+	
 	my $overall_start = Time::HiRes::time();
 		
 	my ($query, $sth);
@@ -2840,11 +2846,30 @@ sub record_host_stats {
 	}
 	close(TSV);
 	
-	$query = 'LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE host_stats';
+	$query = 'LOAD DATA CONCURRENT LOCAL INFILE ? INTO TABLE host_stats FIELDS ESCAPED BY \'\'';
 	$sth = $self->db->prepare($query);
 	$sth->execute($load_file);
 	
 	$self->log->trace("Finished in " . (Time::HiRes::time() - $overall_start) . " with $total records counted");
+}
+
+sub _aggregate_stats {
+	my $self = shift;
+	
+	my ($query, $sth);
+	
+	my @time_units = (
+		[3600, 60], #hour
+		[86400, 3600], #day
+		[604800, 86400], #week
+		[2592000, 604800], #month
+		[7776000,2592000], #quarter
+		[31536000, 7776000] #year
+	);
+	
+	$query = 'INSERT INTO host_stats SELECT host_id, class_id, SUM(count), (timestamp - (timestamp % 60)) AS timestamp ' .
+		'FROM host_stats WHERE timestamp > ((timestamp - (timestamp % 60)) - ((2*?)-?))';
+	
 }
 
 sub _current_disk_space_available {

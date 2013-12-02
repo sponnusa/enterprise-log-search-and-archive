@@ -19,60 +19,38 @@ sub BUILDARGS {
 
 sub BUILD {
 	my $self = shift;
-	$self->log->trace('data: ' . Dumper($self->data));
 	
 	my $sums = {};
-	foreach my $datum (@{ $self->data }){
-		foreach my $transform (keys %{ $datum->{transforms} }){
-			next unless ref($datum->{transforms}->{$transform}) eq 'HASH';
-			foreach my $transform_field (keys %{ $datum->{transforms}->{$transform} }){
-				if (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
-					if (exists $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }){
-						if (ref($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }) eq 'ARRAY'){
-							foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }){
-#								if ($value =~ /^\d+$/){
-#									$sums->{ $value } += $value;
-#								}
-#								else {
-#									$sums->{ $value } += $datum->{'count'};
-#								}
+	foreach my $record ($self->results->all_results){
+		foreach my $transform (keys %{ $record->{transforms} }){
+			next unless ref($record->{transforms}->{$transform}) eq 'HASH';
+			foreach my $transform_field (keys %{ $record->{transforms}->{$transform} }){
+				if (ref($record->{transforms}->{$transform}->{$transform_field}) eq 'HASH'){
+					if (exists $record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }){
+						if (ref($record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby }) eq 'ARRAY'){
+							foreach my $value (@{ $record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }){
 								$sums->{ $value }++;
 							}
 						}
 						else {
-#							if ($datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } =~ /^\d+$/){
-#								$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } } += 
-#									$datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby };
-#							}
-#							else {
-#								$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } } += $datum->{count};
-#							}
-							$sums->{ $datum->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }++;
+							$sums->{ $record->{transforms}->{$transform}->{$transform_field}->{ $self->groupby } }++;
 						}
 					}
 				}
-				elsif (ref($datum->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY' 
+				elsif (ref($record->{transforms}->{$transform}->{$transform_field}) eq 'ARRAY' 
 					and $transform_field eq $self->groupby){
-					foreach my $value (@{ $datum->{transforms}->{$transform}->{$transform_field} }){
-#						if ($value =~ /^\d+$/){
-#							$sums->{ $value } += $value;
-#						}
-#						else {
-#							$sums->{ $value } += $datum->{'count'};
-#						}
+					foreach my $value (@{ $record->{transforms}->{$transform}->{$transform_field} }){
 						$sums->{ $value }++;
 					}
 				}
 			}
 		}
-		if (exists $datum->{ $self->groupby } ){
-			if ($datum->{ $self->groupby } =~ /^\d+$/){
-				#$sums->{ $self->groupby } += $datum->{ $self->groupby };
+		if (defined $self->results->value($record, $self->groupby)){
+			if ($self->results->value($record, $self->groupby) =~ /^\d+$/){
 				$sums->{ $self->groupby }++;
 			}
 			else {
-				#$sums->{ $datum->{ $self->groupby } } += $datum->{'count'};
-				$sums->{ $datum->{ $self->groupby } }++;
+				$sums->{ $self->results->value($record, $self->groupby) }++;
 			}
 		}
 	}
@@ -82,11 +60,7 @@ sub BUILD {
 		push @$ret, { _groupby => $key, intval => $sums->{$key}, _count => $sums->{$key} };
 	}
 	
-	# Sort
-	$ret = [ sort { $b->{intval} <=> $a->{intval} } @$ret ];
-	
-	$self->data($ret);
-	$self->log->debug('data: ' . Dumper($self->data));
+	$self->on_transform->(Results::Groupby->new(results => { $self->groupby => [ sort { $b->{intval} <=> $a->{intval} } @$ret ] }));
 	
 	return $self;
 }

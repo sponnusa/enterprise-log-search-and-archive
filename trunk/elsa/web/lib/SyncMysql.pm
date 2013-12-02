@@ -15,7 +15,7 @@ our $Max_values = 4096;
 sub BUILD {
 	my $self = shift;
 	# Validate connection
-	DBI->connect(@{$self->db_args}) or die('cannot connect to ' . $self->db_args->[0]);
+	DBI->connect(@{$self->db_args}) or die('cannot connect to ' . $self->db_args->[0] . ': ' . $DBI::errstr);
 	
 	return $self;
 }
@@ -129,6 +129,8 @@ sub sphinx {
 	}
 		
 	my $dbh;
+	my @rows;
+	my %meta;
 		
 	eval {
 		$dbh = DBI->connect(@{$self->db_args}) or die($DBI::errstr);
@@ -137,8 +139,6 @@ sub sphinx {
 				
 		my $sth = $dbh->prepare($query, { async => 1 });
 		$sth->execute(@values);
-		my @rows;
-		my %meta;
 		do {
 			while ($sth and my $row = $sth->fetchrow_hashref){
 				# Is this a meta block row?
@@ -161,7 +161,7 @@ sub sphinx {
 			die($meta{warning});
 		}
 		elsif($sth and $dbh) {
-			$cb->(1, { rows => \@rows, meta => \%meta }, 1);
+			# ok
 		}
 		else {
 			# no warning and no sth/dbh, something went wrong, the error message will be visible in one of the other scopes
@@ -170,7 +170,7 @@ sub sphinx {
 	if ($@){
 		$self->log->error('Got sphinx error ' . $@);
 		undef $dbh;
-		if ($@ =~ /max_query_time/ or $@ =~ /syntax/){
+		if ($@ =~ /max_query_time/ or $@ =~ /syntax/ or $@ =~ /query error/ or $@ =~ /query words mismatch/){
 			# Fatal
 			$self->log->warn('not retrying query due to type of error');
 		}
@@ -189,9 +189,12 @@ sub sphinx {
 		my $errstr = $attempts > 1 ? 'Unable to make query after ' . $attempts . ' attempts, last error: ' . $@ : $@;
 		$self->log->error($errstr);
 		#$cb->(undef, $@, 0);
-		$cb->(1, { rows => [], meta => { warning => $errstr } }, 1);
+		#$cb->(1, { rows => [], meta => { warning => $errstr } }, 1);
+		$cb->(undef, $errstr, 0);
 		return;
 	}
+	
+	$cb->(1, { rows => \@rows, meta => \%meta }, 1);
 }
 
 1;

@@ -1,5 +1,6 @@
 package StatsWriter;
 use Moose::Role;
+use Module::Pluggable sub_name => 'stats_plugins', require => 1, search_path => [ qw(Stats) ], package => 'Controller';
 
 has 'stat_objects' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] });
 
@@ -8,6 +9,8 @@ after BUILD => sub {
 	
 	my $absolute_path = $INC{'StatsWriter.pm'};
 	$absolute_path =~ s/StatsWriter\.pm$/\/StatsWriter/;
+	warn 'absolute_path: ' . $absolute_path;
+	return $self unless -d $absolute_path;
 	opendir(DIR, $absolute_path);
 	while (my $file = readdir(DIR)){
 		next unless $file =~ /\.pm$/;

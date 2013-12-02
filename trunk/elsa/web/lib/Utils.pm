@@ -20,7 +20,7 @@ use Try::Tiny;
 use Ouch qw(:trytiny);;
 use Exporter qw(import);
 
-our @EXPORT = qw(catch_any);
+our @EXPORT = qw(catch_any epoch2iso);
 
 use CustomLog;
 use Results;
@@ -35,12 +35,16 @@ has 'db' => (is => 'rw', isa => 'Object', required => 1);
 has 'json' => (is => 'ro', isa => 'JSON', required => 1);
 #has 'bulk_dir' => (is => 'rw', isa => 'Str', required => 1, default => $Bulk_dir);
 has 'db_timeout' => (is => 'rw', isa => 'Int', required => 1, default => $Db_timeout);
+has 'meta_info' => (is => 'rw', isa => 'HashRef');
 
 around BUILDARGS => sub {
 	my $orig = shift;
 	my $class = shift;
 	my %params = @_;
-		
+	
+	unless (exists $params{config_file} or exists $params{conf}){
+		$params{config_file} = '/etc/elsa_web.conf';
+	}
 	if ($params{config_file}){
 		$params{conf} = new Config::JSON ( $params{config_file} ) or die("Unable to open config file");
 	}		
@@ -101,7 +105,7 @@ around BUILDARGS => sub {
 		$Db_timeout = $params{conf}->get('db/timeout');
 	}
 	
-	$params{db} = DBI->connect(
+	$params{db} = DBI->connect_cached(
 		$params{conf}->get('meta_db/dsn'),
 		$params{conf}->get('meta_db/username'),
 		$params{conf}->get('meta_db/password'),
@@ -145,6 +149,8 @@ sub _dbh_error_handler {
 
 sub freshen_db {
 	my $self = shift;
+	
+	$self->db->disconnect;
 	$self->db(
 		DBI->connect(
 			$self->conf->get('meta_db/dsn'),
@@ -185,51 +191,47 @@ sub _get_hash {
 	return $digest->hexdigest();
 }
 
-sub _get_node_info {
+sub _get_info {
 	my $self = shift;
+	my $cb = pop(@_);
 	my $is_lite = shift;
 	my ($query, $sth);
 	
 	my $overall_start = time();
-	my $nodes = $self->_get_nodes();
-	#$self->log->trace('got nodes: ' . Dumper($nodes));
 	
-	my $ret = { nodes => {} };
-	
-	unless (scalar keys %$nodes){
-		return $ret;
-	}
-	
-	# Get indexes from all nodes in parallel
-	my $cv = AnyEvent->condvar;
-	$cv->begin(sub {
-		$cv->send;
-	});
-	
-	foreach my $node (keys %$nodes){
-		if (exists $nodes->{$node}->{error}){
-			$self->add_warning(502, 'node ' . $node . ' had error ' . $nodes->{$node}->{error}, { mysql => $node });
-			delete $ret->{nodes}->{$node};
-			next;
+	my $ret = { };
+	$self->_get_db(sub {
+		my $db = shift;
+		unless ($db and $db->{dbh}){
+			$self->add_warning(502, 'msyql connection error', { mysql => 1 });
+			$cb->();
+			return;
 		}
-		$ret->{nodes}->{$node} = {
-			db => $nodes->{$node}->{db},
-			#dbh => $nodes->{$node}->{dbh},
-		};
+	
+		# Get info from db and call the callback with the info
+		my $cv = AnyEvent->condvar;
+		$cv->begin(sub {
+			$cb->($ret);
+		});
+	
+		if (exists $db->{error}){
+			$self->add_warning(502, 'msyql connection error', { mysql => 1 });
+			$cb->();
+			return;
+		}
 		
 		if ($is_lite){
 			# Just get min/max times for indexes, count
 			$query = sprintf('SELECT UNIX_TIMESTAMP(MIN(start)) AS start_int, UNIX_TIMESTAMP(MAX(end)) AS end_int, ' .
 				'UNIX_TIMESTAMP(MAX(start)) AS start_max, SUM(records) AS records, type FROM %s.v_indexes ' .
-				'WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime"', $nodes->{$node}->{db});
+				'WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime"', $db->{db});
 			$cv->begin;
 			$self->log->trace($query);
-			$nodes->{$node}->{dbh}->query($query, sub {
+			$db->{dbh}->query($query, sub {
 				my ($dbh, $rows, $rv) = @_;
 				
 				if ($rv and $rows){
-					#$self->log->trace('node returned rv: ' . $rv);
-					$ret->{nodes}->{$node}->{indexes} = {
+					$ret->{indexes} = {
 						min => $rows->[0]->{start_int} < $overall_start ? $rows->[0]->{start_int} : 0,
 						max => $rows->[0]->{end_int} < $overall_start ? $rows->[0]->{end_int} : $overall_start,
 						start_max => $rows->[0]->{start_max} < $overall_start ? $rows->[0]->{start_max} : 0,
@@ -237,8 +239,8 @@ sub _get_node_info {
 					};
 				}
 				else {
-					$self->log->error('No indexes for node ' . $node . ', rv: ' . $rv);
-					$ret->{nodes}->{$node}->{error} = 'No indexes for node ' . $node;
+					$self->log->error('No indexes, rv: ' . $rv);
+					$ret->{error} = 'No indexes';
 				}
 				$cv->end;
 			});
@@ -248,27 +250,26 @@ sub _get_node_info {
 			$query = sprintf('SELECT CONCAT(SUBSTR(type, 1, 4), "_", id) AS name, start AS start_int, FROM_UNIXTIME(start) AS start,
 			end AS end_int, FROM_UNIXTIME(end) AS end, type, last_id-first_id AS records, index_schema
 			FROM %s.indexes WHERE type="temporary" OR (type="permanent" AND ISNULL(locked_by)) OR type="realtime" ORDER BY start', 
-				$nodes->{$node}->{db});
+				$db->{db});
 			$cv->begin;
 			$self->log->trace($query);
-			$nodes->{$node}->{dbh}->query($query, sub {
+			$db->{dbh}->query($query, sub {
 				my ($dbh, $rows, $rv) = @_;
 				
 				if ($rv and $rows){
-					#$self->log->trace('node returned rv: ' . $rv);
 					foreach my $row (@$rows){
 						$row->{schema} = decode_json(delete $row->{index_schema}) if $row->{index_schema};
 					}
-					$ret->{nodes}->{$node}->{indexes} = {
+					$ret->{indexes} = {
 						indexes => $rows,
 						min => $rows->[0]->{start_int} < $overall_start ? $rows->[0]->{start_int} : 0,
-						max => $rows->[$#$rows]->{end_int} < $overall_start ? $rows->[0]->{end_int} : $overall_start,
+						max => $rows->[$#$rows]->{end_int} < $overall_start ? $rows->[$#$rows]->{end_int} : $overall_start,
 						start_max => $rows->[$#$rows]->{start_int} < $overall_start ? $rows->[0]->{start_int} : 0,
 					};
 				}
 				else {
-					$self->log->error('No indexes for node ' . $node . ', rv: ' . $rv);
-					$ret->{nodes}->{$node}->{error} = 'No indexes for node ' . $node;
+					$self->log->error('No indexes, rv: ' . $rv);
+					$ret->{error} = 'No indexes';
 				}
 				$cv->end;
 			});
@@ -279,15 +280,14 @@ sub _get_node_info {
 			$query = sprintf('SELECT UNIX_TIMESTAMP(MIN(start)) AS start_int, ' .
 				'UNIX_TIMESTAMP(MIN(end)) AS end_int, SUM(max_id - min_id) AS records ' .
 				'FROM %s.tables t1 JOIN table_types t2 ON (t1.table_type_id=t2.id) WHERE t2.table_type="archive"', 
-				$nodes->{$node}->{db});
+				$db->{db});
 			$cv->begin;
 			$self->log->trace($query);
-			$nodes->{$node}->{dbh}->query($query, sub {
+			$db->{dbh}->query($query, sub {
 				my ($dbh, $rows, $rv) = @_;
 				
 				if ($rv and $rows){
-					#$self->log->trace('node returned rv: ' . $rv);
-					$ret->{nodes}->{$node}->{tables} = {
+					$ret->{tables} = {
 						min => $rows->[0]->{start_int},
 						max => $rows->[0]->{end_int},
 						start_max => $rows->[0]->{start_int},
@@ -295,8 +295,8 @@ sub _get_node_info {
 					};
 				}
 				else {
-					$self->log->error('No tables for node ' . $node);
-					$ret->{nodes}->{$node}->{error} = 'No tables for node ' . $node;
+					$self->log->error('No tables');
+					$ret->{error} = 'No tables';
 				}
 				$cv->end;
 			});
@@ -306,15 +306,14 @@ sub _get_node_info {
 			$query = sprintf('SELECT table_name, start, UNIX_TIMESTAMP(start) AS start_int, end, ' .
 				'UNIX_TIMESTAMP(end) AS end_int, table_type, min_id, max_id, max_id - min_id AS records ' .
 				'FROM %s.tables t1 JOIN table_types t2 ON (t1.table_type_id=t2.id) ORDER BY start', 
-				$nodes->{$node}->{db});
+				$db->{db});
 			$cv->begin;
 			$self->log->trace($query);
-			$nodes->{$node}->{dbh}->query($query, sub {
+			$db->{dbh}->query($query, sub {
 				my ($dbh, $rows, $rv) = @_;
 				
 				if ($rv and $rows){
-					#$self->log->trace('node returned rv: ' . $rv);
-					$ret->{nodes}->{$node}->{tables} = {
+					$ret->{tables} = {
 						tables => $rows,
 						min => $rows->[0]->{start_int},
 						max => $rows->[$#$rows]->{end_int},
@@ -322,8 +321,9 @@ sub _get_node_info {
 					};
 				}
 				else {
-					$self->log->error('No tables for node ' . $node);
-					$ret->{nodes}->{$node}->{error} = 'No tables for node ' . $node;
+					$self->log->error('No tables');
+					$ret->{error} = 'No tables';
+					
 				}
 				$cv->end;
 			});
@@ -333,18 +333,18 @@ sub _get_node_info {
 		$query = "SELECT id, class FROM classes";
 		$cv->begin;
 		$self->log->trace($query);
-		$nodes->{$node}->{dbh}->query($query, sub {
+		$db->{dbh}->query($query, sub {
 			my ($dbh, $rows, $rv) = @_;
 			
 			if ($rv and $rows){
-				$ret->{nodes}->{$node}->{classes} = {};
+				$ret->{classes_by_id} = {};
 				foreach my $row (@$rows){
-					$ret->{nodes}->{$node}->{classes}->{ $row->{id} } = $row->{class};
+					$ret->{classes_by_id}->{ $row->{id} } = $row->{class};
 				}
 			}
 			else {
-				$self->log->error('No classes for node ' . $node);
-				$ret->{nodes}->{$node}->{error} = 'No classes for node ' . $node;
+				$self->log->error('No classes');
+				$ret->{error} = 'No classes';
 			}
 			$cv->end;
 		});
@@ -354,16 +354,16 @@ sub _get_node_info {
 			"IF(class!=\"\", CONCAT(class, \".\", field), field) AS fqdn_field, pattern_type\n" .
 			"FROM %s.fields\n" .
 			"JOIN %1\$s.fields_classes_map t2 ON (fields.id=t2.field_id)\n" .
-			"JOIN %1\$s.classes t3 ON (t2.class_id=t3.id)\n", $nodes->{$node}->{db});
+			"JOIN %1\$s.classes t3 ON (t2.class_id=t3.id)\n", $db->{db});
 		$cv->begin;
 		$self->log->trace($query);
-		$nodes->{$node}->{dbh}->query($query, sub {
+		$db->{dbh}->query($query, sub {
 			my ($dbh, $rows, $rv) = @_;
 			
 			if ($rv and $rows){
-				$ret->{nodes}->{$node}->{fields} = [];
+				$ret->{fields} = [];
 				foreach my $row (@$rows){
-					push @{ $ret->{nodes}->{$node}->{fields} }, {
+					push @{ $ret->{fields} }, {
 						fqdn_field => $row->{fqdn_field},
 						class => $row->{class}, 
 						value => $row->{field}, 
@@ -378,85 +378,76 @@ sub _get_node_info {
 				}
 			}
 			else {
-				$self->log->error('No fields for node ' . $node);
-				$ret->{nodes}->{$node}->{error} = 'No fields for node ' . $node;
+				$self->log->error('No fields');
+				$ret->{error} = 'No fields';
 			}
 			$cv->end;
 		});
-	}
-	$cv->end;
 	
-	$self->log->debug('Blocking');
-	$cv->recv;
-	
-	my $time_ranges = { indexes => {}, archive => {} };
-	$ret->{totals} = {};
-	foreach my $type (qw(indexes archive)){
-		my $key = $type;
-		if ($type eq 'archive'){
-			$key = 'tables';
-		}
-		# Find min/max indexes
-		my $min = 2**32;
-		my $max = 0;
-		my $start_max = 0;
-		foreach my $node (keys %{ $ret->{nodes} }){
-			if (defined $ret->{nodes}->{$node}->{$key}->{min} and $ret->{nodes}->{$node}->{$key}->{min} < $min){
-				$min = $ret->{nodes}->{$node}->{$key}->{min};
+		my $time_ranges = { indexes => {}, archive => {} };
+		$ret->{totals} = {};
+		foreach my $type (qw(indexes archive)){
+			my $key = $type;
+			if ($type eq 'archive'){
+				$key = 'tables';
 			}
-			if (defined $ret->{nodes}->{$node}->{$key}->{max} and $ret->{nodes}->{$node}->{$key}->{max} > $max){
-				$max = $ret->{nodes}->{$node}->{$key}->{max};
-				$start_max = $ret->{nodes}->{$node}->{$key}->{start_max};
+			# Find min/max indexes
+			my $min = 2**32;
+			my $max = 0;
+			my $start_max = 0;
+			
+			if (defined $ret->{$key}->{min} and $ret->{$key}->{min} < $min){
+				$min = $ret->{$key}->{min};
+			}
+			if (defined $ret->{$key}->{max} and $ret->{$key}->{max} > $max){
+				$max = $ret->{$key}->{max};
+				$start_max = $ret->{$key}->{start_max};
 			}
 			if ($is_lite){
-				$ret->{totals}->{$type} += $ret->{nodes}->{$node}->{$key}->{records};
+				$ret->{totals}->{$type} += $ret->{$key}->{records};
 			}
 			else {
-				foreach my $hash (@{ $ret->{nodes}->{$node}->{$key}->{$key} }){
+				foreach my $hash (@{ $ret->{$key}->{$key} }){
 					$ret->{totals}->{$type} += $hash->{records};
 				}
 			}
+			
+			if ($min == 2**32){
+				$self->log->trace('No min/max found for type min');
+				$min = 0;
+			}
+			if ($max == 0){
+				$self->log->trace('No min/max found for type max');
+				$max = $overall_start;
+			}
+			$ret->{$type . '_min'} = $min;
+			$ret->{$type . '_max'} = $max;
+			$ret->{$type . '_start_max'} = $start_max;
+			$self->log->trace('Found min ' . $min . ', max ' . $max . ' for type ' . $type);
 		}
-		if ($min == 2**32){
-			$self->log->trace('No min/max found for type min');
-			$min = 0;
-		}
-		if ($max == 0){
-			$self->log->trace('No min/max found for type max');
-			$max = $overall_start;
-		}
-		$ret->{$type . '_min'} = $min;
-		$ret->{$type . '_max'} = $max;
-		$ret->{$type . '_start_max'} = $start_max;
-		$self->log->trace('Found min ' . $min . ', max ' . $max . ' for type ' . $type);
-	}
-	
-	# Resolve class names into class_id's for excluded classes
-	my $given_excluded_classes = $self->conf->get('excluded_classes') ? $self->conf->get('excluded_classes') : {};
-	my $excluded_classes = {};
-	foreach my $node (keys %{ $ret->{nodes} }){
-		foreach my $class_id (keys %{ $ret->{nodes}->{$node}->{classes} }){
-			if ($given_excluded_classes->{ lc($ret->{nodes}->{$node}->{classes}->{$class_id}) } or
-				$given_excluded_classes->{ uc($ret->{nodes}->{$node}->{classes}->{$class_id}) }){
+		
+		# Resolve class names into class_id's for excluded classes
+		my $given_excluded_classes = $self->conf->get('excluded_classes') ? $self->conf->get('excluded_classes') : {};
+		my $excluded_classes = {};
+		foreach my $class_id (keys %{ $ret->{classes_by_id} }){
+			if ($given_excluded_classes->{ lc($ret->{classes_by_id}->{$class_id}) } or
+				$given_excluded_classes->{ uc($ret->{classes_by_id}->{$class_id}) }){
 				$excluded_classes->{$class_id} = 1;
 			}
 		}
-	}
-	
-	# Find unique classes;
-	$ret->{classes} = {};
-	$ret->{classes_by_id} = {};
-	foreach my $node (keys %{ $ret->{nodes} }){
-		foreach my $class_id (keys %{ $ret->{nodes}->{$node}->{classes} }){
-			next if $excluded_classes->{$class_id};
-			$ret->{classes_by_id}->{$class_id} = $ret->{nodes}->{$node}->{classes}->{$class_id};
-			$ret->{classes}->{ $ret->{nodes}->{$node}->{classes}->{$class_id} } = $class_id;
+		
+		# Find unique classes;
+		$ret->{classes} = {};
+		foreach my $class_id (keys %{ $ret->{classes_by_id} }){
+			if ($excluded_classes->{$class_id}){
+				delete $ret->{classes_by_id}->{$class_id};
+				next;
+			}
+			$ret->{classes}->{ $ret->{classes_by_id}->{$class_id} } = $class_id;
 		}
-	}
-	
-	# Find unique fields
-	foreach my $node (keys %{ $ret->{nodes} }){
-		FIELD_LOOP: foreach my $field_hash (@{ $ret->{nodes}->{$node}->{fields} }){
+		
+		# Find unique fields
+		FIELD_LOOP: foreach my $field_hash (@{ $ret->{fields} }){
 			next if $excluded_classes->{ $field_hash->{class_id} };
 			foreach my $already_have_hash (@{ $ret->{fields} }){
 				if ($field_hash->{fqdn_field} eq $already_have_hash->{fqdn_field}){
@@ -465,290 +456,130 @@ sub _get_node_info {
 			}
 			push @{ $ret->{fields} }, $field_hash;
 		}
-	}
-	
-	# Find unique field conversions
-	$ret->{field_conversions} = {
-		0 => {
-			TIME => {
-				0 => 'timestamp',
-				100 => 'minute',
-				101 => 'hour',
-				102 => 'day',
+		
+		# Find unique field conversions
+		$ret->{field_conversions} = {
+			0 => {
+				TIME => {
+					0 => 'timestamp',
+					100 => 'minute',
+					101 => 'hour',
+					102 => 'day',
+				},
 			},
-		},
-	};
-	foreach my $field_hash (@{ $ret->{fields} }){
-		next if $excluded_classes->{ $field_hash->{class_id} };
-		$ret->{field_conversions}->{ $field_hash->{class_id} } ||= {};
-		if ($field_hash->{pattern_type} eq 'IPv4'){
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{IPv4} ||= {};
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{IPv4}->{ $field_hash->{field_order} } = $field_hash->{value};
+		};
+		foreach my $field_hash (@{ $ret->{fields} }){
+			next if $excluded_classes->{ $field_hash->{class_id} };
+			$ret->{field_conversions}->{ $field_hash->{class_id} } ||= {};
+			if ($field_hash->{pattern_type} eq 'IPv4'){
+				$ret->{field_conversions}->{ $field_hash->{class_id} }->{IPv4} ||= {};
+				$ret->{field_conversions}->{ $field_hash->{class_id} }->{IPv4}->{ $field_hash->{field_order} } = $field_hash->{value};
+			}
+			elsif ($field_hash->{value} eq 'proto' and $field_hash->{pattern_type} eq 'QSTRING'){
+				$ret->{field_conversions}->{ $field_hash->{class_id} }->{PROTO} ||= {};
+				$ret->{field_conversions}->{ $field_hash->{class_id} }->{PROTO}->{ $field_hash->{field_order} } = $field_hash->{value};
+			}
+			elsif ($field_hash->{value} eq 'country_code' and $field_hash->{pattern_type} eq 'NUMBER'){
+				$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE} ||= {};
+				$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE}->{ $field_hash->{field_order} } = $field_hash->{value};
+			}
 		}
-		elsif ($field_hash->{value} eq 'proto' and $field_hash->{pattern_type} eq 'QSTRING'){
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{PROTO} ||= {};
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{PROTO}->{ $field_hash->{field_order} } = $field_hash->{value};
+				
+		# Find fields by arranged by order
+		$ret->{fields_by_order} = {};
+		foreach my $field_hash (@{ $ret->{fields} }){
+			next if $excluded_classes->{ $field_hash->{class_id} };
+			$ret->{fields_by_order}->{ $field_hash->{class_id} } ||= {};
+			$ret->{fields_by_order}->{ $field_hash->{class_id} }->{ $field_hash->{field_order} } = $field_hash;
 		}
-		elsif ($field_hash->{value} eq 'country_code' and $field_hash->{pattern_type} eq 'NUMBER'){
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE} ||= {};
-			$ret->{field_conversions}->{ $field_hash->{class_id} }->{COUNTRY_CODE}->{ $field_hash->{field_order} } = $field_hash->{value};
+		
+		# Find fields by arranged by short field name
+		$ret->{fields_by_name} = {};
+		foreach my $field_hash (@{ $ret->{fields} }){
+			next if $excluded_classes->{ $field_hash->{class_id} };
+			$ret->{fields_by_name}->{ $field_hash->{value} } ||= [];
+			push @{ $ret->{fields_by_name}->{ $field_hash->{value} } }, $field_hash;
 		}
-	}
-			
-	# Find fields by arranged by order
-	$ret->{fields_by_order} = {};
-	foreach my $field_hash (@{ $ret->{fields} }){
-		next if $excluded_classes->{ $field_hash->{class_id} };
-		$ret->{fields_by_order}->{ $field_hash->{class_id} } ||= {};
-		$ret->{fields_by_order}->{ $field_hash->{class_id} }->{ $field_hash->{field_order} } = $field_hash;
-	}
-	
-	# Find fields by arranged by short field name
-	$ret->{fields_by_name} = {};
-	foreach my $field_hash (@{ $ret->{fields} }){
-		next if $excluded_classes->{ $field_hash->{class_id} };
-		$ret->{fields_by_name}->{ $field_hash->{value} } ||= [];
-		push @{ $ret->{fields_by_name}->{ $field_hash->{value} } }, $field_hash;
-	}
-	
-	# Find fields by type
-	$ret->{fields_by_type} = {};
-	foreach my $field_hash (@{ $ret->{fields} }){
-		next if $excluded_classes->{ $field_hash->{class_id} };
-		$ret->{fields_by_type}->{ $field_hash->{field_type} } ||= {};
-		$ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } ||= [];
-		push @{ $ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } }, $field_hash;
-	}
-	
-	$ret->{directives} = $Fields::Reserved_fields;
-	
-	$ret->{updated_at} = time();
-	#$ret->{updated_for_admin} = $user->is_admin;
-	$ret->{took} = (time() - $overall_start);
-	
-	if ($is_lite){
-		foreach my $node (keys %{ $ret->{nodes} }){
-			$ret->{nodes}->{$node} = {};
+		
+		# Find fields by type
+		$ret->{fields_by_type} = {};
+		foreach my $field_hash (@{ $ret->{fields} }){
+			next if $excluded_classes->{ $field_hash->{class_id} };
+			$ret->{fields_by_type}->{ $field_hash->{field_type} } ||= {};
+			$ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } ||= [];
+			push @{ $ret->{fields_by_type}->{ $field_hash->{field_type} }->{ $field_hash->{value} } }, $field_hash;
 		}
-	}
+		
+		$ret->{directives} = $Fields::Reserved_fields;
+		
+		$ret->{updated_at} = time();
+		$ret->{took} = (time() - $overall_start);
+		
+		if ($self->conf->get('version')){
+			$ret->{version} = $self->conf->get('version');
+		}
+		
+		$self->log->trace('get_info finished in ' . $ret->{took});
 	
-	if ($self->conf->get('version')){
-		$ret->{version} = $self->conf->get('version');
-	}
-	
-	$self->log->trace('get_node_info finished in ' . $ret->{took});
-	
-	return $ret;
+		$cv->end;
+	});
 }
 
-sub _get_nodes {
+sub _get_db {
 	my $self = shift;
-	my %nodes;
-	my $node_conf = $self->conf->get('nodes');
+	my $cb = shift;
+	my $conf = $self->conf->get('data_db');
 	
-	my $cv = AnyEvent->condvar;
-	$cv->begin(sub { shift->send });
 	my $start = Time::HiRes::time();
-	foreach my $node (keys %$node_conf){
-		my $db_name = 'syslog';
-		if ($node_conf->{$node}->{db}){
-			$db_name = $node_conf->{$node}->{db};
-		}
-		
-		my $mysql_port = 3306;
-		if ($node_conf->{$node}->{port}){
-			$mysql_port = $node_conf->{$node}->{port};
-		}
-
-		eval {
-			$nodes{$node} = { db => $db_name };
-			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
-				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
-				$node_conf->{$node}->{username}, 
-				$node_conf->{$node}->{password}, 
-				{
-					mysql_connect_timeout => $self->db_timeout,
-					PrintError => 0,
-					mysql_multi_statements => 1,
-				}
-			]);
-#			$cv->begin;
-#			my $node_start = Time::HiRes::time();	
-#			$nodes{$node}->{dbh} = AsyncDB->new(log => $self->log, db_args => [
-#				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port, 
-#				$node_conf->{$node}->{username}, 
-#				$node_conf->{$node}->{password}, 
-#				{
-#					mysql_connect_timeout => $self->db_timeout,
-#					PrintError => 0,
-#					mysql_multi_statements => 1,
-#				}
-#			], cb => sub {
-#				$self->log->trace('connected to ' . $node . ' on ' . $mysql_port . ' in ' . (Time::HiRes::time() - $node_start));
-#				$cv->end;
-#			});
-			
-		};
-		if ($@){
-			$self->add_warning(502, $@, { mysql => $node });
-			delete $nodes{$node};
-		}		
+	my $db = {};
+	
+	my $db_name = 'syslog';
+	if ($conf->{db}){
+		$db_name = $conf->{db};
 	}
-	$cv->end;
-	$cv->recv;
+	
+	my $mysql_port = 3306;
+	if ($conf->{port}){
+		$mysql_port = $conf->{port};
+	}
+
+	eval {
+		$db = { db => $db_name };
+		$db->{dbh} = SyncMysql->new(log => $self->log, db_args => [
+			'dbi:mysql:database=' . $db_name . ';port=' . $mysql_port,  
+			$conf->{username}, 
+			$conf->{password}, 
+			{
+				mysql_connect_timeout => $self->db_timeout,
+				PrintError => 0,
+				mysql_multi_statements => 1,
+			}
+		]);
+	};
+	if ($@){
+		throw(502, $@, { mysql => 1 });
+	}
+	elsif ($DBI::errstr){
+		throw(502, $DBI::errstr, { mysql => 1 });
+	}
+	
 	$self->log->trace('All connected in ' . (Time::HiRes::time() - $start) . ' seconds');
-		
-	return \%nodes;
-}
-
-#sub old_get_nodes {
-#	my $self = shift;
-#	my $user = shift;
-#	my %nodes;
-#	my $node_conf = $self->conf->get('nodes');
-#	
-#	my $mysql_port = 3306;
-#	my $db_name = 'syslog';
-#	foreach my $node (keys %$node_conf){
-#		next unless $user->is_permitted('node_id', unpack('N*', inet_aton($node)));
-#		if ($node_conf->{$node}->{port}){
-#			$mysql_port = $node_conf->{$node}->{port};
-#		}
-#		
-#		if ($node_conf->{$node}->{db}){
-#			$db_name = $node_conf->{$node}->{db};
-#		}
-#		eval {
-#			$nodes{$node} = { db => $db_name };
-#			$nodes{$node}->{dbh} = SyncMysql->new(log => $self->log, db_args => [
-#				'dbi:mysql:database=' . $db_name . ';host=' . $node . ';port=' . $mysql_port,  
-#				$node_conf->{$node}->{username}, 
-#				$node_conf->{$node}->{password}, 
-#				{
-#					mysql_connect_timeout => $self->db_timeout,
-#					PrintError => 0,
-#					mysql_multi_statements => 1,
-#				}
-#			]);
-#		};
-#		if ($@){
-#			$self->log->error($@);
-#			$self->add_warning($@);
-#			delete $nodes{$node};
-#		}
-#	}
-#		
-#	return \%nodes;
-#}
-
-sub info {
-	my $self = shift;
 	
-	my ($query, $sth);
-	my $overall_start = time();
-	
-	# Execute search on every peer
-	my @peers;
-	foreach my $peer (keys %{ $self->conf->get('peers') }){
-		push @peers, $peer;
-	}
-	$self->log->trace('Executing global node_info on peers ' . join(', ', @peers));
-	
-	my $cv = AnyEvent->condvar;
-	$cv->begin;
-	my %stats;
-	my %results;
-	foreach my $peer (@peers){
-		$cv->begin;
-		my $peer_conf = $self->conf->get('peers/' . $peer);
-		my $url = $peer_conf->{url} . 'API/';
-		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_info' : 'info';
-		$self->log->trace('Sending request to URL ' . $url);
-		my $start = time();
-		my $headers = { 
-			Authorization => $self->_get_auth_header($peer),
-		};
-		$results{$peer} = http_get $url, headers => $headers, sub {
-			my ($body, $hdr) = @_;
-			eval {
-				my $raw_results = $self->json->decode($body);
-				$stats{$peer}->{total_request_time} = (time() - $start);
-				$results{$peer} = { %$raw_results }; #undef's the guard
-			};
-			if ($@){
-				$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
-				$self->add_warning(502, 'peer ' . $peer . ': ' . $@, { http => $peer });
-				delete $results{$peer};
-			}
-			$cv->end;
-		};
-	}
-	$cv->end;
-	$cv->recv;
-	$stats{overall} = (time() - $overall_start);
-	$self->log->debug('stats: ' . Dumper(\%stats));
-	
-	my $overall_final = $self->_merge_node_info(\%results);
-	
-	return $overall_final;
-}
-
-sub _merge_node_info {
-	my ($self, $results) = @_;
-	#$self->log->debug('merging: ' . Dumper($results));
-	
-	# Merge these results
-	my $overall_final = merge values %$results;
-	
-	# Merge the times and counts
-	my %final = (nodes => {});
-	foreach my $peer (keys %$results){
-		next unless $results->{$peer} and ref($results->{$peer}) eq 'HASH';
-		if ($results->{$peer}->{nodes}){
-			foreach my $node (keys %{ $results->{$peer}->{nodes} }){
-				if ($node eq '127.0.0.1' or $node eq 'localhost'){
-					$final{nodes}->{$peer} ||= $results->{$peer}->{nodes};
-				}
-				else {
-					$final{nodes}->{$node} ||= $results->{$peer}->{nodes};
-				}
-			}
-		}
-		foreach my $key (qw(archive_min indexes_min)){
-			if (not $final{$key} or $results->{$peer}->{$key} < $final{$key}){
-				$final{$key} = $results->{$peer}->{$key};
-			}
-		}
-		foreach my $key (qw(archive indexes)){
-			$final{totals} ||= {};
-			$final{totals}->{$key} += $results->{$peer}->{totals}->{$key};
-		}
-		foreach my $key (qw(archive_max indexes_max indexes_start_max archive_start_max)){
-			if (not $final{$key} or $results->{$peer}->{$key} > $final{$key}){
-				$final{$key} = $results->{$peer}->{$key};
-			}
-		}
-	}
-	$self->log->debug('final: ' . Dumper(\%final));
-	foreach my $key (keys %final){
-		$overall_final->{$key} = $final{$key};
-	}
-	
-	return $overall_final;
+	$cb->($db);
 }
 
 sub _peer_query {
-	my ($self, $q) = @_;
+	my ($self, $q, $cb) = @_;
 	my ($query, $sth);
 	
 	# Execute search on every peer
 	my @peers;
 	foreach my $peer (keys %{ $self->conf->get('peers') }){
-		if (scalar keys %{ $q->nodes->{given} }){
-			if ($q->nodes->{given}->{$peer}){
+		if (scalar keys %{ $q->peers->{given} }){
+			if ($q->peers->{given}->{$peer}){
 				# Normal case, fall through
 			}
-			elsif ($q->nodes->{given}->{ $q->peer_label }){
+			elsif ($q->peers->{given}->{ $q->peer_label }){
 				# Translate the peer label to localhost
 				push @peers, '127.0.0.1';
 				next;
@@ -758,29 +589,117 @@ sub _peer_query {
 				next;
 			}
 		}
-		elsif (scalar keys %{ $q->nodes->{excluded} }){
-			next if $q->nodes->{excluded}->{$peer};
+		elsif (scalar keys %{ $q->peers->{excluded} }){
+			next if $q->peers->{excluded}->{$peer};
 		}
 		push @peers, $peer;
 	}
 	
+	# Make sure our localhost is first to avoid a read timeout with the way that the parallel async HTTP connections are queued.
+	#  Otherwise, an initial connect is sent to each remote node, but no HTTP protocol information is sent until
+	#  the localhost has completed its query since none of the localhost code uses anything async.
+	#  This can violate the 5 second Plack read timeout if the local query takes longer than 5 seconds to execute.
+	for (my $i = 0; $i < @peers; $i++){
+		if ($peers[$i] eq '127.0.0.1' or $peers[$i] eq 'localhost'){
+			my $tmp = $peers[0];
+			$peers[0] = $peers[$i];
+			$peers[$i] = $tmp;
+			last;
+		}
+	}
+	
 	$self->log->trace('Executing global query on peers ' . join(', ', @peers));
 	
-	my $cv = AnyEvent->condvar;
-	$cv->begin;
-	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded', 'User-Agent' => $self->user_agent_name };
 	my %batches;
+	
+	my $cv = AnyEvent->condvar;
+	$cv->begin(sub {		
+		if (scalar keys %batches){
+			$query = 'INSERT INTO foreign_queries (qid, peer, foreign_qid) VALUES (?,?,?)';
+			$sth = $self->db->prepare($query);
+			foreach my $peer (sort keys %batches){
+				$sth->execute($q->qid, $peer, $batches{$peer});
+			}
+			$self->log->trace('Updated query to have foreign_qids ' . Dumper(\%batches));
+		}
+		
+		$cb->($q);
+	});
+	
+	my $headers = { 'Content-type' => 'application/x-www-form-urlencoded', 'User-Agent' => $self->user_agent_name };
 	foreach my $peer (@peers){
 		my $peer_label = $peer;
-		if (($peer eq '127.0.0.1' or $peer eq 'localhost') and $q->peer_label){
-			$peer_label = $q->peer_label;
-		}
 		$cv->begin;
+		
+		if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
+			if ($q->peer_label){
+				$peer_label = $q->peer_label;
+			}
+			my $start = time();
+			$self->local_query_preparsed($q, sub {
+				my $ret_q = shift;
+				unless ($ret_q and ref($ret_q) and $ret_q->can('stats')){
+					if ($ret_q and ref($ret_q) eq 'Ouch'){
+						throw($ret_q->code, $ret_q->message, $ret_q->data);
+					}
+					throw(500, 'Invalid query result');
+				}
+				
+				if ($ret_q->groupby){
+					$q->groupby($ret_q->groupby);
+				}
+				else {
+					$q->groupby('');
+				}
+				
+				if ($ret_q->results->records_returned and not $q->results->records_returned){
+					$q->results($ret_q->results);
+				}
+				elsif ($ret_q->results->records_returned and $q ne $ret_q){
+					$self->log->debug('query returned ' . $ret_q->results->records_returned . ' records, merging ' . Dumper($q->results) . ' with ' . Dumper($ret_q->results));
+					$q->results->merge($ret_q->results, $q);
+				}
+				elsif ($ret_q->batch){
+					my $current_message = $q->batch_message;
+					$current_message .= $peer . ': ' . $ret_q->batch_message;
+					$q->batch_message($current_message);
+					$q->batch(1);
+					#$batches{$peer} = $ret_q->qid;
+					
+					# Mark approximate if our peer results were
+					if ($ret_q->results->is_approximate and not $q->results->results->is_approximate){
+						$q->results->is_approximate($ret_q->results->is_approximate);
+					}
+				}
+				
+				my $stats = {};
+				foreach my $key (keys %{ $ret_q->stats }){
+					$stats->{$key} = $ret_q->stats->{$key};
+				}
+				$stats->{total_request_time} = (time() - $start);
+				$q->stats->{peers} ||= {};
+				$q->stats->{peers}->{$peer} = { %$stats };
+				$cv->end;
+			});
+			next;
+		}
+		
 		my $peer_conf = $self->conf->get('peers/' . $peer);
-		my $url = $peer_conf->{url} . 'API/';
-		$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_query' : 'query';
+		my $url = $peer_conf->{url} . 'API/query';
+		
+		# Propagate some specific directives provided in prefs through to children via meta_params
+		my $meta_params = $q->meta_params;
+		if ($q->user and $q->user->preferences and $q->user->preferences->{tree}){
+			my $prefs = $q->user->preferences->{tree}->{default_settings};
+			foreach my $pref (qw(orderby_dir timeout default_or)){
+				if (exists $prefs->{$pref}){
+					$meta_params->{$pref} = $prefs->{$pref};
+				}
+			}
+		}
+		
 		my $request_body = 'permissions=' . uri_escape($self->json->encode($q->user->permissions))
-			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $q->meta_params }))
+			. '&q=' . uri_escape($self->json->encode({ query_string => $q->query_string, query_meta_params => $meta_params }))
 			. '&peer_label=' . $peer_label;
 		$self->log->trace('Sending request to URL ' . $url . ' with body ' . $request_body);
 		my $start = time();
@@ -793,6 +712,7 @@ sub _peer_query {
 		$headers->{Authorization} = $self->_get_auth_header($peer);
 		$q->peer_requests->{$peer} = http_post $url, $request_body, headers => $headers, sub {
 			my ($body, $hdr) = @_;
+			#$self->log->debug('body: ' . Dumper($body));
 			unless ($hdr and $hdr->{Status} < 400){
 				my $e;
 				try {
@@ -813,16 +733,10 @@ sub _peer_query {
 					$q->add_warning(502, 'Peer ' . $peer_label . ' encountered an error.', { http => $peer });
 					return;
 				}
-				#$self->log->debug('raw_results: ' . Dumper($raw_results));
-				#my $is_groupby = ($q->has_groupby or $raw_results->{groupby});
-				my $is_groupby = $raw_results->{groupby} ? 1 : 0;
+				my $is_groupby = $raw_results->{groupby} and scalar @{ $raw_results->{groupby} } ? 1 : 0;
 				my $results_package = $is_groupby ? 'Results::Groupby' : 'Results';
-				if ($q->has_groupby and ref($raw_results->{results}) ne 'HASH'){
-					$self->log->error('Wrong: ' . Dumper($q->TO_JSON) . "\n" . Dumper($raw_results));
-				}
-				#my $results_package = ref($raw_results->{results}) eq 'ARRAY' ? 'Results' : 'Results::Groupby';
 				my $results_obj = $results_package->new(results => $raw_results->{results}, 
-					total_records => $raw_results->{totalRecords}, is_approximate => $raw_results->{approximate});
+					total_records => $raw_results->{totalRecords}, total_docs => $raw_results->{totalRecords}, is_approximate => $raw_results->{approximate});
 				if ($results_obj->records_returned and not $q->results->records_returned){
 					$q->results($results_obj);
 				}
@@ -848,12 +762,11 @@ sub _peer_query {
 						push @{ $q->warnings }, $warning;
 					}
 				}
-				#$q->groupby($raw_results->{groupby}) if $raw_results->{groupby};
 				if ($is_groupby){
-					$q->groupby($raw_results->{groupby});
+					$q->groupby($raw_results->{groupby}->[0]);
 				}
 				else {
-					$q->groupby([]);
+					$q->groupby('');
 				}
 				my $stats = $raw_results->{stats};
 				$stats ||= {};
@@ -870,23 +783,6 @@ sub _peer_query {
 		};
 	}
 	$cv->end;
-	$cv->recv;
-	$self->log->debug('stats: ' . Dumper($q->stats));
-	
-	$self->log->info(sprintf("Query " . $q->qid . " returned %d rows", $q->results->records_returned));
-	
-	$q->time_taken(int((Time::HiRes::time() - $q->start_time) * 1000)) unless $q->livetail;
-	
-	if (scalar keys %batches){
-		$query = 'INSERT INTO foreign_queries (qid, peer, foreign_qid) VALUES (?,?,?)';
-		$sth = $self->db->prepare($query);
-		foreach my $peer (sort keys %batches){
-			$sth->execute($q->qid, $peer, $batches{$peer});
-		}
-		$self->log->trace('Updated query to have foreign_qids ' . Dumper(\%batches));
-	}
-	
-	return $q;
 }
 
 sub _get_auth_header {
@@ -938,10 +834,12 @@ sub _check_auth_header {
 #}
 
 sub catch_any {
-	return $_ if blessed($_);
-	$_ =~ /(.+) at \S+ line \d+\.$/;
-	my $e = new Ouch(500, $1, {});
-	$e->shortmess($_);
+	my $self = shift;
+	my $e = shift;
+	return $e if blessed($e);
+	$e =~ /(.+) at \S+ line \d+\.$/;
+	$e = new Ouch(500, $1, {});
+	$e->shortmess($1);
 	return $e;
 }
 
