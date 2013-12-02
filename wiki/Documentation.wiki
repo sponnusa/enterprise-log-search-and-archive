@@ -569,13 +569,23 @@ query | plugin_1(arg1,arg2,argn) | plugin_n(arg1,arg2,argn)
 
 ==Current Plugins==
 The currently shipped plugins are:
-||Name||Args||Description||
-||whois|| ||ARIN and RIPE online databases to add network owner info||
-||dnsdb|| ||isc.dnsdb.org's database (if an api key is provided)||
-||cif|| ||Queries a local Collective Intelligence Framework server||
-||grep||regex on field, regex on value||Only passes results that match the test||
-||filter||regex on field, regex on value||Only passes results that do not match the test||
-||sum||field||Sums the total found for the given field||
+||Name||Args||Description||Configuration||
+||whois|| ||ARIN and RIPE online databases to add network owner info||web: "transforms/whois/known_subnets", "transforms/whois/known_orgs"||
+||dnsdb|| ||isc.dnsdb.org's database (if an api key is provided)||web: "transforms/dnsdb/limit", "transforms/dnsdb/apikey"||
+||cif|| ||Queries a local Collective Intelligence Framework server||web: "transforms/whois/known_subnets", "transforms/whois/known_orgs", "transforms/cif/base_url"||
+||grep||regex on field, regex on value||Only passes results that match the test|| ||
+||filter||regex on field, regex on value||Only passes results that do not match the test|| ||
+||sum||field||Sums the total found for the given field|| ||
+||anonymize|| ||Anonymizes any IP's found that match the configuration for "transforms/whois/known_subnets"||web: "transforms/whois/known_subnets"||
+||database (example)||field to pass to database||Adds record found in database to displayed record after using the given field as a lookup in the database||web: "transforms/database/"||
+||geoip|| ||Uses the local GeoIP database to attach geo info to any IP's of hostnames found|| ||
+||has|| value,operator (defaults to >),field||Defaults to returning only records that have more than the given count in a groupby result.  Args can change operator to less than, etc., and also specify a specific field in a non-groupby result.|| ||
+||interval|| ||Calculates the number of seconds elapsed between records returned and adds that value as a transform field|| ||
+||local|| ||Returns only records which have a value in the configured local subnets||web: "transforms/whois/knonw_subnets"||
+||remote|| ||Returns only records which do not have a value in the configured local subnets||web: "transforms/whois/knonw_subnets"||
+||parse||pattern_name||Given the name of a configured pattern, will use preconfigured regular expressions to extract fields from result messages.  It can be used as a way of post-search parsing.||web: "transforms/parse/(pattern_name)"||
+||scanmd5|| ||Checks all configured URL sources for hits on any MD5's contained in a record.  By default, it will check Shadowserver, but can also check VirusTotal if an API key is configured.||web: "transforms/scanmd5/virustotal_apikey"||
+
 
 =Subsearches=
 Subsearches are a special kind of transform that is built-in to ELSA.  They are used to take the results of a groupby (report) query and concatenate those results as an OR onto a second query.  For example:
