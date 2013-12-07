@@ -417,7 +417,7 @@ ELSA has two kinds of indexes, temporary and permanent.  Only temporary indexes 
 
 The best workaround is to query for host= where the host is a log host you know will have results.  You can do multiple hosts to get the same effect.  However, if you use any range queries like host>1.1.1.1 host<2.2.2.2, then host will become an attribute and you'll only get partial results again.
 
-There is a way to get around this if you have enough RAM.  If you edit /usr/local/elsa/node/Indexer.pm in the "get_sphinx_conf" subroutine and change the text under "permanent" from "docinfo = inline" to "docinfo = external" and rename the sphinx config file in the /etc/elsa_node.conf to something new, it will create a new sphinx config file at that location.  Then, you will need to re-index everything:
+There is a way to get around this if you have enough RAM.  If you edit /usr/local/elsa/node/Indexer.pm in the "get_sphinx_conf" subroutine and change the text under "permanent" from "docinfo = inline" to "docinfo = extern" and rename the sphinx config file in the /etc/elsa_node.conf to something new, it will create a new sphinx config file at that location.  Then, you will need to re-index everything:
 {{{
 service syslog-ng stop
 mv /usr/local/etc/sphinx.conf /usr/local/etc/sphinx.conf.bak
