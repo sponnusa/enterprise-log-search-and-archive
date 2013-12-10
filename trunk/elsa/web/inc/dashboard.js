@@ -828,9 +828,6 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 			logger.log('No data found in dataTable column range, not drawing chart.');
 			oSelf.dashboard_el.innerText = 'No Data Available';
 		}
-		else {
-			oSelf.draw();
-		}
 		
 		oSelf.queries_received++;
 				
