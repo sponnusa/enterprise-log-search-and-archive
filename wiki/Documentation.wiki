@@ -425,7 +425,7 @@ mv /usr/local/etc/sphinx.conf /usr/local/etc/sphinx.conf.bak
 perl /usr/local/elsa/node/elsa.pl -c /etc/elsa_node.conf -on
 service searchd stop
 # (This next step could take a really long time if you have a lot of logs loaded already)
-/usr/local/sphinx/bin/indexer --rotate --all 
+/usr/local/sphinx/bin/indexer --config /usr/local/etc/sphinx.conf --rotate --all 
 service searchd start
 service syslog-ng start
 }}}
