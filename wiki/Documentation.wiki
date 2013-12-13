@@ -412,31 +412,6 @@ ELSA ships with a command-line interface, elsa/web/cli.pl, which can be run when
 ===Hardware===
 For very high logging levels, there are many factors which can affect overall throughput and search response times.  Hardware is a major factor, and disk speed is the biggest consideration.  ELSA should only ever use a maximum of three CPU's at a time (during index consolidation) and usually uses only one.  However, Sphinx is a threaded application, and will happily scale to as many CPU's are on the box for running queries in parallel.  For this reason, four CPU's is recommended for production systems with a high load.  RAM is also a factor, but less so.  2-4 GB should be enough.  Searchd, the Sphinx daemon, will consume most of the RAM with its temporary indexes.
 
-===Index Configuration===
-ELSA has two kinds of indexes, temporary and permanent.  Only temporary indexes allow attribute-only searches.  Attribute-only searches (searches based soley on time, class, program, or any range search) require storing the attributes in RAM, which will consume all RAM if all indexes were done that way for high log volumes.  In order to not have RAM be the limiting factor for ELSA, permanent indexes do not allow attribute-only searches.  Thus, when you search, for example, class=none, you're only searching temporary indexes, which is usually the last few minutes or hours, depending on when the last consolidation took place on the backend.
-
-The best workaround is to query for host= where the host is a log host you know will have results.  You can do multiple hosts to get the same effect.  However, if you use any range queries like host>1.1.1.1 host<2.2.2.2, then host will become an attribute and you'll only get partial results again.
-
-There is a way to get around this if you have enough RAM.  If you edit /usr/local/elsa/node/Indexer.pm in the "get_sphinx_conf" subroutine and change the text under "permanent" from "docinfo = inline" to "docinfo = extern" and rename the sphinx config file in the /etc/elsa_node.conf to something new, it will create a new sphinx config file at that location.  Then, you will need to re-index everything:
-{{{
-service syslog-ng stop
-mv /usr/local/etc/sphinx.conf /usr/local/etc/sphinx.conf.bak
-# Edit Index.pm
-perl /usr/local/elsa/node/elsa.pl -c /etc/elsa_node.conf -on
-service searchd stop
-# (This next step could take a really long time if you have a lot of logs loaded already)
-/usr/local/sphinx/bin/indexer --config /usr/local/etc/sphinx.conf --rotate --all 
-service searchd start
-service syslog-ng start
-}}}
-
-However, this will only work if you have many gigs of RAM and not that many logs (less than a billion).  To get an idea of how much RAM would be required, you can sum these totals (assuming your Sphinx directory is /data/sphinx):
-{{{
-du -sch /data/sphinx/*.spa
-du -sch /data/sphinx/*.spi
-}}}
-If this number fits comfortably in under your RAM totals, and you think your logs have rolled (as in, you don't expect much more than this), you could safely change that setting.
-
 ===Filesystem Considerations===
 Ext4 is currently the default filesystem on most recent Linux distributions.  It is a happy medium between ReiserFS which is good for small files and XFS which excels at large files.  ELSA deals mostly with large files, so it is recommended to create a dedicated partition for your $DATA_DIR and format it with XFS, but ext4 should not hinder performance much.
 
