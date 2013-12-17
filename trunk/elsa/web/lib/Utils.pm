@@ -407,6 +407,7 @@ sub _get_info {
 				$ret->{totals}->{$type} += $ret->{$key}->{records};
 			}
 			else {
+				$ret->{totals}->{$type} += 0;
 				foreach my $hash (@{ $ret->{$key}->{$key} }){
 					next if $type eq 'archive' and not $hash->{table_type} eq 'archive';
 					$ret->{totals}->{$type} += $hash->{records};
