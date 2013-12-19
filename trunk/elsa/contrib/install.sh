@@ -743,6 +743,15 @@ update_node_mysql(){
 	# Fix earlier typo
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'UPDATE fields_classes_map SET field_order=11 WHERE field_order=1 AND field_id=(SELECT id FROM fields WHERE field="mac_address") AND class_id=(SELECT id FROM classes WHERE class="DHCP")'
 	
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields (field, field_type, pattern_type) VALUES ("protocol", "string", "QSTRING");'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields (field, field_type, pattern_type) VALUES ("sub_msg", "string", "QSTRING");'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map(class_id, field_id, field_order) VALUES( (SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="notice_type"), 14);'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'REPLACE INTO fields_classes_map(class_id, field_id, field_order) VALUES( (SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="notice_msg"), 15);'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map(class_id, field_id, field_order) VALUES( (SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="mime_type"), 11);'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map(class_id, field_id, field_order) VALUES( (SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="desc"), 12);'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map(class_id, field_id, field_order) VALUES( (SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="protocol"), 13);'
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map(class_id, field_id, field_order) VALUES( (SELECT id FROM classes WHERE class="BRO_NOTICE"), (SELECT id FROM fields WHERE field="sub_msg"), 16);'
+	
 	return $?
 }
 
