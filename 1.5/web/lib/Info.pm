@@ -39,7 +39,28 @@ sub BUILD {
 	if ($self->conf->get('block_url')){
 		push @{ $self->plugins }, 'blockIp';
 	}
+	if ($self->conf->get('moloch_urls')){
+		my $best_url;
+		URL_LOOP: foreach my $url (keys %{ $self->conf->get('moloch_urls') }){
+			my $start_ip_int = unpack('N*', inet_aton($self->conf->get('moloch_urls')->{$url}->{start}));
+			my $end_ip_int = unpack('N*', inet_aton($self->conf->get('moloch_urls')->{$url}->{end}));
+			foreach my $col (qw(srcip dstip ip)){
+				if (exists $self->data->{$col}){
+					my $ip_int = unpack('N*', inet_aton($self->data->{$col}));
+					if ($start_ip_int <= $ip_int and $ip_int <= $end_ip_int){
+						$best_url = $url;
+						last URL_LOOP;
+					}
+				}
+			}
+		}
+		if ($best_url){
+			push @{ $self->plugins }, 'getMoloch_' . $best_url;
+		}
+	}
+
 	return $self;
 }
 
 1;
+
