@@ -5499,6 +5499,64 @@ YAHOO.ELSA.getPcap = function(p_sType, p_aArgs, p_oRecord){
 	var oPcapWindow = window.open(YAHOO.ELSA.pcapUrl + '/?' + sQuery);
 }
 
+YAHOO.ELSA.getMoloch = function(p_sType, p_aArgs, p_a){
+	var p_oRecord = p_a;
+	var sMolochUrl = YAHOO.ELSA.molochUrl;
+	if (!(p_a instanceof YAHOO.widget.Record)){
+		p_oRecord = p_a[0];
+		sMolochUrl = p_a[1];
+	}
+	logger.log('p_oRecord', p_oRecord);
+	logger.log('p_aArgs', p_aArgs);
+	
+	if (!p_oRecord){
+		YAHOO.ELSA.Error('Need a record selected to get pcap for.');
+		return;
+	}
+	
+	var oData = {};
+	for (var i in p_oRecord.getData()['_fields']){
+		oData[ p_oRecord.getData()['_fields'][i].field ] =  p_oRecord.getData()['_fields'][i].value;
+	}
+	var oIps = {};
+	var aQuery = [];
+	var aQueryParams = [ 'srcip', 'dstip', 'srcport', 'dstport' ];
+
+	// tack on the start/end +/- 10 minutes by default
+	var iOffset = 10 * 60;
+	if (YAHOO.ELSA.getPreference('pcap_offset', 'default_settings')){
+		iOffset = YAHOO.ELSA.getPreference('pcap_offset', 'default_settings');
+	}
+	oData['start'] = p_oRecord.getData().timestamp - iOffset;
+	oData['end'] = p_oRecord.getData().timestamp + iOffset;
+
+
+	var oMolochTranslations = { 
+		'srcip': 'ip',
+		'dstip': 'ip',
+		'srcport': 'port',
+		'dstport': 'port'
+	};
+
+	for (var i in aQueryParams){
+		var sParam = aQueryParams[i];
+		if (typeof(oData[sParam]) != 'undefined'){
+			var sUrlParam = sParam;
+			var sUrlValue = oData[sParam];
+			if (typeof(oMolochTranslations[sUrlParam]) != 'undefined'){
+				sUrlParam = oMolochTranslations[sUrlParam];
+			}
+			aQuery.push(sUrlParam + '==' + sUrlValue);
+		}
+	}
+
+	var sQuery = 'startTime=' + oData['start'] + '&stopTime=' + oData['end'] + '&expression='
+	sQuery += aQuery.join('+%26%26+');
+
+	logger.log('getting moloch url: ' + sMolochUrl + '/?' + sQuery);
+	var oPcapWindow = window.open(sMolochUrl + '/?' + sQuery);
+}
+
 YAHOO.ELSA.getInfo = function(p_oEvent, p_oRecord){
 	var oRecord = p_oRecord;
 	logger.log('p_oRecord', oRecord);
@@ -5661,13 +5719,17 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 				});
 			}
 			else {
-				aPluginMenuSources.push({
-					text: sPluginName,
-					onclick: { fn: YAHOO.ELSA[sPluginName], obj:p_oRecord }
-				});
+				aMatches = sPluginName.match(/^getMoloch_(.+)/);
+				if (aMatches && aMatches.length){
+					aPluginMenuSources.push({
+						text: sPluginName,
+						onclick: { fn: YAHOO.ELSA.getMoloch, obj:[p_oRecord,aMatches[1]] }
+					});
+				}
 			}
 		}
 	}
+
 	var fnSort = function(a,b){ return a.text.charCodeAt(0) < b.text.charCodeAt(0) };
 	aPluginMenuSources.sort(fnSort);  // make alphabetical order
 	
