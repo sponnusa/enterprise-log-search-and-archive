@@ -745,6 +745,7 @@
 			<rule class="41" id="Bro file transfer via bro_notice">
 				<patterns>
 					<pattern description="bro-2.1">@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@tcp|HTTP::MD5|@IPv4::@ @ESTRING:s0: @http@ESTRING:://@@ESTRING:s1:/@@ESTRING:s2:|@@ESTRING::|@@IPv4::@|@IPv4::@|@NUMBER::@|@ANYSTRING::@</pattern>
+					<pattern description="bro-2.1">@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:i2:|@@ESTRING:i3:|@HTTP::MD5|@IPv4::@ @ESTRING:s0: @http@ESTRING:://@@ESTRING:s1:/@@ESTRING:s2:|@</pattern>
 				</patterns>
 				<values>
 					<value name="s2">/$s2</value>
