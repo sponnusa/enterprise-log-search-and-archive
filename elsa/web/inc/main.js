@@ -528,7 +528,12 @@ YAHOO.ELSA.main = function () {
 				YAHOO.ELSA.Error('Unable to find query input field');
 				return;	
 			}
-			
+			oRegExp = new RegExp('\\Wquery_string=([^&]+)');
+            oMatches = oRegExp.exec(location.search);
+            if (oMatches){
+                    YAHOO.ELSA.currentQuery.queryString = oMatches[1];
+                    YAHOO.util.Dom.get('q').value = oMatches[1];
+            }			
 		}
 		catch (e){
 			YAHOO.ELSA.Error('Error drawing query grid:' + e.toString());
