@@ -5726,6 +5726,12 @@ YAHOO.ELSA.showLogInfo = function(p_oData, p_oRecord){
 						onclick: { fn: YAHOO.ELSA.getMoloch, obj:[p_oRecord,aMatches[1]] }
 					});
 				}
+				else {
+					aPluginMenuSources.push({
+						text: sPluginName,
+						onclick: { fn: YAHOO.ELSA[sPluginName], obj:p_oRecord }
+					});
+				}
 			}
 		}
 	}
