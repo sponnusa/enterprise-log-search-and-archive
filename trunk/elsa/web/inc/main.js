@@ -531,8 +531,10 @@ YAHOO.ELSA.main = function () {
 			oRegExp = new RegExp('\\Wquery_string=([^&]+)');
             oMatches = oRegExp.exec(location.search);
             if (oMatches){
-                    YAHOO.ELSA.currentQuery.queryString = oMatches[1];
-                    YAHOO.util.Dom.get('q').value = oMatches[1];
+            	var oGivenQueryString = decodeURIComponent(oMatches[1]);
+				YAHOO.ELSA.currentQuery.queryString = oGivenQueryString;
+				YAHOO.util.Dom.get('q').value = oGivenQueryString;
+				submitQuery();
             }			
 		}
 		catch (e){
