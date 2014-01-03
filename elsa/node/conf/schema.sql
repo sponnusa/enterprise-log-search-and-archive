@@ -64,6 +64,7 @@ INSERT INTO classes (id, class, parent_id) VALUES(50, "BRO_KNOWN_CERTS", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(51, "BRO_KNOWN_HOSTS", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(52, "BRO_KNOWN_SERVICES", 0);
 INSERT INTO classes (id, class, parent_id) VALUES(53, "BRO_CAPTURE_LOSS", 0);
+INSERT INTO classes (id, class, parent_id) VALUES(54, "BRO_FILES", 0);
 
 INSERT INTO classes (id, class) VALUES(98, "ELSA_UNPARSED");
 INSERT INTO classes (id, class) VALUES(99, "ELSA_OPS");
@@ -219,6 +220,12 @@ INSERT INTO fields (field, field_type, pattern_type) VALUES ("gaps", "int", "NUM
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("acks", "int", "NUMBER");
 INSERT INTO fields (field, field_type, pattern_type) VALUES ("percent_loss", "string", "QSTRING");
 
+INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("txhosts", "int", "IPv4", "IPv4");
+INSERT INTO fields (field, field_type, pattern_type, input_validation) VALUES ("rxhosts", "int", "IPv4", "IPv4");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("seen_bytes", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("missing_bytes", "int", "NUMBER");
+INSERT INTO fields (field, field_type, pattern_type) VALUES ("sha1", "string", "QSTRING");
+
 
 CREATE TABLE fields_classes_map (
 	field_id SMALLINT UNSIGNED NOT NULL,
@@ -328,6 +335,17 @@ INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="md5"), 11);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="site"), 12);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILE"), (SELECT id FROM fields WHERE field="uri"), 13);
+
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="txhosts"), 5);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="rxhosts"), 6);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="seen_bytes"), 7);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="missing_bytes"), 8);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="source"), 11);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="mime_type"), 12);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="filename"), 13);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="conn_duration"), 14);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="md5"), 15);
+INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="sha1"), 16);
 
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="srcip"), 5);
 INSERT INTO fields_classes_map (class_id, field_id, field_order) VALUES ((SELECT id FROM classes WHERE class="BRO_SMTP"), (SELECT id FROM fields WHERE field="srcport"), 6);
