@@ -768,6 +768,16 @@
 		</rules>
 	</ruleset>
 	<ruleset>
+		<pattern description='bro-2.2'>bro_files</pattern>
+		<rules>
+			<rule class='54' id='54'>
+				<patterns>
+					<pattern>@ESTRING::|@@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING::|@@ESTRING:s0:|@@ESTRING::|@@ESTRING::|@@ESTRING:s1:|@@ESTRING:s2:|@@ESTRING:s3:|@@ESTRING::|@@ESTRING::|@@ESTRING:i2:|@@ESTRING::|@@ESTRING:i3:|@@ESTRING::|@@ESTRING::|@@ESTRING::|@@ESTRING:s4:|@@ESTRING:s5:|@@ANYSTRING::@</pattern>
+				</patterns>
+			</rule>
+		</rules>
+	</ruleset>
+	<ruleset>
 		<pattern>bro_smtp</pattern>
 		<rules>
 			<rule class="16" id="16">
