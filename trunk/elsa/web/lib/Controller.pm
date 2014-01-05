@@ -712,17 +712,78 @@ sub get_stats {
 	});
 }
 
+sub _merge_node_info {
+	my ($self, $results) = @_;
+	#$self->log->debug('merging: ' . Dumper($results));
+	
+	# Merge these results
+	my $overall_final = merge values %$results;
+	
+	# Merge the times and counts
+	my %final = (nodes => {});
+	foreach my $peer (keys %$results){
+		next unless $results->{$peer} and ref($results->{$peer}) eq 'HASH';
+		if ($results->{$peer}->{nodes}){
+			foreach my $node (keys %{ $results->{$peer}->{nodes} }){
+				if ($node eq '127.0.0.1' or $node eq 'localhost'){
+					$final{nodes}->{$peer} ||= $results->{$peer}->{nodes};
+				}
+				else {
+					$final{nodes}->{$node} ||= $results->{$peer}->{nodes};
+				}
+			}
+		}
+		foreach my $key (qw(archive_min indexes_min)){
+			if (not $final{$key} or $results->{$peer}->{$key} < $final{$key}){
+				$final{$key} = $results->{$peer}->{$key};
+			}
+		}
+		foreach my $key (qw(archive indexes)){
+			$final{totals} ||= {};
+			$final{totals}->{$key} += $results->{$peer}->{totals}->{$key};
+		}
+		foreach my $key (qw(archive_max indexes_max indexes_start_max archive_start_max)){
+			if (not $final{$key} or $results->{$peer}->{$key} > $final{$key}){
+				$final{$key} = $results->{$peer}->{$key};
+			}
+		}
+	}
+	$self->log->debug('final: ' . Dumper(\%final));
+	foreach my $key (keys %final){
+		$overall_final->{$key} = $final{$key};
+	}
+	
+	return $overall_final;
+}
+
 sub get_form_params {
 	my ( $self, $user, $cb) = @_;
 	
 	$user ||= new User(username => 'system');
+	my $args = { user => $user };
 	
 	my $form_params;
 	
+	my ($query, $sth);
+	my $overall_start = time();
+	
+	# Execute search on every peer
+	my @peers;
+	foreach my $peer (keys %{ $self->conf->get('peers') }){
+		push @peers, $peer;
+	}
+	$self->log->trace('Executing global node_info on peers ' . join(', ', @peers));
+	
+	my %results;
+	my %stats;
 	
 	try {
-		$self->_get_info(sub {
-			$self->meta_info(shift);
+		my $cv = AnyEvent->condvar;
+		$cv->begin(sub { 
+			my $overall_final = $self->_merge_node_info(\%results);
+			$stats{overall} = (time() - $overall_start);
+			$self->log->debug('stats: ' . Dumper(\%stats));
+			$self->meta_info($overall_final);
 			$form_params = {
 				start => $self->meta_info->{indexes_min} ? epoch2iso($self->meta_info->{indexes_min}) : epoch2iso($self->meta_info->{archive_min}),
 				start_int => $self->meta_info->{indexes_min} ? $self->meta_info->{indexes_min} : $self->meta_info->{archive_min},
@@ -744,12 +805,10 @@ sub get_form_params {
 				preferences => $user->preferences,
 				version => $self->meta_info->{version},
 			};
-			
 			# You can change the default start time displayed to web users by changing this config setting
 			if ($self->conf->get('default_start_time_offset')){
 				$form_params->{display_start_int} = ($form_params->{end_int} - (86400 * $self->conf->get('default_start_time_offset')));
 			}
-			
 			
 			if ($user->username ne 'system'){
 				# this is for a user, restrict what gets sent back
@@ -780,6 +839,33 @@ sub get_form_params {
 			$form_params->{schedule_actions} = $self->_get_schedule_actions($user);	
 			$cb->($form_params);
 		});
+		
+		foreach my $peer (@peers){
+			$cv->begin;
+			my $peer_conf = $self->conf->get('peers/' . $peer);
+			my $url = $peer_conf->{url} . 'API/';
+			$url .= ($peer eq '127.0.0.1' or $peer eq 'localhost') ? 'local_info' : 'info';
+			$self->log->trace('Sending request to URL ' . $url);
+			my $start = time();
+			my $headers = { 
+				Authorization => $self->_get_auth_header($peer),
+			};
+			$results{$peer} = http_get $url, headers => $headers, sub {
+				my ($body, $hdr) = @_;
+				eval {
+					my $raw_results = $self->json->decode($body);
+					$stats{$peer}->{total_request_time} = (time() - $start);
+					$results{$peer} = { %$raw_results }; #undef's the guard
+				};
+				if ($@){
+					$self->log->error($@ . "\nHeader: " . Dumper($hdr) . "\nbody: " . Dumper($body));
+					$self->add_warning(502, 'peer ' . $peer . ': ' . $@, { http => $peer });
+					delete $results{$peer};
+				}
+				$cv->end;
+			};
+		}
+		$cv->end;
 	}
 	catch {
 		my $e = shift;

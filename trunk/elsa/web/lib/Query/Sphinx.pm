@@ -726,7 +726,7 @@ sub _get_search_terms {
 		$self->log->debug('attr: ' . $attr . ', field: ' . $field . ', search_field returns: ' . $self->_search_field($field, $class_id) .
 			' search_field on attr returns: ' . $self->_search_field($attr, $class_id));
 		if ($field and $self->_index_has($index_schema, 'fields', $self->_search_field($field, $class_id))){
-			if ($self->_is_int_field($hash->{field}, $class_id)){
+			if ($self->_is_int_field($hash->{field}, $class_id) and $hash->{op} !~ /[<>]/){
 				$int_candidates{ $hash->{value} } = $hash;
 				$self->log->debug('attr ' . $attr . ' with value ' . $hash->{value} . ' is an int candidate');
 			}
@@ -743,7 +743,7 @@ sub _get_search_terms {
 			$candidates{ $hash->{value} } = $hash;
 		}
 		elsif ($attr and $self->_index_has($index_schema, 'attrs', $attr)){
-			if ($self->_is_int_field($hash->{field}, $class_id)){
+			if ($self->_is_int_field($hash->{field}, $class_id) and $hash->{op} !~ /[<>]/){
 				$int_candidates{ $hash->{value} } = $hash;
 				$self->log->debug('attr ' . $attr . ' with value ' . $hash->{value} . ' is an int candidate');
 			}

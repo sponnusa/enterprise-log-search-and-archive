@@ -386,49 +386,4 @@ sub info {
 	$cv->end;
 }
 
-sub _merge_node_info {
-	my ($self, $results) = @_;
-	#$self->log->debug('merging: ' . Dumper($results));
-	
-	# Merge these results
-	my $overall_final = merge values %$results;
-	
-	# Merge the times and counts
-	my %final = (nodes => {});
-	foreach my $peer (keys %$results){
-		next unless $results->{$peer} and ref($results->{$peer}) eq 'HASH';
-		if ($results->{$peer}->{nodes}){
-			foreach my $node (keys %{ $results->{$peer}->{nodes} }){
-				if ($node eq '127.0.0.1' or $node eq 'localhost'){
-					$final{nodes}->{$peer} ||= $results->{$peer}->{nodes};
-				}
-				else {
-					$final{nodes}->{$node} ||= $results->{$peer}->{nodes};
-				}
-			}
-		}
-		foreach my $key (qw(archive_min indexes_min)){
-			if (not $final{$key} or $results->{$peer}->{$key} < $final{$key}){
-				$final{$key} = $results->{$peer}->{$key};
-			}
-		}
-		foreach my $key (qw(archive indexes)){
-			$final{totals} ||= {};
-			$final{totals}->{$key} += $results->{$peer}->{totals}->{$key};
-		}
-		foreach my $key (qw(archive_max indexes_max indexes_start_max archive_start_max)){
-			if (not $final{$key} or $results->{$peer}->{$key} > $final{$key}){
-				$final{$key} = $results->{$peer}->{$key};
-			}
-		}
-	}
-	$self->log->debug('final: ' . Dumper(\%final));
-	foreach my $key (keys %final){
-		$overall_final->{$key} = $final{$key};
-	}
-	
-	return $overall_final;
-}
-
-
 __PACKAGE__->meta->make_immutable;
