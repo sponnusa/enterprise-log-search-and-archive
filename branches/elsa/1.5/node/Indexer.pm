@@ -102,7 +102,7 @@ sub BUILD {
 
 sub DEMOLISH {
 	my $self = shift;
-	$self->db->disconnect;
+	$self->db and $self->db->disconnect;
 }
 
 sub get_current_log_size {
@@ -197,6 +197,7 @@ sub _get_current_import_size {
 	$sth->execute($Data_db_name);
 	my $row = $sth->fetchrow_hashref;
 	my $db_size = $row->{total_bytes};
+	$db_size ||= 0;
 	$self->log->debug("Current size of imported logs in database is $db_size");
 	
 	# Find current size of Sphinx indexes
