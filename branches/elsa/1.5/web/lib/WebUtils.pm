@@ -14,7 +14,9 @@ sub extract_method {
 
 sub get_headers {
 	my $self = shift;
-	my $cb = shift;
+	my $cb = pop(@_);
+	my $no_form_params = shift;
+	$no_form_params ||= 0;
 #	my $dir = $self->controller->conf->get('email/base_url');
 #	$dir =~ s/^https?\:\/\/[^\/]+\//\//; # strip off the URL to make $dir the URI
 #	$dir = '';
@@ -110,17 +112,22 @@ EOHTML
 	
 	# Set form params
 	my $user = $self->controller->get_user($self->session->get('user_info')->{username});
-	$self->controller->get_form_params($user, sub {
-		my $form_params = shift;
-		if($form_params){
-			$HTML .= 'var formParams = ' . $self->controller->json->encode($form_params) . ';';
-		}
-		else {
-			$self->controller->log->error('Unable to get form params: ' . Dumper($form_params));
-			$HTML .= q/alert('Error contacting log server(s)');/;
-		}
-		
-		$HTML .= <<'EOHTML'
+	if ($no_form_params){
+		$HTML .= '</script>' . "\n" . sprintf('<title>%s</title>', $self->title);
+		$cb->($HTML);
+	}
+	else {
+		$self->controller->get_form_params($user, sub {
+			my $form_params = shift;
+			if($form_params){
+				$HTML .= 'var formParams = ' . $self->controller->json->encode($form_params) . ';';
+			}
+			else {
+				$self->controller->log->error('Unable to get form params: ' . Dumper($form_params));
+				$HTML .= q/alert('Error contacting log server(s)');/;
+			}
+			
+			$HTML .= <<'EOHTML'
 YAHOO.util.Event.throwErrors = true; 
 	/*
 		Global object that should allow for the initial creation of the select dropdown
@@ -144,9 +151,10 @@ YAHOO.util.Event.throwErrors = true;
 EOHTML
 ;
 	
-		$HTML .= sprintf('<title>%s</title>', $self->title);
-		$cb->($HTML);
-	});	
+			$HTML .= sprintf('<title>%s</title>', $self->title);
+			$cb->($HTML);
+		});
+	}
 }
 
 

@@ -251,7 +251,7 @@ sub index {
 	my $queries = shift;
 	my $cb = shift;
 	my $ret;
-	$self->get_headers(sub {
+	$self->get_headers(1, sub {
 		my $headers = shift;
 		$cb->($headers . $self->_get_index_body($args, $queries));
 	});
