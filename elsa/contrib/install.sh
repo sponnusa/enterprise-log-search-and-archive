@@ -318,7 +318,7 @@ get_elsa(){
 	if [ $? -ne 0 ]; then 
 		SVN_TRUST_SERVER_CERT=""
 	fi
-	svn -r $VERSION --non-interactive $SVN_TRUST_SERVER_CERT --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/branches/elsa/1.5" elsa &&
+	svn -r $VERSION --non-interactive $SVN_TRUST_SERVER_CERT --force export "https://enterprise-log-search-and-archive.googlecode.com/svn/trunk/elsa" elsa &&
 	mkdir -p "$BASE_DIR/elsa/node/tmp/locks" && 
 	touch "$BASE_DIR/elsa/node/tmp/locks/directory"
 	touch "$BASE_DIR/elsa/node/tmp/locks/query"
