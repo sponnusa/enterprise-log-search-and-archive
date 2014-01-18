@@ -214,7 +214,12 @@ sub result {
 		my $headers = { 
 			Authorization => $self->_get_auth_header($peer),
 		};
-		$results{$peer} = http_get $url, headers => $headers, sub {
+		# Do not proxy localhost requests
+		my @no_proxy = ();
+		if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
+			push @no_proxy, proxy => undef;
+		}
+		$results{$peer} = http_get $url, headers => $headers, @no_proxy, sub {
 			my ($body, $hdr) = @_;
 			$self->log->debug('got results body from peer ' . $peer . ': ' . Dumper($body));
 			try {
@@ -342,10 +347,15 @@ sub _get_foreign_saved_result {
 	my $headers = { 
 		Authorization => $self->_get_auth_header($peer),
 	};
+	# Do not proxy localhost requests
+	my @no_proxy = ();
+	if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
+		push @no_proxy, proxy => undef;
+	}
 	my $cv = AnyEvent->condvar;
 	my $ret;
 	$cv->begin(sub { $cb->($ret); });
-	my $guard; $guard = http_get $url, headers => $headers, sub {
+	my $guard; $guard = http_get $url, headers => $headers, @no_proxy, sub {
 		my ($body, $hdr) = @_;
 		eval {
 			$ret = $self->json->decode($body);
@@ -850,7 +860,12 @@ sub get_form_params {
 			my $headers = { 
 				Authorization => $self->_get_auth_header($peer),
 			};
-			$results{$peer} = http_get $url, headers => $headers, sub {
+			# Do not proxy localhost requests
+			my @no_proxy = ();
+			if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
+				push @no_proxy, proxy => undef;
+			}
+			$results{$peer} = http_get $url, headers => $headers, @no_proxy, sub {
 				my ($body, $hdr) = @_;
 				eval {
 					my $raw_results = $self->json->decode($body);
@@ -2402,7 +2417,12 @@ sub cancel_query {
 			}
 		}
 		$headers->{Authorization} = $self->_get_auth_header($peer);
-		$peers{$peer} = http_post $url, $request_body, headers => $headers, sub {
+		# Do not proxy localhost requests
+		my @no_proxy = ();
+		if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
+			push @no_proxy, proxy => undef;
+		}
+		$peers{$peer} = http_post $url, $request_body, headers => $headers, @no_proxy, sub {
 			my ($body, $hdr) = @_;
 			#$self->log->debug('body: ' . Dumper($body));
 			unless ($hdr and $hdr->{Status} < 400){

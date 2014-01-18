@@ -95,7 +95,12 @@ sub stats {
 		my $headers = { 
 			Authorization => $self->_get_auth_header($peer),
 		};
-		$results{$peer} = http_get $url, headers => $headers, sub {
+		# Do not proxy localhost requests
+		my @no_proxy = ();
+		if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
+			push @no_proxy, proxy => undef;
+		}
+		$results{$peer} = http_get $url, headers => $headers, @no_proxy, sub {
 			my ($body, $hdr) = @_;
 			try {
 				my $raw_results = $self->json->decode($body);
@@ -368,7 +373,12 @@ sub info {
 		my $headers = { 
 			Authorization => $self->_get_auth_header($peer),
 		};
-		$results{$peer} = http_get $url, headers => $headers, sub {
+		# Do not proxy localhost requests
+		my @no_proxy = ();
+		if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
+			push @no_proxy, proxy => undef;
+		}
+		$results{$peer} = http_get $url, headers => $headers, @no_proxy, sub {
 			my ($body, $hdr) = @_;
 			eval {
 				my $raw_results = $self->json->decode($body);
