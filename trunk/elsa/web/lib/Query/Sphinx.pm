@@ -1033,6 +1033,11 @@ sub _query {
 	$query_string .= ' LIMIT ?,?';
 	push @values, (0, $self->offset + $self->limit); # offset is enforced at the aggregation step, so we need to go offset + limit deep
 	
+	# Increase max_matches if limit > API default of 1000
+	if ($self->limit > 1000){
+		$query_string .= ' OPTION max_matches=' . int($self->limit);
+	}
+	
 	$self->log->trace('Sphinx query: ' . $query_string);
 	$self->log->trace('Sphinx query values: ' . join(',', @values));
 	
