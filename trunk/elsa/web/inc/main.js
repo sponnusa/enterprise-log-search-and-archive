@@ -484,6 +484,11 @@ YAHOO.ELSA.main = function () {
 		else if (YAHOO.ELSA.getPreference('grid_display', YAHOO.ELSA.DefaultSettingsType)){
 			oGridCheckboxArgs.checked = true;
 		}
+		
+		var oUTCCheckboxArgs = {id:'use_utc', type:'checkbox'};
+		if (YAHOO.ELSA.getPreference('use_utc', 'default_settings')){
+			oUTCCheckboxArgs.checked = true;
+		}
 				
 		oFormGridCfg['grid'] = [
 			[ 
@@ -491,6 +496,8 @@ YAHOO.ELSA.main = function () {
 				{type:'input', args:{id:'start_time', size:15, value:getISODateTime(oStartDate)}}, 
 				{type:'element', 'element':'a', args:{'id':'end_time_link', 'name':'to_time', 'innerHTML':'To', 'href':'#'} },
 				{type:'input', args:{id:'end_time', size:15}},
+				{type:'input', args:oUTCCheckboxArgs},
+				{type:'text', args:'UTC'},
 				{type:'widget', className:'Button', args:oTermMenuButtonCfg},
 				{type:'widget', className:'Button', args:oGroupByMenuButtonCfg},
 				{type:'widget', className:'Button', args:oArchiveButtonCfg},

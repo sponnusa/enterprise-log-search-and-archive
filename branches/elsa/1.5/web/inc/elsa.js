@@ -429,7 +429,7 @@ YAHOO.ELSA.Query = function(){
 	}
 	
 	this.submit = function(){
-		if (YAHOO.ELSA.getPreference('use_utc', 'default_settings')){
+		if (YAHOO.util.Dom.get('use_utc').checked){
 			this.addMeta('timezone_offset', 0);
 		}
 		else {
@@ -6248,5 +6248,16 @@ YAHOO.ELSA.toggleGridDisplay = function(){
 		oResult.loadResponse(oResult.results, true);
 	}
 	
+}
+
+YAHOO.ELSA.toggleUTC = function(){
+	var oEl = YAHOO.util.Dom.get('use_utc');
+	if (oEl.checked){
+		YAHOO.ELSA.currentQuery.addMeta('timezone_offset', 0);
+		logger.log('set timezone_offset to UTC (0)');
+	}
+	else {
+		YAHOO.ELSA.currentQuery.addMeta('timezone_offset', TimeZoneOffset);
+	}
 }
 	
