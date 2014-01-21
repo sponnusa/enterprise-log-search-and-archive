@@ -782,7 +782,7 @@ set_syslogng_conf(){
 	fi
 	
 	# Merge stock patterndb.xml with elsa_local_patterndb.xml
-	$BASE_DIR/syslog-ng/bin/pdbtool merge -p $BASE_DIR/elsa/node/conf/merged.xml -D /etc/elsa/patterns.d
+	$BASE_DIR/syslog-ng/bin/pdbtool merge -p $BASE_DIR/elsa/node/conf/merged.xml -r -D /etc/elsa/patterns.d
 	# Test
 	$BASE_DIR/syslog-ng/bin/pdbtool test $BASE_DIR/elsa/node/conf/merged.xml
 	if [ $? -eq 1 ]; then
