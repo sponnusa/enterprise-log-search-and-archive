@@ -36,7 +36,7 @@ has 'results' => (is => 'rw', isa => 'Results', required => 1);
 has 'start_time' => (is => 'ro', isa => 'Num', required => 1, default => sub { Time::HiRes::time() });
 #has 'groupby' => (traits => [qw(Array)], is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [] },
 #	handles => { has_groupby => 'count', all_groupbys => 'elements', add_groupby => 'push' });
-has 'groupby' => (is => 'rw', isa => 'Str');
+has 'groupby' => (is => 'rw', isa => 'Str', handles => { has_groupby => 'length' });
 has 'orderby' => (is => 'rw', isa => 'Str');
 has 'orderby_dir' => (is => 'rw', isa => 'Str', required => 1, default => 'ASC');
 has 'timeout' => (is => 'rw', isa => 'Int', required => 1, default => 0);
