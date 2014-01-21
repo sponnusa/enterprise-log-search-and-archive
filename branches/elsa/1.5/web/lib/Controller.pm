@@ -2144,6 +2144,7 @@ sub send_to {
 				qid => $args->{qid} ? $args->{qid} : 0, on_connect => sub {
 					my $qp = shift;
 					my $q = $qp->parse();
+					$q->results->add_results($args->{results});
 					$cb->() and return unless $q->has_connectors;
 					$self->_send_to($q, $cb);
 				});
