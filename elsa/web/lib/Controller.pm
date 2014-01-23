@@ -206,6 +206,7 @@ sub result {
 	});
 	
 	foreach my $peer (sort keys %peers){
+		next if ($peer eq '127.0.0.1' or $peer eq 'localhost');
 		$cv->begin;
 		my $peer_conf = $self->conf->get('peers/' . $peer);
 		my $url = $peer_conf->{url} . 'API/result?qid=' . int($peers{$peer});
@@ -214,12 +215,7 @@ sub result {
 		my $headers = { 
 			Authorization => $self->_get_auth_header($peer),
 		};
-		# Do not proxy localhost requests
-		my @no_proxy = ();
-		if ($peer eq '127.0.0.1' or $peer eq 'localhost'){
-			push @no_proxy, proxy => undef;
-		}
-		$results{$peer} = http_get $url, headers => $headers, @no_proxy, sub {
+		$results{$peer} = http_get $url, headers => $headers, sub {
 			my ($body, $hdr) = @_;
 			$self->log->debug('got results body from peer ' . $peer . ': ' . Dumper($body));
 			try {

@@ -193,31 +193,7 @@ sub get_results {
 	
 	$self->get_headers(sub {
 		my $HTML = shift;
-		if ($self->session->get('user_info') and $self->session->get('user_info')->{uid}){
-			my $args = $req->query_parameters->as_hashref;
-			$args->{uid} = $self->session->get('user_info')->{uid};
-			
-			my $ret = $self->controller->get_saved_result($args);
-			if ($ret and ref($ret) eq 'HASH'){
-				my $form_params = $self->controller->get_form_params($self->controller->get_user($self->session->get('user_info')->{username}));
-				if($form_params){
-					$HTML .= '<script>YAHOO.ELSA.formParams = ' . $self->controller->json->encode($form_params) . ';</script>';
-				}
-				
-				$HTML .= '<script>var oGivenResults = ' . $self->controller->json->encode($ret) . '</script>';
-				$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
-			}
-			else {
-				$self->controller->_error('Unable to get results, got: ' . Dumper($ret));
-				$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unable to get results"); });</script>';
-			}
-		}
-		else {
-			$self->controller->_error('Unauthorized');
-			$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unauthorized"); });</script>';
-		}
-		
-		$HTML .= <<'EOHTML'
+		my $body_html = <<'EOHTML'
 </head>
 <body class=" yui-skin-sam">
 <div id="panel_root"></div>
@@ -233,8 +209,34 @@ sub get_results {
 </html>
 EOHTML
 ;
+		if ($self->session->get('user_info') and $self->session->get('user_info')->{uid}){
+			my $args = $req->query_parameters->as_hashref;
+			$args->{uid} = $self->session->get('user_info')->{uid};
+			
+					
+			$self->controller->get_saved_result($args, sub {
+				my $ret = shift;
+				if ($ret and ref($ret) eq 'HASH'){
+					my $user = $self->controller->get_user($self->session->get('user_info')->{username});
+					$HTML .= '<script>var oGivenResults = ' . $self->controller->json->encode($ret) . '</script>';
+					$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Results.Given(oGivenResults)});</script>';
+					$HTML .= $body_html;
 
-		$cb->($HTML);
+					$cb->($HTML);
+				}
+				else {
+					$self->controller->_error('Unable to get results, got: ' . Dumper($ret));
+					$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unable to get results"); });</script>';
+					$cb->($HTML);
+				}
+			});
+		}
+		else {
+			$self->controller->_error('Unauthorized');
+			$HTML .= '<script>YAHOO.util.Event.addListener(window, "load", function(){YAHOO.ELSA.initLogger(); YAHOO.ELSA.Error("Unauthorized"); });</script>';
+			$HTML .= $body_html;
+			$cb->($HTML);
+		}
 	});
 }
 
