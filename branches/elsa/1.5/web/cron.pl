@@ -86,8 +86,8 @@ eval {
 		# Archive queries are expected to take a long time and can run concurrently
 		$controller->log->trace("Running archive queries...");
 		_run_archive_queries($controller, $cv);
+		$cv->end;
 	});
-	$cv->end;
 	$cv->recv;
 };
 if ($@){
