@@ -168,11 +168,11 @@ function getISOTime(oDate){
 	}
 }
 
-function getISODateTime(oDate){
+function getISODateTime(oDate, bUTC){
 	if (!oDate){
 		oDate = new Date();
 	}
-	if (parseInt(YAHOO.ELSA.getPreference('use_utc', 'default_settings')) == 1){
+	if (bUTC){
 		var sIso = oDate.toISOString();
 		sIso = sIso.replace('T', ' ').replace('Z', '');
 		return sIso;
@@ -180,7 +180,7 @@ function getISODateTime(oDate){
 	return getISODate(oDate) + ' ' + getISOTime(oDate);
 }
 
-function getDateFromISO(sIsoDate){
+function getDateFromISO(sIsoDate, bUTC){
 	var date = new Date();
 	var re = new RegExp(/(\d{4})\-(\d{1,2})\-(\d{1,2})\s+(\d{1,2})\:(\d{1,2})\:(\d{1,2})/);
 	var aMatches = re.exec(sIsoDate);
@@ -193,13 +193,24 @@ function getDateFromISO(sIsoDate){
 		str = str.replace(/^0(\d)/, '$1');
 		aMatches[i] = str;
 	}
-	date.setFullYear(parseInt(aMatches[1]));
-	date.setDate(parseInt(aMatches[3]));
-	date.setHours(parseInt(aMatches[4]));
-	date.setMinutes(parseInt(aMatches[5]));
-	date.setSeconds(parseInt(aMatches[6]));
-	date.setMonth(parseInt(aMatches[2]) - 1); //must do these last in case the month we had doesn't have the day we've set
-	date.setDate(parseInt(aMatches[3]));
+	if (bUTC){
+		date.setUTCFullYear(parseInt(aMatches[1]));
+		date.setUTCDate(parseInt(aMatches[3]));
+		date.setUTCHours(parseInt(aMatches[4]));
+		date.setUTCMinutes(parseInt(aMatches[5]));
+		date.setUTCSeconds(parseInt(aMatches[6]));
+		date.setUTCMonth(parseInt(aMatches[2]) - 1); //must do these last in case the month we had doesn't have the day we've set
+		date.setUTCDate(parseInt(aMatches[3]));
+	}
+	else {
+		date.setFullYear(parseInt(aMatches[1]));
+		date.setDate(parseInt(aMatches[3]));
+		date.setHours(parseInt(aMatches[4]));
+		date.setMinutes(parseInt(aMatches[5]));
+		date.setSeconds(parseInt(aMatches[6]));
+		date.setMonth(parseInt(aMatches[2]) - 1); //must do these last in case the month we had doesn't have the day we've set
+		date.setDate(parseInt(aMatches[3]));
+	}
 	return date;
 }
 
