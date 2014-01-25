@@ -533,14 +533,14 @@ YAHOO.ELSA.Query = function(){
 						'day': 86400
 					};
 					if (oTimeConversions[sField]){
-						var oStartDate = getDateFromISO(p_sValue);
+						var oStartDate = getDateFromISO(p_sValue, YAHOO.util.Dom.get('use_utc').checked);
 						var iMs = oStartDate.getTime();
 						logger.log('adding ' + (oTimeConversions[sField] * 1000) + ' to ' + iMs);
 						iMs += (oTimeConversions[sField] * 1000);
 						var oEndDate = new Date();
 						oEndDate.setTime(iMs);
-						YAHOO.util.Dom.get('start_time').value = getISODateTime(oStartDate);
-						YAHOO.util.Dom.get('end_time').value = getISODateTime(oEndDate);
+						YAHOO.util.Dom.get('start_time').value = getISODateTime(oStartDate, YAHOO.util.Dom.get('use_utc').checked);
+						YAHOO.util.Dom.get('end_time').value = getISODateTime(oEndDate, YAHOO.util.Dom.get('use_utc').checked);
 					}
 					else {
 						this.terms[p_sField] = p_sValue;
@@ -1096,7 +1096,7 @@ YAHOO.ELSA.Results = function(){
 			oDate.setTime(mSec);
 		}
 		var curDate = new Date();
-		if (YAHOO.ELSA.getPreference('use_utc', 'default_settings')){
+		if (YAHOO.util.Dom.get('use_utc').checked){
 			// only display the year if it isn't the current year
 			if (curDate.getUTCFullYear() != oDate.getUTCFullYear()){
 				p_elCell.innerHTML = sprintf('%04d %s %s %02d %02d:%02d:%02d UTC',
@@ -5429,7 +5429,7 @@ YAHOO.ELSA.getStream = function(p_sType, p_aArgs, p_a){
 	oStart.setTime((p_oRecord.getData().timestamp - 120) * 1000);
 	var oEnd = new Date();
 	oEnd.setTime((p_oRecord.getData().timestamp + 60) * 1000);
-	sQuery += '&start=' + getISODateTime(oStart) + '&end=' + getISODateTime(oEnd);
+	sQuery += '&start=' + getISODateTime(oStart, YAHOO.util.Dom.get('use_utc').checked) + '&end=' + getISODateTime(oEnd, YAHOO.util.Dom.get('use_utc').checked);
 	
 	logger.log('getting stream url: ' + sStreamdbUrl + '/?' + sQuery);
 	var oPcapWindow = window.open(sStreamdbUrl + '/?' + sQuery);
