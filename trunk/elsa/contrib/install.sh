@@ -1237,6 +1237,7 @@ centos_set_apache(){
 		semanage fcontext -a -t httpd_tmpfs_t "$DATA_DIR/elsa/tmp(/.*)?" &&
 		restorecon -r -v $DATA_DIR &&
 		echo "type=AVC msg=audit(1367598968.391:231376): avc:  denied  { sendto } for  pid=20032 comm="httpd" path="/data/elsa/tmp/ops" scontext=unconfined_u:system_r:httpd_t:s0 tcontext=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 tclass=unix_dgram_socket" | audit2allow -M write_to_socket && semodule -i write_to_socket.pp
+		chcon --reference=/var/lib/mysql -R "$DATA_DIR/elsa/mysql"
 	fi	
 	
 	# Ensure that Apache has the right prefork settings
