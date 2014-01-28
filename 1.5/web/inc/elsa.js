@@ -735,7 +735,10 @@ YAHOO.ELSA.addTermFromOnClickNoSubmit = function(p_oEvent, p_aArgs){
 }
 
 YAHOO.ELSA.addQueryTerm = function(p_sClass, p_sField, p_sValue){
-	logger.log('adding to current query class' + p_sClass + ', field:' + p_sField + ', val: ' + p_sValue);
+	if (p_sField == 'host' || p_sField == 'class' || p_sField == 'program'){
+		p_sClass = 'any';
+	}
+	logger.log('adding to current query class ' + p_sClass + ', field:' + p_sField + ', val: ' + p_sValue);
 	try {
 		YAHOO.ELSA.currentQuery.addTerm(p_sClass + '.' + p_sField, p_sValue);
 	} catch(e) { YAHOO.ELSA.Error(e); }
