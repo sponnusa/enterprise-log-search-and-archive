@@ -800,6 +800,12 @@ YAHOO.ELSA.Chart.prototype.sendQuery = function(p_iQueryNum, p_bRedraw){
 			}
 		}
 		oSelf.isTimeChart = sTime;
+		var oRegExp = new RegExp('\\Wnoscroll=(\\w+)');
+		var oMatches = oRegExp.exec(location.search);
+		if (oMatches && oMatches[1] == 'true'){
+			oSelf.isTimeChart = false;
+		}
+		
 		
 		if (oSelf.dataTable){
 			oSelf.mergeDataTables(p_oResponse.getDataTable(), oQuery.label);
@@ -899,6 +905,7 @@ YAHOO.ELSA.Chart.prototype.mergeDataTables = function(p_oAddTable, p_sLabel){
 	
 YAHOO.ELSA.Chart.prototype.draw = function(){
 	if (this.isTimeChart){
+		console.log('timechart');
 		this.makeTimeChart();
 	}
 	else if (this.type == 'GeoChart'){
