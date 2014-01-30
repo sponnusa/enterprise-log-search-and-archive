@@ -1828,10 +1828,15 @@ sub local_query_preparsed {
 				if ($self->conf->get('disallow_sql_search')){
 					throw(405, 'Query required SQL search which is not enabled', { search_type => 'SQL' });
 				}
-				$q->batch_message('Batching because estimated query time is ' . int($estimate_hash->{estimated_time}) . ' seconds.');
-				$self->log->info($q->batch_message);
-				$q->batch(1);
-				$q->execute_batch(sub { $cb->($q) });
+				if ($self->meta_params->{nobatch}){
+					$q->execute(sub { $cb->($q) });
+				}
+				else {
+					$q->batch_message('Batching because estimated query time is ' . int($estimate_hash->{estimated_time}) . ' seconds.');
+					$self->log->info($q->batch_message);
+					$q->batch(1);
+					$q->execute_batch(sub { $cb->($q) });
+				}
 			}
 			else {
 				$q->execute(sub { $cb->($q) });
