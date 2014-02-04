@@ -28,7 +28,7 @@ has 'system_dashboards' => (traits => [qw(Hash)], is => 'rw', isa => 'HashRef', 
 					title => 'Events per Time',
 					isStacked => 1,
 				},
-				query => 'datasource:_node_stats',
+				query => 'datasource:_node_stats node:%s',
 				label => 'Events %s',
 			},
 		],
@@ -354,7 +354,7 @@ sub _generate_system_dashboard {
 			foreach my $peer (keys %{ $self->controller->conf->get('peers') }){
 				$clone->{chart_id} = $id_counter;
 				$clone->{query_id} = $id_counter;
-				$clone->{query} = sprintf($chart->{query}, unpack('N*', inet_aton($peer)));
+				$clone->{query} = sprintf($chart->{query}, $peer);
 				$clone->{label} = sprintf($chart->{label}, $peer);
 				push @{ $ret->{charts} }, { %$clone };
 				$id_counter++;
