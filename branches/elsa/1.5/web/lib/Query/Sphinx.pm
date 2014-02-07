@@ -144,7 +144,7 @@ sub _normalize_terms {
 					$term_hash->{value} = '"' . $term_hash->{value} . '"';
 				}
 				# Escape any hyphens
-				$term_hash->{value} =~ s/\-/\\\\\-/g;
+				#$term_hash->{value} =~ s/\-/\\\\\-/g;
 				
 			}
 			
@@ -437,6 +437,10 @@ sub _search_value {
 	
 	if ($value =~ /^["']/ and $value =~ /["']$/){
 		return '"' . join('', @output) . '"';
+	}
+	else {
+		# Escape any hyphens
+		$value =~ s/\-/\\\\\-/g;
 	}
 	return join('', @output);
 }
