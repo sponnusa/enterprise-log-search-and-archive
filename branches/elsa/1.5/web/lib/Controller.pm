@@ -2117,6 +2117,7 @@ sub export {
 				mime_type => $results_obj->mime_type(), 
 				filename => CORE::time() . $results_obj->extension,
 			});
+			return;
 		}
 		
 		$self->log->error("failed to find plugin " . $args->{plugin} . ', only have plugins ' .
