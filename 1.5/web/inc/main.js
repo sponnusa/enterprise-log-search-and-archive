@@ -61,7 +61,7 @@ YAHOO.ELSA.main = function () {
 //			YAHOO.ELSA.currentQuery.resetTerms();
 			oQuery.submit();
 		} catch(e) { YAHOO.ELSA.Error(e); }
-	}	
+	}
 	
 	var drawQueryForm = function(){		
 		var oDialog=null;
@@ -901,6 +901,19 @@ YAHOO.ELSA.main = function () {
     oMatches = oRegExp.exec(location.search);
     if (oMatches){
             var oGivenQueryString = decodeURIComponent(oMatches[1]);
+            
+            // Detect start/end times provided in query_string URI param and fill out dom value to preserve across delMeta during submission
+            var oStartRegExp = new RegExp('\\Wstart[:=][\'"]([^[\'"]+)');
+            oMatches = oStartRegExp.exec(oGivenQueryString);
+            if (oMatches){
+            	YAHOO.util.Dom.get('start_time').value = oMatches[1];
+            }
+            var oEndRegExp = new RegExp('\\Wend[:=][\'"]([^[\'"]+)');
+            oMatches = oEndRegExp.exec(oGivenQueryString);
+            if (oMatches){
+            	YAHOO.util.Dom.get('end_time').value = oMatches[1];
+            }
+            
             YAHOO.util.Dom.get('q').value = oGivenQueryString;
             YAHOO.ELSA.currentQuery.queryString = oGivenQueryString;
             submitQuery();
