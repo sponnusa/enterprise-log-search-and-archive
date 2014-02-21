@@ -621,8 +621,7 @@ YAHOO.ELSA.Query = function(){
 	}
 	
 	this.stringifyTerms = function(){
-		var sQuery = YAHOO.util.Dom.get('q').value; //.replace(/\ [\-\.]\ /g, ' ');
-		return sQuery; //YAHOO.util.Dom.get('q').value;
+		return YAHOO.util.Dom.get('q').value;
 	}
 	
 //	this.stringifyMetas = function(){
