@@ -1423,7 +1423,7 @@
     	<pattern>%SEC-</pattern>
     	<rules>
     		<rule provider="ELSA" class="2" id="2">
-    			<pattern>list @ESTRING:s0: @denied @ESTRING:i0: @@ESTRING:i1:(@@NUMBER:i2:@) -> @ESTRING:i3:(@@NUMBER:i4:@@ANYSTRING@</pattern>
+    			<pattern>list @ESTRING:s2: @denied @ESTRING:i0: @@ESTRING:i1:(@@NUMBER:i2:@) -> @ESTRING:i3:(@@NUMBER:i4:@@ANYSTRING@</pattern>
     			<examples>
 	    			<example>
 	    				<test_message program="%SEC-6-IPACCESSLOGP">list FILTER-INTERNET-IN denied tcp 1.2.3.4(53420) -> 5.6.7.8(23), 1 packet</test_message>
@@ -1439,7 +1439,7 @@
     	</rules>
     	<rules>
     		<rule provider="ELSA" class="3" id="3">
-    			<pattern>list @ESTRING:s0: @permitted @ESTRING:i0: @@ESTRING:i1:(@@NUMBER:i2:@) -> @ESTRING:i3:(@@NUMBER:i4:@@ANYSTRING@</pattern>
+    			<pattern>list @ESTRING:s2: @permitted @ESTRING:i0: @@ESTRING:i1:(@@NUMBER:i2:@) -> @ESTRING:i3:(@@NUMBER:i4:@@ANYSTRING@</pattern>
     			<examples>
 	    			<example>
 	    				<test_message program="%SEC-6-IPACCESSLOGP">list FILTER-INTERNET-IN permitted tcp 1.2.3.4(53420) -> 5.6.7.8(23), 1 packet</test_message>
