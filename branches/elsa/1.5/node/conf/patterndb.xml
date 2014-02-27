@@ -45,7 +45,7 @@
 						</test_values>
 					</example>
 					<example>
-						<test_message program="FWSM-5-304002">Access denied URL http://www.example.com/feedout/content SRC 192.168.1.1 DEST 72.246.55.49 on interface inside</test_message>
+						<test_message program="%FWSM-5-304002">Access denied URL http://www.example.com/feedout/content SRC 192.168.1.1 DEST 72.246.55.49 on interface inside</test_message>
 							<test_values>
 								<test_value name="s1">www.example.com</test_value>
 								<test_value name="s2">feedout/content</test_value>
@@ -145,7 +145,7 @@
 						</test_values>
 					</example>
 					<example>
-						<test_message program="ASA-5-304002">Access denied URL http://www.example.com/feedout/content SRC 192.168.1.1 DEST 72.246.55.49 on interface inside</test_message>
+						<test_message program="%ASA-5-304002">Access denied URL http://www.example.com/feedout/content SRC 192.168.1.1 DEST 72.246.55.49 on interface inside</test_message>
 							<test_values>
 								<test_value name="s1">www.example.com</test_value>
 								<test_value name="s2">feedout/content</test_value>
@@ -251,7 +251,7 @@
 						<test_values>
 							<test_value name="i0">TCP</test_value>
 							<test_value name="i1">1.1.1.1</test_value>
-							<test_value name="i2">1043</test_value>
+							<test_value name="i2">4227</test_value>
 							<test_value name="i3">2.2.2.2</test_value>
 							<test_value name="i4">80</test_value>
 						</test_values>
@@ -1144,7 +1144,7 @@
 			</rule>
 			<rule provider="ELSA" class='4' id='26'>
 				<patterns>
-					<pattern>asdf@NUMBER::@@ESTRING::(@@ESTRING::)@ @IPv4:pdb_extracted_sourceip:@->WinEvtLog WinEvtLog: @ESTRING:pdb_extracted_program::@ AUDIT_@ESTRING::(@@ESTRING:i0:)@</pattern>
+					<pattern>@NUMBER::@@ESTRING::(@@ESTRING::)@ @IPv4:pdb_extracted_sourceip:@->WinEvtLog WinEvtLog: @ESTRING:pdb_extracted_program::@ AUDIT_@ESTRING::(@@ESTRING:i0:)@</pattern>
 					<values>
 						<value name="PROGRAM">$pdb_extracted_program</value>
 					</values>
@@ -1619,7 +1619,7 @@
 				</values>
 				<examples>
 					<example>
-						<test_message program="">1.1.1.1 - username  [03/Oct/2012:06:52:51 +0100]  "GET http://a.nice.url/some/uri?parameters=go&amp;in=here" 200 ALLOW "Blogs/Wiki, Entertainment"</test_message>
+						<test_message program="McAfee SmartFilter">1.1.1.1 - username [03/Oct/2012:06:52:51 +0100]  "GET http://a.nice.url/some/uri?parameters=go&amp;in=here" 200 ALLOW "Blogs/Wiki, Entertainment"</test_message>
 						<test_value name="i0">1.1.1.1</test_value>
 						<test_value name="i2">200</test_value>
 						<test_value name="s0">username</test_value>
@@ -1854,7 +1854,7 @@
 						<test_value name="s1">OUT</test_value>
 						<test_value name="i2">51271</test_value>
 						<test_value name="i3">192.168.1.1</test_value>
-						<test_value name="i4">10005</test_value>
+						<test_value name="i4">80</test_value>
 					</example>
 				</examples>
 			</rule>
@@ -1959,7 +1959,7 @@
 					</example>
 					<example>
 						<test_message program="dhcpd">Reclaiming abandoned lease 10.1.52.207.</test_message>
-						<test_value name="i0">1.1.1.1</test_value>
+						<test_value name="i0">10.1.52.207</test_value>
 					</example>
 					<example>
 						<test_message program="dhcpd">client 1.1.1.1#64919: update forwarding 'test.com/IN' denied</test_message>
@@ -2104,7 +2104,7 @@
 		<rules>
 			<rule class="46" id="46">
 				<patterns>
-                  <pattern>@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING::|@@ESTRING::|@@ESTRING:s1:@</pattern>
+                  <pattern>@ESTRING::|@@ESTRING:i0:|@@ESTRING:i1:|@@ESTRING:s0:|@@ESTRING:s1:|@@ESTRING:i2:|@@ESTRING:i3:|@@ESTRING::|@@ESTRING::|@@ESTRING:s2:@</pattern>
                   </patterns>
 				<examples>
 					<example>
@@ -2178,7 +2178,7 @@
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="bro_ftp">1375571619.507641|QMOWsHjZqde|192.168.1.1|514|192.168.1.116|514|udp|LOCAL0|INFO|Aug  3 23:13:39 pf: 00:00:00.804184 rule 36/0(match): pass in on vr0: (tos 0x0, ttl 64, id 11232, offset 0, flags [DF], proto UDP (17), length 55)   192.168.1.116.43172 > 192.168.1.1.53: 40972+ A? localhost. (27)</test_message>
+						<test_message program="bro_syslog">1375571619.507641|QMOWsHjZqde|192.168.1.1|514|192.168.1.116|514|udp|LOCAL0|INFO|Aug  3 23:13:39 pf: 00:00:00.804184 rule 36/0(match): pass in on vr0: (tos 0x0, ttl 64, id 11232, offset 0, flags [DF], proto UDP (17), length 55)   192.168.1.116.43172 > 192.168.1.1.53: 40972+ A? localhost. (27)</test_message>
 						<!-- eventid -->
 						<test_value name="s0">QMOWsHjZqde</test_value>
 						<!-- srcip -->
@@ -2190,7 +2190,7 @@
 						<!-- dstport -->
 						<test_value name="i3">514</test_value>
 						<!-- proto -->
-						<test_value name="i4">UDP</test_value>
+						<test_value name="i4">udp</test_value>
 						<!-- bro_syslog_facility -->
 						<test_value name="s1">LOCAL0</test_value>
 						<!-- bro_syslog_severity -->
@@ -2243,8 +2243,7 @@
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="bro_known_cert">1360154644.236015|10.2.20.60|443|
-						emailAddress=webmaster@dox.site,CN=dox.site,OU=web server,O=SuSE Linux Web Server,L=unknown,ST=unknown,C=XY	emailAddress=webmaster@dox.site,CN=dox.site,OU=CA,O=SuSE Linux Web Server,L=unknown,ST=unknown,C=XY	02</test_message>
+						<test_message program="bro_known_cert">1360154644.236015|10.2.20.60|443|emailAddress=webmaster@dox.site,CN=dox.site,OU=web server,O=SuSE Linux Web Server,L=unknown,ST=unknown,C=XY|emailAddress=webmaster@dox.site,CN=dox.site,OU=CA,O=SuSE Linux Web Server,L=unknown,ST=unknown,C=XY|02</test_message>
 						<!-- srcip -->
 						<test_value name="i0">10.2.20.60</test_value>
 						<!-- srcport -->
@@ -2292,7 +2291,7 @@
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="bro_known_cert">1360154567.821951|192.168.10.100|2869|tcp|HTTP</test_message>
+						<test_message program="bro_known_services">1360154567.821951|192.168.10.100|2869|tcp|HTTP</test_message>
 						<!-- srcip -->
 						<test_value name="i0">192.168.10.100</test_value>
 						<!-- srcport -->
@@ -2317,7 +2316,7 @@
 				</patterns>
 				<examples>
 					<example>
-						<test_message program="bro_known_cert">1377263179.538810|900.000092|so12-eth1-1|0|3991|0.000%</test_message>
+						<test_message program="bro_capture_loss">1377263179.538810|900.000092|so12-eth1-1|0|3991|0.000%</test_message>
 						<!-- interface -->
 						<test_value name="s0">so12-eth1-1</test_value>
 						<!-- gaps -->
