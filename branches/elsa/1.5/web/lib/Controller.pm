@@ -865,6 +865,7 @@ sub get_form_params {
 				my ($body, $hdr) = @_;
 				eval {
 					my $raw_results = $self->json->decode($body);
+					$stats{$peer} ||= {};
 					$stats{$peer}->{total_request_time} = (time() - $start);
 					$results{$peer} = { %$raw_results }; #undef's the guard
 				};
