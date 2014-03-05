@@ -596,7 +596,7 @@ YAHOO.ELSA.Query = function(){
             	if (this.localMetas[p_sField]){
                 	this.metas[p_sField] = p_sValue;
                 }
-            	if (p_sField != 'class' && p_sValue != 'any'){
+            	if (/*p_sField != 'class' &&*/ p_sValue != 'any'){
             		YAHOO.util.Dom.get('q').value += ' ' + p_sField + ':' + p_sValue;
             	}
             }
@@ -807,6 +807,9 @@ YAHOO.ELSA.groupData = function(p_iId, p_sClass, p_sField, p_sAggFunc){
 	YAHOO.ELSA.currentQuery.delMeta('groupby');
 	
 	if (!p_sClass || p_sClass == 'any'){
+		if (p_sField == 'class'){
+			YAHOO.ELSA.currentQuery.delMeta('class');
+		}
 		YAHOO.ELSA.currentQuery.addMeta('groupby', [p_sField]);
 	}
 	else if (p_sClass != YAHOO.ELSA.Labels.noGroupBy){
