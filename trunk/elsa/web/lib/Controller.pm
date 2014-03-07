@@ -1829,7 +1829,7 @@ sub local_query_preparsed {
 				if ($self->conf->get('disallow_sql_search')){
 					throw(405, 'Query required SQL search which is not enabled', { search_type => 'SQL' });
 				}
-				if ($self->meta_params->{nobatch}){
+				if ($q->meta_params->{nobatch}){
 					$q->execute(sub { $cb->($q) });
 				}
 				else {
