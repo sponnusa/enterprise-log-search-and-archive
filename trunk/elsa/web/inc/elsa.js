@@ -1101,7 +1101,7 @@ YAHOO.ELSA.Results = function(){
 			oDate.setTime(mSec);
 		}
 		var curDate = new Date();
-		if (YAHOO.util.Dom.get('use_utc').checked){
+		if (YAHOO.util.Dom.get('use_utc') && YAHOO.util.Dom.get('use_utc').checked){
 			// only display the year if it isn't the current year
 			if (curDate.getUTCFullYear() != oDate.getUTCFullYear()){
 				p_elCell.innerHTML = sprintf('%04d %s %s %02d %02d:%02d:%02d UTC',
