@@ -619,7 +619,11 @@ sub _parse_query_term {
 				$self->log->trace("Set archive.");
 				next;
 			}
-			
+			elsif ($term_hash->{field} eq 'analytics'){
+				$self->directives->{analytics} = $self->meta_params->{analytics} = 1;
+				$self->log->trace("Set analytics.");
+				next;
+			}
 			
 			my $orig_value = $term_hash->{value};
 			if ($term_hash->{field} eq 'program' or $term_hash->{field} eq 'host' or $term_hash->{field} =~ /proto/){
