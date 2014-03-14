@@ -301,7 +301,8 @@ sub _lookup_ip_ripe {
 	
 	my $ret = {};
 	
-	my $ripe_url = 'http://apps.db.ripe.net/whois/grs-lookup/' . lc($registrar) . '-grs/inetnum/' . $ip;
+	#my $ripe_url = 'http://apps.db.ripe.net/whois/grs-lookup/' . lc($registrar) . '-grs/inetnum/' . $ip;
+	my $ripe_url = 'http://rest.db.ripe.net/search?query-string=' . $ip;
 	my $cached = $self->cache->get($ripe_url);
 	if ($cached){
 		$self->log->trace('Using cached url ' . $ripe_url); 
@@ -319,6 +320,12 @@ sub _lookup_ip_ripe {
 	$self->cache_stats->{misses}++;
 	http_request GET => $ripe_url, timeout => $Timeout, %Proxy, headers => { Accept => 'application/json' }, sub {
 		my ($body, $hdr) = @_;
+		# Clean up the invalid JSON (key names are the same due to invalid XML->JSON conversion at RIPE)
+		my $counter = 0;
+		while ($body =~ /"object":/){
+			$body =~ s/"object":/"o$counter":/;
+			$counter++;
+		}
 		my $whois;
 		eval {
 			$whois = decode_json($body);
@@ -328,26 +335,53 @@ sub _lookup_ip_ripe {
 			$self->cv->end;
 			return;
 		}
-		if ($whois->{'whois-resources'} 
-			and $whois->{'whois-resources'}->{objects}
-			and $whois->{'whois-resources'}->{objects}->{object}
-			and $whois->{'whois-resources'}->{objects}->{object}->{attributes}
-			and $whois->{'whois-resources'}->{objects}->{object}->{attributes}->{attribute}
-			and $whois->{'whois-resources'}->{objects}->{object}->{attributes}->{attribute}){
-			foreach my $attr (@{ $whois->{'whois-resources'}->{objects}->{object}->{attributes}->{attribute} }){
-				if ($attr->{name} eq 'descr'){
-					$ret->{descr} = $ret->{descr} ? $ret->{descr} . ' ' . $attr->{value} : $attr->{value};
-					$ret->{name} = $ret->{descr};
-				}
-				elsif ($attr->{name} eq 'country'){
-					$ret->{cc} = $attr->{value};
-				}
-				elsif ($attr->{name} eq 'netname'){
-					$ret->{org} = $attr->{value};
+#		if ($whois->{'whois-resources'} 
+#			and $whois->{'whois-resources'}->{objects}
+#			and $whois->{'whois-resources'}->{objects}->{object}
+#			and $whois->{'whois-resources'}->{objects}->{object}->{attributes}
+#			and $whois->{'whois-resources'}->{objects}->{object}->{attributes}->{attribute}
+#			and $whois->{'whois-resources'}->{objects}->{object}->{attributes}->{attribute}){
+#			foreach my $attr (@{ $whois->{'whois-resources'}->{objects}->{object}->{attributes}->{attribute} }){
+#				if ($attr->{name} eq 'descr'){
+#					$ret->{descr} = $ret->{descr} ? $ret->{descr} . ' ' . $attr->{value} : $attr->{value};
+#					$ret->{name} = $ret->{descr};
+#				}
+#				elsif ($attr->{name} eq 'country'){
+#					$ret->{cc} = $attr->{value};
+#				}
+#				elsif ($attr->{name} eq 'netname'){
+#					$ret->{org} = $attr->{value};
+#				}
+#			}
+#			$self->log->trace( 'set cache for ' . $ripe_url );
+#			
+#			$self->cache->set($ripe_url, {
+#				cc => $ret->{cc},
+#				descr => $ret->{descr},
+#				name => $ret->{name},
+#				org => $ret->{org},
+#			});
+#			$self->_update_records($ip, $ret);
+#		}
+		if ($whois->{objects}){
+			foreach my $object (keys %{ $whois->{objects} }){
+				next unless $whois->{objects}->{$object}->[0] 
+					and $whois->{objects}->{$object}->[0]->{attributes}
+					and $whois->{objects}->{$object}->[0]->{attributes}->{attribute};
+				foreach my $attr (@{ $whois->{objects}->{$object}->[0]->{attributes}->{attribute} }){
+					if ($attr->{name} eq 'descr'){
+						$ret->{descr} = $ret->{descr} ? $ret->{descr} . ' ' . $attr->{value} : $attr->{value};
+						$ret->{name} = $ret->{descr};
+					}
+					elsif ($attr->{name} eq 'country'){
+						$ret->{cc} = $attr->{value};
+					}
+					elsif ($attr->{name} eq 'netname'){
+						$ret->{org} = $attr->{value};
+					}
 				}
 			}
 			$self->log->trace( 'set cache for ' . $ripe_url );
-			
 			$self->cache->set($ripe_url, {
 				cc => $ret->{cc},
 				descr => $ret->{descr},
@@ -355,9 +389,9 @@ sub _lookup_ip_ripe {
 				org => $ret->{org},
 			});
 			$self->_update_records($ip, $ret);
-		}
+		}			
 		else {
-			$self->log->trace( 'RIPE: ' . Dumper($whois) );
+			$self->log->error( 'INVALID RIPE: ' . Dumper($whois) );
 		}
 		$self->cv->end;
 	};
