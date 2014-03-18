@@ -45,7 +45,7 @@ MYSQL_ROOT_PASS=""
 #SPHINX_VER="2.1.1-beta"
 SPHINX_VER="2.1.3-release"
 EVENTLOG_VER="0.2.12"
-SYSLOG_VER="3.2.4"
+SYSLOG_VER="3.4.7"
 GEOIP_DIR="/usr/share/GeoIP/"
 APACHE="apache2"
 

@@ -266,11 +266,11 @@ sub _choose_query_class {
 #		}
 	}
 	
-#	# Batch if we're allowing a huge number of results
-#	if (not ($self->directives->{groupby}) and ($self->directives->{limit} == 0 or $self->directives->{limit} > $Results::Unbatched_results_limit)){
-#		$self->directives->{batch} = q{Batching because an unlimited number or large number of results has been requested.};
-#		$self->log->info($self->directives->{batch});
-#	}
+	# Batch if we're allowing a huge number of results
+	if (not ($self->directives->{groupby}) and ($self->directives->{limit} == 0 or $self->directives->{limit} > $Results::Unbatched_results_limit)){
+		$self->directives->{batch} = q{Batching because an unlimited number or large number of results has been requested.};
+		$self->log->info($self->directives->{batch});
+	}
 	
 	if ($self->has_import_search_terms and not $self->index_term_count){
 		return 'Query::Import';
