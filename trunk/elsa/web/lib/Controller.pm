@@ -790,6 +790,11 @@ sub get_form_params {
 			$stats{overall} = (time() - $overall_start);
 			$self->log->debug('stats: ' . Dumper(\%stats));
 			$self->meta_info($overall_final);
+			my $default_rows_per_page = defined $self->conf->get('default_rows_per_page') ? $self->conf->get('default_rows_per_page') : 15;
+			if ($user->preferences->{tree}->{default_settings}->{rows_per_page}){
+				$default_rows_per_page = $user->preferences->{tree}->{default_settings}->{rows_per_page};
+			}
+				
 			$form_params = {
 				start => $self->meta_info->{indexes_min} ? epoch2iso($self->meta_info->{indexes_min}) : epoch2iso($self->meta_info->{archive_min}),
 				start_int => $self->meta_info->{indexes_min} ? $self->meta_info->{indexes_min} : $self->meta_info->{archive_min},
@@ -810,6 +815,7 @@ sub get_form_params {
 				totals => $self->meta_info->{totals},
 				preferences => $user->preferences,
 				version => $self->meta_info->{version},
+				rows_per_page => $default_rows_per_page, 
 			};
 			# You can change the default start time displayed to web users by changing this config setting
 			if ($self->conf->get('default_start_time_offset')){
