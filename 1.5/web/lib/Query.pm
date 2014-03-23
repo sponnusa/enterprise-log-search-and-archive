@@ -117,6 +117,15 @@ sub BUILD {
 		}
 	}
 	
+	# Override default limit if one is given in the config file
+	if (defined $self->conf->get("default_results_limit")){
+		$self->limit($self->conf->get("default_results_limit"));
+	}
+	# Override that with user preference
+	if (defined $self->user->preferences->{tree}->{default_settings}->{limit}){
+		$self->limit($self->user->preferences->{tree}->{default_settings}->{limit});
+	}
+	
 	# Map directives to their properties
 	foreach my $prop (keys %{ $self->parser->directives }){
 		$self->$prop($self->parser->directives->{$prop});
