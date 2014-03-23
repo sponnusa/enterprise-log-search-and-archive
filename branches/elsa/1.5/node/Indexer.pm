@@ -624,6 +624,11 @@ sub _oversize_log_rotate {
 		return 0;
 	}
 	
+	# Only look at dropping if we are out of space
+	if ($self->_get_current_index_size() + $self->_get_current_archive_size() < $log_size_limit){
+		return 1;
+	}
+	
 	while ($self->_get_current_archive_size() > $archive_size_limit){
 		$self->_get_lock('directory');
 		
