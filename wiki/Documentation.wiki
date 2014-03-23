@@ -912,7 +912,7 @@ You can set per-user preferences by navigating to the "Preferences" dialog under
 ||default_settings||timeout||<natural number>||Override the system default for query timeout||
 ||default_settings||default_or||1||Override the system default for making events match if any of the query terms match instead of if all query terms match||
 ||default_settings||limit||100||Default limit to use for number of results to return||
-||default_settings|rows_per_page||15||Default for rows per page of results when displayed||
+||default_settings||rows_per_page||15||Default for rows per page of results when displayed||
 
 =Keyboard Shortcuts=
 ||Key||Action||
