@@ -5,6 +5,7 @@ use Time::HiRes qw(time);
 use FindBin;
 use AnyEvent;
 use Data::Dumper;
+use Date::Manip;
 
 use lib $FindBin::Bin . '/../node/';
 use lib $FindBin::Bin . '/lib';
@@ -216,6 +217,7 @@ sub _get_schedule {
 			push @query_params, $query_params;
 		}
 	}
+	return \@query_params;
 }
 
 sub _run_schedule {

@@ -1367,7 +1367,7 @@ YAHOO.ELSA.Results = function(){
 		var bHasClassNone = false;
 		for (var i in p_oResults.results){
 			var oNewRecord = cloneVar(p_oResults.results[i]);
-			if (oNewRecord['class'] == 'NONE'){
+			if (oNewRecord['class'] == 1){
 				bHasClassNone = true;
 			}
 			for (var j in oNewRecord._fields){
