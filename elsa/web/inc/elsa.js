@@ -1304,8 +1304,8 @@ YAHOO.ELSA.Results = function(){
 	    
 	    this.paginator = new YAHOO.widget.Paginator({
 	        pageLinks          : 10,
-	        rowsPerPage        : 15,
-	        rowsPerPageOptions : [15,50,100],
+	        rowsPerPage        : YAHOO.ELSA.formParams.rows_per_page,
+	        rowsPerPageOptions : [YAHOO.ELSA.formParams.rows_per_page,100,500],
 	        template           : '{CurrentPageReport} {FirstPageLink} {PreviousPageLink} {PageLinks} {NextPageLink} {LastPageLink} {RowsPerPageDropdown}',
 	        pageReportTemplate : '<strong>Records: {totalRecords} / ' + this.formatNumResults() + ' </strong> '
 	        	+ this.dataSource.liveData.totalTime + ' ms <a href="#" id="explain_query_' + this.dataSource.liveData.qid + '">?</a>'
@@ -1416,8 +1416,8 @@ YAHOO.ELSA.Results = function(){
 	    
 	    this.paginator = new YAHOO.widget.Paginator({
 	        pageLinks          : 10,
-	        rowsPerPage        : 15,
-	        rowsPerPageOptions : [15,50,100],
+	        rowsPerPage        : YAHOO.ELSA.formParams.rows_per_page,
+	        rowsPerPageOptions : [YAHOO.ELSA.formParams.rows_per_page,100,500],
 	        template           : '{CurrentPageReport} {PreviousPageLink} {PageLinks} {NextPageLink} {RowsPerPageDropdown}',
 	        pageReportTemplate : '<strong>Records: {totalRecords} / ' + this.dataSource.liveData.totalRecords + ' </strong> '
 	        	+ this.dataSource.liveData.totalTime + ' ms <a href="#" id="explain_query_' + this.dataSource.liveData.qid + '">?</a>'
