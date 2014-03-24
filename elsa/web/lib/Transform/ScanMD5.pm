@@ -4,6 +4,9 @@ use Data::Dumper;
 use LWP::UserAgent;
 use JSON;
 use Time::HiRes;
+use AnyEvent;
+use Try::Tiny;
+use Ouch qw(:trytiny);
 extends 'Transform';
 
 our $Name = 'ScanMD5';
@@ -11,44 +14,60 @@ our $Name = 'ScanMD5';
 has 'name' => (is => 'rw', isa => 'Str', required => 1, default => $Name);
 has 'cache' => (is => 'rw', isa => 'Object', required => 1);
 has 'lookups' => (is => 'rw', isa => 'ArrayRef', required => 1, default => sub { [ qw(VirusTotal ShadowServer) ] });
+has 'cv' => (is => 'rw', isa => 'Object');
 
 sub BUILD {
 	my $self = shift;
 	
 	my %md5s;
-	foreach my $datum (@{ $self->data }){
-		$datum->{transforms}->{$Name} = {};
-		if ($datum->{msg} =~ / ([a-f0-9]{32}) /){
+	foreach my $record ($self->results->all_results){
+		$record->{transforms}->{$Name} = {};
+		if ($record->{msg} =~ / ([a-f0-9]{32}) /){
 			if ($md5s{$1}){
-				push @{ $md5s{$1} }, $datum->{id};
+				push @{ $md5s{$1} }, $record->{id};
 			}
 			else {
-				$md5s{ $1 } = [ $datum->{id} ];
+				$md5s{ $1 } = [ $record->{id} ];
 			}
 		}  
-	}	
+	}
 	
-	foreach my $lookup_name (@{ $self->lookups }){
-		my $lookup = "Transform::ScanMD5::$lookup_name"->new(log => $self->log, conf => $self->conf, cache => $self->cache);
-		$lookup->query(\%md5s);
-		foreach my $md5 (keys %md5s){
-			next unless $md5s{$md5};
-			$self->log->debug('$md5s{$md5} ' . Dumper($md5s{$md5}));
-			foreach my $datum (@{ $self->data }){
-				$self->log->debug('datum: ' . Dumper($datum));
-				if (grep { $_ eq $datum->{id} } @{ $md5s{$md5}->{ids} } and ref($md5s{$md5}->{results}) ){
-					if ($datum->{transforms}->{$Name}->{scan}){
-						foreach my $av_name (keys %{ $md5s{$md5}->{results} }){
-							$datum->{transforms}->{$Name}->{scan}->{$av_name} = $md5s{$md5}->{results}->{$av_name};
+	$self->cv(AnyEvent->condvar); 
+	$self->cv->begin(sub {
+		$self->on_transform->($self->results);
+	});
+	
+	try {
+		foreach my $lookup_name (@{ $self->lookups }){
+			my $lookup = "Transform::ScanMD5::$lookup_name"->new(log => $self->log, conf => $self->conf, cache => $self->cache);
+			$lookup->query(\%md5s);
+			foreach my $md5 (keys %md5s){
+				next unless $md5s{$md5};
+				$self->log->debug('$md5s{$md5} ' . Dumper($md5s{$md5}));
+				foreach my $record ($self->results->all_results){
+					$self->log->debug('$record: ' . Dumper($record));
+					if (grep { $_ eq $record->{id} } @{ $md5s{$md5}->{ids} } and ref($md5s{$md5}->{results}) ){
+						if ($record->{transforms}->{$Name}->{scan}){
+							foreach my $av_name (keys %{ $md5s{$md5}->{results} }){
+								$record->{transforms}->{$Name}->{scan}->{$av_name} = $md5s{$md5}->{results}->{$av_name};
+							}
 						}
-					}
-					else {
-						$datum->{transforms}->{$Name}->{scan} = $md5s{$md5}->{results};
+						else {
+							$record->{transforms}->{$Name}->{scan} = $md5s{$md5}->{results};
+						}
 					}
 				}
 			}
 		}
+		$self->cv->end;
 	}
+	catch {
+		my $e = shift;
+		$self->log->error('error in whois: ' . $e);
+		$self->on_error->($e);
+		$self->on_transform->($self->results);
+	};
+	
 	return $self;
 }
 
@@ -58,7 +77,7 @@ use Data::Dumper;
 use LWP::UserAgent;
 use JSON;
 use Time::HiRes;
-extends 'Transform';
+with 'Utils';
 
 has 'cache' => (is => 'rw', isa => 'Object', required => 1);
 has 'ua' => (is => 'rw', isa => 'LWP::UserAgent', required => 1, default => sub { return LWP::UserAgent->new(); });
@@ -117,7 +136,7 @@ use Data::Dumper;
 use LWP::UserAgent;
 use JSON;
 use Time::HiRes;
-extends 'Transform';
+with 'Utils';
 
 has 'ua' => (is => 'rw', isa => 'LWP::UserAgent', required => 1, default => sub { return LWP::UserAgent->new(); });
 has 'url' => (is => 'ro', isa => 'Str', required => 1, default => 'https://www.virustotal.com/vtapi/v2/file/report');
