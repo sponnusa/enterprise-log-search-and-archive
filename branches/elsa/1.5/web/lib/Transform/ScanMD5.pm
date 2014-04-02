@@ -23,12 +23,8 @@ sub BUILD {
 	foreach my $record ($self->results->all_results){
 		$record->{transforms}->{$Name} = {};
 		if ($record->{msg} =~ / ([a-f0-9]{32}) /){
-			if ($md5s{$1}){
-				push @{ $md5s{$1} }, $record->{id};
-			}
-			else {
-				$md5s{ $1 } = [ $record->{id} ];
-			}
+			$md5s{$1} ||= { ids => [], results => {} };
+			push @{ $md5s{$1}->{ids} }, $record->{id};
 		}  
 	}
 	
