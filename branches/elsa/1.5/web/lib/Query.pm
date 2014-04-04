@@ -558,7 +558,9 @@ sub transform_results {
 	$self->log->debug('started with transforms: ' . Dumper($self->transforms));
 	my $raw_transform = $self->next_transform;
 	$self->log->debug('ended with transforms: ' . Dumper($self->transforms));
-	$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
+	chop($raw_transform);
+	#$raw_transform =~ /(\w+)\(?([^\)]+)?\)?/;
+	$raw_transform =~ /(\w+)\(?(.+)/;
 	my $transform = lc($1);
 	my @transform_args = $2 ? split(/\,/, $2) : ();
 	# Remove any args which are all whitespace
