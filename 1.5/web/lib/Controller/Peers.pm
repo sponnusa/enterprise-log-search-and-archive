@@ -329,7 +329,7 @@ sub _process_upload {
 		$args->{total_errors} ||= 0;
 		
 		# Record the upload
-		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(INET_ATON(?),?,?,?,?,?,?,?)';
+		$query = 'INSERT INTO ' . $syslog_db_name . '.uploads (client_ip, count, size, batch_time, errors, start, end, buffers_id) VALUES(?,?,?,?,?,?,?,?)';
 		$sth = $self->db->prepare($query);
 		$sth->execute($args->{client_ip_address}, $args->{count}, $size, $args->{batch_time}, 
 			$args->{total_errors}, $args->{start}, $args->{end}, $ret->{buffers_id});
