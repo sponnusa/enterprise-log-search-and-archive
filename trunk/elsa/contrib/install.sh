@@ -770,6 +770,8 @@ update_node_mysql(){
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map(class_id, field_id, field_order) VALUES( (SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="md5"), 15);'
 	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'INSERT IGNORE INTO fields_classes_map(class_id, field_id, field_order) VALUES( (SELECT id FROM classes WHERE class="BRO_FILES"), (SELECT id FROM fields WHERE field="sha1"), 16);'
 	
+	mysql -u$MYSQL_ROOT_USER $MYSQL_PASS_SWITCH $MYSQL_NODE_DB -e 'ALTER TABLE uploads CHANGE COLUMN client_ip client_ip VARCHAR(255) NOT NULL'
+	
 	return $?
 }
 
