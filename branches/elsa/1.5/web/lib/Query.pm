@@ -122,7 +122,8 @@ sub BUILD {
 		$self->limit($self->conf->get("default_results_limit"));
 	}
 	# Override that with user preference
-	if ($self->user->preferences->{tree} and
+	if ($self->user->preferences and
+		$self->user->preferences->{tree} and
 		$self->user->preferences->{tree}->{default_settings} and
 		defined $self->user->preferences->{tree}->{default_settings}->{limit}){
 		$self->limit($self->user->preferences->{tree}->{default_settings}->{limit});
