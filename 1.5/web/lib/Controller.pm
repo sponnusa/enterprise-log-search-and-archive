@@ -791,7 +791,11 @@ sub get_form_params {
 			$self->log->debug('stats: ' . Dumper(\%stats));
 			$self->meta_info($overall_final);
 			my $default_rows_per_page = defined $self->conf->get('default_rows_per_page') ? $self->conf->get('default_rows_per_page') : 15;
-			if ($user->preferences->{tree}->{default_settings}->{rows_per_page}){
+			#if ($user->preferences->{tree}->{default_settings}->{rows_per_page}){
+			if ($user->preferences and 
+				$user->preferences->{tree} and
+				$user->preferences->{tree}->{default_settings} and
+				$user->preferences->{tree}->{default_settings}->{rows_per_page}){
 				$default_rows_per_page = $user->preferences->{tree}->{default_settings}->{rows_per_page};
 			}
 				
