@@ -470,7 +470,7 @@ sub _format_records {
 	foreach my $row (@$rows){
 		$row->{datasource} = 'Sphinx';
 		$row->{_fields} = [
-				{ field => 'host', value => $row->{host}, class => 'any' },
+				{ field => 'host', value => inet_ntoa(pack("N*", $row->{host_id})), class => 'any' },
 				{ field => 'program', value => $row->{program}, class => 'any' },
 				{ field => 'class', value => $self->meta_info->{classes_by_id}->{ $row->{class_id} }, class => 'any' },
 			];
