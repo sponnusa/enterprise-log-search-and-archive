@@ -342,6 +342,14 @@ sub _get_where_clause {
 						push @field_clauses, '(class_id=?)';
 						push @values, $self->_value($hash, $class_id);
 					}
+					elsif ($field eq 'host_id'){
+						push @field_clauses, '(host_id=?)';
+						push @values, $self->_value($hash, $class_id);
+					}
+					elsif ($field eq 'program_id'){
+						push @field_clauses, '(program_id=?)';
+						push @values, $self->_value($hash, $class_id);
+					}
 					elsif ($self->_is_int_field($hash->{field}, $class_id)){
 						push @field_clauses, '(class_id=? AND ' . $field . '=?)';
 						push @values, $class_id, $self->_value($hash, $class_id);
