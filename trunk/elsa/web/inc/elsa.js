@@ -1302,6 +1302,9 @@ YAHOO.ELSA.Results = function(){
 	        }
 	    };
 	    
+	    if (typeof(formParams) != "undefined" && typeof(YAHOO.ELSA.formParams) == "undefined"){
+	    	YAHOO.ELSA.formParams = formParams;
+	    }
 	    this.paginator = new YAHOO.widget.Paginator({
 	        pageLinks          : 10,
 	        rowsPerPage        : YAHOO.ELSA.formParams.rows_per_page,
